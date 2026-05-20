@@ -41,10 +41,16 @@ public class CharacterStats : NetworkBehaviour
         currentHealth = maxHealth;
     }
 
+    private void Update()
+    {
+        if (Input.GetKeyDown(KeyCode.R))
+            Revive();
+    }
+
     private void OnDeathStateChanged(bool dead)
     {
         GetComponent<PlayerMovement>().enabled = !dead;
-        GetComponent<WeaponManager>().enabled = !dead;
+        transform.Find("PhysicsCollider").GetComponent<Collider>().enabled = !dead;
     }
 
     public void Revive(float healthPercent = 0.5f)

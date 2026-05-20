@@ -144,6 +144,7 @@ public class EnemyBase : NetworkIdentity
     public virtual void TakeDamage(float damage)
     {
         if (!isServer) return;
+        if (_currentHealth <= 0) return;
         _currentHealth -= damage;
         if (_currentHealth <= 0)
             Die();

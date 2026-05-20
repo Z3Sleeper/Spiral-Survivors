@@ -20,6 +20,11 @@ public class PlayerMovement : NetworkIdentity
         _input?.Disable();
     }
 
+    private void OnEnable()
+    {
+        _input?.Enable();
+    }
+
     private void OnDisable()
     {
         _input?.Disable();

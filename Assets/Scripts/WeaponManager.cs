@@ -62,7 +62,7 @@ public class WeaponManager : NetworkBehaviour
 
     private void Update()
     {
-        if (_blades == null || _blades.Count == 0) return;
+        if (_blades == null || _blades.Count == 0 || _stats.isDead) return;
 
         // Handle weapon count changes
         if (_stats.weaponCount != _currentCount)

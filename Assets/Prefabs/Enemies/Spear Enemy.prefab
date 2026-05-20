@@ -336,7 +336,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   spearHitbox: {fileID: 9054564917381773716}
   stabDamageMultiplier: 1
-  windupDuration: 0.4
+  windupDuration: 0.5
   stabDuration: 0.1
   postStabPause: 0.3
   attackCooldown: 2
