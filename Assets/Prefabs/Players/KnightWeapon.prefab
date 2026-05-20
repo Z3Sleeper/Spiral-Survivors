@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 7965949495438917252}
   - component: {fileID: -3199902600759759578}
   - component: {fileID: -8942802009306055094}
-  - component: {fileID: 2089547090140925600}
+  - component: {fileID: 3464808760796646086}
   m_Layer: 0
   m_Name: KnightWeapon
   m_TagString: Untagged
@@ -87,7 +87,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
---- !u!65 &2089547090140925600
+--- !u!65 &3464808760796646086
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -174,7 +174,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: 74254a53133c6f04f9861296568e1de0, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

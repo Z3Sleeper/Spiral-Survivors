@@ -2,21 +2,14 @@ using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
 
-public class WeaponBlade : NetworkIdentity
+public class WeaponBlade : WeaponBase
 {
-    private CharacterStats _stats;
     private Dictionary<EnemyBase, float> _hitCooldowns = new Dictionary<EnemyBase, float>();
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
-
         enabled = isOwner;
-    }
-
-    public void Init(CharacterStats stats)
-    {
-        _stats = stats;
     }
 
     private void Update()

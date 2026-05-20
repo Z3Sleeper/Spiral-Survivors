@@ -435,8 +435,14 @@ MonoBehaviour:
   weaponSpeed: 180
   weaponCount: 1
   weaponRange: 2
+  attackSpeed: 1
+  continuousFire: 0
   maxHealth: 100
   _currentHealth:
+    _value: 0
+    _ownerAuth: 0
+    _sendIntervalInSeconds: 0
+  _isDeadSync:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
@@ -561,7 +567,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  bladePrefab: {fileID: 2942187867930129664, guid: 65a15e0f1f4bb244f81860a67c8f573e, type: 3}
+  weaponPrefab: {fileID: 2942187867930129664, guid: 65a15e0f1f4bb244f81860a67c8f573e, type: 3}
 --- !u!114 &-5605369609234232223
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -969,7 +975,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 31321ba15b8f8eb4c954353edc038b1d, type: 2}
+  - {fileID: 2100000, guid: 74254a53133c6f04f9861296568e1de0, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

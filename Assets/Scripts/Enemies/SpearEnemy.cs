@@ -18,7 +18,7 @@ public class SpearEnemy : EnemyBase
 
     public enum State { Moving, Windup, Stabbing, PostStab }
     private float _stateTimer;
-    private float _attackCooldownTimer;
+    private float _attackCooldownTimer = 2f;
     [HideInInspector] public SyncVar<State> _syncState = new SyncVar<State>(State.Moving);
     private State _state
     {

@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using PurrNet;
 using UnityEngine;
 
@@ -10,9 +11,11 @@ public class CharacterStats : NetworkBehaviour
     [Header("Weapon")]
     public float weaponDamage = 10f;
     public float weaponRadius = 0f;
-    public float weaponSpeed = 90f; // degrees per second
+    public float weaponSpeed = 180f; // degrees per second
     public int weaponCount = 1;
     public float weaponRange = 1f;
+    public float attackSpeed = 1f;
+    public bool continuousFire = false;
 
     [Header("Health")]
     public float maxHealth = 100f;

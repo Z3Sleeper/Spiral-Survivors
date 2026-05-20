@@ -824,6 +824,8 @@ MonoBehaviour:
   characterPrefabs:
   - {fileID: 2272951876664129887, guid: e7ea7d77f5b744941bf862712fc82a82, type: 3}
   - {fileID: 2272951876664129887, guid: 8148cff9ad9973c42a79168be56ea2a4, type: 3}
+  - {fileID: 2272951876664129887, guid: d7c3138941af2e242977ae94e8ca1ec3, type: 3}
+  - {fileID: 2272951876664129887, guid: 450b495428051fe4cb0d4cf6615ff316, type: 3}
 --- !u!4 &2030860279
 Transform:
   m_ObjectHideFlags: 0
@@ -868,7 +870,7 @@ MonoBehaviour:
   spawnMinDistance: 10
   spawnMaxDistance: 15
   spawnInterval: 2
-  waitForPlayersLoaded: 0
+  waitForPlayersLoaded: 1
 --- !u!114 &2030860281
 MonoBehaviour:
   m_ObjectHideFlags: 0

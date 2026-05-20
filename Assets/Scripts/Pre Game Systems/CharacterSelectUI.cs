@@ -16,6 +16,16 @@ public class CharacterSelectUI : MonoBehaviour
         CharacterSelectManager.instance.SelectCharacter(1, NetworkManager.main.localPlayer);
     }
 
+    public void OnArcherClicked()
+    {
+        CharacterSelectManager.instance.SelectCharacter(2, NetworkManager.main.localPlayer);
+    }
+
+    public void OnBladeweaverClicked()
+    {
+        CharacterSelectManager.instance.SelectCharacter(3, NetworkManager.main.localPlayer);
+    }
+
     public void OnRandomClicked()
     {
         CharacterSelectManager.instance.SelectRandom(NetworkManager.main.localPlayer);
