@@ -1,0 +1,56 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 66869b09091574e4c972f42f5ae2268e, type: 3}
+  m_Name: NetworkPrefabs
+  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkPrefabs
+  autoGenerate: 1
+  networkOnly: 1
+  poolByDefault: 0
+  folder: {fileID: 102900000, guid: c7fcc6c955ae2c3488c585e0d3d2facf, type: 3}
+  linkedNetworkPrefabs: []
+  prefabs:
+  - guid: b2f2682e7cbeb094c9f793a44023a29d
+    prefab: {fileID: 7610165696036385783, guid: b2f2682e7cbeb094c9f793a44023a29d, type: 3}
+    pooled: 0
+    warmupCount: 5
+  - guid: 65a15e0f1f4bb244f81860a67c8f573e
+    prefab: {fileID: 2942187867930129664, guid: 65a15e0f1f4bb244f81860a67c8f573e, type: 3}
+    pooled: 0
+    warmupCount: 5
+  - guid: e7ea7d77f5b744941bf862712fc82a82
+    prefab: {fileID: 2272951876664129887, guid: e7ea7d77f5b744941bf862712fc82a82, type: 3}
+    pooled: 0
+    warmupCount: 5
+  - guid: 5582946baac56054385e9374fd23a0d6
+    prefab: {fileID: 1597157536724350220, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
+    pooled: 0
+    warmupCount: 5
+  - guid: 8148cff9ad9973c42a79168be56ea2a4
+    prefab: {fileID: 2272951876664129887, guid: 8148cff9ad9973c42a79168be56ea2a4, type: 3}
+    pooled: 0
+    warmupCount: 5
+  - guid: 9c02838407d0ec54aaa5c8e6ee20c091
+    prefab: {fileID: 2942187867930129664, guid: 9c02838407d0ec54aaa5c8e6ee20c091, type: 3}
+    pooled: 0
+    warmupCount: 5
+  - guid: a1ea6ef5ac0a87845b5e576e68c5caec
+    prefab: {fileID: 1597157536724350220, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
+    pooled: 0
+    warmupCount: 5
+  - guid: 58caf2674c6fdd44ba73dc6a3cdb4282
+    prefab: {fileID: 3624407512133673861, guid: 58caf2674c6fdd44ba73dc6a3cdb4282, type: 3}
+    pooled: 0
+    warmupCount: 5
+  - guid: fa41c34b73a3e874884462e56e436dd9
+    prefab: {fileID: 5352001002389939941, guid: fa41c34b73a3e874884462e56e436dd9, type: 3}
+    pooled: 0
+    warmupCount: 5
