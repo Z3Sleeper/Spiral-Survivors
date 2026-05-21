@@ -26,6 +26,42 @@ public class CharacterStats : NetworkBehaviour
         set => _currentHealth.value = value;
     }
 
+    [Header("Shield")]
+    public float maxShieldPercent = 0.1f;
+    public float shieldRegenTime = 5f;
+    public float maxShield => maxHealth * maxShieldPercent;
+    public SyncVar<float> _currentShield = new SyncVar<float>(0);
+    public float currentShield
+    {
+        get => _currentShield.value;
+        set => _currentShield.value = value;
+    }
+    [NonSerialized] public float _shieldRegenTimer = 0f;
+
+    [Header("Surge")]
+    public float maxEnergy = 50f;
+    public float energyRegen = 10f;
+    public float energyOnHit = 2f;
+    public float energyOnDamaged = 0.05f; // percent gain
+    public float surgeCost = 10f;
+    public float surgeUpkeep = 5f;
+    public float surgeEffectiveness = 1f;
+    public float surgeMoveSpeedMultiplier = 1.5f;
+    public float surgeWeaponSpeedMultiplier = 1.5f;
+    public float surgeAttackSpeedMultiplier = 1.5f;
+    public SyncVar<float> _currentEnergy = new SyncVar<float>(0);
+    public float currentEnergy
+    {
+        get => _currentEnergy.value;
+        set => _currentEnergy.value = value;
+    }
+
+    [Header("Dash")]
+    public float dashDistance = 5f;
+    public float dashSpeed = 20f;
+    public int dashCharges = 3;
+    public float dashCooldown = 10f;
+
     [HideInInspector] public SyncVar<bool> _isDeadSync = new SyncVar<bool>(false);
     public bool isDead
     {
@@ -42,17 +78,31 @@ public class CharacterStats : NetworkBehaviour
         if (!isServer) return;
 
         currentHealth = maxHealth;
+        currentHealth = maxHealth;
+        currentShield = maxShield;
+        currentEnergy = maxEnergy;
     }
 
     private void Update()
     {
+        if (!isServer) return;
+        if (isDead) return;
+
+        // Shield regen
+        if (currentShield < maxShield)
+        {
+            _shieldRegenTimer -= Time.deltaTime;
+            if (_shieldRegenTimer <= 0f)
+                currentShield = maxShield;
+        }
+
         if (Input.GetKeyDown(KeyCode.R))
             Revive();
     }
 
     private void OnDeathStateChanged(bool dead)
     {
-        GetComponent<PlayerMovement>().enabled = !dead;
+        GetComponent<PlayerController>().enabled = !dead;
         transform.Find("PhysicsCollider").GetComponent<Collider>().enabled = !dead;
     }
 
@@ -61,6 +111,7 @@ public class CharacterStats : NetworkBehaviour
         if (!isServer) return;
         isDead = false;
         currentHealth = maxHealth * healthPercent;
+        currentShield = maxShield * healthPercent;
     }
 
     [ServerRpc(requireOwnership: false)]
@@ -73,7 +124,26 @@ public class CharacterStats : NetworkBehaviour
     {
         if (!isServer) return;
         if (isDead) return;
+        /*
         currentHealth -= damage;
+        if (currentHealth <= 0)
+            Die();
+        */
+        _shieldRegenTimer = shieldRegenTime;
+
+        if (currentShield > 0)
+        {
+            float shieldDamage = Mathf.Min(damage, currentShield);
+            currentShield -= shieldDamage;
+            damage -= shieldDamage;
+        }
+
+        if (damage > 0)
+            currentHealth -= damage;
+
+        currentEnergy += maxEnergy * energyOnDamaged;
+        currentEnergy = Mathf.Min(currentEnergy, maxEnergy);
+
         if (currentHealth <= 0)
             Die();
     }

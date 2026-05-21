@@ -67,13 +67,9 @@ public class CharacterSelectManager : NetworkIdentity
     public void ReadyUp(PlayerID player)
     {
         if (_readyStates[player] == false)
-        {
             _readyStates[player] = true;
-        }
         else
-        {
             _readyStates[player] = false;
-        }
         
         CheckAllReady();
     }
@@ -88,13 +84,24 @@ public class CharacterSelectManager : NetworkIdentity
 
     private void LoadGameScene()
     {
-        LoadingScreen.instance.Show();
-        var op = NetworkManager.main.sceneModule.LoadSceneAsync("Networked Game Scene", new PurrSceneSettings
+        ShowLoadingScreen();
+        NetworkManager.main.sceneModule.LoadSceneAsync("Networked Game Scene", new PurrSceneSettings
         {
             mode = LoadSceneMode.Single,
             isPublic = true
         });
-        LoadingScreen.instance.SetOperation(op);
+    }
+
+    [ObserversRpc]
+    private void ShowLoadingScreen()
+    {
+        LoadingScreen.instance.Show();
+    }
+
+    [ObserversRpc]
+    private void HideLoadingScreen()
+    {
+        LoadingScreen.instance.Hide();
     }
 
     [ServerRpc(requireOwnership: false)]
@@ -109,7 +116,7 @@ public class CharacterSelectManager : NetworkIdentity
         if (_loadedStates.Count == 0) return;
         foreach (var loaded in _loadedStates.Values)
             if (!loaded) return;
-        LoadingScreen.instance.Hide();
+        HideLoadingScreen();
         EnemySpawner.instance.StartSpawning();
     }
 }
