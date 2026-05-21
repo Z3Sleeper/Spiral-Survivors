@@ -1,5 +1,6 @@
 using System.Collections;
 using PurrNet;
+using UnityEngine;
 
 public class PlayerData : NetworkIdentity
 {
@@ -22,7 +23,7 @@ public class PlayerData : NetworkIdentity
 
     private IEnumerator NotifyLoaded()
     {
-        yield return null; // wait one frame for PurrNet to finish spawning
+        yield return new WaitForSeconds(0.5f); // change from yield return null to this
         CharacterSelectManager.instance?.PlayerLoaded(owner.Value);
     }
 }

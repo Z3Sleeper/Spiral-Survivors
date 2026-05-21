@@ -27,6 +27,7 @@ public class CharacterSelectManager : NetworkIdentity
         {
             playerCharacterChoices[player] = 0;
             _readyStates[player] = false;
+            _loadedStates[player] = false;
         }
 
         NetworkManager.main.onPlayerJoined += OnPlayerJoined;
@@ -38,6 +39,7 @@ public class CharacterSelectManager : NetworkIdentity
         if (!asServer) return;
         playerCharacterChoices[player] = 0;
         _readyStates[player] = false;
+        _loadedStates[player] = false;
     }
 
     private void OnPlayerLeft(PlayerID player, bool asServer)
@@ -86,11 +88,13 @@ public class CharacterSelectManager : NetworkIdentity
 
     private void LoadGameScene()
     {
-        NetworkManager.main.sceneModule.LoadSceneAsync("Networked Game Scene", new PurrSceneSettings
+        LoadingScreen.instance.Show();
+        var op = NetworkManager.main.sceneModule.LoadSceneAsync("Networked Game Scene", new PurrSceneSettings
         {
             mode = LoadSceneMode.Single,
             isPublic = true
         });
+        LoadingScreen.instance.SetOperation(op);
     }
 
     [ServerRpc(requireOwnership: false)]
@@ -105,7 +109,7 @@ public class CharacterSelectManager : NetworkIdentity
         if (_loadedStates.Count == 0) return;
         foreach (var loaded in _loadedStates.Values)
             if (!loaded) return;
-        // Everyone loaded, start the game
+        LoadingScreen.instance.Hide();
         EnemySpawner.instance.StartSpawning();
     }
 }
