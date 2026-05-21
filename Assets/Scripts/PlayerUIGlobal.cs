@@ -29,7 +29,7 @@ public class PlayerUIGlobal : NetworkBehaviour
         if (_stats == null) return;
         healthBar.value = _stats.currentHealth / _stats.maxHealth;
         shieldBar.value = _stats.currentShield / _stats.maxShield;
-        healthText.text = $"{_stats.currentHealth}(+{_stats.currentShield})/{_stats.maxHealth}";
+        healthText.text = $"<b>(+{_stats.currentShield}){_stats.currentHealth}/{_stats.maxHealth}</b>";
     }
 
     private void LateUpdate()

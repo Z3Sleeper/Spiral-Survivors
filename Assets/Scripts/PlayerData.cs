@@ -24,6 +24,7 @@ public class PlayerData : NetworkIdentity
     private IEnumerator NotifyLoaded()
     {
         yield return new WaitForSeconds(0.5f); // change from yield return null to this
-        CharacterSelectManager.instance?.PlayerLoaded(owner.Value);
+        if (CharacterSelectManager.instance != null)
+            CharacterSelectManager.instance.PlayerLoaded(owner.Value);
     }
 }

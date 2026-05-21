@@ -57,10 +57,10 @@ public class CharacterStats : NetworkBehaviour
     }
 
     [Header("Dash")]
-    public float dashDistance = 5f;
-    public float dashSpeed = 20f;
     public int dashCharges = 3;
-    public float dashCooldown = 10f;
+    public float dashCooldown = 5f;
+    public float dashDistance = 10f;
+    public float dashSpeed = 100f;
 
     [HideInInspector] public SyncVar<bool> _isDeadSync = new SyncVar<bool>(false);
     public bool isDead
@@ -76,7 +76,8 @@ public class CharacterStats : NetworkBehaviour
         _isDeadSync.onChanged += OnDeathStateChanged;
 
         if (!isServer) return;
-
+        if (isOwner)
+            UIManager.instance?.SetPlayer(this);
         currentHealth = maxHealth;
         currentHealth = maxHealth;
         currentShield = maxShield;

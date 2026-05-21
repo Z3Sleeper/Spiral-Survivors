@@ -1,27 +1,26 @@
-using PurrNet;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-public class PlayerUI : NetworkBehaviour
+public class UIManager : MonoBehaviour
 {
+    public static UIManager instance;
+
     [SerializeField] private Slider healthBar;
     [SerializeField] private Slider shieldBar;
     [SerializeField] private Slider shieldRegenBar;
     [SerializeField] private TextMeshProUGUI healthText;
+
     private CharacterStats _stats;
 
-    protected override void OnSpawned()
+    private void Awake()
     {
-        base.OnSpawned();
-        enabled = isOwner;
-    
-        GetComponentInChildren<Canvas>().gameObject.SetActive(isOwner);
+        instance = this;
+    }
 
-        if (!isOwner) return;
-
-        _stats = GetComponent<CharacterStats>();
-
+    public void SetPlayer(CharacterStats stats)
+    {
+        _stats = stats;
         healthBar.value = 1f;
         shieldBar.value = 1f;
         shieldRegenBar.value = 1f;
@@ -35,6 +34,6 @@ public class PlayerUI : NetworkBehaviour
         shieldBar.value = _stats.currentShield / _stats.maxShield;
         shieldRegenBar.value = (_stats.shieldRegenTime - _stats._shieldRegenTimer) / _stats.shieldRegenTime;
 
-        healthText.text = $"{_stats.currentHealth}(+{_stats.currentShield})/{_stats.maxHealth}";
+        healthText.text = $"<b>(+{_stats.currentShield}){_stats.currentHealth}/{_stats.maxHealth}</b>";
     }
 }

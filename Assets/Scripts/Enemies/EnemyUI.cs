@@ -18,7 +18,7 @@ public class EnemyUI : MonoBehaviour
     private void Update()
     {
         healthBar.value = _enemy._currentHealth / _enemy.maxHealth;
-        healthText.text = $"{_enemy._currentHealth}/{_enemy.maxHealth}";
+        healthText.text = $"<b>{_enemy._currentHealth}/{_enemy.maxHealth}</b>";
     }
 
     private void LateUpdate()
