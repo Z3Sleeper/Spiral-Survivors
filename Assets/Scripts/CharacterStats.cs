@@ -1,24 +1,56 @@
 using System;
-using System.ComponentModel;
 using PurrNet;
 using UnityEngine;
 
 public class CharacterStats : NetworkBehaviour
 {
     [Header("Movement")]
-    public float moveSpeed = 5f;
+    public float baseMoveSpeed = 1f;
+    public float bonusMoveSpeed = 0f;
+    public float moveSpeed => baseMoveSpeed + bonusMoveSpeed;
 
     [Header("Weapon")]
-    public float weaponDamage = 10f;
-    public float weaponRadius = 0f;
-    public float weaponSpeed = 180f; // degrees per second
-    public int weaponCount = 1;
-    public float weaponRange = 1f;
-    public float attackSpeed = 1f;
+    public float baseWeaponDamage = 10f;
+    public float bonusWeaponDamage = 0f;
+    public float weaponDamage => baseWeaponDamage + bonusWeaponDamage;
+
+    public float baseWeaponRadius = 0f;
+    public float bonusWeaponRadius = 0f;
+    public float weaponRadius => baseWeaponRadius + bonusWeaponRadius;
+
+    public float baseWeaponSpeed = 180f;
+    public float bonusWeaponSpeed = 0f;
+    public float weaponSpeed => baseWeaponSpeed + bonusWeaponSpeed;
+
+    public int baseWeaponCount = 1;
+    public int bonusWeaponCount = 0;
+    public int weaponCount => baseWeaponCount + bonusWeaponCount;
+
+    public float baseWeaponRange = 1f;
+    public float bonusWeaponRange = 0f;
+    public float weaponRange => baseWeaponRange + bonusWeaponRange;
+
+    public float baseAttackSpeed = 1f;
+    public float bonusAttackSpeed = 0f;
+    public float attackSpeed => baseAttackSpeed + bonusAttackSpeed;
+
     public bool continuousFire = false;
 
     [Header("Health")]
-    public float maxHealth = 100f;
+    public SyncVar<float> _baseMaxHealth = new SyncVar<float>(100f);
+    public float baseMaxHealth
+    {
+        get => _baseMaxHealth.value;
+        set => _baseMaxHealth.value = value;
+    }
+
+    public SyncVar<float> _bonusMaxHealth = new SyncVar<float>(0f);
+    public float bonusMaxHealth
+    {
+        get => _bonusMaxHealth.value;
+        set => _bonusMaxHealth.value = value;
+    }
+    public float maxHealth => baseMaxHealth + bonusMaxHealth;
     public SyncVar<float> _currentHealth = new SyncVar<float>(0);
     public float currentHealth
     {
@@ -27,7 +59,9 @@ public class CharacterStats : NetworkBehaviour
     }
 
     [Header("Shield")]
-    public float maxShieldPercent = 0.1f;
+    public float baseMaxShieldPercent = 0.1f;
+    public float bonusMaxShieldPercent = 0f;
+    public float maxShieldPercent => baseMaxShieldPercent + bonusMaxShieldPercent;
     public float shieldRegenTime = 5f;
     public float maxShield => maxHealth * maxShieldPercent;
     public SyncVar<float> _currentShield = new SyncVar<float>(0);
@@ -39,17 +73,16 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float _shieldRegenTimer = 0f;
 
     [Header("Surge")]
-    public float maxEnergy = 50f;
+    public float baseMaxEnergy = 50f;
+    public float bonusMaxEnergy = 0f;
+    public float maxEnergy => baseMaxEnergy + bonusMaxEnergy;
     public float energyRegen = 10f;
-    public float energyOnHit = 2f;
-    public float energyOnDamaged = 0.05f; // percent gain
     public float surgeCost = 10f;
-    public float surgeUpkeep = 5f;
     public float surgeEffectiveness = 1f;
     public float surgeMoveSpeedMultiplier = 1.5f;
     public float surgeWeaponSpeedMultiplier = 1.5f;
     public float surgeAttackSpeedMultiplier = 1.5f;
-    public SyncVar<float> _currentEnergy = new SyncVar<float>(0);
+    public SyncVar<float> _currentEnergy = new SyncVar<float>(0, ownerAuth: true);
     public float currentEnergy
     {
         get => _currentEnergy.value;
@@ -59,8 +92,6 @@ public class CharacterStats : NetworkBehaviour
     [Header("Dash")]
     public int dashCharges = 3;
     public float dashCooldown = 5f;
-    public float dashDistance = 10f;
-    public float dashSpeed = 100f;
 
     [HideInInspector] public SyncVar<bool> _isDeadSync = new SyncVar<bool>(false);
     public bool isDead
@@ -75,13 +106,15 @@ public class CharacterStats : NetworkBehaviour
 
         _isDeadSync.onChanged += OnDeathStateChanged;
 
-        if (!isServer) return;
+        if (isOwner && UIManager.instance != null)
+            UIManager.instance.SetPlayer(this);
+
         if (isOwner)
-            UIManager.instance?.SetPlayer(this);
-        currentHealth = maxHealth;
+            currentEnergy = maxEnergy;
+
+        if (!isServer) return;
         currentHealth = maxHealth;
         currentShield = maxShield;
-        currentEnergy = maxEnergy;
     }
 
     private void Update()
@@ -125,11 +158,7 @@ public class CharacterStats : NetworkBehaviour
     {
         if (!isServer) return;
         if (isDead) return;
-        /*
-        currentHealth -= damage;
-        if (currentHealth <= 0)
-            Die();
-        */
+
         _shieldRegenTimer = shieldRegenTime;
 
         if (currentShield > 0)
@@ -141,9 +170,6 @@ public class CharacterStats : NetworkBehaviour
 
         if (damage > 0)
             currentHealth -= damage;
-
-        currentEnergy += maxEnergy * energyOnDamaged;
-        currentEnergy = Mathf.Min(currentEnergy, maxEnergy);
 
         if (currentHealth <= 0)
             Die();

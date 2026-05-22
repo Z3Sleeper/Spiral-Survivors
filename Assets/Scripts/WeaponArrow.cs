@@ -3,8 +3,9 @@ using UnityEngine;
 
 public class WeaponArrow : NetworkIdentity
 {
-    [SerializeField] private float travelSpeed = 20f;
-
+    private CharacterStats _stats;
+    private PlayerController _controller;
+    private float _speed;
     private float _damage;
     private float _maxRange;
     private Vector3 _direction;
@@ -17,18 +18,21 @@ public class WeaponArrow : NetworkIdentity
         enabled = isOwner;
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, CharacterStats stats, PlayerController controller)
     {
         _damage = damage;
         _maxRange = maxRange;
         _direction = direction.normalized;
+        _speed = speed;
+        _stats = stats;
+        _controller = controller;
     }
 
     private void Update()
     {
         if (_hit) return;
 
-        float step = travelSpeed * Time.deltaTime;
+        float step = _speed * Time.deltaTime;
         transform.position += _direction * step;
         _distanceTravelled += step;
 

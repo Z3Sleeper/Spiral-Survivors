@@ -323,7 +323,7 @@ MonoBehaviour:
   _visitiblityRules: {fileID: 0}
   moveSpeed: 0.3
   backpedalSpeedDivisor: 2
-  maxHealth: 50
+  maxHealth: 30
   preferredRange: 2.5
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3

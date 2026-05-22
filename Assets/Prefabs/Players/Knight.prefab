@@ -327,43 +327,54 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  moveSpeed: 1
-  weaponDamage: 10
-  weaponRadius: 0
-  weaponSpeed: 180
-  weaponCount: 1
-  weaponRange: 2
-  attackSpeed: 1
+  baseMoveSpeed: 1
+  bonusMoveSpeed: 0
+  baseWeaponDamage: 10
+  bonusWeaponDamage: 0
+  baseWeaponRadius: 0
+  bonusWeaponRadius: 0
+  baseWeaponSpeed: 180
+  bonusWeaponSpeed: 0
+  baseWeaponCount: 1
+  bonusWeaponCount: 0
+  baseWeaponRange: 2
+  bonusWeaponRange: 0
+  baseAttackSpeed: 1
+  bonusAttackSpeed: 0
   continuousFire: 0
-  maxHealth: 100
+  _baseMaxHealth:
+    _value: 100
+    _ownerAuth: 0
+    _sendIntervalInSeconds: 0
+  _bonusMaxHealth:
+    _value: 0
+    _ownerAuth: 0
+    _sendIntervalInSeconds: 0
   _currentHealth:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  maxShieldPercent: 0.1
+  baseMaxShieldPercent: 0.1
+  bonusMaxShieldPercent: 0
   shieldRegenTime: 5
   _currentShield:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  maxEnergy: 50
+  baseMaxEnergy: 50
+  bonusMaxEnergy: 0
   energyRegen: 10
-  energyOnHit: 2
-  energyOnDamaged: 0.05
   surgeCost: 10
-  surgeUpkeep: 5
   surgeEffectiveness: 1
-  surgeMoveSpeedMultiplier: 1.5
-  surgeWeaponSpeedMultiplier: 1.5
-  surgeAttackSpeedMultiplier: 1.5
+  surgeMoveSpeedMultiplier: 1
+  surgeWeaponSpeedMultiplier: 3
+  surgeAttackSpeedMultiplier: 3
   _currentEnergy:
     _value: 0
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   dashCharges: 3
   dashCooldown: 5
-  dashDistance: 10
-  dashSpeed: 100
   _isDeadSync:
     _value: 0
     _ownerAuth: 0
@@ -468,6 +479,9 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
+  _currentCharges: 0
+  _chargeRegenTimer: 0
+  _dashTimer: 0
 --- !u!114 &306019993567676965
 MonoBehaviour:
   m_ObjectHideFlags: 0

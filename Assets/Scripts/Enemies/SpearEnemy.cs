@@ -52,6 +52,7 @@ public class SpearEnemy : EnemyBase
     {
         base.Update(); // handles find target timer
         if (!isServer) return;
+        if (_isDead) return;
 
         _stateTimer -= Time.deltaTime;
         _attackCooldownTimer -= Time.deltaTime;

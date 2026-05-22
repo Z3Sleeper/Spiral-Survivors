@@ -1,26 +1,14 @@
 using System.Collections.Generic;
-using PurrNet;
 using UnityEngine;
 
 public class WeaponBlade : WeaponBase
 {
-    private Dictionary<EnemyBase, float> _hitCooldowns = new Dictionary<EnemyBase, float>();
+    private Dictionary<EnemyBase, float> _hitTimestamps = new Dictionary<EnemyBase, float>();
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
         enabled = isOwner;
-    }
-
-    private void Update()
-    {
-        var keys = new List<EnemyBase>(_hitCooldowns.Keys);
-        foreach (var enemy in keys)
-        {
-            _hitCooldowns[enemy] -= Time.deltaTime;
-            if (_hitCooldowns[enemy] <= 0)
-                _hitCooldowns.Remove(enemy);
-        }
     }
 
     private void OnTriggerEnter(Collider other) => TryHit(other);
@@ -33,9 +21,11 @@ public class WeaponBlade : WeaponBase
         if (other.gameObject.layer != LayerMask.NameToLayer("EnemyHurtbox")) return;
         var enemy = other.GetComponentInParent<EnemyBase>();
         if (enemy == null) return;
-        if (_hitCooldowns.ContainsKey(enemy)) return;
 
-        _hitCooldowns[enemy] = 90f / _stats.weaponSpeed;
+        float cooldown = 90f / _stats.weaponSpeed;
+        if (_hitTimestamps.TryGetValue(enemy, out float lastHit) && Time.time - lastHit < cooldown) return;
+
+        _hitTimestamps[enemy] = Time.time;
         enemy.TakeDamageRpc(_stats.weaponDamage);
     }
 }

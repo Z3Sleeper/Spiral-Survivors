@@ -4,6 +4,7 @@ public class WeaponBow : WeaponBase
 {
     [SerializeField] private GameObject arrowPrefab;
     [SerializeField] private LayerMask enemyHurtboxLayer;
+    public float projectileSpeed = 20f;
 
     private float _fireTimer;
     public override bool IsMelee => false;
@@ -45,6 +46,6 @@ public class WeaponBow : WeaponBase
     {
         var arrow = Instantiate(arrowPrefab, transform.position, transform.rotation);
         var arrowScript = arrow.GetComponent<WeaponArrow>();
-        arrowScript.Init(_stats.weaponDamage, _stats.weaponRange * 1.5f, transform.forward);
+        arrowScript.Init(_stats.weaponDamage, _stats.weaponRange * 1.5f, transform.forward, projectileSpeed, _stats, _controller);
     }
 }

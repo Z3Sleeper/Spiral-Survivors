@@ -10,8 +10,13 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Slider shieldBar;
     [SerializeField] private Slider shieldRegenBar;
     [SerializeField] private TextMeshProUGUI healthText;
+    [SerializeField] private Image dashChargeCooldownImage;
+    [SerializeField] private TextMeshProUGUI dashChargesText;
+    [SerializeField] private Image energyImage;
+    [SerializeField] private TextMeshProUGUI energyText;
 
     private CharacterStats _stats;
+    private PlayerController _controller;
 
     private void Awake()
     {
@@ -21,19 +26,33 @@ public class UIManager : MonoBehaviour
     public void SetPlayer(CharacterStats stats)
     {
         _stats = stats;
+        _controller = stats.GetComponent<PlayerController>();
         healthBar.value = 1f;
         shieldBar.value = 1f;
         shieldRegenBar.value = 1f;
+        dashChargeCooldownImage.fillAmount = 1f;
+        energyImage.fillAmount = 1f;
     }
 
     private void Update()
     {
-        if (_stats == null) return;
+        if (_stats == null || _controller == null) return;
 
         healthBar.value = _stats.currentHealth / _stats.maxHealth;
         shieldBar.value = _stats.currentShield / _stats.maxShield;
         shieldRegenBar.value = (_stats.shieldRegenTime - _stats._shieldRegenTimer) / _stats.shieldRegenTime;
+        healthText.text = $"<b>(+{(int)_stats.currentShield}){(int)_stats.currentHealth}/{(int)_stats.maxHealth}</b>";
 
-        healthText.text = $"<b>(+{_stats.currentShield}){_stats.currentHealth}/{_stats.maxHealth}</b>";
+        if (_controller._currentCharges < _stats.dashCharges)
+            dashChargeCooldownImage.fillAmount = 1f - (_controller._chargeRegenTimer / _stats.dashCooldown);
+        else
+            dashChargeCooldownImage.fillAmount = 1f;
+        dashChargesText.text = $"<b>{_controller._currentCharges}</b>";
+
+        if (_stats.currentEnergy < _stats.maxEnergy)
+            energyImage.fillAmount = _stats.currentEnergy / _stats.maxEnergy;
+        else
+            energyImage.fillAmount = 1f;
+        energyText.text = $"<b>{(int)_stats.currentEnergy}/{(int)_stats.maxEnergy}</b>";
     }
 }

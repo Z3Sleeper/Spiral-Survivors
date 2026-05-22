@@ -19,6 +19,7 @@ public class EnemyBase : NetworkIdentity
     public float contactCooldown = 1f;
     private Dictionary<CharacterStats, float> _contactCooldowns = new Dictionary<CharacterStats, float>();
     private bool _atPreferredRange = false;
+    protected bool _isDead = false;
 
 
     public SyncVar<float> _currentHealthSync = new SyncVar<float>(0);
@@ -50,6 +51,7 @@ public class EnemyBase : NetworkIdentity
 
     protected virtual void Update()
     {
+        if (_isDead) return;
         _findTargetTimer -= Time.deltaTime;
         if (_findTargetTimer <= 0f)
         {
@@ -68,6 +70,7 @@ public class EnemyBase : NetworkIdentity
 
     protected virtual void FixedUpdate()
     {
+        if (_isDead) return;
         if (_target == null)
         {
             FindTarget();
@@ -158,6 +161,17 @@ public class EnemyBase : NetworkIdentity
 
     protected virtual void Die()
     {
+        _isDead = true;
+
+        // Disable colliders
+        foreach (var col in GetComponentsInChildren<Collider>())
+            col.enabled = false;
+
+        // Hide visually
+        foreach (var renderer in GetComponentsInChildren<Renderer>())
+            renderer.enabled = false;
+
+        // Destroy after short delay to let any in-flight RPCs resolve
         Destroy(gameObject);
     }
 

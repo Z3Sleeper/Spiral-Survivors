@@ -1,6 +1,7 @@
 using PurrNet;
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
 public class PlayerController : NetworkIdentity
 {
     private InputSystem_Actions _input;
@@ -8,11 +9,20 @@ public class PlayerController : NetworkIdentity
     private Rigidbody _rb;
 
     private Vector3 _lastMoveDir = Vector3.forward;
-    private int _currentCharges;
-    private float _chargeRegenTimer;
+    [HideInInspector] public int _currentCharges;
+    [HideInInspector] public float _chargeRegenTimer;
     private bool _isDashing;
-    private float _dashTimer;
+    [HideInInspector] public float _dashTimer;
     private Collider _hurtbox;
+
+    public bool isSurging { get; private set; }
+    private float _surgeTickTimer;
+    private const float SurgeTickInterval = 0.5f;
+    private float _surgeMoveSpeedBonus;
+    private float _surgeWeaponSpeedBonus;
+    private float _surgeAttackSpeedBonus;
+    private const float DashDistance = 8f;
+    private const float DashSpeed = 80f;
 
     private void Awake()
     {
@@ -73,6 +83,34 @@ public class PlayerController : NetworkIdentity
                 _chargeRegenTimer = _currentCharges < _stats.dashCharges ? _stats.dashCooldown : 0f;
             }
         }
+
+        // Surge input
+        if (_input.Player.Surge.IsPressed() && !isSurging && _stats.currentEnergy >= _stats.surgeCost)
+            StartSurge();
+        else if (!_input.Player.Surge.IsPressed() && isSurging)
+            EndSurge();
+
+        // Surge tick
+        if (isSurging)
+        {
+            _surgeTickTimer -= Time.deltaTime;
+            if (_surgeTickTimer <= 0f)
+            {
+                _surgeTickTimer = SurgeTickInterval;
+                _stats.currentEnergy -= _stats.surgeCost;
+                if (_stats.currentEnergy <= 0f)
+                {
+                    _stats.currentEnergy = 0f;
+                    EndSurge();
+                }
+            }
+        }
+        else
+        {
+            // Passive energy regen
+            _stats.currentEnergy += _stats.energyRegen * Time.deltaTime;
+            _stats.currentEnergy = Mathf.Min(_stats.currentEnergy, _stats.maxEnergy);
+        }
     }
 
     private void FixedUpdate()
@@ -95,11 +133,11 @@ public class PlayerController : NetworkIdentity
         _currentCharges--;
         if (_chargeRegenTimer <= 0f)
             _chargeRegenTimer = _stats.dashCooldown;
-        _dashTimer = _stats.dashDistance / _stats.dashSpeed;
+        _dashTimer = DashDistance / DashSpeed;
         _hurtbox.enabled = false;
 
         _rb.linearVelocity = Vector3.zero;
-        _rb.AddForce(_lastMoveDir * _stats.dashSpeed, ForceMode.VelocityChange);
+        _rb.AddForce(_lastMoveDir * DashSpeed, ForceMode.VelocityChange);
     }
 
     private void EndDash()
@@ -107,5 +145,29 @@ public class PlayerController : NetworkIdentity
         _isDashing = false;
         _hurtbox.enabled = true;
         _rb.linearVelocity = Vector3.zero;
+    }
+
+    private void StartSurge()
+    {
+        isSurging = true;
+        _stats.currentEnergy -= _stats.surgeCost;
+        _surgeTickTimer = SurgeTickInterval;
+
+        float effectiveness = _stats.surgeEffectiveness;
+        _surgeMoveSpeedBonus = _stats.baseMoveSpeed * (_stats.surgeMoveSpeedMultiplier * effectiveness - 1f);
+        _surgeWeaponSpeedBonus = _stats.baseWeaponSpeed * (_stats.surgeWeaponSpeedMultiplier * effectiveness - 1f);
+        _surgeAttackSpeedBonus = _stats.baseAttackSpeed * (_stats.surgeAttackSpeedMultiplier * effectiveness - 1f);
+
+        _stats.bonusMoveSpeed += _surgeMoveSpeedBonus;
+        _stats.bonusWeaponSpeed += _surgeWeaponSpeedBonus;
+        _stats.bonusAttackSpeed += _surgeAttackSpeedBonus;
+    }
+
+    private void EndSurge()
+    {
+        isSurging = false;
+        _stats.bonusMoveSpeed -= _surgeMoveSpeedBonus;
+        _stats.bonusWeaponSpeed -= _surgeWeaponSpeedBonus;
+        _stats.bonusAttackSpeed -= _surgeAttackSpeedBonus;
     }
 }
