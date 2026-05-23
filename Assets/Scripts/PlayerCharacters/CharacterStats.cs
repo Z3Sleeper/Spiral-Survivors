@@ -4,6 +4,8 @@ using UnityEngine;
 
 public class CharacterStats : NetworkBehaviour
 {
+    public enum CharacterClass {Knight, Rogue, Archer, Bladeweaver}
+    public CharacterClass characterClass;
     [Header("Movement")]
     public float baseMoveSpeed = 1f;
     [NonSerialized] public float bonusMoveSpeedFlat = 0f;

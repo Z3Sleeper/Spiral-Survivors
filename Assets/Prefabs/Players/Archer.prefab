@@ -137,6 +137,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
+  characterClass: 2
   baseMoveSpeed: 1
   baseWeaponDamage: 10
   baseWeaponRadius: 0
@@ -173,9 +174,6 @@ MonoBehaviour:
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseEnergyRegen: 10
-  baseSurgeEffectiveness: 1
-  bonusSurgeEffectivenessFlat: 0
-  bonusSurgeEffectivenessPercent: 1
   dashCharges: 3
   dashCooldown: 5
   _isDeadSync:
