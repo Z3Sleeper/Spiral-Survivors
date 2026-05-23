@@ -10,6 +10,7 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Slider shieldBar;
     [SerializeField] private Slider shieldRegenBar;
     [SerializeField] private TextMeshProUGUI healthText;
+    [SerializeField] private TextMeshProUGUI healthRegenText;
     [SerializeField] private Image dashChargeCooldownImage;
     [SerializeField] private TextMeshProUGUI dashChargesText;
     [SerializeField] private Image energyImage;
@@ -43,6 +44,9 @@ public class UIManager : MonoBehaviour
         shieldBar.value = _stats.CurrentShield / _stats.MaxShield;
         shieldRegenBar.value = (_stats.ShieldRegenTime - _stats._shieldRechargeTimer) / _stats.ShieldRegenTime;
         healthText.text = $"<b><color=#FF00FF>(+{(int)_stats.CurrentShield})</color> {(int)_stats.CurrentHealth}/{(int)_stats.MaxHealth}</b>";
+
+        // Health Regen
+        healthRegenText.text = $"<b>+{_stats.HealthRegen}/s</b>";
 
         // Dash
         if (_controller._currentCharges < _stats.dashCharges)

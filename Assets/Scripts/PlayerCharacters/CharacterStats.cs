@@ -70,10 +70,12 @@ public class CharacterStats : NetworkBehaviour
         get => _currentHealth.value;
         set => _currentHealth.value = value;
     }
-    public float basehealthRegen = 0f;
+    public float basehealthRegen = 1f;
     [NonSerialized] public float bonusHealthRegenFlat = 0f;
     [NonSerialized] public float bonusHealthRegenPercent = 1f;
     public float HealthRegen => (basehealthRegen + bonusHealthRegenFlat) * bonusHealthRegenPercent;
+    [NonSerialized] public float _healthRegenTimer = 0f;
+    [NonSerialized] public float _healthRegenInterval = 1f;
 
     /// <summary>
     /// Percentage of max health. Ex: 0.1f = max shield equal to 10% max health.
@@ -125,10 +127,10 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusSurgeCostFlat = 0f;
     [NonSerialized] public float bonusSurgeCostPercent = 1f;
     public float SurgeCost => (baseSurgeCost + bonusSurgeCostFlat) * bonusSurgeCostPercent;
-    public float baseSurgeEffectiveness = 1f;
-    public float bonusSurgeEffectivenessFlat = 0f;
-    public float bonusSurgeEffectivenessPercent = 1f;
-    public float surgeEffectiveness => (baseSurgeEffectiveness + bonusSurgeEffectivenessFlat) * bonusSurgeEffectivenessPercent;
+    [NonSerialized] public float baseSurgeEffectiveness = 1f;
+    [NonSerialized] public float bonusSurgeEffectivenessFlat = 0f;
+    [NonSerialized] public float bonusSurgeEffectivenessPercent = 1f;
+    public float SurgeEffectiveness => (baseSurgeEffectiveness + bonusSurgeEffectivenessFlat) * bonusSurgeEffectivenessPercent;
     [NonSerialized] public float baseSurgeMoveSpeedMulti = 1f;
     [NonSerialized] public float bonusSurgeMoveSpeedMultiFlat = 0f;
     [NonSerialized] public float bonusSurgeMoveSpeedMultiPercent = 1f;
@@ -178,9 +180,12 @@ public class CharacterStats : NetworkBehaviour
         // Health regen | RegenTimer and HealthRegen x3 is what we need
         if (CurrentHealth < MaxHealth)
         {
-            _shieldRechargeTimer -= Time.deltaTime;
-            if (_shieldRechargeTimer <= 0f)
-                CurrentShield = MaxShield;
+            _healthRegenTimer -= Time.deltaTime;
+            if (_healthRegenTimer <= 0f)
+            {
+                CurrentHealth = Mathf.Min(CurrentHealth + HealthRegen, MaxHealth);
+                _healthRegenTimer = _healthRegenInterval;
+            }
         }
 
 

@@ -153,7 +153,7 @@ public class PlayerController : NetworkIdentity
         _stats.CurrentEnergy -= _stats.SurgeCost;
         _surgeTickTimer = SurgeTickInterval;
 
-        float effectiveness = _stats.surgeEffectiveness;
+        float effectiveness = _stats.SurgeEffectiveness;
         _surgeMoveSpeedBonus = _stats.baseMoveSpeed * (_stats.SurgeMoveSpeedMulti * effectiveness - 1f);
         _surgeWeaponSpeedBonus = _stats.baseWeaponSpeed * (_stats.SurgeWeaponSpeedMultiplier * effectiveness - 1f);
         _surgeAttackSpeedBonus = _stats.baseAttackSpeed * (_stats.SurgeAttackSpeedMultiplier * effectiveness - 1f);

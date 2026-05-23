@@ -391,6 +391,7 @@ MonoBehaviour:
   shieldBar: {fileID: 351818066}
   shieldRegenBar: {fileID: 1745401631}
   healthText: {fileID: 1266560584}
+  healthRegenText: {fileID: 1030560340}
   dashChargeCooldownImage: {fileID: 854620420}
   dashChargesText: {fileID: 1253565072}
   energyImage: {fileID: 1383413778}
