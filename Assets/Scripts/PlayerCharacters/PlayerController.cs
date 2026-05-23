@@ -97,7 +97,7 @@ public class PlayerController : NetworkIdentity
             if (_surgeTickTimer <= 0f)
             {
                 _surgeTickTimer = SurgeTickInterval;
-                _stats.CurrentEnergy -= _stats.surgeUpKeepCost;
+                _stats.CurrentEnergy -= _stats.SurgeCost;
                 if (_stats.CurrentEnergy <= 0f)
                 {
                     _stats.CurrentEnergy = 0f;
@@ -108,7 +108,7 @@ public class PlayerController : NetworkIdentity
         else
         {
             // Passive energy regen
-            _stats.CurrentEnergy += _stats.energyRegen * Time.deltaTime;
+            _stats.CurrentEnergy += _stats.EnergyRegen * Time.deltaTime;
             _stats.CurrentEnergy = Mathf.Min(_stats.CurrentEnergy, _stats.MaxEnergy);
         }
     }
@@ -150,24 +150,24 @@ public class PlayerController : NetworkIdentity
     private void StartSurge()
     {
         isSurging = true;
-        _stats.CurrentEnergy -= _stats.surgeUpKeepCost;
+        _stats.CurrentEnergy -= _stats.SurgeCost;
         _surgeTickTimer = SurgeTickInterval;
 
         float effectiveness = _stats.surgeEffectiveness;
-        _surgeMoveSpeedBonus = _stats.baseMoveSpeed * (_stats.surgeMoveSpeedMultiplier * effectiveness - 1f);
-        _surgeWeaponSpeedBonus = _stats.baseWeaponSpeed * (_stats.surgeWeaponSpeedMultiplier * effectiveness - 1f);
-        _surgeAttackSpeedBonus = _stats.baseAttackSpeed * (_stats.surgeAttackSpeedMultiplier * effectiveness - 1f);
+        _surgeMoveSpeedBonus = _stats.baseMoveSpeed * (_stats.SurgeMoveSpeedMulti * effectiveness - 1f);
+        _surgeWeaponSpeedBonus = _stats.baseWeaponSpeed * (_stats.SurgeWeaponSpeedMultiplier * effectiveness - 1f);
+        _surgeAttackSpeedBonus = _stats.baseAttackSpeed * (_stats.SurgeAttackSpeedMultiplier * effectiveness - 1f);
 
-        _stats.bonusMoveSpeed += _surgeMoveSpeedBonus;
-        _stats.bonusWeaponSpeed += _surgeWeaponSpeedBonus;
-        _stats.bonusAttackSpeed += _surgeAttackSpeedBonus;
+        _stats.bonusMoveSpeedFlat += _surgeMoveSpeedBonus;
+        _stats.bonusWeaponSpeedFlat += _surgeWeaponSpeedBonus;
+        _stats.bonusAttackSpeedFlat += _surgeAttackSpeedBonus;
     }
 
     private void EndSurge()
     {
         isSurging = false;
-        _stats.bonusMoveSpeed -= _surgeMoveSpeedBonus;
-        _stats.bonusWeaponSpeed -= _surgeWeaponSpeedBonus;
-        _stats.bonusAttackSpeed -= _surgeAttackSpeedBonus;
+        _stats.bonusMoveSpeedFlat -= _surgeMoveSpeedBonus;
+        _stats.bonusWeaponSpeedFlat -= _surgeWeaponSpeedBonus;
+        _stats.bonusAttackSpeedFlat -= _surgeAttackSpeedBonus;
     }
 }

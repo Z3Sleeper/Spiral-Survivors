@@ -41,7 +41,7 @@ public class UIManager : MonoBehaviour
         // Health and Shields
         healthBar.value = _stats.CurrentHealth / _stats.MaxHealth;
         shieldBar.value = _stats.CurrentShield / _stats.MaxShield;
-        shieldRegenBar.value = (_stats.ShieldRegenTime - _stats._shieldRegenTimer) / _stats.ShieldRegenTime;
+        shieldRegenBar.value = (_stats.ShieldRegenTime - _stats._shieldRechargeTimer) / _stats.ShieldRegenTime;
         healthText.text = $"<b><color=#FF00FF>(+{(int)_stats.CurrentShield})</color> {(int)_stats.CurrentHealth}/{(int)_stats.MaxHealth}</b>";
 
         // Dash
