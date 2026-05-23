@@ -22,10 +22,10 @@ public class WeaponBlade : WeaponBase
         var enemy = other.GetComponentInParent<EnemyBase>();
         if (enemy == null) return;
 
-        float cooldown = 90f / _stats.weaponSpeed;
+        float cooldown = 90f / _stats.WeaponSpeed;
         if (_hitTimestamps.TryGetValue(enemy, out float lastHit) && Time.time - lastHit < cooldown) return;
 
         _hitTimestamps[enemy] = Time.time;
-        enemy.TakeDamageRpc(_stats.weaponDamage);
+        enemy.TakeDamageRpc(_stats.WeaponDamage);
     }
 }

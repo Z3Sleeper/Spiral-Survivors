@@ -24,10 +24,10 @@ public class WeaponManager : NetworkBehaviour
         _stats = GetComponent<CharacterStats>();
         _hurtbox = GetComponentInChildren<SphereCollider>();
 
-        _currentCount = _stats.weaponCount;
-        _currentRange = _stats.weaponRange;
+        _currentCount = _stats.WeaponCount;
+        _currentRange = _stats.WeaponRange;
 
-        SpawnWeapons(_stats.weaponCount);
+        SpawnWeapons(_stats.WeaponCount);
     }
 
     private void SpawnWeapons(int count)
@@ -58,7 +58,7 @@ public class WeaponManager : NetworkBehaviour
         weapon.transform.localScale = new Vector3(
             weapon.transform.localScale.x,
             weapon.transform.localScale.y,
-            _stats.weaponRange
+            _stats.WeaponRange
         );
     }
 
@@ -66,22 +66,22 @@ public class WeaponManager : NetworkBehaviour
     {
         if (_weapons == null || _weapons.Count == 0 || _stats.isDead) return;
 
-        if (_stats.weaponCount != _currentCount)
+        if (_stats.WeaponCount != _currentCount)
         {
-            int diff = _stats.weaponCount - _currentCount;
+            int diff = _stats.WeaponCount - _currentCount;
             if (diff > 0) SpawnWeapons(diff);
             else DespawnWeapons(-diff);
-            _currentCount = _stats.weaponCount;
+            _currentCount = _stats.WeaponCount;
         }
 
-        if (_stats.weaponRange != _currentRange)
+        if (_stats.WeaponRange != _currentRange)
         {
-            _currentRange = _stats.weaponRange;
+            _currentRange = _stats.WeaponRange;
             foreach (var weapon in _weapons)
                 SetWeaponRange(weapon);
         }
 
-        _currentAngle -= _stats.weaponSpeed * Time.deltaTime;
+        _currentAngle -= _stats.WeaponSpeed * Time.deltaTime;
 
         for (int i = 0; i < _weapons.Count; i++)
         {
@@ -89,7 +89,7 @@ public class WeaponManager : NetworkBehaviour
             float angle = (_currentAngle + angleOffset) * Mathf.Deg2Rad;
 
             float halfRange = _weapons[i].IsMelee ? _currentRange / 2f : 0.5f;
-            float totalRadius = _stats.weaponRadius + (_hurtbox != null ? _hurtbox.radius : 0f) + halfRange;
+            float totalRadius = _stats.WeaponRadius + (_hurtbox != null ? _hurtbox.radius : 0f) + halfRange;
 
             Vector3 offset = new Vector3(
                 Mathf.Cos(angle) * totalRadius,

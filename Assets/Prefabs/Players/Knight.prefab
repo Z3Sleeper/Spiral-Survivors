@@ -328,19 +328,12 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   baseMoveSpeed: 1
-  bonusMoveSpeed: 0
   baseWeaponDamage: 10
-  bonusWeaponDamage: 0
   baseWeaponRadius: 0
-  bonusWeaponRadius: 0
   baseWeaponSpeed: 180
-  bonusWeaponSpeed: 0
   baseWeaponCount: 1
-  bonusWeaponCount: 0
   baseWeaponRange: 2
-  bonusWeaponRange: 0
   baseAttackSpeed: 1
-  bonusAttackSpeed: 0
   continuousFire: 0
   _baseMaxHealth:
     _value: 100
@@ -355,20 +348,12 @@ MonoBehaviour:
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
   baseMaxShieldPercent: 0.1
-  bonusMaxShieldPercent: 0
-  shieldRegenTime: 5
   _currentShield:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  baseMaxEnergy: 50
-  bonusMaxEnergy: 0
+  baseMaxEnergy: 100
   energyRegen: 10
-  surgeCost: 10
-  surgeEffectiveness: 1
-  surgeMoveSpeedMultiplier: 1
-  surgeWeaponSpeedMultiplier: 3
-  surgeAttackSpeedMultiplier: 3
   _currentEnergy:
     _value: 0
     _ownerAuth: 1

@@ -17,7 +17,7 @@ public class PlayerController : NetworkIdentity
 
     public bool isSurging { get; private set; }
     private float _surgeTickTimer;
-    private const float SurgeTickInterval = 0.5f;
+    private const float SurgeTickInterval = 0.1f;
     private float _surgeMoveSpeedBonus;
     private float _surgeWeaponSpeedBonus;
     private float _surgeAttackSpeedBonus;
@@ -85,7 +85,7 @@ public class PlayerController : NetworkIdentity
         }
 
         // Surge input
-        if (_input.Player.Surge.IsPressed() && !isSurging && _stats.currentEnergy >= _stats.surgeCost)
+        if (_input.Player.Surge.IsPressed() && !isSurging && _stats.CurrentEnergy >= _stats.surgeActivationThreshhold)
             StartSurge();
         else if (!_input.Player.Surge.IsPressed() && isSurging)
             EndSurge();
@@ -97,10 +97,10 @@ public class PlayerController : NetworkIdentity
             if (_surgeTickTimer <= 0f)
             {
                 _surgeTickTimer = SurgeTickInterval;
-                _stats.currentEnergy -= _stats.surgeCost;
-                if (_stats.currentEnergy <= 0f)
+                _stats.CurrentEnergy -= _stats.surgeUpKeepCost;
+                if (_stats.CurrentEnergy <= 0f)
                 {
-                    _stats.currentEnergy = 0f;
+                    _stats.CurrentEnergy = 0f;
                     EndSurge();
                 }
             }
@@ -108,8 +108,8 @@ public class PlayerController : NetworkIdentity
         else
         {
             // Passive energy regen
-            _stats.currentEnergy += _stats.energyRegen * Time.deltaTime;
-            _stats.currentEnergy = Mathf.Min(_stats.currentEnergy, _stats.maxEnergy);
+            _stats.CurrentEnergy += _stats.energyRegen * Time.deltaTime;
+            _stats.CurrentEnergy = Mathf.Min(_stats.CurrentEnergy, _stats.MaxEnergy);
         }
     }
 
@@ -124,7 +124,7 @@ public class PlayerController : NetworkIdentity
             _lastMoveDir = moveDir;
 
         if (!_isDashing)
-            _rb.AddForce(moveDir * _stats.moveSpeed, ForceMode.VelocityChange);
+            _rb.AddForce(moveDir * _stats.MoveSpeed, ForceMode.VelocityChange);
     }
 
     private void StartDash()
@@ -150,7 +150,7 @@ public class PlayerController : NetworkIdentity
     private void StartSurge()
     {
         isSurging = true;
-        _stats.currentEnergy -= _stats.surgeCost;
+        _stats.CurrentEnergy -= _stats.surgeUpKeepCost;
         _surgeTickTimer = SurgeTickInterval;
 
         float effectiveness = _stats.surgeEffectiveness;

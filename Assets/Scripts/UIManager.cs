@@ -38,21 +38,28 @@ public class UIManager : MonoBehaviour
     {
         if (_stats == null || _controller == null) return;
 
-        healthBar.value = _stats.currentHealth / _stats.maxHealth;
-        shieldBar.value = _stats.currentShield / _stats.maxShield;
-        shieldRegenBar.value = (_stats.shieldRegenTime - _stats._shieldRegenTimer) / _stats.shieldRegenTime;
-        healthText.text = $"<b>(+{(int)_stats.currentShield}){(int)_stats.currentHealth}/{(int)_stats.maxHealth}</b>";
+        // Health and Shields
+        healthBar.value = _stats.CurrentHealth / _stats.MaxHealth;
+        shieldBar.value = _stats.CurrentShield / _stats.MaxShield;
+        shieldRegenBar.value = (_stats.ShieldRegenTime - _stats._shieldRegenTimer) / _stats.ShieldRegenTime;
+        healthText.text = $"<b><color=#FF00FF>(+{(int)_stats.CurrentShield})</color> {(int)_stats.CurrentHealth}/{(int)_stats.MaxHealth}</b>";
 
+        // Dash
         if (_controller._currentCharges < _stats.dashCharges)
             dashChargeCooldownImage.fillAmount = 1f - (_controller._chargeRegenTimer / _stats.dashCooldown);
         else
             dashChargeCooldownImage.fillAmount = 1f;
         dashChargesText.text = $"<b>{_controller._currentCharges}</b>";
 
-        if (_stats.currentEnergy < _stats.maxEnergy)
-            energyImage.fillAmount = _stats.currentEnergy / _stats.maxEnergy;
+        // Energy / Surge
+        if (_stats.CurrentEnergy < _stats.MaxEnergy)
+            energyImage.fillAmount = _stats.CurrentEnergy / _stats.MaxEnergy;
         else
             energyImage.fillAmount = 1f;
-        energyText.text = $"<b>{(int)_stats.currentEnergy}/{(int)_stats.maxEnergy}</b>";
+        if (_stats.CurrentEnergy < _stats.surgeActivationThreshhold)
+            energyImage.color = Color.red;
+        else
+            energyImage.color = Color.yellow;
+        energyText.text = $"<b>{(int)_stats.CurrentEnergy}</b>";
     }
 }

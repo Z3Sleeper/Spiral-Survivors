@@ -6,53 +6,53 @@ public class CharacterStats : NetworkBehaviour
 {
     [Header("Movement")]
     public float baseMoveSpeed = 1f;
-    public float bonusMoveSpeed = 0f;
-    public float moveSpeed => baseMoveSpeed + bonusMoveSpeed;
+    [NonSerialized] public float bonusMoveSpeed = 0f;
+    public float MoveSpeed => baseMoveSpeed + bonusMoveSpeed;
 
     [Header("Weapon")]
     public float baseWeaponDamage = 10f;
-    public float bonusWeaponDamage = 0f;
-    public float weaponDamage => baseWeaponDamage + bonusWeaponDamage;
+    [NonSerialized] public float bonusWeaponDamage = 0f;
+    public float WeaponDamage => baseWeaponDamage + bonusWeaponDamage;
 
     public float baseWeaponRadius = 0f;
-    public float bonusWeaponRadius = 0f;
-    public float weaponRadius => baseWeaponRadius + bonusWeaponRadius;
+    [NonSerialized] public float bonusWeaponRadius = 0f;
+    public float WeaponRadius => baseWeaponRadius + bonusWeaponRadius;
 
     public float baseWeaponSpeed = 180f;
-    public float bonusWeaponSpeed = 0f;
-    public float weaponSpeed => baseWeaponSpeed + bonusWeaponSpeed;
+    [NonSerialized] public float bonusWeaponSpeed = 0f;
+    public float WeaponSpeed => baseWeaponSpeed + bonusWeaponSpeed;
 
     public int baseWeaponCount = 1;
-    public int bonusWeaponCount = 0;
-    public int weaponCount => baseWeaponCount + bonusWeaponCount;
+    [NonSerialized] public int bonusWeaponCount = 0;
+    public int WeaponCount => baseWeaponCount + bonusWeaponCount;
 
     public float baseWeaponRange = 1f;
-    public float bonusWeaponRange = 0f;
-    public float weaponRange => baseWeaponRange + bonusWeaponRange;
+    [NonSerialized] public float bonusWeaponRange = 0f;
+    public float WeaponRange => baseWeaponRange + bonusWeaponRange;
 
     public float baseAttackSpeed = 1f;
-    public float bonusAttackSpeed = 0f;
-    public float attackSpeed => baseAttackSpeed + bonusAttackSpeed;
+    [NonSerialized] public float bonusAttackSpeed = 0f;
+    public float AttackSpeed => baseAttackSpeed + bonusAttackSpeed;
 
     public bool continuousFire = false;
 
     [Header("Health")]
-    public SyncVar<float> _baseMaxHealth = new SyncVar<float>(100f);
-    public float baseMaxHealth
+    public SyncVar<float> _baseMaxHealth = new(100f);
+    [HideInInspector] public float BaseMaxHealth
     {
         get => _baseMaxHealth.value;
         set => _baseMaxHealth.value = value;
     }
 
-    public SyncVar<float> _bonusMaxHealth = new SyncVar<float>(0f);
-    public float bonusMaxHealth
+    [HideInInspector] public SyncVar<float> _bonusMaxHealth = new(0f);
+    [HideInInspector] public float BonusMaxHealth
     {
         get => _bonusMaxHealth.value;
         set => _bonusMaxHealth.value = value;
     }
-    public float maxHealth => baseMaxHealth + bonusMaxHealth;
-    public SyncVar<float> _currentHealth = new SyncVar<float>(0);
-    public float currentHealth
+    public float MaxHealth => BaseMaxHealth + BonusMaxHealth;
+    [HideInInspector] public SyncVar<float> _currentHealth = new(0);
+    [HideInInspector] public float CurrentHealth
     {
         get => _currentHealth.value;
         set => _currentHealth.value = value;
@@ -60,12 +60,14 @@ public class CharacterStats : NetworkBehaviour
 
     [Header("Shield")]
     public float baseMaxShieldPercent = 0.1f;
-    public float bonusMaxShieldPercent = 0f;
-    public float maxShieldPercent => baseMaxShieldPercent + bonusMaxShieldPercent;
-    public float shieldRegenTime = 5f;
-    public float maxShield => maxHealth * maxShieldPercent;
-    public SyncVar<float> _currentShield = new SyncVar<float>(0);
-    public float currentShield
+    [NonSerialized] public float bonusMaxShieldPercent = 0f;
+    public float MaxShieldPercent => baseMaxShieldPercent + bonusMaxShieldPercent;
+    [NonSerialized] public float baseShieldRegenTime = 5f;
+    [NonSerialized] public float shieldRegenTimeDivisor = 1f;
+    public float ShieldRegenTime => baseShieldRegenTime / shieldRegenTimeDivisor;
+    public float MaxShield => MaxHealth * MaxShieldPercent;
+    [HideInInspector] public SyncVar<float> _currentShield = new(0);
+    [HideInInspector] public float CurrentShield
     {
         get => _currentShield.value;
         set => _currentShield.value = value;
@@ -74,16 +76,17 @@ public class CharacterStats : NetworkBehaviour
 
     [Header("Surge")]
     public float baseMaxEnergy = 50f;
-    public float bonusMaxEnergy = 0f;
-    public float maxEnergy => baseMaxEnergy + bonusMaxEnergy;
+    [NonSerialized] public float bonusMaxEnergy = 0f;
+    public float MaxEnergy => baseMaxEnergy + bonusMaxEnergy;
     public float energyRegen = 10f;
-    public float surgeCost = 10f;
-    public float surgeEffectiveness = 1f;
-    public float surgeMoveSpeedMultiplier = 1.5f;
-    public float surgeWeaponSpeedMultiplier = 1.5f;
-    public float surgeAttackSpeedMultiplier = 1.5f;
-    public SyncVar<float> _currentEnergy = new SyncVar<float>(0, ownerAuth: true);
-    public float currentEnergy
+    [NonSerialized] public float surgeActivationThreshhold = 20f;
+    [NonSerialized] public float surgeUpKeepCost = 2f;
+    [NonSerialized] public float surgeEffectiveness = 1f;
+    [NonSerialized] public float surgeMoveSpeedMultiplier = 1f;
+    [NonSerialized] public float surgeWeaponSpeedMultiplier = 3f;
+    [NonSerialized] public float surgeAttackSpeedMultiplier = 3f;
+    [HideInInspector] public SyncVar<float> _currentEnergy = new(0, ownerAuth: true);
+    public float CurrentEnergy
     {
         get => _currentEnergy.value;
         set => _currentEnergy.value = value;
@@ -110,11 +113,11 @@ public class CharacterStats : NetworkBehaviour
             UIManager.instance.SetPlayer(this);
 
         if (isOwner)
-            currentEnergy = maxEnergy;
+            CurrentEnergy = MaxEnergy;
 
         if (!isServer) return;
-        currentHealth = maxHealth;
-        currentShield = maxShield;
+        CurrentHealth = MaxHealth;
+        CurrentShield = MaxShield;
     }
 
     private void Update()
@@ -123,11 +126,11 @@ public class CharacterStats : NetworkBehaviour
         if (isDead) return;
 
         // Shield regen
-        if (currentShield < maxShield)
+        if (CurrentShield < MaxShield)
         {
             _shieldRegenTimer -= Time.deltaTime;
             if (_shieldRegenTimer <= 0f)
-                currentShield = maxShield;
+                CurrentShield = MaxShield;
         }
 
         if (Input.GetKeyDown(KeyCode.R))
@@ -144,8 +147,8 @@ public class CharacterStats : NetworkBehaviour
     {
         if (!isServer) return;
         isDead = false;
-        currentHealth = maxHealth * healthPercent;
-        currentShield = maxShield * healthPercent;
+        CurrentHealth = MaxHealth * healthPercent;
+        CurrentShield = MaxShield * healthPercent;
     }
 
     [ServerRpc(requireOwnership: false)]
@@ -159,20 +162,23 @@ public class CharacterStats : NetworkBehaviour
         if (!isServer) return;
         if (isDead) return;
 
-        _shieldRegenTimer = shieldRegenTime;
+        _shieldRegenTimer = ShieldRegenTime;
 
-        if (currentShield > 0)
+        if (CurrentShield > 0)
         {
-            float shieldDamage = Mathf.Min(damage, currentShield);
-            currentShield -= shieldDamage;
+            float shieldDamage = Mathf.Min(damage, CurrentShield);
+            CurrentShield -= shieldDamage;
             damage -= shieldDamage;
         }
 
         if (damage > 0)
-            currentHealth -= damage;
+            CurrentHealth -= damage;
 
-        if (currentHealth <= 0)
+        if (CurrentHealth <= 0)
+        {
+            CurrentHealth = 0f;
             Die();
+        }
     }
 
     private void Die()
