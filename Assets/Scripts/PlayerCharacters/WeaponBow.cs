@@ -23,7 +23,7 @@ public class WeaponBow : WeaponBase
 
     private void Update()
     {
-        if (_stats == null || _stats.isDead) return;
+        if (_stats == null || _stats.IsDead) return;
 
         _fireTimer -= Time.deltaTime;
         if (_fireTimer > 0f) return;

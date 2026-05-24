@@ -11,6 +11,7 @@ public class WeaponArrow : NetworkIdentity
     private Vector3 _direction;
     private float _distanceTravelled;
     private bool _hit;
+    private Vector3 _spawnPoint;
 
     protected override void OnSpawned()
     {
@@ -26,6 +27,7 @@ public class WeaponArrow : NetworkIdentity
         _speed = speed;
         _stats = stats;
         _controller = controller;
+        _spawnPoint = transform.position;
     }
 
     private void Update()

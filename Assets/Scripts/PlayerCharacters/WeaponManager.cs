@@ -64,7 +64,7 @@ public class WeaponManager : NetworkBehaviour
 
     private void Update()
     {
-        if (_weapons == null || _weapons.Count == 0 || _stats.isDead) return;
+        if (_weapons == null || _weapons.Count == 0 || _stats.IsDead) return;
 
         if (_stats.WeaponCount != _currentCount)
         {
@@ -85,13 +85,13 @@ public class WeaponManager : NetworkBehaviour
 
         for (int i = 0; i < _weapons.Count; i++)
         {
-            float angleOffset = (360f / _weapons.Count) * i;
+            float angleOffset = 360f / _weapons.Count * i;
             float angle = (_currentAngle + angleOffset) * Mathf.Deg2Rad;
 
-            float halfRange = _weapons[i].IsMelee ? _currentRange / 2f : 0.5f;
-            float totalRadius = _stats.WeaponRadius + (_hurtbox != null ? _hurtbox.radius : 0f) + halfRange;
+            float halfRange = _weapons[i].IsMelee ? _currentRange / 2f : 0.25f;
+            float totalRadius = _stats.WeaponRadius + (_hurtbox != null ? _hurtbox.radius * 2 : 0f) + halfRange;
 
-            Vector3 offset = new Vector3(
+            Vector3 offset = new(
                 Mathf.Cos(angle) * totalRadius,
                 0,
                 Mathf.Sin(angle) * totalRadius

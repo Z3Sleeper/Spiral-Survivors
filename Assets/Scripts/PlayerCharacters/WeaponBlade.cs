@@ -17,7 +17,7 @@ public class WeaponBlade : WeaponBase
     private void TryHit(Collider other)
     {
         if (_stats == null) return;
-        if (_stats.isDead) return;
+        if (_stats.IsDead) return;
         if (other.gameObject.layer != LayerMask.NameToLayer("EnemyHurtbox")) return;
         var enemy = other.GetComponentInParent<EnemyBase>();
         if (enemy == null) return;

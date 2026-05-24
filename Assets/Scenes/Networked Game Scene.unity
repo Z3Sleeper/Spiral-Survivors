@@ -2711,7 +2711,7 @@ MonoBehaviour:
   spawnMinDistance: 10
   spawnMaxDistance: 15
   spawnInterval: 2
-  waitForPlayersLoaded: 0
+  waitForPlayersLoaded: 1
 --- !u!114 &2030860281
 MonoBehaviour:
   m_ObjectHideFlags: 0

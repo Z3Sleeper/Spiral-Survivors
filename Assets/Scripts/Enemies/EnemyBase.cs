@@ -86,7 +86,7 @@ public class EnemyBase : NetworkIdentity
         float nearest = float.MaxValue;
         foreach (var p in players)
         {
-            if (p.isDead) continue;
+            if (p.IsDead) continue;
             float dist = Vector3.Distance(transform.position, p.transform.position);
             if (dist < nearest)
             {

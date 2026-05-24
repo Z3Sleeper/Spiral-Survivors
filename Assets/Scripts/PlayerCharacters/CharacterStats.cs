@@ -6,6 +6,11 @@ public class CharacterStats : NetworkBehaviour
 {
     public enum CharacterClass {Knight, Rogue, Archer, Bladeweaver}
     public CharacterClass characterClass;
+
+    [SerializeField] private PlayerController _controller;
+    [SerializeField] private Collider _hurtbox;
+    [SerializeField] private Collider _physicsCollider;
+
     [Header("Movement")]
     public float baseMoveSpeed = 1f;
     [NonSerialized] public float bonusMoveSpeedFlat = 0f;
@@ -150,8 +155,11 @@ public class CharacterStats : NetworkBehaviour
     public int dashCharges = 3;
     public float dashCooldown = 5f;
 
+    [NonSerialized] public float reviveTime = 3f;
+    [NonSerialized] public float revivePower = 1f;
+
     [HideInInspector] public SyncVar<bool> _isDeadSync = new SyncVar<bool>(false);
-    public bool isDead
+    public bool IsDead
     {
         get => _isDeadSync.value;
         set => _isDeadSync.value = value;
@@ -177,7 +185,7 @@ public class CharacterStats : NetworkBehaviour
     private void Update()
     {
         if (!isServer) return;
-        if (isDead) return;
+        if (IsDead) return;
 
         // Health regen | RegenTimer and HealthRegen x3 is what we need
         if (CurrentHealth < MaxHealth)
@@ -198,23 +206,21 @@ public class CharacterStats : NetworkBehaviour
             if (_shieldRechargeTimer <= 0f)
                 CurrentShield = MaxShield;
         }
-
-        if (Input.GetKeyDown(KeyCode.R))
-            Revive();
     }
 
     private void OnDeathStateChanged(bool dead)
     {
-        GetComponent<PlayerController>().enabled = !dead;
-        transform.Find("PhysicsCollider").GetComponent<Collider>().enabled = !dead;
+        _controller.enabled = !dead;
+        _physicsCollider.enabled = !dead;
+        _hurtbox.enabled = !dead;
     }
 
     public void Revive(float healthPercent = 0.5f)
     {
         if (!isServer) return;
-        isDead = false;
+        IsDead = false;
         CurrentHealth = MaxHealth * healthPercent;
-        CurrentShield = MaxShield * healthPercent;
+        CurrentShield = MaxShield;
     }
 
     [ServerRpc(requireOwnership: false)]
@@ -226,7 +232,7 @@ public class CharacterStats : NetworkBehaviour
     private void TakeDamage(float damage)
     {
         if (!isServer) return;
-        if (isDead) return;
+        if (IsDead) return;
 
         _shieldRechargeTimer = ShieldRegenTime;
 
@@ -249,6 +255,6 @@ public class CharacterStats : NetworkBehaviour
 
     private void Die()
     {
-        isDead = true;
+        IsDead = true;
     }
 }
