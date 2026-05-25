@@ -18,7 +18,7 @@ public class SpearEnemy : EnemyBase
 
     public enum State { Moving, Windup, Stabbing, PostStab }
     private float _stateTimer;
-    private float _attackCooldownTimer = 2f;
+    private float _attackCooldownTimer = 0.5f;
     [HideInInspector] public SyncVar<State> _syncState = new SyncVar<State>(State.Moving);
     private State _state
     {
@@ -33,6 +33,7 @@ public class SpearEnemy : EnemyBase
         OnStateChanged(_syncState.value);
         if (!isServer) return;
         spearHitbox.enabled = false;
+        TryGetComponent(out _animator);
     }
 
     private void OnStateChanged(State state)
@@ -40,12 +41,6 @@ public class SpearEnemy : EnemyBase
         dangerIndicator.SetActive(state == State.Windup);
         if (state == State.Windup)
             _animator.Play(SpearStabHash, 0, 0f);
-    }
-
-    protected override void Awake()
-    {
-        base.Awake();
-        TryGetComponent(out _animator);
     }
 
     protected override void Update()

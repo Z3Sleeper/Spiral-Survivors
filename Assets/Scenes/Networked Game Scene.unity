@@ -2704,14 +2704,10 @@ MonoBehaviour:
   enemyPrefabs:
   - {fileID: 1597157536724350220, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
   - {fileID: 1597157536724350220, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
-  - {fileID: 5352001002389939941, guid: fa41c34b73a3e874884462e56e436dd9, type: 3}
-  - {fileID: 3624407512133673861, guid: 58caf2674c6fdd44ba73dc6a3cdb4282, type: 3}
-  - {fileID: 5392031640422321644, guid: bfe4f0af1e3b8e748b1798a56b3882f4, type: 3}
-  - {fileID: 8836781330389883237, guid: f07d675eeb17bfc4db099bf510bd5a20, type: 3}
   spawnMinDistance: 10
   spawnMaxDistance: 15
-  spawnInterval: 2
-  waitForPlayersLoaded: 1
+  spawnInterval: 0.5
+  waitForPlayersLoaded: 0
 --- !u!114 &2030860281
 MonoBehaviour:
   m_ObjectHideFlags: 0

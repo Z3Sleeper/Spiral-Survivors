@@ -457,7 +457,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
-  baseEnergyRegen: 10
+  baseEnergyRegen: 5
   dashCharges: 3
   dashCooldown: 5
   _isDeadSync:

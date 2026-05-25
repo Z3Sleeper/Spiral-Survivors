@@ -14,6 +14,7 @@ public class PlayerController : NetworkIdentity
     private bool _isDashing;
     [HideInInspector] public float _dashTimer;
     private Collider _hurtbox;
+    private Collider _physicsCollider;
 
     public bool isSurging { get; private set; }
     private float _surgeTickTimer;
@@ -28,6 +29,7 @@ public class PlayerController : NetworkIdentity
     {
         _rb = GetComponent<Rigidbody>();
         _hurtbox = transform.Find("Hurtbox").GetComponent<Collider>();
+        _physicsCollider = transform.Find("PhysicsCollider").GetComponent<Collider>();
     }
 
     protected override void OnDespawned(bool asServer)
@@ -135,6 +137,7 @@ public class PlayerController : NetworkIdentity
             _chargeRegenTimer = _stats.dashCooldown;
         _dashTimer = DashDistance / DashSpeed;
         _hurtbox.enabled = false;
+        _physicsCollider.enabled = false;
 
         _rb.linearVelocity = Vector3.zero;
         _rb.AddForce(_lastMoveDir * DashSpeed, ForceMode.VelocityChange);
@@ -144,6 +147,7 @@ public class PlayerController : NetworkIdentity
     {
         _isDashing = false;
         _hurtbox.enabled = true;
+        _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
     }
 
