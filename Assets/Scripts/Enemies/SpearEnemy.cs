@@ -82,12 +82,6 @@ public class SpearEnemy : EnemyBase
             base.FixedUpdate(); // only move during Moving state
     }
 
-    private bool TargetInRange()
-    {
-        if (_target == null) return false;
-        return Vector3.Distance(transform.position, _target.position) <= preferredRange + rangeToleranceFar;
-    }
-
     private void EnterWindup()
     {
         _state = State.Windup;

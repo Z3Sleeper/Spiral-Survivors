@@ -2,12 +2,15 @@ using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
 
+[RequireComponent(typeof(Rigidbody))]
 public class EnemyBase : NetworkIdentity
 {
-    private Rigidbody _rb;
+    protected Rigidbody _rb;
+    protected Collider _hurtbox;
+    protected Collider _physicsCollider;
 
     [Header("Stats")]
-    public float moveSpeed = 1f;
+    public float moveSpeed = 0.3f;
     public float backpedalSpeedDivisor = 2f;
     public float maxHealth = 30f;
     public float preferredRange = 0f; // 0 = melee, >0 = ranged
@@ -33,9 +36,11 @@ public class EnemyBase : NetworkIdentity
     private const float FindTargetInterval = 1f;
     protected Transform _target;
 
-    protected virtual void Awake()
+    private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
+        _hurtbox = transform.Find("Hurtbox").GetComponent<Collider>();
+        _physicsCollider = transform.Find("PhysicsCollider").GetComponent<Collider>();
     }
 
     protected override void OnSpawned()
@@ -142,6 +147,12 @@ public class EnemyBase : NetworkIdentity
         {
             _rb.AddForce(dir * moveSpeed, ForceMode.VelocityChange);
         }
+    }
+
+    protected bool TargetInRange()
+    {
+        if (_target == null) return false;
+        return Vector3.Distance(transform.position, _target.position) <= preferredRange + rangeToleranceFar;
     }
 
     public virtual void TakeDamage(float damage)

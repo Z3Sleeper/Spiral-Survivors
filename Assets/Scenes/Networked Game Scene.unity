@@ -2702,8 +2702,8 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   enemyPrefabs:
-  - {fileID: 1597157536724350220, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
-  - {fileID: 1597157536724350220, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
+  - {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
+  - {fileID: 1597157536724350220, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
   spawnMinDistance: 10
   spawnMaxDistance: 15
   spawnInterval: 0.5
