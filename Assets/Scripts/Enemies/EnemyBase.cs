@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
@@ -22,7 +23,10 @@ public class EnemyBase : NetworkIdentity
     public float contactCooldown = 1f;
     private Dictionary<CharacterStats, float> _contactCooldowns = new Dictionary<CharacterStats, float>();
     private bool _atPreferredRange = false;
-    protected bool _isDead = false;
+    [NonSerialized] public bool _isDead = false;
+    private const float TooFarDistance = 55f;
+    private const float RelocateMinDistance = 25f;
+    private const float RelocateMaxDistance = 40f;
 
 
     public SyncVar<float> _currentHealthSync = new SyncVar<float>(0);
@@ -63,6 +67,10 @@ public class EnemyBase : NetworkIdentity
             _findTargetTimer = FindTargetInterval;
             FindTarget();
         }
+
+        // Relocate if too far from target
+        if (_target != null && Vector3.Distance(transform.position, _target.position) > TooFarDistance)
+            Relocate();
 
         var keys = new List<CharacterStats>(_contactCooldowns.Keys);
         foreach (var player in keys)
@@ -147,6 +155,31 @@ public class EnemyBase : NetworkIdentity
         {
             _rb.AddForce(dir * moveSpeed, ForceMode.VelocityChange);
         }
+    }
+
+    private void Relocate()
+    {
+        if (_target == null) return;
+
+        // Get direction from target to enemy (opposite side)
+        Vector3 awayDir = (transform.position - _target.position).normalized;
+        awayDir.y = 0;
+
+        // Get angle of that direction
+        float baseAngle = Mathf.Atan2(awayDir.z, awayDir.x) * Mathf.Rad2Deg;
+
+        // Pick random angle within 180 degrees of opposite side
+        float angle = (baseAngle + UnityEngine.Random.Range(-90f, 90f)) * Mathf.Deg2Rad;
+        float distance = UnityEngine.Random.Range(RelocateMinDistance, RelocateMaxDistance);
+
+        Vector3 newPos = _target.position + new Vector3(
+            Mathf.Cos(angle) * distance,
+            0,
+            Mathf.Sin(angle) * distance
+        );
+
+        _rb.linearVelocity = Vector3.zero;
+        transform.position = newPos;
     }
 
     protected bool TargetInRange()

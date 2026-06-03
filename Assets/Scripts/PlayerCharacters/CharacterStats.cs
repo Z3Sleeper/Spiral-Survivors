@@ -138,7 +138,7 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusSurgeEffectivenessFlat = 0f;
     [NonSerialized] public float bonusSurgeEffectivenessPercent = 1f;
     public float SurgeEffectiveness => (baseSurgeEffectiveness + bonusSurgeEffectivenessFlat) * bonusSurgeEffectivenessPercent;
-    [NonSerialized] public float baseSurgeMoveSpeedMulti = 1f;
+    [NonSerialized] public float baseSurgeMoveSpeedMulti = 0.5f;
     [NonSerialized] public float bonusSurgeMoveSpeedMultiFlat = 0f;
     [NonSerialized] public float bonusSurgeMoveSpeedMultiPercent = 1f;
     public float SurgeMoveSpeedMulti => (baseSurgeMoveSpeedMulti + bonusSurgeMoveSpeedMultiFlat) * bonusSurgeMoveSpeedMultiPercent;

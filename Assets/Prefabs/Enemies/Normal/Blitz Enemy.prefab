@@ -399,7 +399,7 @@ MonoBehaviour:
   attackCooldown: 5
   blitzDistance: 15
   blitzSpeed: 30
-  blitzesPerAttack: 3
+  blitzesPerAttack: 1
   dangerIndicator: {fileID: 1900264130550196311}
   _syncState:
     _value: 0

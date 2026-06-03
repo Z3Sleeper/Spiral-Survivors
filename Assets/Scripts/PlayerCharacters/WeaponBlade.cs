@@ -12,7 +12,6 @@ public class WeaponBlade : WeaponBase
     }
 
     private void OnTriggerEnter(Collider other) => TryHit(other);
-    private void OnTriggerStay(Collider other) => TryHit(other);
 
     private void TryHit(Collider other)
     {

@@ -2701,12 +2701,53 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  enemyPrefabs:
-  - {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
-  - {fileID: 1597157536724350220, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
-  spawnMinDistance: 10
-  spawnMaxDistance: 15
-  spawnInterval: 0.5
+  enemyEntries:
+  - prefab: {fileID: 1597157536724350220, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
+    weight: 1
+    tier: 0
+  - prefab: {fileID: 1597157536724350220, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+    weight: 1
+    tier: 0
+  - prefab: {fileID: 1597157536724350220, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
+    weight: 1
+    tier: 0
+  - prefab: {fileID: 1597157536724350220, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
+    weight: 1
+    tier: 0
+  - prefab: {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
+    weight: 1
+    tier: 1
+  - prefab: {fileID: 5034490258704942994, guid: e7f88fd3a6c52fa49896ea9ef0b977cf, type: 3}
+    weight: 1
+    tier: 1
+  - prefab: {fileID: 5352001002389939941, guid: fa41c34b73a3e874884462e56e436dd9, type: 3}
+    weight: 1
+    tier: 1
+  - prefab: {fileID: 3624407512133673861, guid: 58caf2674c6fdd44ba73dc6a3cdb4282, type: 3}
+    weight: 1
+    tier: 1
+  - prefab: {fileID: 1483096219054591146, guid: fca9a4cc609372e47b48b7f5bc1aa7e6, type: 3}
+    weight: 1
+    tier: 2
+  - prefab: {fileID: 8970153102034162631, guid: 97a21ec154c2b514bbdaa6392c8687dc, type: 3}
+    weight: 1
+    tier: 2
+  - prefab: {fileID: 5392031640422321644, guid: bfe4f0af1e3b8e748b1798a56b3882f4, type: 3}
+    weight: 1
+    tier: 2
+  - prefab: {fileID: 8836781330389883237, guid: f07d675eeb17bfc4db099bf510bd5a20, type: 3}
+    weight: 1
+    tier: 2
+  - prefab: {fileID: 2037630420138304940, guid: 0af96ab41d40766488d3f9d051a60ebb, type: 3}
+    weight: 1
+    tier: 3
+  spawnMinDistance: 25
+  spawnMaxDistance: 40
+  spawnInterval: 1
+  cycleInterval: 150
+  baseEliteChance: 0.01
+  baseEliteCap: 2
+  playerCountSpawnMultiplier: 0.5
   waitForPlayersLoaded: 0
 --- !u!114 &2030860281
 MonoBehaviour:
@@ -2813,7 +2854,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 10, y: 1, z: 10}
+  m_LocalScale: {x: 100, y: 1, z: 100}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}

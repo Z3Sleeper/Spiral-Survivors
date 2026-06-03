@@ -13,12 +13,14 @@ public class SpearEnemy : EnemyBase
     [SerializeField] private float windupDuration = 0.5f;
     [SerializeField] private float stabDuration = 0.1f;
     [SerializeField] private float postStabPause = 0.5f;
-    [SerializeField] private float attackCooldown = 3f;
+    [SerializeField] private float attackCooldown = 5f;
+    [SerializeField] private int attacksPerAttack = 1;
     [SerializeField] private GameObject dangerIndicator;
 
     public enum State { Moving, Windup, Stabbing, PostStab }
     private float _stateTimer;
-    private float _attackCooldownTimer = 0.5f;
+    private float _attackCooldownTimer = 3f;
+    private int _attacksRemaining;
     [HideInInspector] public SyncVar<State> _syncState = new SyncVar<State>(State.Moving);
     private State _state
     {
@@ -34,6 +36,7 @@ public class SpearEnemy : EnemyBase
         if (!isServer) return;
         spearHitbox.enabled = false;
         TryGetComponent(out _animator);
+        _attacksRemaining = attacksPerAttack;
     }
 
     private void OnStateChanged(State state)
@@ -71,7 +74,10 @@ public class SpearEnemy : EnemyBase
 
             case State.PostStab:
                 if (_stateTimer <= 0f)
-                    EnterMoving();
+                    if (_attacksRemaining > 0)
+                        EnterWindup();
+                    else
+                        EnterMoving();
                 break;
         }
     }
@@ -87,7 +93,7 @@ public class SpearEnemy : EnemyBase
         _state = State.Windup;
         _stateTimer = windupDuration;
         dangerIndicator.SetActive(true);
-        _animator.Play(SpearStabHash, 0, 0f);
+        spearHitbox.enabled = false;
 
         // Snap to face target
         if (_target != null)
@@ -105,6 +111,7 @@ public class SpearEnemy : EnemyBase
         _stateTimer = stabDuration;
         dangerIndicator.SetActive(false);
         spearHitbox.enabled = true;
+        _attacksRemaining--;
     }
 
     private void EnterPostStab()
@@ -118,5 +125,6 @@ public class SpearEnemy : EnemyBase
     private void EnterMoving()
     {
         _state = State.Moving;
+        _attacksRemaining = attacksPerAttack;
     }
 }

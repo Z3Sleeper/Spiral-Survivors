@@ -7,7 +7,7 @@ public class BlitzEnemy : EnemyBase
     [Header("Blitz Settings")]
     [SerializeField] private float windupDuration = 0.7f;
     [SerializeField] private float postBlitzPause = 0.5f;
-    [SerializeField] private float attackCooldown = 3f;
+    [SerializeField] private float attackCooldown = 5f;
     [SerializeField] private float blitzDistance = 10f;
     [SerializeField] private float blitzSpeed = 20f;
     [SerializeField] private int blitzesPerAttack = 1;
@@ -15,7 +15,7 @@ public class BlitzEnemy : EnemyBase
 
     public enum State { Moving, Windup, Blitzing, PostBlitz }
     private float _stateTimer;
-    private float _attackCooldownTimer = 2f;
+    private float _attackCooldownTimer = 3f;
     private Vector3 _blitzDirection;
     private Vector3 _blitzEndPoint;
     private int _blitzesRemaining = 0;
@@ -34,6 +34,7 @@ public class BlitzEnemy : EnemyBase
         OnStateChanged(_syncState.value);
         hasContactDamage = false;
         _blitzesRemaining = blitzesPerAttack;
+        _attackCooldownTimer = attackCooldown;
     }
 
     private void OnStateChanged(State state)

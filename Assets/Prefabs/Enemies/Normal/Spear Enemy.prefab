@@ -308,7 +308,8 @@ MonoBehaviour:
   windupDuration: 0.5
   stabDuration: 0.1
   postStabPause: 0.3
-  attackCooldown: 2
+  attackCooldown: 5
+  attacksPerAttack: 1
   dangerIndicator: {fileID: 1900264130550196311}
   _syncState:
     _value: 0
