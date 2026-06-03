@@ -10,7 +10,11 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 1597157536724350220, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
       propertyPath: m_Name
-      value: MiniBoss Spiky Enemy
+      value: Miniboss Spiky Enemy
+      objectReference: {fileID: 0}
+    - target: {fileID: 3356206699720956524, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
+      propertyPath: xpValue
+      value: 80
       objectReference: {fileID: 0}
     - target: {fileID: 3356206699720956524, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
       propertyPath: maxHealth

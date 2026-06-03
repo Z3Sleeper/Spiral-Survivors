@@ -15,6 +15,10 @@ public class UIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI dashChargesText;
     [SerializeField] private Image energyImage;
     [SerializeField] private TextMeshProUGUI energyText;
+    [SerializeField] private Slider xpBar;
+    [SerializeField] private TextMeshProUGUI xpText;
+    [SerializeField] private TextMeshProUGUI timerText;
+    [SerializeField] private TextMeshProUGUI bossTimerText;
 
     private CharacterStats _stats;
     private PlayerController _controller;
@@ -65,5 +69,27 @@ public class UIManager : MonoBehaviour
         else
             energyImage.color = Color.yellow;
         energyText.text = $"<b>{(int)_stats.CurrentEnergy}</b>";
+
+        // XP
+        if (GameManager.instance != null)
+        {
+            xpBar.value = (float)GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
+            xpText.text = $"<b>Level {GameManager.instance.Level} | {GameManager.instance.CurrentXP}/{GameManager.instance.XPToNextLevel} XP</b>";
+        }
+
+        // Run Clock
+        float runtime = Time.timeSinceLevelLoad;
+        int minutes = (int)(runtime / 60f);
+        int seconds = (int)(runtime % 60f);
+        timerText.text = $"<b>{minutes:00}:{seconds:00}</b>";
+
+        // Boss Countdown
+        if (EnemySpawner.instance != null)
+        {
+            int bossSeconds = (int)EnemySpawner.instance.CycleTimer;
+            int bossMinutes = bossSeconds / 60;
+            int bossSecondsRemainder = bossSeconds % 60;
+            bossTimerText.text = $"<b>Next Boss: {bossMinutes:00}:{bossSecondsRemainder:00}</b>";
+        }
     }
 }

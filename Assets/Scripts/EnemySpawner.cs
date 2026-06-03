@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,8 +37,12 @@ public class EnemySpawner : NetworkIdentity
     private List<EnemyEntry> _currentSet = new();
     private List<EnemyEntry> _previousSet = new();
 
-    private float _cycleTimer;
-    private float _spawnTimer;
+    [NonSerialized] public SyncVar<float> _cycleTimer = new(0f);
+    [HideInInspector] public float CycleTimer
+    {
+        get => _cycleTimer.value;
+        set => _cycleTimer.value = value;
+    }
     private int _cycleCount = 0;
     private int _elitesSpawnedThisCycle = 0;
     private float _currentEliteChance;
@@ -87,7 +92,7 @@ public class EnemySpawner : NetworkIdentity
         _playerCount = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None).Count();
         _currentEliteChance = baseEliteChance;
         _currentEliteCap = baseEliteCap * _playerCount;
-        _cycleTimer = cycleInterval;
+        CycleTimer = cycleInterval;
         StartCoroutine(SpawnLoop());
         StartCoroutine(CycleLoop());
     }
@@ -100,7 +105,7 @@ public class EnemySpawner : NetworkIdentity
             {
                 // Try elite spawn
                 if (_eliteEnemies.Count > 0 && _elitesSpawnedThisCycle < _currentEliteCap
-                    && Random.value < _currentEliteChance)
+                    && UnityEngine.Random.value < _currentEliteChance)
                 {
                     SpawnEnemy(GetWeightedRandom(_eliteEnemies));
                     _elitesSpawnedThisCycle++;
@@ -124,10 +129,10 @@ public class EnemySpawner : NetworkIdentity
 
             if (_bossAlive) continue;
 
-            _cycleTimer -= spawnInterval * 0.1f;
-            if (_cycleTimer > 0f) continue;
+            CycleTimer -= spawnInterval * 0.1f;
+            if (CycleTimer > 0f) continue;
 
-            _cycleTimer = cycleInterval;
+            CycleTimer = cycleInterval;
             _cycleCount++;
             _elitesSpawnedThisCycle = 0;
 
@@ -156,12 +161,10 @@ public class EnemySpawner : NetworkIdentity
         int pickCount = Mathf.Min(3, pool.Count);
         for (int i = 0; i < pickCount; i++)
         {
-            int idx = Random.Range(0, pool.Count);
+            int idx = UnityEngine.Random.Range(0, pool.Count);
             newSet.Add(pool[idx]);
             pool.RemoveAt(idx);
         }
-        
-        Debug.Log($"New set: {string.Join(", ", newSet.Select(e => e.prefab.name))}");
 
         // Never same set twice - with only 4 enemies, swap one if all 3 match
         if (_previousSet.Count == 3 && newSet.Count == 3)
@@ -172,7 +175,7 @@ public class EnemySpawner : NetworkIdentity
                 // Find the one enemy not in the current set and swap it in
                 var excluded = _normalEnemies.Except(newSet).FirstOrDefault();
                 if (excluded != null)
-                    newSet[Random.Range(0, newSet.Count)] = excluded;
+                    newSet[UnityEngine.Random.Range(0, newSet.Count)] = excluded;
             }
 
             /* TODO: When more than 4 enemies are available, use this instead:
@@ -214,7 +217,7 @@ public class EnemySpawner : NetworkIdentity
     private EnemyEntry GetWeightedRandom(List<EnemyEntry> entries)
     {
         float total = entries.Sum(e => e.weight);
-        float roll = Random.Range(0f, total);
+        float roll = UnityEngine.Random.Range(0f, total);
         float cumulative = 0f;
         foreach (var entry in entries)
         {
@@ -241,9 +244,9 @@ public class EnemySpawner : NetworkIdentity
 
         do
         {
-            var randomPlayer = players[Random.Range(0, players.Count)];
-            float angle = Random.Range(0f, 360f) * Mathf.Deg2Rad;
-            float distance = Random.Range(spawnMinDistance, spawnMaxDistance);
+            var randomPlayer = players[UnityEngine.Random.Range(0, players.Count)];
+            float angle = UnityEngine.Random.Range(0f, 360f) * Mathf.Deg2Rad;
+            float distance = UnityEngine.Random.Range(spawnMinDistance, spawnMaxDistance);
             pos = randomPlayer.transform.position + new Vector3(Mathf.Cos(angle) * distance, 0, Mathf.Sin(angle) * distance);
             attempts++;
         }

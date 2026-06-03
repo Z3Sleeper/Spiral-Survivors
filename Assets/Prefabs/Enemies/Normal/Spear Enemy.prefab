@@ -297,6 +297,7 @@ MonoBehaviour:
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
   baseDamage: 10
+  xpValue: 2
   hasContactDamage: 0
   contactCooldown: 1
   _currentHealthSync:

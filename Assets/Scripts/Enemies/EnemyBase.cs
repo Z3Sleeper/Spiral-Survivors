@@ -18,6 +18,7 @@ public class EnemyBase : NetworkIdentity
     public float rangeToleranceFar = 1f;
     public float rangeToleranceClose = 0.3f;
     public float baseDamage = 10f;
+    public float xpValue = 1f;
     [Header("Contact Damage")]
     public bool hasContactDamage = false;
     public float contactCooldown = 1f;
@@ -206,6 +207,8 @@ public class EnemyBase : NetworkIdentity
     protected virtual void Die()
     {
         _isDead = true;
+
+        XPOrbManager.instance.SpawnOrbs(transform.position, xpValue);
 
         // Disable colliders
         foreach (var col in GetComponentsInChildren<Collider>())

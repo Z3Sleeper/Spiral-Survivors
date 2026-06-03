@@ -13,6 +13,10 @@ PrefabInstance:
       value: Boss Blitz Enemy
       objectReference: {fileID: 0}
     - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
+      propertyPath: xpValue
+      value: 160
+      objectReference: {fileID: 0}
+    - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: maxHealth
       value: 810
       objectReference: {fileID: 0}

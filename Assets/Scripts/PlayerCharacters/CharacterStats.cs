@@ -155,10 +155,31 @@ public class CharacterStats : NetworkBehaviour
     public int dashCharges = 3;
     public float dashCooldown = 5f;
 
+    [Header("Misc")]
+    [NonSerialized] public float baseXPMod = 1f;
+    [NonSerialized] public SyncVar<float> _bonusXPModFlat = new(0f, ownerAuth: true);
+    [HideInInspector] public float bonusXPModFlat
+    {
+        get => _bonusXPModFlat.value;
+        set => _bonusXPModFlat.value = value;
+    }
+    [NonSerialized] public SyncVar<float> _bonusXPModPercent = new(1f, ownerAuth: true);
+    [HideInInspector] public float bonusXPModPercent
+    {
+        get => _bonusXPModPercent.value;
+        set => _bonusXPModPercent.value = value;
+    }
+    public float XPModifier => (baseXPMod + bonusXPModFlat) * bonusXPModPercent;
+
+    [NonSerialized] public float baseXPRadius = 5f;
+    [NonSerialized] public float bonusXPRadiusFlat = 0f;
+    [NonSerialized] public float bonusXPRadiusPercent = 1f;
+    public float XPRadius => (baseXPRadius + bonusXPRadiusFlat) * bonusXPRadiusPercent;
+
     [NonSerialized] public float reviveTime = 3f;
     [NonSerialized] public float revivePower = 1f;
 
-    [HideInInspector] public SyncVar<bool> _isDeadSync = new SyncVar<bool>(false);
+    [HideInInspector] public SyncVar<bool> _isDeadSync = new(false);
     public bool IsDead
     {
         get => _isDeadSync.value;
@@ -180,6 +201,8 @@ public class CharacterStats : NetworkBehaviour
         if (!isServer) return;
         CurrentHealth = MaxHealth;
         CurrentShield = MaxShield;
+        _bonusXPModFlat.onChanged += _ => RecalculateXPMod();
+        _bonusXPModPercent.onChanged += _ => RecalculateXPMod();
     }
 
     private void Update()
@@ -221,6 +244,11 @@ public class CharacterStats : NetworkBehaviour
         IsDead = false;
         CurrentHealth = MaxHealth * healthPercent;
         CurrentShield = MaxShield;
+    }
+
+    private void RecalculateXPMod()
+    {
+        GameManager.instance.UpdateXPModRpc(owner.Value, XPModifier);
     }
 
     [ServerRpc(requireOwnership: false)]

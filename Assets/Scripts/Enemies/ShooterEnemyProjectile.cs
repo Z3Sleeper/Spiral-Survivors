@@ -9,6 +9,12 @@ public class ShooterEnemyProjectile : NetworkIdentity
     private Vector3 _direction;
     private float _distanceTravelled;
 
+    protected override void OnSpawned()
+    {
+        base.OnSpawned();
+        enabled = isServer;
+    }
+
     public void Init(float damage, Vector3 direction, float speed, float maxRange)
     {
         _damage = damage;

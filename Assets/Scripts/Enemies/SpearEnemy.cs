@@ -33,7 +33,6 @@ public class SpearEnemy : EnemyBase
         base.OnSpawned();
         _syncState.onChanged += OnStateChanged;
         OnStateChanged(_syncState.value);
-        if (!isServer) return;
         spearHitbox.enabled = false;
         TryGetComponent(out _animator);
         _attacksRemaining = attacksPerAttack;
