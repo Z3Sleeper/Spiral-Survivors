@@ -2,9 +2,9 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-public class UIManager : MonoBehaviour
+public class LocalUIManager : MonoBehaviour
 {
-    public static UIManager instance;
+    public static LocalUIManager instance;
 
     [SerializeField] private Slider healthBar;
     [SerializeField] private Slider shieldBar;
@@ -64,7 +64,7 @@ public class UIManager : MonoBehaviour
             energyImage.fillAmount = _stats.CurrentEnergy / _stats.MaxEnergy;
         else
             energyImage.fillAmount = 1f;
-        if (_stats.CurrentEnergy < _stats.surgeActivationThreshhold)
+        if (_stats.CurrentEnergy < _stats.SurgeActivationThreshhold)
             energyImage.color = Color.red;
         else
             energyImage.color = Color.yellow;

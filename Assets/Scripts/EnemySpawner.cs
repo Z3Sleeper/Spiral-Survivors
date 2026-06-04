@@ -17,6 +17,7 @@ public class EnemyEntry
 
 public class EnemySpawner : NetworkIdentity
 {
+    private static readonly WaitForSeconds _waitForSeconds0_5 = new(0.5f);
     public static EnemySpawner instance;
 
     [SerializeField] private List<EnemyEntry> enemyEntries;
@@ -49,9 +50,6 @@ public class EnemySpawner : NetworkIdentity
     private int _currentEliteCap;
     private int _playerCount;
 
-    private bool _bossAlive = false;
-    private EnemyBase _activeBoss;
-
     private void Awake()
     {
         if (instance != null) { Destroy(gameObject); return; }
@@ -83,7 +81,7 @@ public class EnemySpawner : NetworkIdentity
 
     private IEnumerator DelayedStart()
     {
-        yield return new WaitForSeconds(0.5f);
+        yield return _waitForSeconds0_5;
         StartSpawning();
     }
 
@@ -101,19 +99,16 @@ public class EnemySpawner : NetworkIdentity
     {
         while (true)
         {
-            if (!_bossAlive)
+            // Try elite spawn
+            if (_eliteEnemies.Count > 0 && _elitesSpawnedThisCycle < _currentEliteCap
+                && UnityEngine.Random.value < _currentEliteChance)
             {
-                // Try elite spawn
-                if (_eliteEnemies.Count > 0 && _elitesSpawnedThisCycle < _currentEliteCap
-                    && UnityEngine.Random.value < _currentEliteChance)
-                {
-                    SpawnEnemy(GetWeightedRandom(_eliteEnemies));
-                    _elitesSpawnedThisCycle++;
-                }
-                else if (_currentSet.Count > 0)
-                {
-                    SpawnEnemy(GetWeightedRandom(_currentSet));
-                }
+                SpawnThisEnemy(GetWeightedRandom(_eliteEnemies));
+                _elitesSpawnedThisCycle++;
+            }
+            else if (_currentSet.Count > 0)
+            {
+                SpawnThisEnemy(GetWeightedRandom(_currentSet));
             }
 
             float interval = spawnInterval / (1f + (_playerCount - 1) * playerCountSpawnMultiplier);
@@ -126,8 +121,6 @@ public class EnemySpawner : NetworkIdentity
         while (true)
         {
             yield return new WaitForSeconds(spawnInterval * 0.1f); // tick frequently
-
-            if (_bossAlive) continue;
 
             CycleTimer -= spawnInterval * 0.1f;
             if (CycleTimer > 0f) continue;
@@ -142,9 +135,9 @@ public class EnemySpawner : NetworkIdentity
 
             // Spawn miniboss or boss
             if (_cycleCount % 4 == 0 && _bossEnemies.Count > 0)
-                SpawnBossEnemy(GetWeightedRandom(_bossEnemies));
+                SpawnThisEnemy(GetWeightedRandom(_bossEnemies));
             else if (_minibossEnemies.Count > 0)
-                SpawnBossEnemy(GetWeightedRandom(_minibossEnemies));
+                SpawnThisEnemy(GetWeightedRandom(_minibossEnemies));
 
             RollNewSet();
         }
@@ -198,20 +191,9 @@ public class EnemySpawner : NetworkIdentity
         _currentSet = newSet;
     }
 
-    private void SpawnBossEnemy(EnemyEntry entry)
+    private void SpawnThisEnemy(EnemyEntry entry)
     {
-        _bossAlive = true;
         var obj = Instantiate(entry.prefab, GetSpawnPosition(), Quaternion.identity);
-        _activeBoss = obj.GetComponent<EnemyBase>();
-        StartCoroutine(WatchBoss());
-    }
-
-    private IEnumerator WatchBoss()
-    {
-        while (_activeBoss != null && !_activeBoss._isDead)
-            yield return new WaitForSeconds(0.5f);
-        _bossAlive = false;
-        _activeBoss = null;
     }
 
     private EnemyEntry GetWeightedRandom(List<EnemyEntry> entries)
@@ -225,11 +207,6 @@ public class EnemySpawner : NetworkIdentity
             if (roll <= cumulative) return entry;
         }
         return entries[^1];
-    }
-
-    public void SpawnEnemy(EnemyEntry entry)
-    {
-        Instantiate(entry.prefab, GetSpawnPosition(), Quaternion.identity);
     }
 
     private Vector3 GetSpawnPosition()

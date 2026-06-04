@@ -129,7 +129,7 @@ public class CharacterStats : NetworkBehaviour
     /// <summary>
     /// Value limits the activation of surge to itself. To adjust the energy expended during surge, use surgeCost.
     /// </summary>
-    [NonSerialized] public float surgeActivationThreshhold = 20f;
+    public float SurgeActivationThreshhold => (baseMaxEnergy + bonusMaxEnergyFlat) * bonusMaxEnergyPercent * 0.2f;
     [NonSerialized] public float baseSurgeCost = 2f;
     [NonSerialized] public float bonusSurgeCostFlat = 0f;
     [NonSerialized] public float bonusSurgeCostPercent = 1f;
@@ -192,8 +192,8 @@ public class CharacterStats : NetworkBehaviour
 
         _isDeadSync.onChanged += OnDeathStateChanged;
 
-        if (isOwner && UIManager.instance != null)
-            UIManager.instance.SetPlayer(this);
+        if (isOwner && LocalUIManager.instance != null)
+            LocalUIManager.instance.SetPlayer(this);
 
         if (isOwner)
             CurrentEnergy = MaxEnergy;

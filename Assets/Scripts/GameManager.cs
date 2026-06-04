@@ -1,5 +1,6 @@
 using PurrNet;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -29,8 +30,20 @@ public class GameManager : NetworkBehaviour
         set => _xpToNextLevel.value = value;
     }
 
+    [NonSerialized] public SyncVar<bool> _isPaused = new(false);
+    public bool IsPaused
+    {
+        get => _isPaused.value;
+        set => _isPaused.value = value;
+    }
+
     private Dictionary<PlayerID, float> _playerXPMods = new();
     private float _avgXPMod = 1f;
+
+    private HashSet<PlayerID> _readyPlayers = new();
+    private Coroutine _levelUpTimerCoroutine;
+
+    private const float LevelUpTimerDuration = 30f;
 
     public static event Action OnLevelUp;
 
@@ -40,6 +53,16 @@ public class GameManager : NetworkBehaviour
         instance = this;
     }
 
+    protected override void OnSpawned()
+    {
+        base.OnSpawned();
+        _isPaused.onChanged += OnPausedChanged;
+    }
+
+    private void OnPausedChanged(bool newVal)
+    {
+        Time.timeScale = newVal ? 0f : 1f;
+    }
 
     [ServerRpc(requireOwnership: false)]
     public void UpdateXPModRpc(PlayerID player, float mod)
@@ -62,10 +85,80 @@ public class GameManager : NetworkBehaviour
 
     private void LevelUp()
     {
-        Debug.Log("Level Up!");
         Level++;
         CurrentXP -= XPToNextLevel;
-        XPToNextLevel = Mathf.RoundToInt(XPToNextLevel * 1.25f); // 25% more XP each level
+        XPToNextLevel = Mathf.RoundToInt(XPToNextLevel * 1.25f);
+
+        _readyPlayers.Clear();
+        IsPaused = true;
+
         OnLevelUp?.Invoke();
+        ShowLevelUpScreenRpc();
+
+        bool isMultiplayer = networkManager != null && networkManager.playerCount >= 2;
+        if (isMultiplayer)
+        {
+            if (_levelUpTimerCoroutine != null)
+                StopCoroutine(_levelUpTimerCoroutine);
+            _levelUpTimerCoroutine = StartCoroutine(LevelUpTimerCoroutine());
+        }
+    }
+
+    [ServerRpc(requireOwnership: false)]
+    public void ConfirmReadyRpc(PlayerID player)
+    {
+        if (!IsPaused) return;
+
+        _readyPlayers.Add(player);
+
+        int playerCount = networkManager != null ? networkManager.playerCount : 1;
+        if (_readyPlayers.Count >= playerCount)
+            ResolveLevelUp();
+    }
+
+    private IEnumerator LevelUpTimerCoroutine()
+    {
+        float remaining = LevelUpTimerDuration;
+
+        while (remaining > 0f)
+        {
+            // Use unscaled time since we're paused
+            yield return new WaitForSecondsRealtime(1f);
+            remaining -= 1f;
+            UpdateTimerRpc(Mathf.CeilToInt(remaining));
+        }
+
+        ResolveLevelUp();
+    }
+
+    private void ResolveLevelUp()
+    {
+        if (_levelUpTimerCoroutine != null)
+        {
+            StopCoroutine(_levelUpTimerCoroutine);
+            _levelUpTimerCoroutine = null;
+        }
+
+        IsPaused = false;
+        HideLevelUpScreenRpc();
+    }
+
+    [ObserversRpc]
+    private void ShowLevelUpScreenRpc()
+    {
+        bool isMultiplayer = networkManager != null && networkManager.playerCount >= 2;
+        NetworkedUIManager.instance?.ShowLevelUpScreen(isMultiplayer);
+    }
+
+    [ObserversRpc]
+    private void HideLevelUpScreenRpc()
+    {
+        NetworkedUIManager.instance?.HideLevelUpScreen();
+    }
+
+    [ObserversRpc]
+    private void UpdateTimerRpc(int secondsRemaining)
+    {
+        NetworkedUIManager.instance?.UpdateTimer(secondsRemaining);
     }
 }

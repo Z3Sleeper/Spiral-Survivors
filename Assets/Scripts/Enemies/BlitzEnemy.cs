@@ -99,6 +99,8 @@ public class BlitzEnemy : EnemyBase
         _state = State.Windup;
         _stateTimer = windupDuration;
         _rb.linearVelocity = Vector3.zero;
+        hasContactDamage = false;
+        _physicsCollider.enabled = true;
 
         if (_target != null)
         {

@@ -99,7 +99,7 @@ public class PlayerController : NetworkIdentity
         }
 
         // Surge input
-        if (_input.Player.Surge.IsPressed() && !isSurging && _stats.CurrentEnergy >= _stats.surgeActivationThreshhold)
+        if (_input.Player.Surge.IsPressed() && !isSurging && _stats.CurrentEnergy >= _stats.SurgeActivationThreshhold)
             StartSurge();
         else if (!_input.Player.Surge.IsPressed() && isSurging)
             EndSurge();
