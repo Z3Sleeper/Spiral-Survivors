@@ -20,6 +20,11 @@ public class EnemySpawner : NetworkIdentity
     private static readonly WaitForSeconds _waitForSeconds0_5 = new(0.5f);
     public static EnemySpawner instance;
 
+    private float _enemyHealthMult = 1f;
+    private float _enemyDamageMult = 1f;
+    private float _enemySpeedMult = 1f;
+    private const float ScalingFactor = 1.1f;
+
     [SerializeField] private List<EnemyEntry> enemyEntries;
     [SerializeField] private float spawnMinDistance = 25f;
     [SerializeField] private float spawnMaxDistance = 40f;
@@ -140,6 +145,10 @@ public class EnemySpawner : NetworkIdentity
             else if (_minibossEnemies.Count > 0)
                 SpawnThisEnemy(GetWeightedRandom(_minibossEnemies));
 
+            _enemyHealthMult *= ScalingFactor;
+            _enemyDamageMult *= ScalingFactor;
+            _enemySpeedMult *= ScalingFactor;
+
             RollNewSet();
         }
     }
@@ -195,6 +204,11 @@ public class EnemySpawner : NetworkIdentity
     private void SpawnThisEnemy(EnemyEntry entry)
     {
         var obj = Instantiate(entry.prefab, GetSpawnPosition(), Quaternion.identity);
+        var enemy = obj.GetComponent<EnemyBase>();
+        enemy.maxHealth *= _enemyHealthMult;
+        enemy.CurrentHealth = enemy.maxHealth;
+        enemy.baseDamage *= _enemyDamageMult;
+        enemy.moveSpeed *= _enemySpeedMult;
     }
 
     private EnemyEntry GetWeightedRandom(List<EnemyEntry> entries)

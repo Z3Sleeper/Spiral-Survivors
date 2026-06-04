@@ -54,7 +54,7 @@ public class LocalUIManager : MonoBehaviour
 
         // Dash
         if (_controller._currentCharges < _stats.dashCharges)
-            dashChargeCooldownImage.fillAmount = 1f - (_controller._chargeRegenTimer / _stats.dashCooldown);
+            dashChargeCooldownImage.fillAmount = 1f - (_controller._chargeRegenTimer / _stats.DashCooldown);
         else
             dashChargeCooldownImage.fillAmount = 1f;
         dashChargesText.text = $"<b>{_controller._currentCharges}</b>";

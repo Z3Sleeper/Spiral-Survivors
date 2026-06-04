@@ -4,7 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class GameManager : NetworkBehaviour
+public class GameManager : NetworkIdentity
 {
     public static GameManager instance;
     public CharacterSpawner characterSpawner;
@@ -95,6 +95,10 @@ public class GameManager : NetworkBehaviour
         OnLevelUp?.Invoke();
         ShowLevelUpScreenRpc();
 
+        // Generate options for each player
+        foreach (var player in networkManager.players)
+            AugmentManager.instance.GenerateStatOptions(player);
+
         bool isMultiplayer = networkManager != null && networkManager.playerCount >= 2;
         if (isMultiplayer)
         {
@@ -139,8 +143,21 @@ public class GameManager : NetworkBehaviour
             _levelUpTimerCoroutine = null;
         }
 
+        // Auto-pick for players who haven't chosen
+        foreach (var player in networkManager.players)
+        {
+            if (_readyPlayers.Contains(player)) continue;
+            var options = AugmentManager.instance.GetOptionsForPlayer(player);
+            if (options != null && options.Count > 0)
+                AugmentManager.instance.PickAugmentRpc(player, UnityEngine.Random.Range(0, options.Count));
+        }
+
         IsPaused = false;
         HideLevelUpScreenRpc();
+
+        // Check if we have enough XP for another level up
+        if (CurrentXP >= XPToNextLevel)
+            LevelUp();
     }
 
     [ObserversRpc]

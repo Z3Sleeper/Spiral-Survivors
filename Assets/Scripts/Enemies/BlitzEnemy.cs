@@ -109,7 +109,7 @@ public class BlitzEnemy : EnemyBase
             if (dir != Vector3.zero)
             {
                 _blitzDirection = dir.normalized;
-                transform.rotation = Quaternion.LookRotation(_blitzDirection);
+                _rb.MoveRotation(Quaternion.LookRotation(_blitzDirection));
             }
         }
     }

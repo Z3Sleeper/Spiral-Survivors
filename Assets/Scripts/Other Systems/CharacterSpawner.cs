@@ -1,7 +1,7 @@
 using PurrNet;
 using UnityEngine;
 
-public class CharacterSpawner : MonoBehaviour
+public class CharacterSpawner : NetworkIdentity
 {
     public void SpawnCharacter(int index, PlayerData shell)
     {

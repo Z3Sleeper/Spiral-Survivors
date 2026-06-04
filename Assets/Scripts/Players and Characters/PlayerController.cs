@@ -94,7 +94,7 @@ public class PlayerController : NetworkIdentity
             if (_chargeRegenTimer <= 0f)
             {
                 _currentCharges++;
-                _chargeRegenTimer = _currentCharges < _stats.dashCharges ? _stats.dashCooldown : 0f;
+                _chargeRegenTimer = _currentCharges < _stats.dashCharges ? _stats.DashCooldown : 0f;
             }
         }
 
@@ -157,7 +157,7 @@ public class PlayerController : NetworkIdentity
         _isDashing = true;
         _currentCharges--;
         if (_chargeRegenTimer <= 0f)
-            _chargeRegenTimer = _stats.dashCooldown;
+            _chargeRegenTimer = _stats.DashCooldown;
         _dashTimer = DashDistance / DashSpeed;
         _hurtbox.enabled = false;
         _physicsCollider.enabled = false;
@@ -181,20 +181,20 @@ public class PlayerController : NetworkIdentity
         _surgeTickTimer = SurgeTickInterval;
 
         float effectiveness = _stats.SurgeEffectiveness;
-        _surgeMoveSpeedBonus = _stats.baseMoveSpeed * (_stats.SurgeMoveSpeedMulti * effectiveness - 1f);
-        _surgeWeaponSpeedBonus = _stats.baseWeaponSpeed * (_stats.SurgeWeaponSpeedMultiplier * effectiveness - 1f);
-        _surgeAttackSpeedBonus = _stats.baseAttackSpeed * (_stats.SurgeAttackSpeedMultiplier * effectiveness - 1f);
+        _surgeMoveSpeedBonus = _stats.SurgeMoveSpeedMulti * effectiveness;
+        _surgeWeaponSpeedBonus = _stats.SurgeWeaponSpeedMultiplier * effectiveness;
+        _surgeAttackSpeedBonus = _stats.SurgeAttackSpeedMultiplier * effectiveness;
 
-        _stats.bonusMoveSpeedFlat += _surgeMoveSpeedBonus;
-        _stats.bonusWeaponSpeedFlat += _surgeWeaponSpeedBonus;
-        _stats.bonusAttackSpeedFlat += _surgeAttackSpeedBonus;
+        _stats.bonusMoveSpeedPercent *= _surgeMoveSpeedBonus;
+        _stats.bonusWeaponSpeedPercent *= _surgeWeaponSpeedBonus;
+        _stats.bonusAttackSpeedPercent *= _surgeAttackSpeedBonus;
     }
 
     private void EndSurge()
     {
         isSurging = false;
-        _stats.bonusMoveSpeedFlat -= _surgeMoveSpeedBonus;
-        _stats.bonusWeaponSpeedFlat -= _surgeWeaponSpeedBonus;
-        _stats.bonusAttackSpeedFlat -= _surgeAttackSpeedBonus;
+        _stats.bonusMoveSpeedPercent /= _surgeMoveSpeedBonus;
+        _stats.bonusWeaponSpeedPercent /= _surgeWeaponSpeedBonus;
+        _stats.bonusAttackSpeedPercent /= _surgeAttackSpeedBonus;
     }
 }

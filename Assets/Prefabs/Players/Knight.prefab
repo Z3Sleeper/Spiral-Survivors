@@ -431,7 +431,7 @@ MonoBehaviour:
   baseAttackSpeed: 1
   continuousFire: 0
   _baseMaxHealth:
-    _value: 100
+    _value: 50
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
   _bonusMaxHealthFlat:
@@ -459,7 +459,8 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   baseEnergyRegen: 5
   dashCharges: 3
-  dashCooldown: 5
+  baseDashCooldown: 5
+  dashHaste: 1
   _isDeadSync:
     _value: 0
     _ownerAuth: 0

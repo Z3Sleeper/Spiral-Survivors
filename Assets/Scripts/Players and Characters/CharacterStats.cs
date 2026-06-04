@@ -51,7 +51,7 @@ public class CharacterStats : NetworkBehaviour
     public bool continuousFire = false;
 
     [Header("Health")]
-    public SyncVar<float> _baseMaxHealth = new(100f);
+    public SyncVar<float> _baseMaxHealth = new(50f);
     [HideInInspector] public float BaseMaxHealth
     {
         get => _baseMaxHealth.value;
@@ -91,8 +91,8 @@ public class CharacterStats : NetworkBehaviour
     public float baseMaxShield = 0.1f;
     [NonSerialized] public float bonusMaxShieldFlat = 0f;
     [NonSerialized] public float bonusMaxShieldPercent = 1f;
-    public float MaxShieldPercent => (baseMaxShield + bonusMaxShieldFlat) * bonusMaxShieldPercent;
-    public float MaxShield => MaxHealth * MaxShieldPercent;
+    public float MaxShieldPercentOfMaxHealth => (baseMaxShield + bonusMaxShieldFlat) * bonusMaxShieldPercent;
+    public float MaxShield => MaxHealth * MaxShieldPercentOfMaxHealth;
     [HideInInspector] public SyncVar<float> _currentShield = new(0);
     [HideInInspector] public float CurrentShield
     {
@@ -153,7 +153,9 @@ public class CharacterStats : NetworkBehaviour
 
     [Header("Dash")]
     public int dashCharges = 3;
-    public float dashCooldown = 5f;
+    public float baseDashCooldown = 5f;
+    public float dashHaste = 1f;
+    public float DashCooldown => baseDashCooldown / dashHaste;
 
     [Header("Misc")]
     [NonSerialized] public float baseXPMod = 1f;
@@ -216,7 +218,7 @@ public class CharacterStats : NetworkBehaviour
             _healthRegenTimer -= Time.deltaTime;
             if (_healthRegenTimer <= 0f)
             {
-                CurrentHealth = Mathf.Min(CurrentHealth + HealthRegen, MaxHealth);
+                Heal(HealthRegen);
                 _healthRegenTimer = _healthRegenInterval;
             }
         }
@@ -229,6 +231,14 @@ public class CharacterStats : NetworkBehaviour
             if (_shieldRechargeTimer <= 0f)
                 CurrentShield = MaxShield;
         }
+    }
+
+    public void Heal(float healAmount)
+    {
+        if (!isServer) return;
+
+        CurrentHealth += HealthRegen;
+        CurrentHealth = Mathf.Min(CurrentHealth, MaxHealth);
     }
 
     private void OnDeathStateChanged(bool dead)

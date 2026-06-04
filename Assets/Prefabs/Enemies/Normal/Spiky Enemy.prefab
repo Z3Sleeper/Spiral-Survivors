@@ -380,9 +380,9 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  moveSpeed: 0.5
+  moveSpeed: 0.6
   backpedalSpeedDivisor: 2
-  maxHealth: 20
+  maxHealth: 30
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3

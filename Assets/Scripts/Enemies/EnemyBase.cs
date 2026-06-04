@@ -31,7 +31,7 @@ public class EnemyBase : NetworkIdentity
 
 
     public SyncVar<float> _currentHealthSync = new SyncVar<float>(0);
-    public float _currentHealth
+    public float CurrentHealth
     {
         get => _currentHealthSync.value;
         set => _currentHealthSync.value = value;
@@ -56,7 +56,7 @@ public class EnemyBase : NetworkIdentity
 
         if (!isServer) return;
         
-        _currentHealth = maxHealth;
+        CurrentHealth = maxHealth;
     }
 
     protected virtual void Update()
@@ -192,9 +192,9 @@ public class EnemyBase : NetworkIdentity
     public virtual void TakeDamage(float damage)
     {
         if (!isServer) return;
-        if (_currentHealth <= 0) return;
-        _currentHealth -= damage;
-        if (_currentHealth <= 0)
+        if (CurrentHealth <= 0) return;
+        CurrentHealth -= damage;
+        if (CurrentHealth <= 0)
             Die();
     }
 
