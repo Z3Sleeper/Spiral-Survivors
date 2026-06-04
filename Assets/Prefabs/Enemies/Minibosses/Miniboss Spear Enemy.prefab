@@ -8,6 +8,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: -6973549993052189348, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
+      propertyPath: m_Mass
+      value: 3000
+      objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
       propertyPath: m_Name
       value: Miniboss Spear Enemy

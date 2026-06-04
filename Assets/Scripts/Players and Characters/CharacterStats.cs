@@ -77,10 +77,10 @@ public class CharacterStats : NetworkBehaviour
         get => _currentHealth.value;
         set => _currentHealth.value = value;
     }
-    public float basehealthRegen = 1f;
+    public float baseHealthRegen = 0.5f;
     [NonSerialized] public float bonusHealthRegenFlat = 0f;
     [NonSerialized] public float bonusHealthRegenPercent = 1f;
-    public float HealthRegen => (basehealthRegen + bonusHealthRegenFlat) * bonusHealthRegenPercent;
+    public float HealthRegen => (baseHealthRegen + bonusHealthRegenFlat) * bonusHealthRegenPercent;
     [NonSerialized] public float _healthRegenTimer = 0f;
     [NonSerialized] public float _healthRegenInterval = 1f;
 
@@ -122,7 +122,7 @@ public class CharacterStats : NetworkBehaviour
         get => _currentEnergy.value;
         set => _currentEnergy.value = value;
     }
-    public float baseEnergyRegen = 10f;
+    public float baseEnergyRegen = 5f;
     [NonSerialized] public float bonusEnergyRegenFlat = 0f;
     [NonSerialized] public float bonusEnergyRegenPercent = 1f;
     public float EnergyRegen => (baseEnergyRegen + bonusEnergyRegenFlat) * bonusEnergyRegenPercent;

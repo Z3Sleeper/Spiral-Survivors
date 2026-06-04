@@ -2359,7 +2359,7 @@ MonoBehaviour:
   baseEliteChance: 0.01
   baseEliteCap: 2
   playerCountSpawnMultiplier: 0.5
-  waitForPlayersLoaded: 0
+  waitForPlayersLoaded: 1
 --- !u!1 &1198725972
 GameObject:
   m_ObjectHideFlags: 0

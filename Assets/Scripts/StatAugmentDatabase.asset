@@ -35,12 +35,12 @@ MonoBehaviour:
     appendText: 
   - statType: 4
     displayName: Attack Speed
-    value: 25
+    value: 15
     prependText: +
     appendText: '%'
   - statType: 5
     displayName: HP Regen
-    value: 1
+    value: 0.5
     prependText: +
     appendText: 
   - statType: 6
@@ -54,7 +54,7 @@ MonoBehaviour:
     prependText: +
     appendText: 
   - statType: 8
-    displayName: Dash Cooldown
+    displayName: Dash Haste
     value: 10
-    prependText: '-'
-    appendText: '%'
+    prependText: +
+    appendText: 

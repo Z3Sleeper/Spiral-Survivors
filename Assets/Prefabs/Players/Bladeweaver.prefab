@@ -371,7 +371,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  basehealthRegen: 1
+  baseHealthRegen: 0.5
   baseMaxShield: 0.1
   _currentShield:
     _value: 0

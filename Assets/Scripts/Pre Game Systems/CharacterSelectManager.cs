@@ -7,9 +7,9 @@ public class CharacterSelectManager : NetworkIdentity
 {
     public static CharacterSelectManager instance;
 
-    public SyncDictionary<PlayerID, int> playerCharacterChoices = new SyncDictionary<PlayerID, int>();
-    public SyncDictionary<PlayerID, bool> _readyStates = new SyncDictionary<PlayerID, bool>();
-    public SyncDictionary<PlayerID, bool> _loadedStates = new SyncDictionary<PlayerID, bool>();
+    public SyncDictionary<PlayerID, int> playerCharacterChoices = new();
+    public SyncDictionary<PlayerID, bool> _readyStates = new();
+    public SyncDictionary<PlayerID, bool> _loadedStates = new();
 
     private void Awake()
     {
@@ -53,12 +53,14 @@ public class CharacterSelectManager : NetworkIdentity
     [ServerRpc(requireOwnership: false)]
     public void SelectCharacter(int index, PlayerID player)
     {
+        if (!playerCharacterChoices.ContainsKey(player)) return;
         playerCharacterChoices[player] = index;
     }
 
     [ServerRpc(requireOwnership: false)]
     public void SelectRandom(PlayerID player)
     {
+        if (!playerCharacterChoices.ContainsKey(player)) return;
         int randomIndex = Random.Range(0, CharacterRegistry.instance.PrefabCount());
         playerCharacterChoices[player] = randomIndex;
     }
@@ -66,6 +68,7 @@ public class CharacterSelectManager : NetworkIdentity
     [ServerRpc(requireOwnership: false)]
     public void ReadyUp(PlayerID player)
     {
+        if (!playerCharacterChoices.ContainsKey(player)) return;
         if (_readyStates[player] == false)
             _readyStates[player] = true;
         else

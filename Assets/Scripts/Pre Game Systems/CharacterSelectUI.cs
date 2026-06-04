@@ -8,31 +8,37 @@ public class CharacterSelectUI : MonoBehaviour
 
     public void OnKnightClicked()
     {
+        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
         CharacterSelectManager.instance.SelectCharacter(0, NetworkManager.main.localPlayer);
     }
 
     public void OnRogueClicked()
     {
+        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
         CharacterSelectManager.instance.SelectCharacter(1, NetworkManager.main.localPlayer);
     }
 
     public void OnArcherClicked()
     {
+        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
         CharacterSelectManager.instance.SelectCharacter(2, NetworkManager.main.localPlayer);
     }
 
     public void OnBladeweaverClicked()
     {
+        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
         CharacterSelectManager.instance.SelectCharacter(3, NetworkManager.main.localPlayer);
     }
 
     public void OnRandomClicked()
     {
+        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
         CharacterSelectManager.instance.SelectRandom(NetworkManager.main.localPlayer);
     }
 
     public void OnReadyClicked()
     {
+        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
         CharacterSelectManager.instance.ReadyUp(NetworkManager.main.localPlayer);
     }
 
