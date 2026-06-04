@@ -54,6 +54,7 @@ public class EnemySpawner : NetworkIdentity
     {
         if (instance != null) { Destroy(gameObject); return; }
         instance = this;
+        CycleTimer = cycleInterval;
     }
 
     protected override void OnSpawned()

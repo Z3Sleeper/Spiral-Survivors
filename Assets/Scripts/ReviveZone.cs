@@ -9,7 +9,12 @@ public class ReviveZone : NetworkIdentity
     [SerializeField] private GameObject reviveProgressArea;
     private CharacterStats _stats;
     private HashSet<CharacterStats> _alliesInZone = new HashSet<CharacterStats>();
-    private float _chargeTimer = 0f;
+    public SyncVar<float> _chargeTimerSync = new SyncVar<float>(0f);
+    private float ChargeTimer
+    {
+        get => _chargeTimerSync.value;
+        set => _chargeTimerSync.value = value;
+    }
 
     protected override void OnSpawned()
     {
@@ -27,7 +32,7 @@ public class ReviveZone : NetworkIdentity
         reviveAreaCollider.enabled = dead;
         reviveProgressArea.SetActive(dead);
         reviveArea.SetActive(dead);
-        _chargeTimer = 0f;
+        ChargeTimer = 0f;
         _alliesInZone.Clear();
         if (dead)
             reviveProgressArea.transform.localScale = new Vector3(0f, reviveProgressArea.transform.localScale.y, 0f);
@@ -36,8 +41,16 @@ public class ReviveZone : NetworkIdentity
     private void Update()
     {
         if (_stats == null) return;
-        if (!isServer) return;
         if (!_stats.IsDead) return;
+
+        // Scale on all clients from synced timer
+        reviveProgressArea.transform.localScale = new Vector3(
+            ChargeTimer / _stats.reviveTime * 5f,
+            reviveProgressArea.transform.localScale.y,
+            ChargeTimer / _stats.reviveTime * 5f
+        );
+
+        if (!isServer) return;
 
         int aliveAllies = 0;
         foreach (var ally in _alliesInZone)
@@ -45,19 +58,12 @@ public class ReviveZone : NetworkIdentity
 
         if (aliveAllies <= 0) return;
 
-        _chargeTimer += Time.deltaTime * aliveAllies;
+        ChargeTimer += Time.deltaTime * aliveAllies;
 
-        // Scale the progress zone
-        reviveProgressArea.transform.localScale = new Vector3(
-            _chargeTimer/_stats.reviveTime * 5f,
-            reviveProgressArea.transform.localScale.y,
-            _chargeTimer/_stats.reviveTime * 5f
-        );
-
-        if (_chargeTimer >= _stats.reviveTime)
+        if (ChargeTimer >= _stats.reviveTime)
         {
             _stats.Revive();
-            reviveProgressArea.transform.localScale = new Vector3(0f, reviveProgressArea.transform.localScale.y, 0f);
+            ChargeTimer = 0f;
             _stats.reviveTime += 2f;
         }
     }
