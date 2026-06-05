@@ -31,7 +31,7 @@ public class WeaponBow : WeaponBase
         if (_stats.continuousFire || HasEnemyInLoS())
         {
             Fire();
-            _fireTimer = 1f / _stats.AttackSpeed;
+            _fireTimer = 1f / (_stats.AttackSpeed * 6);
         }
     }
 

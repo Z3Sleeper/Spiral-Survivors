@@ -12,12 +12,15 @@ public class EnemyBase : NetworkIdentity
 
     [Header("Stats")]
     public float moveSpeed = 0.3f;
+    [NonSerialized] public float baseMoveSpeed;
     public float backpedalSpeedDivisor = 2f;
     public float maxHealth = 30f;
+    [NonSerialized] public float baseHealth;
     public float preferredRange = 0f; // 0 = melee, >0 = ranged
     public float rangeToleranceFar = 1f;
     public float rangeToleranceClose = 0.3f;
-    public float baseDamage = 10f;
+    public float damage = 10f;
+    [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
     [Header("Contact Damage")]
     public bool hasContactDamage = false;
@@ -57,6 +60,9 @@ public class EnemyBase : NetworkIdentity
         if (!isServer) return;
         
         CurrentHealth = maxHealth;
+        baseHealth = maxHealth;
+        baseDamage = damage;
+        baseMoveSpeed = moveSpeed;
     }
 
     protected virtual void Update()
@@ -235,6 +241,6 @@ public class EnemyBase : NetworkIdentity
         if (_contactCooldowns.ContainsKey(player)) return;
 
         _contactCooldowns[player] = contactCooldown;
-        player.TakeDamageRpc(baseDamage);
+        player.TakeDamageRpc(damage);
     }
 }

@@ -20,7 +20,7 @@ public class CharacterStats : NetworkBehaviour
     [Header("Weapon")]
     public float baseWeaponDamage = 10f;
     [NonSerialized] public float bonusWeaponDamageFlat = 0f;
-    [NonSerialized] public float bonusWeaponDamagePercent = 1f;
+    public float bonusWeaponDamagePercent = 1f;
     public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent;
 
     public float baseWeaponRadius = 0f;
@@ -43,10 +43,7 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusWeaponRangePercent = 1f;
     public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent;
 
-    public float baseAttackSpeed = 1f;
-    [NonSerialized] public float bonusAttackSpeedFlat = 0f;
-    [NonSerialized] public float bonusAttackSpeedPercent = 1f;
-    public float AttackSpeed => (baseAttackSpeed + bonusAttackSpeedFlat) * bonusAttackSpeedPercent;
+    public float AttackSpeed => WeaponSpeed / 360f;
 
     public bool continuousFire = false;
 
@@ -154,7 +151,7 @@ public class CharacterStats : NetworkBehaviour
     [Header("Dash")]
     public int dashCharges = 3;
     public float baseDashCooldown = 5f;
-    public float dashHaste = 1f;
+    [NonSerialized] public float dashHaste = 1f;
     public float DashCooldown => baseDashCooldown / dashHaste;
 
     [Header("Misc")]

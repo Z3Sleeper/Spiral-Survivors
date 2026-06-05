@@ -187,7 +187,6 @@ public class PlayerController : NetworkIdentity
 
         _stats.bonusMoveSpeedPercent *= _surgeMoveSpeedBonus;
         _stats.bonusWeaponSpeedPercent *= _surgeWeaponSpeedBonus;
-        _stats.bonusAttackSpeedPercent *= _surgeAttackSpeedBonus;
     }
 
     private void EndSurge()
@@ -195,6 +194,5 @@ public class PlayerController : NetworkIdentity
         isSurging = false;
         _stats.bonusMoveSpeedPercent /= _surgeMoveSpeedBonus;
         _stats.bonusWeaponSpeedPercent /= _surgeWeaponSpeedBonus;
-        _stats.bonusAttackSpeedPercent /= _surgeAttackSpeedBonus;
     }
 }

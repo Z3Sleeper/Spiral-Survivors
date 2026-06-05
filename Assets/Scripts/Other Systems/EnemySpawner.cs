@@ -20,10 +20,12 @@ public class EnemySpawner : NetworkIdentity
     private static readonly WaitForSeconds _waitForSeconds0_5 = new(0.5f);
     public static EnemySpawner instance;
 
-    private float _enemyHealthMult = 1f;
-    private float _enemyDamageMult = 1f;
-    private float _enemySpeedMult = 1f;
-    private const float ScalingFactor = 1.1f;
+    [SerializeField] private float ScalingHealthFactor = 1.15f;
+    [SerializeField] private float ScalingHealthAddend = 0.5f;
+    [SerializeField] private float ScalingDamageFactor = 1f;
+    [SerializeField] private float ScalingDamageAddend = 0.5f;
+    [SerializeField] private float ScalingSpeedFactor = 1f;
+    [SerializeField] private float ScalingSpeedAddend = 0.1f;
 
     [SerializeField] private List<EnemyEntry> enemyEntries;
     [SerializeField] private float spawnMinDistance = 25f;
@@ -145,10 +147,6 @@ public class EnemySpawner : NetworkIdentity
             else if (_minibossEnemies.Count > 0)
                 SpawnThisEnemy(GetWeightedRandom(_minibossEnemies));
 
-            _enemyHealthMult *= ScalingFactor;
-            _enemyDamageMult *= ScalingFactor;
-            _enemySpeedMult *= ScalingFactor;
-
             RollNewSet();
         }
     }
@@ -205,10 +203,16 @@ public class EnemySpawner : NetworkIdentity
     {
         var obj = Instantiate(entry.prefab, GetSpawnPosition(), Quaternion.identity);
         var enemy = obj.GetComponent<EnemyBase>();
-        enemy.maxHealth *= _enemyHealthMult;
-        enemy.CurrentHealth = enemy.maxHealth;
-        enemy.baseDamage *= _enemyDamageMult;
-        enemy.moveSpeed *= _enemySpeedMult;
+        if (_cycleCount > 0)
+        {
+            enemy.maxHealth += enemy.baseHealth * ScalingHealthAddend * _cycleCount;
+            enemy.maxHealth *= ScalingHealthFactor;
+            enemy.CurrentHealth = enemy.maxHealth;
+            enemy.damage += enemy.baseDamage * ScalingDamageAddend * _cycleCount;
+            enemy.damage *= ScalingDamageFactor;
+            enemy.moveSpeed += enemy.baseMoveSpeed * ScalingSpeedAddend * _cycleCount;
+            enemy.moveSpeed *= ScalingSpeedFactor;
+        }
     }
 
     private EnemyEntry GetWeightedRandom(List<EnemyEntry> entries)

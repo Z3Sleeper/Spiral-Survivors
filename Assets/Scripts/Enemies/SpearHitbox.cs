@@ -15,6 +15,6 @@ public class SpearHitbox : MonoBehaviour
         if (other.gameObject.layer != LayerMask.NameToLayer("PlayerHurtbox")) return;
         var player = other.GetComponentInParent<CharacterStats>();
         if (player == null) return;
-        player.TakeDamageRpc(_spear.baseDamage * _spear.stabDamageMultiplier);
+        player.TakeDamageRpc(_spear.damage * _spear.stabDamageMultiplier);
     }
 }

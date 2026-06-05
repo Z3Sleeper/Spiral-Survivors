@@ -15,6 +15,7 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI dashChargesText;
     [SerializeField] private Image energyImage;
     [SerializeField] private TextMeshProUGUI energyText;
+    [SerializeField] private TextMeshProUGUI statsNumbersText;
     [SerializeField] private Slider xpBar;
     [SerializeField] private TextMeshProUGUI xpText;
     [SerializeField] private TextMeshProUGUI timerText;
@@ -47,10 +48,10 @@ public class LocalUIManager : MonoBehaviour
         healthBar.value = _stats.CurrentHealth / _stats.MaxHealth;
         shieldBar.value = _stats.CurrentShield / _stats.MaxShield;
         shieldRegenBar.value = (_stats.ShieldRegenTime - _stats._shieldRechargeTimer) / _stats.ShieldRegenTime;
-        healthText.text = $"<b><color=#FF00FF>(+{(int)_stats.CurrentShield})</color> {(int)_stats.CurrentHealth}/{(int)_stats.MaxHealth}</b>";
+        healthText.text = $"<b><color=#FF00FF>{(int)_stats.CurrentShield}/{(int)_stats.MaxShield}</color> {(int)_stats.CurrentHealth}/{(int)_stats.MaxHealth}</b>";
 
         // Health Regen
-        healthRegenText.text = $"<b>+{_stats.HealthRegen}/s</b>";
+        healthRegenText.text = $"<b>+{_stats.HealthRegen:G4}/s</b>";
 
         // Dash
         if (_controller._currentCharges < _stats.dashCharges)
@@ -69,6 +70,9 @@ public class LocalUIManager : MonoBehaviour
         else
             energyImage.color = Color.yellow;
         energyText.text = $"<b>{(int)_stats.CurrentEnergy}</b>";
+
+        // Stats
+        statsNumbersText.text = $" {_stats.WeaponDamage:G4}\n {_stats.AttackSpeed:G4}\n {_stats.EnergyRegen:G4}\n {_stats.WeaponRange * 10f:G4}\n {_stats.MoveSpeed * 10f:G4}";
 
         // XP
         if (GameManager.instance != null)

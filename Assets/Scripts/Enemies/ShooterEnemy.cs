@@ -124,7 +124,7 @@ public class ShooterEnemy : EnemyBase
         dir.y = 0;
         Vector3 spawnPosition = new(gun.transform.position.x, 0f, gun.transform.position.z);
         var proj = Instantiate(projectilePrefab, spawnPosition, Quaternion.LookRotation(dir.normalized));
-        proj.GetComponent<ShooterEnemyProjectile>().Init(baseDamage, dir.normalized, speed, maxRange);
+        proj.GetComponent<ShooterEnemyProjectile>().Init(damage, dir.normalized, speed, maxRange);
 
         _shotsRemaining--;
     }
