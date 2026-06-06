@@ -10,5 +10,10 @@ public class CharacterRegistry : MonoBehaviour
 
     public GameObject GetPrefab(int index) => characterPrefabs[index];
 
-    private void Awake() => instance = this;
+    private void Awake()
+    {
+        if (instance != null) { Destroy(gameObject); return; }
+        instance = this;
+        DontDestroyOnLoad(gameObject);
+    }
 }

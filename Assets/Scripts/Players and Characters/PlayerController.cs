@@ -15,7 +15,6 @@ public class PlayerController : NetworkIdentity
     [HideInInspector] public float _chargeRegenTimer;
     private bool _isDashing;
     [HideInInspector] public float _dashTimer;
-    private Collider _hurtbox;
     private Collider _physicsCollider;
 
     public bool isSurging { get; private set; }
@@ -32,7 +31,6 @@ public class PlayerController : NetworkIdentity
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
-        _hurtbox = transform.Find("Hurtbox").GetComponent<Collider>();
         _physicsCollider = transform.Find("PhysicsCollider").GetComponent<Collider>();
         _orbLayer = LayerMask.GetMask("XPOrb");
     }
@@ -159,7 +157,7 @@ public class PlayerController : NetworkIdentity
         if (_chargeRegenTimer <= 0f)
             _chargeRegenTimer = _stats.DashCooldown;
         _dashTimer = DashDistance / DashSpeed;
-        _hurtbox.enabled = false;
+        _stats.invincible = true;
         _physicsCollider.enabled = false;
 
         _rb.linearVelocity = Vector3.zero;
@@ -169,7 +167,7 @@ public class PlayerController : NetworkIdentity
     private void EndDash()
     {
         _isDashing = false;
-        _hurtbox.enabled = true;
+        _stats.invincible = false;
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
     }

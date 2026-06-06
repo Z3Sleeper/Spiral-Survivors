@@ -3,11 +3,11 @@ using UnityEngine;
 
 public class WeaponArrow : NetworkIdentity
 {
-    private CharacterStats _stats;
-    private PlayerController _controller;
     private float _speed;
     private float _damage;
     private float _maxRange;
+    private float _critChance;
+    private float _critDamage;
     private Vector3 _direction;
     private float _distanceTravelled;
     private bool _hit;
@@ -19,14 +19,14 @@ public class WeaponArrow : NetworkIdentity
         enabled = isOwner;
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction, float speed, CharacterStats stats, PlayerController controller)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage)
     {
         _damage = damage;
         _maxRange = maxRange;
         _direction = direction.normalized;
         _speed = speed;
-        _stats = stats;
-        _controller = controller;
+        _critChance = critChance;
+        _critDamage = critDamage;
         _spawnPoint = transform.position;
     }
 
@@ -51,7 +51,13 @@ public class WeaponArrow : NetworkIdentity
         if (enemy == null) return;
 
         _hit = true;
-        enemy.TakeDamageRpc(_damage);
+
+        // Calculate Crit
+        float damage = _damage;
+        if (Random.value < _critChance)
+            damage *= _critDamage;
+
+        enemy.TakeDamageRpc(damage);
         Destroy(gameObject);
     }
 }

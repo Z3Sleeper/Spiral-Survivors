@@ -21,6 +21,8 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI bossTimerText;
 
+    private readonly System.Text.StringBuilder _statsSB = new();
+
     private CharacterStats _stats;
     private PlayerController _controller;
 
@@ -72,13 +74,22 @@ public class LocalUIManager : MonoBehaviour
         energyText.text = $"<b>{(int)_stats.CurrentEnergy}</b>";
 
         // Stats
-        statsNumbersText.text = $" {_stats.WeaponDamage:G4}\n {_stats.AttackSpeed:G4}\n {_stats.EnergyRegen:G4}\n {_stats.WeaponRange * 10f:G4}\n {_stats.MoveSpeed * 10f:G4}";
+        _statsSB.Clear();
+        _statsSB.AppendLine($" {_stats.WeaponDamage:G4}");
+        _statsSB.AppendLine($" {_stats.AttackSpeed:G4}");
+        _statsSB.AppendLine($" {_stats.EnergyRegen:G4}");
+        _statsSB.AppendLine($" {_stats.WeaponRange * 5f:G4}");
+        _statsSB.AppendLine($" {_stats.MoveSpeed * 10f:G4}");
+        _statsSB.AppendLine($" {_stats.dashHaste:G4}");
+        _statsSB.AppendLine($" {_stats.CritChance * 100f:G4}%");
+        _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
+        statsNumbersText.text = _statsSB.ToString();
 
         // XP
         if (GameManager.instance != null)
         {
-            xpBar.value = (float)GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
-            xpText.text = $"<b>Level {GameManager.instance.Level} | {GameManager.instance.CurrentXP}/{GameManager.instance.XPToNextLevel} XP</b>";
+            xpBar.value = GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
+            xpText.text = $"<b>Level {GameManager.instance.Level} | {GameManager.instance.CurrentXP:G4}/{GameManager.instance.XPToNextLevel:G4} XP</b>";
         }
 
         // Run Clock

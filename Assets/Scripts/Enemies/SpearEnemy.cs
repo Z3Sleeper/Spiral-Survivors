@@ -89,9 +89,7 @@ public class SpearEnemy : EnemyBase
 
     private void EnterWindup()
     {
-        _state = State.Windup;
         _stateTimer = windupDuration;
-        dangerIndicator.SetActive(true);
         spearHitbox.enabled = false;
 
         // Snap to face target
@@ -102,13 +100,14 @@ public class SpearEnemy : EnemyBase
             if (dir != Vector3.zero)
                 transform.rotation = Quaternion.LookRotation(dir);
         }
+        
+        _state = State.Windup;
     }
 
     private void EnterStab()
     {
         _state = State.Stabbing;
         _stateTimer = stabDuration;
-        dangerIndicator.SetActive(false);
         spearHitbox.enabled = true;
         _attacksRemaining--;
     }

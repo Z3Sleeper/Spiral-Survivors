@@ -122,4 +122,20 @@ public class CharacterSelectManager : NetworkIdentity
         HideLoadingScreen();
         EnemySpawner.instance.StartSpawning();
     }
+
+    public void ResetLobby()
+    {
+        if (!isServer) return;
+        
+        playerCharacterChoices.Clear();
+        _readyStates.Clear();
+        _loadedStates.Clear();
+
+        foreach (var player in NetworkManager.main.players)
+        {
+            playerCharacterChoices[player] = 0;
+            _readyStates[player] = false;
+            _loadedStates[player] = false;
+        }
+    }
 }

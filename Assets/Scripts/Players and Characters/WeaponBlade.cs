@@ -25,6 +25,12 @@ public class WeaponBlade : WeaponBase
         if (_hitTimestamps.TryGetValue(enemy, out float lastHit) && Time.time - lastHit < cooldown) return;
 
         _hitTimestamps[enemy] = Time.time;
-        enemy.TakeDamageRpc(_stats.WeaponDamage);
+
+        // Calculate Crit
+        float damage = _stats.WeaponDamage;
+        if (Random.value < _stats.CritChance)
+            damage *= _stats.CritDamage;
+
+        enemy.TakeDamageRpc(damage);
     }
 }

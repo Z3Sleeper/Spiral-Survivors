@@ -30,11 +30,13 @@ public class EnemySpawner : NetworkIdentity
     [SerializeField] private List<EnemyEntry> enemyEntries;
     [SerializeField] private float spawnMinDistance = 25f;
     [SerializeField] private float spawnMaxDistance = 40f;
-    [SerializeField] private float spawnInterval = 1f;
+    [SerializeField] private float baseSpawnInterval = 1f;
+    private float _spawnInterval;
     [SerializeField] private float cycleInterval = 150f; // 2.5 minutes
     [SerializeField] private float baseEliteChance = 0.1f;
     [SerializeField] private int baseEliteCap = 2;
-    [SerializeField] private float playerCountSpawnMultiplier = 0.75f;
+    public float coopSpawnTimeScalar = 0.5f;
+    [SerializeField] private float coopBossHealthScalar = 0.5f;
     [SerializeField] private bool waitForPlayersLoaded = true;
 
     private List<EnemyEntry> _normalEnemies = new();
@@ -55,7 +57,6 @@ public class EnemySpawner : NetworkIdentity
     private int _elitesSpawnedThisCycle = 0;
     private float _currentEliteChance;
     private int _currentEliteCap;
-    private int _playerCount;
 
     private void Awake()
     {
@@ -95,9 +96,9 @@ public class EnemySpawner : NetworkIdentity
 
     public void StartSpawning()
     {
-        _playerCount = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None).Count();
+        _spawnInterval = baseSpawnInterval / (1f + (networkManager.playerCount - 1) * coopSpawnTimeScalar);
         _currentEliteChance = baseEliteChance;
-        _currentEliteCap = baseEliteCap * _playerCount;
+        _currentEliteCap = baseEliteCap * networkManager.playerCount;
         CycleTimer = cycleInterval;
         StartCoroutine(SpawnLoop());
         StartCoroutine(CycleLoop());
@@ -111,16 +112,15 @@ public class EnemySpawner : NetworkIdentity
             if (_eliteEnemies.Count > 0 && _elitesSpawnedThisCycle < _currentEliteCap
                 && UnityEngine.Random.value < _currentEliteChance)
             {
-                SpawnThisEnemy(GetWeightedRandom(_eliteEnemies));
+                SpawnThisEnemy(GetWeightedRandom(_eliteEnemies), false);
                 _elitesSpawnedThisCycle++;
             }
             else if (_currentSet.Count > 0)
             {
-                SpawnThisEnemy(GetWeightedRandom(_currentSet));
+                SpawnThisEnemy(GetWeightedRandom(_currentSet), false);
             }
 
-            float interval = spawnInterval / (1f + (_playerCount - 1) * playerCountSpawnMultiplier);
-            yield return new WaitForSeconds(interval);
+            yield return new WaitForSeconds(_spawnInterval);
         }
     }
 
@@ -128,9 +128,9 @@ public class EnemySpawner : NetworkIdentity
     {
         while (true)
         {
-            yield return new WaitForSeconds(spawnInterval * 0.1f); // tick frequently
+            yield return new WaitForSeconds(baseSpawnInterval * 0.1f); // tick frequently
 
-            CycleTimer -= spawnInterval * 0.1f;
+            CycleTimer -= baseSpawnInterval * 0.1f;
             if (CycleTimer > 0f) continue;
 
             CycleTimer = cycleInterval;
@@ -139,13 +139,13 @@ public class EnemySpawner : NetworkIdentity
 
             // Increase elite chance and cap
             _currentEliteChance += baseEliteChance * 0.5f;
-            _currentEliteCap = (baseEliteCap + _cycleCount) * _playerCount;
+            _currentEliteCap = (baseEliteCap + _cycleCount) * networkManager.playerCount;
 
             // Spawn miniboss or boss
             if (_cycleCount % 4 == 0 && _bossEnemies.Count > 0)
-                SpawnThisEnemy(GetWeightedRandom(_bossEnemies));
+                SpawnThisEnemy(GetWeightedRandom(_bossEnemies), true);
             else if (_minibossEnemies.Count > 0)
-                SpawnThisEnemy(GetWeightedRandom(_minibossEnemies));
+                SpawnThisEnemy(GetWeightedRandom(_minibossEnemies), true);
 
             RollNewSet();
         }
@@ -199,15 +199,16 @@ public class EnemySpawner : NetworkIdentity
         _currentSet = newSet;
     }
 
-    private void SpawnThisEnemy(EnemyEntry entry)
+    private void SpawnThisEnemy(EnemyEntry entry, bool isBoss)
     {
         var obj = Instantiate(entry.prefab, GetSpawnPosition(), Quaternion.identity);
         var enemy = obj.GetComponent<EnemyBase>();
+        if (isBoss)
+            enemy.maxHealth *= 1f + (networkManager.playerCount - 1) * coopBossHealthScalar;
         if (_cycleCount > 0)
         {
             enemy.maxHealth += enemy.baseHealth * ScalingHealthAddend * _cycleCount;
             enemy.maxHealth *= ScalingHealthFactor;
-            enemy.CurrentHealth = enemy.maxHealth;
             enemy.damage += enemy.baseDamage * ScalingDamageAddend * _cycleCount;
             enemy.damage *= ScalingDamageFactor;
             enemy.moveSpeed += enemy.baseMoveSpeed * ScalingSpeedAddend * _cycleCount;

@@ -41,6 +41,15 @@ public class AugmentManager : NetworkBehaviour
         }
 
         _playerOptions[player] = options;
+
+        var indicesA = new int[options.Count];
+        var indicesB = new int[options.Count];
+        for (int i = 0; i < options.Count; i++)
+        {
+            indicesA[i] = statDatabase.stats.IndexOf(options[i].statA);
+            indicesB[i] = statDatabase.stats.IndexOf(options[i].statB);
+        }
+        SendOptionsToPlayerRpc(player, indicesA, indicesB);
     }
 
     public List<StatAugmentPair> GetOptionsForPlayer(PlayerID player)
@@ -87,7 +96,7 @@ public class AugmentManager : NetworkBehaviour
                 stats.bonusMoveSpeedFlat += entry.value * 0.1f;
                 break;
             case StatType.WeaponRange:
-                stats.bonusWeaponRangeFlat += entry.value * 0.1f;
+                stats.bonusWeaponRangeFlat += entry.value * 0.2f;
                 break;
             case StatType.AttackSpeed:
                 stats.bonusWeaponSpeedFlat += entry.value * 0.01f * stats.baseWeaponSpeed;
@@ -104,7 +113,20 @@ public class AugmentManager : NetworkBehaviour
             case StatType.DashCooldown:
                 stats.dashHaste += entry.value * 0.01f;
                 break;
+            case StatType.CritChance:
+                stats.bonusCritChanceFlat += entry.value * 0.01f;
+                break;
         }
+    }
+
+    [TargetRpc]
+    private void SendOptionsToPlayerRpc(PlayerID target, int[] statIndicesA, int[] statIndicesB)
+    {
+        var options = new List<StatAugmentPair>();
+        for (int i = 0; i < statIndicesA.Length; i++)
+            options.Add(new StatAugmentPair(statDatabase.stats[statIndicesA[i]], statDatabase.stats[statIndicesB[i]]));
+        
+        NetworkedUIManager.instance?.ShowLevelUpScreen(options);
     }
 }
 

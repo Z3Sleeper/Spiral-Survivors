@@ -109,7 +109,7 @@ public class ShooterEnemy : EnemyBase
             Vector3 dir = _target.position - transform.position;
             dir.y = 0;
             if (dir != Vector3.zero)
-                transform.rotation = Quaternion.LookRotation(dir);
+                _rb.MoveRotation(Quaternion.LookRotation(dir));
         }
     }
 

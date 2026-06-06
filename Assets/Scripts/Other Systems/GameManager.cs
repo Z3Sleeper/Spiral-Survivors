@@ -1,16 +1,18 @@
 using PurrNet;
+using PurrNet.Modules;
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class GameManager : NetworkIdentity
 {
     public static GameManager instance;
     public CharacterSpawner characterSpawner;
 
-    [NonSerialized] public SyncVar<int> _currentXP = new(0);
-    public int CurrentXP
+    [NonSerialized] public SyncVar<float> _currentXP = new(0);
+    public float CurrentXP
     {
         get => _currentXP.value;
         set => _currentXP.value = value;
@@ -23,8 +25,8 @@ public class GameManager : NetworkIdentity
         set => _level.value = value;
     }
 
-    [NonSerialized] public SyncVar<int> _xpToNextLevel = new(20);
-    public int XPToNextLevel
+    [NonSerialized] public SyncVar<float> _xpToNextLevel = new(20);
+    public float XPToNextLevel
     {
         get => _xpToNextLevel.value;
         set => _xpToNextLevel.value = value;
@@ -41,6 +43,7 @@ public class GameManager : NetworkIdentity
     private float _avgXPMod = 1f;
 
     private HashSet<PlayerID> _readyPlayers = new();
+    private HashSet<PlayerID> _gameOverReadyPlayers = new();
     private Coroutine _levelUpTimerCoroutine;
 
     private const float LevelUpTimerDuration = 30f;
@@ -77,7 +80,8 @@ public class GameManager : NetworkIdentity
     [ServerRpc(requireOwnership: false)]
     public void AddXPRpc(int value)
     {
-        int xpGained = Mathf.RoundToInt(value * _avgXPMod);
+        float coopXPPenalty = 1f + (networkManager.playerCount - 1) * EnemySpawner.instance.coopSpawnTimeScalar;
+        float xpGained = value * _avgXPMod / coopXPPenalty;
         CurrentXP += xpGained;
         if (CurrentXP >= XPToNextLevel)
             LevelUp();
@@ -87,13 +91,12 @@ public class GameManager : NetworkIdentity
     {
         Level++;
         CurrentXP -= XPToNextLevel;
-        XPToNextLevel = Mathf.RoundToInt(XPToNextLevel * 1.25f);
+        XPToNextLevel *= 1.25f;
 
         _readyPlayers.Clear();
         IsPaused = true;
 
         OnLevelUp?.Invoke();
-        ShowLevelUpScreenRpc();
 
         // Generate options for each player
         foreach (var player in networkManager.players)
@@ -115,8 +118,7 @@ public class GameManager : NetworkIdentity
 
         _readyPlayers.Add(player);
 
-        int playerCount = networkManager != null ? networkManager.playerCount : 1;
-        if (_readyPlayers.Count >= playerCount)
+        if (_readyPlayers.Count >= networkManager.playerCount)
             ResolveLevelUp();
     }
 
@@ -161,21 +163,49 @@ public class GameManager : NetworkIdentity
     }
 
     [ObserversRpc]
-    private void ShowLevelUpScreenRpc()
-    {
-        bool isMultiplayer = networkManager != null && networkManager.playerCount >= 2;
-        NetworkedUIManager.instance?.ShowLevelUpScreen(isMultiplayer);
-    }
-
-    [ObserversRpc]
     private void HideLevelUpScreenRpc()
     {
-        NetworkedUIManager.instance?.HideLevelUpScreen();
+        NetworkedUIManager.instance.HideLevelUpScreen();
     }
 
     [ObserversRpc]
     private void UpdateTimerRpc(int secondsRemaining)
     {
-        NetworkedUIManager.instance?.UpdateTimer(secondsRemaining);
+        NetworkedUIManager.instance.UpdateTimer(secondsRemaining);
+    }
+
+    [ServerRpc(requireOwnership: false)]
+    public void CheckAllPlayersDead()
+    {
+        var players = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None);
+        foreach (var player in players)
+            if (!player.IsDead) return;
+        ShowGameOverRPC();
+    }
+
+    [ObserversRpc]
+    private void ShowGameOverRPC()
+    {
+        _gameOverReadyPlayers.Clear();
+        NetworkedUIManager.instance.ShowGameOverScreen();
+    }
+
+    [ServerRpc(requireOwnership: false)]
+    public void ConfirmReturnToLobbyRpc(PlayerID player)
+    {
+        _gameOverReadyPlayers.Add(player);
+        if (_gameOverReadyPlayers.Count >= networkManager.playerCount)
+            ReturnToLobby();
+    }
+
+    private void ReturnToLobby()
+    {
+        if (CharacterSelectManager.instance != null)
+            CharacterSelectManager.instance.ResetLobby();
+        NetworkManager.main.sceneModule.LoadSceneAsync("Lobby Scene", new PurrSceneSettings
+        {
+            mode = LoadSceneMode.Single,
+            isPublic = true
+        });
     }
 }

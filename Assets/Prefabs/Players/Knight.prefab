@@ -447,7 +447,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  baseHealthRegen: 0.5
+  baseHealthRegen: 2
   baseMaxShield: 0.1
   _currentShield:
     _value: 0
@@ -461,10 +461,12 @@ MonoBehaviour:
   baseEnergyRegen: 5
   dashCharges: 3
   baseDashCooldown: 5
+  dashHaste: 0
   _isDeadSync:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
+  invincible: 0
 --- !u!114 &6361539828381301634
 MonoBehaviour:
   m_ObjectHideFlags: 0

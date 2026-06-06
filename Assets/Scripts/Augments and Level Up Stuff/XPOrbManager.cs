@@ -15,14 +15,14 @@ public class XPOrbManager : MonoBehaviour
         instance = this;
     }
 
-    public void SpawnOrbs(Vector3 position, float xpValue)
+    public void SpawnOrbs(Vector3 position, int xpValue)
     {
-        int remaining = Mathf.RoundToInt(xpValue);
+        int remaining = xpValue;
 
         int count100 = remaining / 100;
         remaining %= 100;
         int count10 = remaining / 10;
-        remaining %= 5;
+        remaining %= 10;
         int count1 = remaining;
 
         for (int i = 0; i < count100; i++) SpawnOrb(orbPrefab100, position, 100);

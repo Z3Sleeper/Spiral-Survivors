@@ -58,3 +58,8 @@ MonoBehaviour:
     value: 10
     prependText: +
     appendText: 
+  - statType: 9
+    displayName: Crit Chance
+    value: 5
+    prependText: +
+    appendText: '%'

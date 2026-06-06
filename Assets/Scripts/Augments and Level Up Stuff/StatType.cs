@@ -8,5 +8,6 @@ public enum StatType
     HealthRegen,
     MaxShield,
     EnergyRegen,
-    DashCooldown
+    DashCooldown,
+    CritChance
 }

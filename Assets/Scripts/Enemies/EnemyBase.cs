@@ -21,11 +21,11 @@ public class EnemyBase : NetworkIdentity
     public float rangeToleranceClose = 0.3f;
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
-    public float xpValue = 1f;
+    public int xpValue = 1;
     [Header("Contact Damage")]
     public bool hasContactDamage = false;
-    public float contactCooldown = 1f;
-    private Dictionary<CharacterStats, float> _contactCooldowns = new Dictionary<CharacterStats, float>();
+    public float contactCooldown = 0.5f;
+    private Dictionary<CharacterStats, float> _contactCooldowns = new();
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
     private const float TooFarDistance = 55f;
@@ -33,7 +33,7 @@ public class EnemyBase : NetworkIdentity
     private const float RelocateMaxDistance = 40f;
 
 
-    public SyncVar<float> _currentHealthSync = new SyncVar<float>(0);
+    public SyncVar<float> _currentHealthSync = new(0);
     public float CurrentHealth
     {
         get => _currentHealthSync.value;
@@ -49,6 +49,10 @@ public class EnemyBase : NetworkIdentity
         _rb = GetComponent<Rigidbody>();
         _hurtbox = transform.Find("Hurtbox").GetComponent<Collider>();
         _physicsCollider = transform.Find("PhysicsCollider").GetComponent<Collider>();
+        
+        baseHealth = maxHealth;
+        baseDamage = damage;
+        baseMoveSpeed = moveSpeed;
     }
 
     protected override void OnSpawned()
@@ -58,11 +62,7 @@ public class EnemyBase : NetworkIdentity
         enabled = isServer;
 
         if (!isServer) return;
-        
         CurrentHealth = maxHealth;
-        baseHealth = maxHealth;
-        baseDamage = damage;
-        baseMoveSpeed = moveSpeed;
     }
 
     protected virtual void Update()

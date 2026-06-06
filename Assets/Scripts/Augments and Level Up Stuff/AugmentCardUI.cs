@@ -30,5 +30,6 @@ public class AugmentCardUI : MonoBehaviour
     {
         pickButton.interactable = false;
         AugmentManager.instance.PickAugmentRpc(_player, _cardIndex);
+        NetworkedUIManager.instance.HideAllCards();
     }
 }

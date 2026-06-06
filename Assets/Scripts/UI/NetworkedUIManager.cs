@@ -9,34 +9,18 @@ public class NetworkedUIManager : NetworkIdentity
 
     [Header("Level Up Panel")]
     [SerializeField] private GameObject levelUpScreen;
+    [SerializeField] private GameObject gameOverScreen;
     [SerializeField] private TMP_Text timerText;
     [SerializeField] private AugmentCardUI cardPrefab;
     [SerializeField] private Transform cardContainer;
-    private List<AugmentCardUI> _cardPool = new List<AugmentCardUI>();
+    private List<AugmentCardUI> _cardPool = new();
 
     private void Awake()
     {
         if (instance != null) { Destroy(gameObject); return; }
         instance = this;
         levelUpScreen.SetActive(false);
-    }
-
-    public void ShowLevelUpScreen(bool showTimer)
-    {
-        levelUpScreen.SetActive(true);
-        timerText.text = showTimer ? "Time Remaining: 30s" : "";
-
-        HideAllCards();
-
-        if (localPlayer.HasValue)
-        {
-            var options = AugmentManager.instance.GetOptionsForPlayer(localPlayer.Value);
-            if (options != null)
-            {
-                for (int i = 0; i < options.Count; i++)
-                    GetCard(i).Setup(options[i], i, localPlayer.Value);
-            }
-        }
+        gameOverScreen.SetActive(false);
     }
 
     public void HideLevelUpScreen()
@@ -64,9 +48,28 @@ public class NetworkedUIManager : NetworkIdentity
         return card;
     }
 
-    private void HideAllCards()
+    public void HideAllCards()
     {
         foreach (var card in _cardPool)
             card.gameObject.SetActive(false);
+    }
+
+    public void ShowGameOverScreen()
+    {
+        gameOverScreen.SetActive(true);
+    }
+
+    public void OnReturnToLobbyClicked()
+    {
+        GameManager.instance.ConfirmReturnToLobbyRpc(localPlayer.Value);
+    }
+
+    public void ShowLevelUpScreen(List<StatAugmentPair> options)
+    {
+        levelUpScreen.SetActive(true);
+        timerText.text = (networkManager.playerCount > 1) ? "Time Remaining: 30s" : "";
+        HideAllCards();
+        for (int i = 0; i < options.Count; i++)
+            GetCard(i).Setup(options[i], i, localPlayer.Value);
     }
 }

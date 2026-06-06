@@ -96,12 +96,12 @@ public class BlitzEnemy : EnemyBase
 
     private void EnterWindup()
     {
-        _state = State.Windup;
         _stateTimer = windupDuration;
         _rb.linearVelocity = Vector3.zero;
         hasContactDamage = false;
         _physicsCollider.enabled = true;
 
+        // Snap to face target
         if (_target != null)
         {
             Vector3 dir = _target.position - transform.position;
@@ -112,6 +112,8 @@ public class BlitzEnemy : EnemyBase
                 _rb.MoveRotation(Quaternion.LookRotation(_blitzDirection));
             }
         }
+        
+        _state = State.Windup;
     }
 
     private void EnterBlitz()

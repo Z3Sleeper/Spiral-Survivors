@@ -46,6 +46,6 @@ public class WeaponBow : WeaponBase
     {
         var arrow = Instantiate(arrowPrefab, transform.position, transform.rotation);
         var arrowScript = arrow.GetComponent<WeaponArrow>();
-        arrowScript.Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, transform.forward, projectileSpeed, _stats, _controller);
+        arrowScript.Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, transform.forward, projectileSpeed, _stats.CritChance, _stats.CritDamage);
     }
 }

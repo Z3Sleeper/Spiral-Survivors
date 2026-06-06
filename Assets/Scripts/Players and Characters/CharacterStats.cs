@@ -46,6 +46,14 @@ public class CharacterStats : NetworkBehaviour
     public float AttackSpeed => WeaponSpeed / 360f;
 
     public bool continuousFire = false;
+    public float baseCritChance = 0.05f;
+    [NonSerialized] public float bonusCritChanceFlat = 0f;
+    [NonSerialized] public float bonusCritChancePercent = 1f;
+    public float CritChance => (baseCritChance + bonusCritChanceFlat) * bonusCritChancePercent;
+    public float baseCritDamage = 3f;
+    [NonSerialized] public float bonusCritDamageFlat = 0f;
+    [NonSerialized] public float bonusCritDamagePercent = 1f;
+    public float CritDamage => (baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent;
 
     [Header("Health")]
     public SyncVar<float> _baseMaxHealth = new(50f);
@@ -151,24 +159,31 @@ public class CharacterStats : NetworkBehaviour
     [Header("Dash")]
     public int dashCharges = 3;
     public float baseDashCooldown = 5f;
-    [NonSerialized] public float dashHaste = 1f;
-    public float DashCooldown => baseDashCooldown / dashHaste;
+    public float dashHaste = 0f;
+    public float DashCooldown => baseDashCooldown * (1f + dashHaste/100f);
 
     [Header("Misc")]
-    [NonSerialized] public float baseXPMod = 1f;
-    [NonSerialized] public SyncVar<float> _bonusXPModFlat = new(0f, ownerAuth: true);
-    [HideInInspector] public float bonusXPModFlat
+    private float _baseXPMod = 1f;
+    public float BaseXPMod
     {
-        get => _bonusXPModFlat.value;
-        set => _bonusXPModFlat.value = value;
+        get => _baseXPMod;
+        set { _baseXPMod = value; RecalculateXPMod(); }
     }
-    [NonSerialized] public SyncVar<float> _bonusXPModPercent = new(1f, ownerAuth: true);
-    [HideInInspector] public float bonusXPModPercent
+
+    private float _bonusXPModFlat = 0f;
+    public float BonusXPModFlat
     {
-        get => _bonusXPModPercent.value;
-        set => _bonusXPModPercent.value = value;
+        get => _bonusXPModFlat;
+        set { _bonusXPModFlat = value; RecalculateXPMod(); }
     }
-    public float XPModifier => (baseXPMod + bonusXPModFlat) * bonusXPModPercent;
+
+    private float _bonusXPModPercent = 1f;
+    public float BonusXPModPercent
+    {
+        get => _bonusXPModPercent;
+        set { _bonusXPModPercent = value; RecalculateXPMod(); }
+    }
+    public float XPModifier => (BaseXPMod + BonusXPModFlat) * BonusXPModPercent;
 
     [NonSerialized] public float baseXPRadius = 5f;
     [NonSerialized] public float bonusXPRadiusFlat = 0f;
@@ -185,6 +200,8 @@ public class CharacterStats : NetworkBehaviour
         set => _isDeadSync.value = value;
     }
 
+    public bool invincible = false;
+
     protected override void OnSpawned()
     {
         base.OnSpawned();
@@ -200,8 +217,6 @@ public class CharacterStats : NetworkBehaviour
         if (!isServer) return;
         CurrentHealth = MaxHealth;
         CurrentShield = MaxShield;
-        _bonusXPModFlat.onChanged += _ => RecalculateXPMod();
-        _bonusXPModPercent.onChanged += _ => RecalculateXPMod();
     }
 
     private void Update()
@@ -243,6 +258,8 @@ public class CharacterStats : NetworkBehaviour
         _controller.enabled = !dead;
         _physicsCollider.enabled = !dead;
         _hurtbox.enabled = !dead;
+        if (dead)
+            GameManager.instance.CheckAllPlayersDead();
     }
 
     public void Revive(float healthPercent = 0.5f)
@@ -268,6 +285,7 @@ public class CharacterStats : NetworkBehaviour
     {
         if (!isServer) return;
         if (IsDead) return;
+        if (invincible) return;
 
         _shieldRechargeTimer = ShieldRegenTime;
 

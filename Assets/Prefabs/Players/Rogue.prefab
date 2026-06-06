@@ -419,14 +419,16 @@ MonoBehaviour:
   _controller: {fileID: 5418513144571543119}
   _hurtbox: {fileID: 1046179636567246685}
   _physicsCollider: {fileID: 2665468359510037400}
-  baseMoveSpeed: 1.2
+  baseMoveSpeed: 1.5
   baseWeaponDamage: 10
   bonusWeaponDamagePercent: 1
   baseWeaponRadius: 0
-  baseWeaponSpeed: 270
+  baseWeaponSpeed: 225
   baseWeaponCount: 1
   baseWeaponRange: 1
   continuousFire: 0
+  baseCritChance: 0.25
+  baseCritDamage: 3
   _baseMaxHealth:
     _value: 50
     _ownerAuth: 0
@@ -457,10 +459,12 @@ MonoBehaviour:
   baseEnergyRegen: 5
   dashCharges: 3
   baseDashCooldown: 5
+  dashHaste: 0
   _isDeadSync:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
+  invincible: 0
 --- !u!114 &6361539828381301634
 MonoBehaviour:
   m_ObjectHideFlags: 0

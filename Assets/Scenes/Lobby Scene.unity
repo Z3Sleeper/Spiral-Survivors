@@ -1086,8 +1086,7 @@ MonoBehaviour:
 
     +2 Weapons
 
-    <color=red>-65% Total
-    Damage</color>'
+    <color=red>-65% Damage</color>'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -1768,6 +1767,55 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 722032787}
   m_CullTransparentMesh: 1
+--- !u!1 &796908379
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 796908381}
+  - component: {fileID: 796908380}
+  m_Layer: 0
+  m_Name: CharacterRegistry
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &796908380
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 796908379}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8af6c3743c923e64f9f09f8b455a4d43, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::CharacterRegistry
+  characterPrefabs:
+  - {fileID: 2272951876664129887, guid: e7ea7d77f5b744941bf862712fc82a82, type: 3}
+  - {fileID: 2272951876664129887, guid: 8148cff9ad9973c42a79168be56ea2a4, type: 3}
+  - {fileID: 2272951876664129887, guid: d7c3138941af2e242977ae94e8ca1ec3, type: 3}
+  - {fileID: 2272951876664129887, guid: 450b495428051fe4cb0d4cf6615ff316, type: 3}
+--- !u!4 &796908381
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 796908379}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 1201.7638, y: 560.7507, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &818004695
 GameObject:
   m_ObjectHideFlags: 0
@@ -1871,11 +1919,12 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Fires ranged projectiles
+  m_text: 'Fires projectiles at enemies in range and LoS
 
-    Shot rate is 6x Attack Speed
+    Fires at 6x Attack
+    Speed
 
-    +70 Range'
+    +35 Range'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -2149,9 +2198,11 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '+10 Range
+  m_text: '+5 Range
 
-    +50 Health'
+    +50 Health
+
+    +1.5 Health Regen'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -2364,9 +2415,11 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '+50% Base Attack Speed
+  m_text: '+25% Base Attack Speed
 
-    +2 Movement Speed'
+    +20% Crit Chance
+
+    +5 Movement Speed'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -3401,7 +3454,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1937423011}
-  - component: {fileID: 1937423010}
   - component: {fileID: 1937423009}
   m_Layer: 0
   m_Name: Character Select Manager
@@ -3458,23 +3510,6 @@ MonoBehaviour:
       stringValues: []
     _sendIntervalInSeconds: 0
     _useForceSend: 0
---- !u!114 &1937423010
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1937423008}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8af6c3743c923e64f9f09f8b455a4d43, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CharacterRegistry
-  characterPrefabs:
-  - {fileID: 2272951876664129887, guid: e7ea7d77f5b744941bf862712fc82a82, type: 3}
-  - {fileID: 2272951876664129887, guid: 8148cff9ad9973c42a79168be56ea2a4, type: 3}
-  - {fileID: 2272951876664129887, guid: d7c3138941af2e242977ae94e8ca1ec3, type: 3}
-  - {fileID: 2272951876664129887, guid: 450b495428051fe4cb0d4cf6615ff316, type: 3}
 --- !u!4 &1937423011
 Transform:
   m_ObjectHideFlags: 0
@@ -3710,6 +3745,7 @@ SceneRoots:
   - {fileID: 674320467}
   - {fileID: 48694687}
   - {fileID: 1937423011}
+  - {fileID: 796908381}
   - {fileID: 1425771902}
   - {fileID: 2008806777}
   - {fileID: 818004696}
