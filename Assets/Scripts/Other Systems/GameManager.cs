@@ -11,6 +11,7 @@ public class GameManager : NetworkIdentity
 {
     public static GameManager instance;
     public CharacterSpawner characterSpawner;
+    [SerializeField] private float xpLevelStep = 5f;
 
     [NonSerialized] public SyncVar<float> _currentXP = new(0);
     public float CurrentXP
@@ -26,7 +27,7 @@ public class GameManager : NetworkIdentity
         set => _level.value = value;
     }
 
-    [NonSerialized] public SyncVar<float> _xpToNextLevel = new(20);
+    [NonSerialized] public SyncVar<float> _xpToNextLevel = new(5);
     public float XPToNextLevel
     {
         get => _xpToNextLevel.value;
@@ -107,9 +108,9 @@ public class GameManager : NetworkIdentity
             while (CurrentXP >= XPToNextLevel)
             {
                 _levelsToResolve++;
-                Level++;
                 CurrentXP -= XPToNextLevel;
-                XPToNextLevel *= 1.25f;
+                XPToNextLevel += xpLevelStep * ((Level / 5) + 1);
+                Level++;
             }
             LevelUp();
         }
@@ -179,7 +180,7 @@ public class GameManager : NetworkIdentity
                 _levelsToResolve++;
                 Level++;
                 CurrentXP -= XPToNextLevel;
-                XPToNextLevel *= 1.25f;
+                XPToNextLevel += xpLevelStep * ((Level / 5) + 1);
             }
         }
 
@@ -217,6 +218,7 @@ public class GameManager : NetworkIdentity
         var players = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None);
         foreach (var player in players)
             if (!player.IsDead) return;
+        IsPaused = true;
         ShowGameOverRPC();
     }
 
@@ -231,8 +233,15 @@ public class GameManager : NetworkIdentity
     public void ConfirmReturnToLobbyRpc(PlayerID player)
     {
         _gameOverReadyPlayers.Add(player);
+        UpdateGameOverTextRpc(_gameOverReadyPlayers.Count, networkManager.playerCount);
         if (_gameOverReadyPlayers.Count >= networkManager.playerCount)
             ReturnToLobby();
+    }
+
+    [ObserversRpc]
+    private void UpdateGameOverTextRpc(int ready, int total)
+    {
+        NetworkedUIManager.instance.UpdateReadyText(ready, total);
     }
 
     private void ReturnToLobby()

@@ -12,10 +12,10 @@ public class LeaperEnemy : EnemyBase
     [SerializeField] private Transform model;
     [SerializeField] private Collider aoeHitbox;
     [SerializeField] private GameObject dangerIndicator;
-    [SerializeField] private float aoeActiveDuration = 0.15f;
+    [SerializeField] private float landingDuration = 0.1f;
     [SerializeField] private int leapsPerAttack = 1;
 
-    public enum State { Moving, Windup, Leaping, PostLeap }
+    public enum State { Moving, Windup, Leaping, Landing, PostLeap }
     private float _stateTimer;
     private float _attackCooldownTimer = 2f;
     private Vector3 _leapStart;
@@ -78,6 +78,11 @@ public class LeaperEnemy : EnemyBase
                     Land();
                 break;
 
+            case State.Landing:
+                if (_stateTimer <= 0f)
+                    EnterPostLand();
+                break;
+
             case State.PostLeap:
                 if (_stateTimer <= 0f)
                     EnterMoving();
@@ -133,8 +138,16 @@ public class LeaperEnemy : EnemyBase
         model.localPosition = new Vector3(0f, 0.5f, 0f);
 
         aoeHitbox.enabled = true;
-        Invoke(nameof(DisableAoeHitbox), aoeActiveDuration);
+        _state = State.Landing;
+        _stateTimer = landingDuration;
 
+        dangerIndicator.transform.SetParent(transform);
+        dangerIndicator.SetActive(false);
+    }
+
+    private void EnterPostLand()
+    {
+        aoeHitbox.enabled = false;
         _leapsRemaining--;
         if (_leapsRemaining > 0)
             EnterWindup();
@@ -144,14 +157,6 @@ public class LeaperEnemy : EnemyBase
             _stateTimer = postLeapPause;
             _attackCooldownTimer = attackCooldown;
         }
-
-        dangerIndicator.transform.SetParent(null);
-        dangerIndicator.SetActive(false);
-    }
-
-    private void DisableAoeHitbox()
-    {
-        aoeHitbox.enabled = false;
     }
 
     private void EnterMoving()

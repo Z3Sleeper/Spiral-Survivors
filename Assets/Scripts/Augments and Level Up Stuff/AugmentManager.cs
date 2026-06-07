@@ -111,7 +111,7 @@ public class AugmentManager : NetworkBehaviour
                 stats.bonusEnergyRegenFlat += entry.value;
                 break;
             case StatType.DashCooldown:
-                stats.dashHaste += entry.value * 0.01f;
+                stats.dashHaste += entry.value;
                 break;
             case StatType.CritChance:
                 stats.bonusCritChanceFlat += entry.value * 0.01f;

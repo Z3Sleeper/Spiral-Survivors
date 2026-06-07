@@ -381,7 +381,7 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   moveSpeed: 0.6
-  backpedalSpeedDivisor: 2
+  backpedalSpeedDivisor: 1.5
   maxHealth: 30
   preferredRange: 0
   rangeToleranceFar: 1

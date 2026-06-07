@@ -1,4 +1,5 @@
 using PurrNet;
+using TMPro;
 using UnityEngine;
 
 public class NetworkedUIManager : NetworkIdentity
@@ -6,6 +7,7 @@ public class NetworkedUIManager : NetworkIdentity
     public static NetworkedUIManager instance;
 
     [SerializeField] private GameObject gameOverScreen;
+    [SerializeField] private TextMeshProUGUI gameOverText;
 
     private void Awake()
     {
@@ -17,6 +19,12 @@ public class NetworkedUIManager : NetworkIdentity
     public void ShowGameOverScreen()
     {
         gameOverScreen.SetActive(true);
+        UpdateReadyText(0, networkManager.playerCount);
+    }
+
+    public void UpdateReadyText(int ready, int total)
+    {
+        gameOverText.text = $"({ready}/{total} Players Ready)";
     }
 
     public void OnReturnToLobbyClicked()

@@ -11,7 +11,7 @@ public class EnemyBase : NetworkIdentity
     protected Collider _physicsCollider;
 
     [Header("Stats")]
-    public float moveSpeed = 0.3f;
+    public float moveSpeed = 0.6f;
     [NonSerialized] public float baseMoveSpeed;
     public float backpedalSpeedDivisor = 2f;
     public float maxHealth = 30f;

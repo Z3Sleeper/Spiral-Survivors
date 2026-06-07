@@ -347,7 +347,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0.001, z: 0}
-  m_LocalScale: {x: 4, y: 0.01, z: 4}
+  m_LocalScale: {x: 5, y: 0.01, z: 5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7839943648137112170}
@@ -470,8 +470,8 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  moveSpeed: 0.3
-  backpedalSpeedDivisor: 2
+  moveSpeed: 0.6
+  backpedalSpeedDivisor: 1.5
   maxHealth: 30
   preferredRange: 10
   rangeToleranceFar: 1
@@ -484,15 +484,15 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  windupDuration: 0.8
-  leapDuration: 0.5
+  windupDuration: 0.4
+  leapDuration: 0.4
   leapHeight: 3
   postLeapPause: 0.5
   attackCooldown: 4
   model: {fileID: 1223438665833396019}
   aoeHitbox: {fileID: 5201244920850104230}
   dangerIndicator: {fileID: 1438732309334146974}
-  aoeActiveDuration: 0.15
+  landingDuration: 0.1
   leapsPerAttack: 1
   _syncState:
     _value: 0
@@ -1126,7 +1126,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 2
+  m_Radius: 2.5
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &3789192811032943420
 MonoBehaviour:
