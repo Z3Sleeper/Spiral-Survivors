@@ -17,6 +17,10 @@ PrefabInstance:
       value: Miniboss Spear Enemy
       objectReference: {fileID: 0}
     - target: {fileID: 5411947342137703799, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
+      propertyPath: damage
+      value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 5411947342137703799, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
       propertyPath: xpValue
       value: 115
       objectReference: {fileID: 0}
@@ -27,6 +31,10 @@ PrefabInstance:
     - target: {fileID: 5411947342137703799, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
       propertyPath: baseDamage
       value: 30
+      objectReference: {fileID: 0}
+    - target: {fileID: 5411947342137703799, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
+      propertyPath: animationSpeed
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5411947342137703799, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
       propertyPath: preferredRange
