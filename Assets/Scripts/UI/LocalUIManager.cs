@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using PurrNet;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -21,6 +23,13 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI bossTimerText;
 
+    [Header("Level Up Panel")]
+    [SerializeField] private GameObject levelUpScreen;
+    [SerializeField] private TextMeshProUGUI levelUpTimerText;
+    [SerializeField] private AugmentCardUI cardPrefab;
+    [SerializeField] private Transform cardContainer;
+    private List<AugmentCardUI> _cardPool = new();
+
     private readonly System.Text.StringBuilder _statsSB = new();
 
     private CharacterStats _stats;
@@ -29,6 +38,7 @@ public class LocalUIManager : MonoBehaviour
     private void Awake()
     {
         instance = this;
+        levelUpScreen.SetActive(false);
     }
 
     public void SetPlayer(CharacterStats stats)
@@ -40,6 +50,51 @@ public class LocalUIManager : MonoBehaviour
         shieldRegenBar.value = 1f;
         dashChargeCooldownImage.fillAmount = 1f;
         energyImage.fillAmount = 1f;
+    }
+
+    public void SetUpLevelUpScreen(List<StatAugmentPair> options, PlayerID playerID)
+    {
+        levelUpTimerText.text = NetworkManager.main.playerCount > 1 ? "Time Remaining: 30s" : "";
+        HideAllCards();
+        for (int i = 0; i < options.Count; i++)
+            GetCard(i).StatAugmentSetup(options[i], i, playerID);
+        GameManager.instance.ReadyToLevelRpc(playerID);
+    }
+
+    public void ShowLevelUpScreen()
+    {
+        levelUpScreen.SetActive(true);
+    }
+
+    public void HideLevelUpScreen()
+    {
+        levelUpScreen.SetActive(false);
+    }
+
+    public void UpdateTimer(int secondsRemaining)
+    {
+        if (levelUpTimerText != null)
+            levelUpTimerText.text = NetworkManager.main.playerCount >= 2
+                ? "Time Remaining: " + secondsRemaining + "s"
+                : "";
+    }
+
+    public void HideAllCards()
+    {
+        foreach (var card in _cardPool)
+            card.gameObject.SetActive(false);
+    }
+
+    private AugmentCardUI GetCard(int index)
+    {
+        if (index < _cardPool.Count)
+        {
+            _cardPool[index].gameObject.SetActive(true);
+            return _cardPool[index];
+        }
+        var card = Instantiate(cardPrefab, cardContainer);
+        _cardPool.Add(card);
+        return card;
     }
 
     private void Update()

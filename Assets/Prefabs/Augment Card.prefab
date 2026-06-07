@@ -282,6 +282,7 @@ MonoBehaviour:
   descriptionText: {fileID: 8140094918819790364}
   augmentImage: {fileID: 2387743866726105207}
   pickButton: {fileID: 8782109925740924885}
+  statAugmentSprite: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
 --- !u!1 &2646692922413387967
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,0 +1,71 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &94059155688450527
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: xpValue
+      value: 255
+      objectReference: {fileID: 0}
+    - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: maxHealth
+      value: 900
+      objectReference: {fileID: 0}
+    - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: leapsPerAttack
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 1597157536724350220, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_Name
+      value: Boss Leaper Enemy
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7839943648137112170, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}

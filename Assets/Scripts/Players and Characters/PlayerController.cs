@@ -22,7 +22,6 @@ public class PlayerController : NetworkIdentity
     private const float SurgeTickInterval = 0.1f;
     private float _surgeMoveSpeedBonus;
     private float _surgeWeaponSpeedBonus;
-    private float _surgeAttackSpeedBonus;
     private const float DashDistance = 8f;
     private const float DashSpeed = 80f;
     private float _sweepTimer;
@@ -38,6 +37,7 @@ public class PlayerController : NetworkIdentity
     protected override void OnDespawned(bool asServer)
     {
         _input?.Disable();
+        GameManager.OnPauseChanged -= OnPauseChanged;
     }
 
     private void OnEnable()
@@ -60,6 +60,7 @@ public class PlayerController : NetworkIdentity
         _input.Enable();
         _stats = GetComponent<CharacterStats>();
         _currentCharges = _stats.dashCharges;
+        GameManager.OnPauseChanged += OnPauseChanged;
     }
 
     private void Update()
@@ -150,6 +151,12 @@ public class PlayerController : NetworkIdentity
             _rb.AddForce(moveDir * _stats.MoveSpeed, ForceMode.VelocityChange);
     }
 
+    private void OnPauseChanged(bool paused)
+    {
+        if (paused) _input.Disable();
+        else _input.Enable();
+    }
+
     private void StartDash()
     {
         _isDashing = true;
@@ -181,7 +188,6 @@ public class PlayerController : NetworkIdentity
         float effectiveness = _stats.SurgeEffectiveness;
         _surgeMoveSpeedBonus = _stats.SurgeMoveSpeedMulti * effectiveness;
         _surgeWeaponSpeedBonus = _stats.SurgeWeaponSpeedMultiplier * effectiveness;
-        _surgeAttackSpeedBonus = _stats.SurgeAttackSpeedMultiplier * effectiveness;
 
         _stats.bonusMoveSpeedPercent *= _surgeMoveSpeedBonus;
         _stats.bonusWeaponSpeedPercent *= _surgeWeaponSpeedBonus;

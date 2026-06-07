@@ -241,6 +241,8 @@ MonoBehaviour:
   baseWeaponCount: 1
   baseWeaponRange: 8
   continuousFire: 0
+  baseCritChance: 0.05
+  baseCritDamage: 3
   _baseMaxHealth:
     _value: 50
     _ownerAuth: 0
@@ -271,10 +273,12 @@ MonoBehaviour:
   baseEnergyRegen: 5
   dashCharges: 3
   baseDashCooldown: 5
+  dashHaste: 0
   _isDeadSync:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
+  invincible: 0
 --- !u!114 &6361539828381301634
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -955,7 +959,7 @@ SpriteRenderer:
   m_Size: {x: 2.56, y: 2.56}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
-  m_WasSpriteAssigned: 1
+  m_WasSpriteAssigned: 0
   m_SpriteSortPoint: 0
 --- !u!1 &5535950335889170698
 GameObject:

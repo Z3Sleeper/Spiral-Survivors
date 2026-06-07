@@ -478,11 +478,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  levelUpScreen: {fileID: 818032542}
   gameOverScreen: {fileID: 1096400252}
-  timerText: {fileID: 685286399}
-  cardPrefab: {fileID: 8199019286478274000, guid: d5eaed85276e64e4fbb066b6ff8cb558, type: 3}
-  cardContainer: {fileID: 761779264}
 --- !u!1 &181104447
 GameObject:
   m_ObjectHideFlags: 0
@@ -760,7 +756,6 @@ GameObject:
   - component: {fileID: 264528625}
   - component: {fileID: 264528624}
   - component: {fileID: 264528623}
-  - component: {fileID: 264528627}
   m_Layer: 5
   m_Name: User Interface
   m_TagString: Untagged
@@ -857,32 +852,6 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0, y: 0}
---- !u!114 &264528627
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 264528622}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0d4b4353aa94ed54b90db838c1519a88, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::UIManager
-  healthBar: {fileID: 821914688}
-  shieldBar: {fileID: 351818066}
-  shieldRegenBar: {fileID: 1745401631}
-  healthText: {fileID: 1266560584}
-  healthRegenText: {fileID: 1030560340}
-  dashChargeCooldownImage: {fileID: 854620420}
-  dashChargesText: {fileID: 1253565072}
-  energyImage: {fileID: 1383413778}
-  energyText: {fileID: 1359349564}
-  statsNumbersText: {fileID: 548441850}
-  xpBar: {fileID: 2058438322}
-  xpText: {fileID: 1563414987}
-  timerText: {fileID: 891838396}
-  bossTimerText: {fileID: 1731792549}
 --- !u!1 &328835335
 GameObject:
   m_ObjectHideFlags: 0
@@ -1548,7 +1517,6 @@ GameObject:
   - component: {fileID: 616529675}
   - component: {fileID: 616529674}
   - component: {fileID: 616529673}
-  - component: {fileID: 616529676}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -1591,7 +1559,7 @@ MonoBehaviour:
   _startClientFlags: 7
   _cookieScope: 1
   _dontDestroyOnLoad: 1
-  _transport: {fileID: 616529676}
+  _transport: {fileID: 616529673}
   _networkPrefabs: {fileID: 11400000, guid: 8232d0144cb72c74a9a0faa73c7b9ca8, type: 2}
   _networkAssets: {fileID: 11400000, guid: a13d30c07b65db1438ea2fdcb5f27d78, type: 2}
   _networkRules: {fileID: 11400000, guid: d8799083b96579a42b8b2d03e4ceae98, type: 2}
@@ -1614,25 +1582,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &616529676
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 616529672}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: fc64ff707d914a64e95f2ac0bf554c09, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.Transports.UDPTransport
-  _automaticCloudSetups:
-    _adaptToEdgegap: 1
-  _serverPort: 5000
-  _maxConnections: 100
-  _address: 127.0.0.1
-  _timeoutInSeconds: 5
-  _pollEventsInUpdate: 0
 --- !u!1 &685286397
 GameObject:
   m_ObjectHideFlags: 0
@@ -2734,6 +2683,9 @@ MonoBehaviour:
   - prefab: {fileID: 1597157536724350220, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
     weight: 1
     tier: 0
+  - prefab: {fileID: 1597157536724350220, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
+    weight: 1
+    tier: 0
   - prefab: {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
     weight: 1
     tier: 1
@@ -2741,6 +2693,9 @@ MonoBehaviour:
     weight: 1
     tier: 1
   - prefab: {fileID: 3624407512133673861, guid: 58caf2674c6fdd44ba73dc6a3cdb4282, type: 3}
+    weight: 1
+    tier: 1
+  - prefab: {fileID: 8365554543068639129, guid: 427f6ece90e93cb47b6e51c56f1e43fd, type: 3}
     weight: 1
     tier: 1
   - prefab: {fileID: 1483096219054591146, guid: fca9a4cc609372e47b48b7f5bc1aa7e6, type: 3}
@@ -2752,7 +2707,13 @@ MonoBehaviour:
   - prefab: {fileID: 8836781330389883237, guid: f07d675eeb17bfc4db099bf510bd5a20, type: 3}
     weight: 1
     tier: 2
+  - prefab: {fileID: 7861280295300895803, guid: 6e857eae5a7fd6e4792638ddd09bd234, type: 3}
+    weight: 1
+    tier: 2
   - prefab: {fileID: 2037630420138304940, guid: 0af96ab41d40766488d3f9d051a60ebb, type: 3}
+    weight: 1
+    tier: 3
+  - prefab: {fileID: 1685494273323310291, guid: c236d7d90b83e6740a0c42853e1d6dda, type: 3}
     weight: 1
     tier: 3
   spawnMinDistance: 25
@@ -2764,7 +2725,68 @@ MonoBehaviour:
   coopSpawnTimeScalar: 0.5
   coopBossHealthScalar: 0.5
   waitForPlayersLoaded: 1
-  _playerCount: 0
+--- !u!1 &1147083177
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1147083179}
+  - component: {fileID: 1147083178}
+  m_Layer: 0
+  m_Name: UIManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1147083178
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1147083177}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0d4b4353aa94ed54b90db838c1519a88, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::UIManager
+  healthBar: {fileID: 821914688}
+  shieldBar: {fileID: 351818066}
+  shieldRegenBar: {fileID: 1745401631}
+  healthText: {fileID: 1266560584}
+  healthRegenText: {fileID: 1030560340}
+  dashChargeCooldownImage: {fileID: 854620420}
+  dashChargesText: {fileID: 1253565072}
+  energyImage: {fileID: 1383413778}
+  energyText: {fileID: 1359349564}
+  statsNumbersText: {fileID: 548441850}
+  xpBar: {fileID: 2058438322}
+  xpText: {fileID: 1563414987}
+  timerText: {fileID: 891838396}
+  bossTimerText: {fileID: 1731792549}
+  levelUpScreen: {fileID: 818032542}
+  levelUpTimerText: {fileID: 685286399}
+  cardPrefab: {fileID: 8199019286478274000, guid: d5eaed85276e64e4fbb066b6ff8cb558, type: 3}
+  cardContainer: {fileID: 761779264}
+--- !u!4 &1147083179
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1147083177}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 3.02809, y: 1.95884, z: -1.85672}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1166558487
 GameObject:
   m_ObjectHideFlags: 0
@@ -5303,6 +5325,7 @@ SceneRoots:
   - {fileID: 1525938663}
   - {fileID: 1331706254}
   - {fileID: 264528626}
+  - {fileID: 1147083179}
   - {fileID: 159125114}
   - {fileID: 616529675}
   - {fileID: 118528103}

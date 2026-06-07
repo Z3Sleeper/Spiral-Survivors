@@ -90,6 +90,7 @@ MonoBehaviour:
   enemyHurtboxLayer:
     serializedVersion: 2
     m_Bits: 1024
+  projectileSpeed: 20
 --- !u!1 &6381208085429435541
 GameObject:
   m_ObjectHideFlags: 0

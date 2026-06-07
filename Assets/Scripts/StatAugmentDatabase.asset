@@ -18,48 +18,58 @@ MonoBehaviour:
     value: 25
     prependText: +
     appendText: 
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 1
     displayName: Damage
     value: 3
     prependText: +
     appendText: 
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 2
     displayName: Movement Speed
     value: 1
     prependText: +
     appendText: 
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 3
     displayName: Range
     value: 1
     prependText: +
     appendText: 
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 4
     displayName: Attack Speed
     value: 15
     prependText: +
     appendText: '%'
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 5
     displayName: HP Regen
     value: 0.5
     prependText: +
     appendText: 
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 6
     displayName: Max HP Shield
     value: 5
     prependText: +
     appendText: '%'
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 7
     displayName: Energy Regen
     value: 1
     prependText: +
     appendText: 
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 8
     displayName: Dash Haste
     value: 10
     prependText: +
     appendText: 
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 9
     displayName: Crit Chance
     value: 5
     prependText: +
     appendText: '%'
+    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}

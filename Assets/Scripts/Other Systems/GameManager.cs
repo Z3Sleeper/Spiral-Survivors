@@ -3,6 +3,7 @@ using PurrNet.Modules;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using Unity.PlasticSCM.Editor.WebApi;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -41,14 +42,17 @@ public class GameManager : NetworkIdentity
 
     private Dictionary<PlayerID, float> _playerXPMods = new();
     private float _avgXPMod = 1f;
+    private int _levelsToResolve = 0;
 
     private HashSet<PlayerID> _readyPlayers = new();
     private HashSet<PlayerID> _gameOverReadyPlayers = new();
+    private HashSet<PlayerID> _pauseReadyPlayers = new();
     private Coroutine _levelUpTimerCoroutine;
 
     private const float LevelUpTimerDuration = 30f;
 
     public static event Action OnLevelUp;
+    public static event Action<bool> OnPauseChanged;
 
     private void Awake()
     {
@@ -65,6 +69,20 @@ public class GameManager : NetworkIdentity
     private void OnPausedChanged(bool newVal)
     {
         Time.timeScale = newVal ? 0f : 1f;
+        OnPauseChanged?.Invoke(newVal);
+    }
+
+    [ServerRpc(requireOwnership: false)]
+    public void ReadyToLevelRpc(PlayerID player)
+    {
+        ShowLevelUpScreenRpc();
+        if (!_pauseReadyPlayers.Contains(player))
+            _pauseReadyPlayers.Add(player);
+        if (_pauseReadyPlayers.Count >= networkManager.playerCount)
+        {
+            _pauseReadyPlayers.Clear();
+            IsPaused = true;
+        }
     }
 
     [ServerRpc(requireOwnership: false)]
@@ -83,22 +101,25 @@ public class GameManager : NetworkIdentity
         float coopXPPenalty = 1f + (networkManager.playerCount - 1) * EnemySpawner.instance.coopSpawnTimeScalar;
         float xpGained = value * _avgXPMod / coopXPPenalty;
         CurrentXP += xpGained;
-        if (CurrentXP >= XPToNextLevel)
+
+        if (CurrentXP >= XPToNextLevel && !IsPaused && _levelsToResolve == 0)
+        {
+            while (CurrentXP >= XPToNextLevel)
+            {
+                _levelsToResolve++;
+                Level++;
+                CurrentXP -= XPToNextLevel;
+                XPToNextLevel *= 1.25f;
+            }
             LevelUp();
+        }
     }
 
     private void LevelUp()
     {
-        Level++;
-        CurrentXP -= XPToNextLevel;
-        XPToNextLevel *= 1.25f;
-
         _readyPlayers.Clear();
-        IsPaused = true;
-
         OnLevelUp?.Invoke();
 
-        // Generate options for each player
         foreach (var player in networkManager.players)
             AugmentManager.instance.GenerateStatOptions(player);
 
@@ -114,8 +135,6 @@ public class GameManager : NetworkIdentity
     [ServerRpc(requireOwnership: false)]
     public void ConfirmReadyRpc(PlayerID player)
     {
-        if (!IsPaused) return;
-
         _readyPlayers.Add(player);
 
         if (_readyPlayers.Count >= networkManager.playerCount)
@@ -145,33 +164,51 @@ public class GameManager : NetworkIdentity
             _levelUpTimerCoroutine = null;
         }
 
-        // Auto-pick for players who haven't chosen
         foreach (var player in networkManager.players)
         {
             if (_readyPlayers.Contains(player)) continue;
-            var options = AugmentManager.instance.GetOptionsForPlayer(player);
-            if (options != null && options.Count > 0)
-                AugmentManager.instance.PickAugmentRpc(player, UnityEngine.Random.Range(0, options.Count));
+            AugmentManager.instance.ApplyRandomAugment(player);
+        }
+
+        _levelsToResolve--;
+
+        if (_levelsToResolve == 0)
+        {
+            while (CurrentXP >= XPToNextLevel)
+            {
+                _levelsToResolve++;
+                Level++;
+                CurrentXP -= XPToNextLevel;
+                XPToNextLevel *= 1.25f;
+            }
+        }
+
+        if (_levelsToResolve > 0)
+        {
+            LevelUp();
+            return;
         }
 
         IsPaused = false;
         HideLevelUpScreenRpc();
-
-        // Check if we have enough XP for another level up
-        if (CurrentXP >= XPToNextLevel)
-            LevelUp();
+    }
+    
+    [ObserversRpc]
+    private void ShowLevelUpScreenRpc()
+    {
+        LocalUIManager.instance.ShowLevelUpScreen();
     }
 
     [ObserversRpc]
     private void HideLevelUpScreenRpc()
     {
-        NetworkedUIManager.instance.HideLevelUpScreen();
+        LocalUIManager.instance.HideLevelUpScreen();
     }
 
     [ObserversRpc]
     private void UpdateTimerRpc(int secondsRemaining)
     {
-        NetworkedUIManager.instance.UpdateTimer(secondsRemaining);
+        LocalUIManager.instance.UpdateTimer(secondsRemaining);
     }
 
     [ServerRpc(requireOwnership: false)]

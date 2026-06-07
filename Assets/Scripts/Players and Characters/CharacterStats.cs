@@ -217,6 +217,7 @@ public class CharacterStats : NetworkBehaviour
         if (!isServer) return;
         CurrentHealth = MaxHealth;
         CurrentShield = MaxShield;
+        RecalculateXPMod();
     }
 
     private void Update()

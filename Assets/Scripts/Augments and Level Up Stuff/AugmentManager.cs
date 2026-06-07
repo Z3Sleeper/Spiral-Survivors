@@ -126,7 +126,16 @@ public class AugmentManager : NetworkBehaviour
         for (int i = 0; i < statIndicesA.Length; i++)
             options.Add(new StatAugmentPair(statDatabase.stats[statIndicesA[i]], statDatabase.stats[statIndicesB[i]]));
         
-        NetworkedUIManager.instance?.ShowLevelUpScreen(options);
+        LocalUIManager.instance.SetUpLevelUpScreen(options, target);
+    }
+
+    public void ApplyRandomAugment(PlayerID player)
+    {
+        if (!_playerOptions.TryGetValue(player, out var options)) return;
+        if (options.Count == 0) return;
+        int randomIndex = UnityEngine.Random.Range(0, options.Count);
+        ApplyStatAugment(player, options[randomIndex]);
+        _playerOptions.Remove(player);
     }
 }
 
