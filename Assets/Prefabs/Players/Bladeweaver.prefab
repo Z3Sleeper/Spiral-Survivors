@@ -495,7 +495,7 @@ MonoBehaviour:
   _physicsCollider: {fileID: 7874162270675813079}
   baseMoveSpeed: 1
   baseWeaponDamage: 15
-  bonusWeaponDamagePercent: 0.35
+  bonusWeaponDamagePercent: 0.5
   baseWeaponRadius: 4
   baseWeaponSpeed: 180
   baseWeaponCount: 3
