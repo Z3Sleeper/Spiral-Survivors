@@ -240,7 +240,7 @@ MonoBehaviour:
   baseWeaponRadius: 0
   baseWeaponSpeed: 180
   baseWeaponCount: 1
-  baseWeaponRange: 8
+  baseWeaponRange: 5
   continuousFire: 0
   baseCritChance: 0.05
   baseCritDamage: 3

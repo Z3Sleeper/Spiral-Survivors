@@ -34,7 +34,7 @@ public class BlitzEnemy : EnemyBase
         OnStateChanged(_syncState.value);
         hasContactDamage = false;
         _blitzesRemaining = blitzesPerAttack;
-        _attackCooldownTimer = attackCooldown;
+        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
     }
 
     private void OnStateChanged(State state)
@@ -133,7 +133,7 @@ public class BlitzEnemy : EnemyBase
         hasContactDamage = false;
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
-        _attackCooldownTimer = attackCooldown;
+        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
     }
 
     private void EnterMoving()

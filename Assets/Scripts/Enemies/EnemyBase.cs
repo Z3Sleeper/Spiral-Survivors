@@ -28,9 +28,6 @@ public class EnemyBase : NetworkIdentity
     private Dictionary<CharacterStats, float> _contactCooldowns = new();
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
-    private const float TooFarDistance = 55f;
-    private const float RelocateMinDistance = 25f;
-    private const float RelocateMaxDistance = 40f;
 
 
     public SyncVar<float> _currentHealthSync = new(0);
@@ -75,11 +72,7 @@ public class EnemyBase : NetworkIdentity
             FindTarget();
         }
 
-        // Relocate if too far from target
-        if (_target != null && Vector3.Distance(transform.position, _target.position) > TooFarDistance)
-            Relocate();
-
-        var keys = new List<CharacterStats>(_contactCooldowns.Keys);
+var keys = new List<CharacterStats>(_contactCooldowns.Keys);
         foreach (var player in keys)
         {
             _contactCooldowns[player] -= Time.deltaTime;
@@ -164,30 +157,6 @@ public class EnemyBase : NetworkIdentity
         }
     }
 
-    private void Relocate()
-    {
-        if (_target == null) return;
-
-        // Get direction from target to enemy (opposite side)
-        Vector3 awayDir = (transform.position - _target.position).normalized;
-        awayDir.y = 0;
-
-        // Get angle of that direction
-        float baseAngle = Mathf.Atan2(awayDir.z, awayDir.x) * Mathf.Rad2Deg;
-
-        // Pick random angle within 180 degrees of opposite side
-        float angle = (baseAngle + UnityEngine.Random.Range(-90f, 90f)) * Mathf.Deg2Rad;
-        float distance = UnityEngine.Random.Range(RelocateMinDistance, RelocateMaxDistance);
-
-        Vector3 newPos = _target.position + new Vector3(
-            Mathf.Cos(angle) * distance,
-            0,
-            Mathf.Sin(angle) * distance
-        );
-
-        _rb.linearVelocity = Vector3.zero;
-        transform.position = newPos;
-    }
 
     protected bool TargetInRange()
     {

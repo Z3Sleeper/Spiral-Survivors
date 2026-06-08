@@ -117,7 +117,7 @@ public class ShooterEnemy : EnemyBase
     {
         _state = State.PostShot;
         _stateTimer = postShotPause;
-        _attackCooldownTimer = attackCooldown;
+        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
 
         if (_target == null) return;
         Vector3 dir = _target.position - transform.position;

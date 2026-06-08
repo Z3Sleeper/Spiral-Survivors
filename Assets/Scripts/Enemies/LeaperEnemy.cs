@@ -172,7 +172,7 @@ public class LeaperEnemy : EnemyBase
         {
             _state = State.PostLeap;
             _stateTimer = postLeapPause;
-            _attackCooldownTimer = attackCooldown;
+            _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
         }
     }
 

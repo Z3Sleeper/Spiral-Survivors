@@ -117,7 +117,7 @@ public class SpearEnemy : EnemyBase
         _state = State.PostStab;
         _stateTimer = postStabPause;
         spearHitbox.enabled = false;
-        _attackCooldownTimer = attackCooldown;
+        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
     }
 
     private void EnterMoving()
