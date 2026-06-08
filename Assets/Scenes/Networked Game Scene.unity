@@ -2907,6 +2907,9 @@ MonoBehaviour:
   - prefab: {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
     weight: 1
     tier: 1
+  - prefab: {fileID: 5034490258704942994, guid: e7f88fd3a6c52fa49896ea9ef0b977cf, type: 3}
+    weight: 1
+    tier: 1
   - prefab: {fileID: 5352001002389939941, guid: fa41c34b73a3e874884462e56e436dd9, type: 3}
     weight: 1
     tier: 1
@@ -2919,6 +2922,9 @@ MonoBehaviour:
   - prefab: {fileID: 1483096219054591146, guid: fca9a4cc609372e47b48b7f5bc1aa7e6, type: 3}
     weight: 1
     tier: 2
+  - prefab: {fileID: 8970153102034162631, guid: 97a21ec154c2b514bbdaa6392c8687dc, type: 3}
+    weight: 1
+    tier: 3
   - prefab: {fileID: 5392031640422321644, guid: bfe4f0af1e3b8e748b1798a56b3882f4, type: 3}
     weight: 1
     tier: 2
@@ -2932,6 +2938,9 @@ MonoBehaviour:
     weight: 1
     tier: 3
   - prefab: {fileID: 1685494273323310291, guid: c236d7d90b83e6740a0c42853e1d6dda, type: 3}
+    weight: 1
+    tier: 3
+  - prefab: {fileID: 1467630046995747894, guid: d723b3aa53475a04a9ff5125adb13710, type: 3}
     weight: 1
     tier: 3
   spawnMinDistance: 25

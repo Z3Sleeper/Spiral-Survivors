@@ -4,7 +4,12 @@ using UnityEngine;
 
 public class SpearEnemy : EnemyBase
 {
+    private static readonly int SpearWindupHash = Animator.StringToHash("SpearWindup");
     private static readonly int SpearStabHash = Animator.StringToHash("SpearStab");
+    private static readonly int SpearPostStabHash = Animator.StringToHash("SpearPostStab");
+    private static readonly int WindupSpeedHash = Animator.StringToHash("WindupSpeed");
+    private static readonly int StabSpeedHash = Animator.StringToHash("StabSpeed");
+    private static readonly int PostStabSpeedHash = Animator.StringToHash("PostStabSpeed");
     private Animator _animator;
 
     [Header("Spear Settings")]
@@ -35,6 +40,15 @@ public class SpearEnemy : EnemyBase
         OnStateChanged(_syncState.value);
         spearHitbox.enabled = false;
         TryGetComponent(out _animator);
+        foreach (var clip in _animator.runtimeAnimatorController.animationClips)
+        {
+            if (clip.name == "Spear Enemy Windup")
+                _animator.SetFloat(WindupSpeedHash, clip.length / windupDuration);
+            else if (clip.name == "Spear Enemy Stab")
+                _animator.SetFloat(StabSpeedHash, clip.length / stabDuration);
+            else if (clip.name == "Spear Enemy PostStab")
+                _animator.SetFloat(PostStabSpeedHash, clip.length / postStabPause);
+        }
         _attacksRemaining = attacksPerAttack;
     }
 
@@ -42,7 +56,11 @@ public class SpearEnemy : EnemyBase
     {
         dangerIndicator.SetActive(state == State.Windup);
         if (state == State.Windup)
+            _animator.Play(SpearWindupHash, 0, 0f);
+        else if (state == State.Stabbing)
             _animator.Play(SpearStabHash, 0, 0f);
+        else if (state == State.PostStab)
+            _animator.Play(SpearPostStabHash, 0, 0f);
     }
 
     protected override void Update()
