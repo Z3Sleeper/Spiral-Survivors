@@ -380,7 +380,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  moveSpeed: 0.6
+  moveSpeed: 0.7
   backpedalSpeedDivisor: 1.5
   maxHealth: 30
   preferredRange: 0
@@ -1014,7 +1014,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7600638646727349221}
   - component: {fileID: 3528644101431230945}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: PhysicsCollider
   m_TagString: Untagged
   m_Icon: {fileID: 0}

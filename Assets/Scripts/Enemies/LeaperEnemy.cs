@@ -3,10 +3,15 @@ using UnityEngine;
 
 public class LeaperEnemy : EnemyBase
 {
+    private static readonly int WindupHash = Animator.StringToHash("LeaperWindup");
+    private static readonly int LeapHash = Animator.StringToHash("LeaperLeap");
+    private static readonly int WindupSpeedHash = Animator.StringToHash("WindupSpeed");
+    private static readonly int LeapSpeedHash = Animator.StringToHash("LeapSpeed");
+    private Animator _animator;
     [Header("Leap Settings")]
     [SerializeField] private float windupDuration = 0.8f;
     [SerializeField] private float leapDuration = 0.5f;
-    [SerializeField] private float leapHeight = 3f;
+    private const float leapHeight = 3f;
     [SerializeField] private float postLeapPause = 0.5f;
     [SerializeField] private float attackCooldown = 4f;
     [SerializeField] private Transform model;
@@ -37,6 +42,14 @@ public class LeaperEnemy : EnemyBase
         _syncState.onChanged += OnStateChanged;
         _syncLeapTarget.onChanged += OnLeapTargetChanged;
         OnStateChanged(_syncState.value);
+        TryGetComponent(out _animator);
+        foreach (var clip in _animator.runtimeAnimatorController.animationClips)
+        {
+            if (clip.name == "Leaper Enemy Windup")
+                _animator.SetFloat(WindupSpeedHash, clip.length / windupDuration);
+            else if (clip.name == "Leaper Enemy Leap")
+                _animator.SetFloat(LeapSpeedHash, clip.length / leapDuration);
+        }
         if (!isServer) return;
         aoeHitbox.enabled = false;
         _leapsRemaining = leapsPerAttack;
@@ -45,6 +58,10 @@ public class LeaperEnemy : EnemyBase
     private void OnStateChanged(State state)
     {
         dangerIndicator.SetActive(state == State.Windup || state == State.Leaping);
+        if (state == State.Windup)
+            _animator.Play(WindupHash, 0, 0f);
+        else if (state == State.Leaping)
+            _animator.Play(LeapHash, 0, 0f);
     }
 
     private void OnLeapTargetChanged(Vector3 target)

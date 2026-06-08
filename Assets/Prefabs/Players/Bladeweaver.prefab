@@ -152,6 +152,59 @@ MonoBehaviour:
   _characterControllerPatch: 0
   _ownerAuth: 1
   _interpolationTiming: 0
+--- !u!1 &1342657202213234438
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5572241802555751981}
+  - component: {fileID: 8779270767858423316}
+  m_Layer: 11
+  m_Name: BoundsCollider
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5572241802555751981
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1342657202213234438}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 4433399181805987514}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!135 &8779270767858423316
+SphereCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1342657202213234438}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Radius: 0.25
+  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &1749301007520917697
 GameObject:
   m_ObjectHideFlags: 0
@@ -318,6 +371,7 @@ Transform:
   - {fileID: 4644740684117971822}
   - {fileID: 1784258740639185447}
   - {fileID: 8507114727709447575}
+  - {fileID: 5572241802555751981}
   - {fileID: 5201837230769150798}
   - {fileID: 8238984586326539842}
   - {fileID: 3352969257999379617}
@@ -356,6 +410,8 @@ MonoBehaviour:
   baseWeaponCount: 3
   baseWeaponRange: 1
   continuousFire: 0
+  baseCritChance: 0.05
+  baseCritDamage: 3
   _baseMaxHealth:
     _value: 50
     _ownerAuth: 0
@@ -386,10 +442,12 @@ MonoBehaviour:
   baseEnergyRegen: 5
   dashCharges: 3
   baseDashCooldown: 5
+  dashHaste: 0
   _isDeadSync:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
+  invincible: 0
 --- !u!114 &6361539828381301634
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -679,7 +737,7 @@ SpriteRenderer:
   m_Size: {x: 2.56, y: 2.56}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
-  m_WasSpriteAssigned: 1
+  m_WasSpriteAssigned: 0
   m_SpriteSortPoint: 0
 --- !u!1 &3953905479949839896
 GameObject:
@@ -1102,7 +1160,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8507114727709447575}
   - component: {fileID: 7874162270675813079}
-  m_Layer: 0
+  m_Layer: 7
   m_Name: PhysicsCollider
   m_TagString: Untagged
   m_Icon: {fileID: 0}

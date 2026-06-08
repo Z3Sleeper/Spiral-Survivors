@@ -421,6 +421,7 @@ GameObject:
   - component: {fileID: -1975734820084783192}
   - component: {fileID: -8394223174193477460}
   - component: {fileID: -6973549993052189348}
+  - component: {fileID: -5633832170123980266}
   m_Layer: 0
   m_Name: Leaper Enemy
   m_TagString: Untagged
@@ -486,7 +487,6 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   windupDuration: 0.4
   leapDuration: 0.4
-  leapHeight: 3
   postLeapPause: 0.5
   attackCooldown: 4
   model: {fileID: 1223438665833396019}
@@ -560,6 +560,28 @@ Rigidbody:
   m_Interpolate: 1
   m_Constraints: 116
   m_CollisionDetection: 0
+--- !u!95 &-5633832170123980266
+Animator:
+  serializedVersion: 7
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1597157536724350220}
+  m_Enabled: 1
+  m_Avatar: {fileID: 0}
+  m_Controller: {fileID: 9100000, guid: 09e90abc7ab45264094aac78de97cedb, type: 2}
+  m_CullingMode: 0
+  m_UpdateMode: 0
+  m_ApplyRootMotion: 0
+  m_LinearVelocityBlending: 0
+  m_StabilizeFeet: 0
+  m_AnimatePhysics: 0
+  m_WarningMessage: 
+  m_HasTransformHierarchy: 1
+  m_AllowConstantClipSamplingOptimization: 1
+  m_KeepAnimatorStateOnDisable: 0
+  m_WriteDefaultValuesOnDisable: 0
 --- !u!1 &2813405752874533975
 GameObject:
   m_ObjectHideFlags: 0
@@ -942,7 +964,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7600638646727349221}
   - component: {fileID: 3528644101431230945}
-  m_Layer: 0
+  m_Layer: 8
   m_Name: PhysicsCollider
   m_TagString: Untagged
   m_Icon: {fileID: 0}

@@ -5,6 +5,7 @@ public class WeaponBow : WeaponBase
     [SerializeField] private GameObject arrowPrefab;
     [SerializeField] private LayerMask enemyHurtboxLayer;
     public float projectileSpeed = 20f;
+    public float bowAttackSpeedScaling = 5f;
 
     private float _fireTimer;
     public override bool IsMelee => false;
@@ -31,7 +32,7 @@ public class WeaponBow : WeaponBase
         if (_stats.continuousFire || HasEnemyInLoS())
         {
             Fire();
-            _fireTimer = 1f / (_stats.AttackSpeed * 6);
+            _fireTimer = 1f / (_stats.AttackSpeed * bowAttackSpeedScaling);
         }
     }
 

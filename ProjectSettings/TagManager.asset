@@ -11,12 +11,12 @@ TagManager:
   - 
   - Water
   - UI
-  - 
-  - 
-  - 
+  - Bounds
+  - PlayerPhysics
+  - EnemyPhysics
   - PlayerHurtbox
   - EnemyHurtbox
-  - 
+  - BoundsCollision
   - 
   - XPOrb
   - 

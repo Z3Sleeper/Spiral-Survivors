@@ -120,7 +120,7 @@ public class EnemyBase : NetworkIdentity
     {
         if (_target == null) return;
 
-        Vector3 toTarget = (_target.position - transform.position);
+        Vector3 toTarget = _target.position - transform.position;
         toTarget.y = 0;
         Vector3 dir = toTarget.normalized;
 

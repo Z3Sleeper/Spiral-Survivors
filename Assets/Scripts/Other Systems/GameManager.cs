@@ -246,6 +246,7 @@ public class GameManager : NetworkIdentity
 
     private void ReturnToLobby()
     {
+        Time.timeScale = 1f;
         if (CharacterSelectManager.instance != null)
             CharacterSelectManager.instance.ResetLobby();
         NetworkManager.main.sceneModule.LoadSceneAsync("Lobby Scene", new PurrSceneSettings
