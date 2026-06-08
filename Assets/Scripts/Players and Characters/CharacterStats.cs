@@ -160,7 +160,7 @@ public class CharacterStats : NetworkBehaviour
     public int dashCharges = 3;
     public float baseDashCooldown = 5f;
     public float dashHaste = 0f;
-    public float DashCooldown => baseDashCooldown * (1f + dashHaste/100f);
+    public float DashCooldown => baseDashCooldown / (1f + dashHaste / 100f);
 
     [Header("Misc")]
     private float _baseXPMod = 1f;

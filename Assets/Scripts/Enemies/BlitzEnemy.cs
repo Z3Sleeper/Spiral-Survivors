@@ -64,7 +64,8 @@ public class BlitzEnemy : EnemyBase
                 break;
 
             case State.Blitzing:
-                if (Vector3.Distance(transform.position, _blitzEndPoint) < 0.5f)
+                Vector3 toEnd = _blitzEndPoint - transform.position;
+                if (toEnd.magnitude < 0.5f || Vector3.Dot(toEnd, _blitzDirection) <= 0f)
                     if (_blitzesRemaining > 0)
                         EnterWindup();
                     else

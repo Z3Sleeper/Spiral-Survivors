@@ -1802,8 +1802,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -715.94, y: -176.59}
-  m_SizeDelta: {x: 392, y: 295.0904}
+  m_AnchoredPosition: {x: -715.93945, y: -200.44498}
+  m_SizeDelta: {x: 392, y: 342.8004}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &794023535
 MonoBehaviour:
@@ -1839,7 +1839,12 @@ MonoBehaviour:
 
     10 Movement Speed
 
-    5% Crit Chance
+    5s Dash Cooldown
+
+    3 Dash Charges
+
+    5%
+    Crit Chance
 
     300% Crit Damage'
   m_isRightToLeft: 0
@@ -3003,8 +3008,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -185, y: -224}
-  m_SizeDelta: {x: 669.8779, y: 389.9116}
+  m_AnchoredPosition: {x: -191.71246, y: -270.1481}
+  m_SizeDelta: {x: 656.453, y: 482.2078}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1655306839
 MonoBehaviour:
@@ -3035,7 +3040,13 @@ MonoBehaviour:
 
 
     Surge
-    makes you attack faster but slows you and costs energy'
+    makes you attack faster but slows you and costs energy
+
+
+    Shield = 10% of
+    max HP
+
+    Purple bar next to health is the shield regen timer'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
