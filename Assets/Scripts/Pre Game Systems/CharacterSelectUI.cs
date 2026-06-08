@@ -61,6 +61,8 @@ public class CharacterSelectUI : MonoBehaviour
                 : "Not Ready";
             sb.AppendLine($"{readyState} - Player {kvp.Key} - {characterName}");
         }
+        sb.AppendLine($"isServer: {CharacterSelectManager.instance.isServer}");
+        sb.AppendLine($"players: {NetworkManager.main?.playerCount ?? -1}");
         playerListText.text = sb.ToString();
     }
 }
