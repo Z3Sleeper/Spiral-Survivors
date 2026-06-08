@@ -306,7 +306,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   windupDuration: 0.5
   postBlitzPause: 0.5
-  attackCooldown: 5
+  attackCooldown: 4
   blitzDistance: 15
   blitzSpeed: 30
   blitzesPerAttack: 1

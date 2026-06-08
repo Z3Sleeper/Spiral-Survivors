@@ -306,7 +306,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   projectilePrefab: {fileID: 2942187867930129664, guid: c0f958d6a0df73d44aba515d36d38697, type: 3}
   gun: {fileID: 3869802202908258147}
-  attackCooldown: 5
+  attackCooldown: 4
   minAttackRange: 8
   dashSpeed: 40
   windupDuration: 0.2
