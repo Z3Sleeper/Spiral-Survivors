@@ -103,7 +103,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 5, y: 0.1, z: 5}
+  m_LocalScale: {x: 10, y: 0.01, z: 10}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 5074739929274987408}
@@ -236,7 +236,7 @@ MonoBehaviour:
   _hurtbox: {fileID: 1046179636567246685}
   _physicsCollider: {fileID: 7874162270675813079}
   baseMoveSpeed: 1
-  baseWeaponDamage: 10
+  baseWeaponDamage: 15
   bonusWeaponDamagePercent: 1
   baseWeaponRadius: 0
   baseWeaponSpeed: 180
@@ -246,7 +246,7 @@ MonoBehaviour:
   baseCritChance: 0.05
   baseCritDamage: 3
   _baseMaxHealth:
-    _value: 50
+    _value: 25
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
   _bonusMaxHealthFlat:
@@ -863,7 +863,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 5, y: 0.1, z: 5}
+  m_LocalScale: {x: 10, y: 0.01, z: 10}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 5074739929274987408}

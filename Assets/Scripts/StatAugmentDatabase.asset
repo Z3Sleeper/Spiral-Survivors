@@ -55,7 +55,7 @@ MonoBehaviour:
     appendText: 
   - statType: 8
     displayName: Dash Haste
-    value: 10
+    value: 25
     prependText: +
     appendText: 
   - statType: 9

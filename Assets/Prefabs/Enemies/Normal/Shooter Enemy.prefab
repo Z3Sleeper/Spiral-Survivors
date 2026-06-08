@@ -308,6 +308,7 @@ MonoBehaviour:
   gun: {fileID: 3869802202908258147}
   attackCooldown: 5
   minAttackRange: 8
+  dashSpeed: 40
   windupDuration: 0.2
   postShotPause: 0.3
   shotsToShoot: 1

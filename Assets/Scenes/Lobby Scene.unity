@@ -1061,7 +1061,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -280.04996, y: 80}
-  m_SizeDelta: {x: 560.09, y: 60}
+  m_SizeDelta: {x: 560, y: 80}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &551242611
 MonoBehaviour:
@@ -1830,7 +1830,7 @@ MonoBehaviour:
 
     25 Health
 
-    10 Damage
+    15 Damage
 
     5 Range
 
@@ -2051,7 +2051,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -280.05, y: 180}
-  m_SizeDelta: {x: 560.09, y: 60}
+  m_SizeDelta: {x: 560, y: 80}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1185525486
 MonoBehaviour:
@@ -2330,7 +2330,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -280.043, y: 380}
-  m_SizeDelta: {x: 560.09, y: 60}
+  m_SizeDelta: {x: 560, y: 80}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1301878940
 MonoBehaviour:
@@ -2547,7 +2547,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -280.043, y: 280}
-  m_SizeDelta: {x: 560.09, y: 60}
+  m_SizeDelta: {x: 560, y: 80}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1533087836
 MonoBehaviour:
@@ -2569,11 +2569,11 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '+25% Base Attack Speed
+  m_text: '+25% Total Attack Speed
 
-    +20% Crit Chance
+    +15% Crit Chance
 
-    +5 Movement Speed'
+    +4 Movement Speed'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

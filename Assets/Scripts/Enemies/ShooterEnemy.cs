@@ -11,10 +11,12 @@ public class ShooterEnemy : EnemyBase
     [SerializeField] private GameObject gun;
     [SerializeField] private float attackCooldown = 5f;
     [SerializeField] private float minAttackRange = 3f;
+    [SerializeField] private float dashSpeed = 8f;
 
-    public enum State { Moving, Windup, PostShot }
+    public enum State { Moving, Dashing, Windup, PostShot }
     private float _stateTimer;
     private float _attackCooldownTimer = 3f;
+    private Vector3 _dashTarget;
     [SerializeField] private float windupDuration = 0.5f;
     [SerializeField] private float postShotPause = 0.3f;
     [SerializeField] private int shotsToShoot = 1;
@@ -59,8 +61,21 @@ public class ShooterEnemy : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (TargetInRange() && !TargetTooClose() && _attackCooldownTimer <= 0f)
+                if (TargetInRange() && _attackCooldownTimer <= 0f)
+                {
+                    if (TargetTooClose())
+                        EnterDash();
+                    else
+                        EnterWindup();
+                }
+                break;
+
+            case State.Dashing:
+                if (Vector3.Distance(transform.position, _dashTarget) < 0.2f)
+                {
+                    _physicsCollider.enabled = true;
                     EnterWindup();
+                }
                 break;
 
             case State.Windup:
@@ -82,6 +97,12 @@ public class ShooterEnemy : EnemyBase
     {
         if (_state == State.Moving)
             base.FixedUpdate();
+        else if (_state == State.Dashing)
+        {
+            Vector3 dir = (_dashTarget - transform.position);
+            dir.y = 0;
+            _rb.linearVelocity = new Vector3(dir.normalized.x * dashSpeed, _rb.linearVelocity.y, dir.normalized.z * dashSpeed);
+        }
         else if (_state == State.Windup)
             if (_target != null)
             {
@@ -90,6 +111,19 @@ public class ShooterEnemy : EnemyBase
                 if (dir != Vector3.zero)
                     transform.rotation = Quaternion.LookRotation(dir);
             }
+    }
+
+    private void EnterDash()
+    {
+        if (_target == null) return;
+        float dist = Vector3.Distance(transform.position, _target.position);
+        Vector3 awayDir = transform.position - _target.position;
+        awayDir.y = 0;
+        awayDir.Normalize();
+        _dashTarget = transform.position + awayDir * (minAttackRange - dist + 0.5f);
+        _physicsCollider.enabled = false;
+        _rb.linearVelocity = Vector3.zero;
+        _state = State.Dashing;
     }
 
     private bool TargetTooClose()
