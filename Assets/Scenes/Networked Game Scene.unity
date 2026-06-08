@@ -5733,7 +5733,7 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   characterSpawner: {fileID: 1082317242}
-  xpLevelStep: 5
+  xpLevelStep: 3
 --- !u!4 &2030860279
 Transform:
   m_ObjectHideFlags: 0
