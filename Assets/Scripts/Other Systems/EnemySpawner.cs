@@ -5,7 +5,7 @@ using System.Linq;
 using PurrNet;
 using UnityEngine;
 
-public enum EnemyTier { Normal, Elite, Miniboss, Boss }
+public enum EnemyTier { Normal, Elite, Miniboss, Boss, Pleb }
 
 [System.Serializable]
 public class EnemyEntry
@@ -39,11 +39,14 @@ public class EnemySpawner : NetworkIdentity
     public float coopSpawnTimeScalar = 0.5f;
     [SerializeField] private float coopBossHealthScalar = 0.5f;
     [SerializeField] private bool waitForPlayersLoaded = true;
+    [SerializeField] private int maxEnemies = 300;
 
     private List<EnemyEntry> _normalEnemies = new();
     private List<EnemyEntry> _eliteEnemies = new();
     private List<EnemyEntry> _minibossEnemies = new();
     private List<EnemyEntry> _bossEnemies = new();
+    private List<EnemyEntry> _plebEnemies = new();
+    [SerializeField] private float plebSpawnInterval = 1f;
 
     private List<EnemyEntry> _currentSet = new();
     private List<EnemyEntry> _previousSet = new();
@@ -81,6 +84,7 @@ public class EnemySpawner : NetworkIdentity
                 case EnemyTier.Elite: _eliteEnemies.Add(entry); break;
                 case EnemyTier.Miniboss: _minibossEnemies.Add(entry); break;
                 case EnemyTier.Boss: _bossEnemies.Add(entry); break;
+                case EnemyTier.Pleb: _plebEnemies.Add(entry); break;
             }
         }
 
@@ -98,6 +102,7 @@ public class EnemySpawner : NetworkIdentity
 
     public void StartSpawning()
     {
+        EnemyBase.ActiveCount = 0;
         _playerCount = networkManager.playerCount;
         _spawnInterval = baseSpawnInterval / (1f + (_playerCount - 1) * coopSpawnTimeScalar);
         _currentEliteChance = baseEliteChance;
@@ -105,25 +110,43 @@ public class EnemySpawner : NetworkIdentity
         CycleTimer = cycleInterval;
         StartCoroutine(SpawnLoop());
         StartCoroutine(CycleLoop());
+        if (_plebEnemies.Count > 0)
+            StartCoroutine(PlebSpawnLoop());
     }
 
     private IEnumerator SpawnLoop()
     {
         while (true)
         {
-            // Try elite spawn
-            if (_eliteEnemies.Count > 0 && _elitesSpawnedThisCycle < _currentEliteCap
-                && UnityEngine.Random.value < _currentEliteChance)
+            if (EnemyBase.ActiveCount < maxEnemies)
             {
-                SpawnThisEnemy(GetWeightedRandom(_eliteEnemies), false);
-                _elitesSpawnedThisCycle++;
-            }
-            else if (_currentSet.Count > 0)
-            {
-                SpawnThisEnemy(GetWeightedRandom(_currentSet), false);
+                if (_eliteEnemies.Count > 0 && _elitesSpawnedThisCycle < _currentEliteCap
+                    && UnityEngine.Random.value < _currentEliteChance)
+                {
+                    SpawnThisEnemy(GetWeightedRandom(_eliteEnemies), false);
+                    _elitesSpawnedThisCycle++;
+                }
+                else if (_currentSet.Count > 0)
+                {
+                    SpawnThisEnemy(GetWeightedRandom(_currentSet), false);
+                }
             }
 
             yield return new WaitForSeconds(_spawnInterval);
+        }
+    }
+
+    private IEnumerator PlebSpawnLoop()
+    {
+        float interval = plebSpawnInterval / (1f + (_playerCount - 1) * coopSpawnTimeScalar);
+        while (true)
+        {
+            for (int i = 0; i < 5; i++)
+            {
+                if (EnemyBase.ActiveCount < maxEnemies)
+                    SpawnThisEnemy(GetWeightedRandom(_plebEnemies), false);
+            }
+            yield return new WaitForSeconds(interval);
         }
     }
 
@@ -237,9 +260,8 @@ public class EnemySpawner : NetworkIdentity
 
     private Vector3 GetSpawnPosition()
     {
-        var players = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None)
-            .Where(p => !p.IsDead).ToList();
-        
+        var players = CharacterStats.All.Where(p => !p.IsDead).ToList();
+
         if (players.Count == 0) return Vector3.zero;
 
         Vector3 pos;
@@ -253,17 +275,15 @@ public class EnemySpawner : NetworkIdentity
             pos = randomPlayer.transform.position + new Vector3(Mathf.Cos(angle) * distance, 0, Mathf.Sin(angle) * distance);
             attempts++;
         }
-        while (!IsFarEnoughFromPlayers(pos) && attempts < 30);
+        while (!IsFarEnoughFromPlayers(pos, players) && attempts < 30);
 
         return pos;
     }
 
-    private bool IsFarEnoughFromPlayers(Vector3 pos)
+    private bool IsFarEnoughFromPlayers(Vector3 pos, List<CharacterStats> players)
     {
-        var players = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None);
         foreach (var player in players)
         {
-            if (player.IsDead) continue;
             if (Vector3.Distance(pos, player.transform.position) < spawnMinDistance)
                 return false;
         }

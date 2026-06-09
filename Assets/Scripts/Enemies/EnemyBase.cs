@@ -37,19 +37,24 @@ public class EnemyBase : NetworkIdentity
         set => _currentHealthSync.value = value;
     }
 
+    public static int ActiveCount = 0;
+
     private float _findTargetTimer = 0;
     private const float FindTargetInterval = 1f;
     protected Transform _target;
+    private readonly List<CharacterStats> _cooldownKeysBuffer = new();
 
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
         _hurtbox = transform.Find("Hurtbox").GetComponent<Collider>();
         _physicsCollider = transform.Find("PhysicsCollider").GetComponent<Collider>();
-        
+
         baseHealth = maxHealth;
         baseDamage = damage;
         baseMoveSpeed = moveSpeed;
+
+        _findTargetTimer = UnityEngine.Random.Range(0f, FindTargetInterval);
     }
 
     protected override void OnSpawned()
@@ -60,6 +65,7 @@ public class EnemyBase : NetworkIdentity
 
         if (!isServer) return;
         CurrentHealth = maxHealth;
+        ActiveCount++;
     }
 
     protected virtual void Update()
@@ -72,8 +78,9 @@ public class EnemyBase : NetworkIdentity
             FindTarget();
         }
 
-var keys = new List<CharacterStats>(_contactCooldowns.Keys);
-        foreach (var player in keys)
+        _cooldownKeysBuffer.Clear();
+        _cooldownKeysBuffer.AddRange(_contactCooldowns.Keys);
+        foreach (var player in _cooldownKeysBuffer)
         {
             _contactCooldowns[player] -= Time.deltaTime;
             if (_contactCooldowns[player] <= 0)
@@ -94,10 +101,8 @@ var keys = new List<CharacterStats>(_contactCooldowns.Keys);
 
     protected virtual void FindTarget()
     {
-        // Find nearest player
-        var players = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None);
         float nearest = float.MaxValue;
-        foreach (var p in players)
+        foreach (var p in CharacterStats.All)
         {
             if (p.IsDead) continue;
             float dist = Vector3.Distance(transform.position, p.transform.position);
@@ -182,6 +187,7 @@ var keys = new List<CharacterStats>(_contactCooldowns.Keys);
     protected virtual void Die()
     {
         _isDead = true;
+        ActiveCount--;
 
         XPOrbManager.instance.SpawnOrbs(transform.position, xpValue);
 

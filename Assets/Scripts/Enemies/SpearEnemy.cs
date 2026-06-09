@@ -65,7 +65,8 @@ public class SpearEnemy : EnemyBase
 
     protected override void Update()
     {
-        base.Update(); // handles find target timer
+        if (_state == State.Moving)
+            base.Update(); // only find targets while moving
         if (!isServer) return;
         if (_isDead) return;
 
@@ -116,7 +117,7 @@ public class SpearEnemy : EnemyBase
             Vector3 dir = (_target.position - transform.position);
             dir.y = 0;
             if (dir != Vector3.zero)
-                transform.rotation = Quaternion.LookRotation(dir);
+                _rb.rotation = Quaternion.LookRotation(dir.normalized);
         }
         
         _state = State.Windup;

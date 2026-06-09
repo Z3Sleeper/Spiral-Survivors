@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
 
 public class CharacterStats : NetworkBehaviour
 {
+    public static readonly List<CharacterStats> All = new();
+
     public enum CharacterClass {Knight, Rogue, Archer, Bladeweaver}
     public CharacterClass characterClass;
 
@@ -202,9 +205,12 @@ public class CharacterStats : NetworkBehaviour
 
     public bool invincible = false;
 
+    protected override void OnDestroy() { All.Remove(this); base.OnDestroy(); }
+
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        All.Add(this);
 
         _isDeadSync.onChanged += OnDeathStateChanged;
 

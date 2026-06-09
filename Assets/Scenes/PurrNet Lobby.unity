@@ -150,6 +150,7 @@ RectTransform:
   - {fileID: 859912477}
   - {fileID: 1390776109}
   - {fileID: 1418493415}
+  - {fileID: 540491351}
   - {fileID: 1034634361}
   - {fileID: 385738601}
   m_Father: {fileID: 1267779087}
@@ -2402,7 +2403,7 @@ GameObject:
   - component: {fileID: 540491353}
   - component: {fileID: 540491352}
   m_Layer: 5
-  m_Name: Description (4)
+  m_Name: Room Code Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -2420,7 +2421,7 @@ RectTransform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1390776109}
+  m_Father: {fileID: 6321156}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
@@ -3372,7 +3373,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '+5 Range
+  m_text: '+10 Range
 
     +30 Health
 
@@ -7357,7 +7358,6 @@ RectTransform:
   - {fileID: 942548778}
   - {fileID: 808251104}
   - {fileID: 666959340}
-  - {fileID: 540491351}
   - {fileID: 604194053}
   - {fileID: 506467848}
   - {fileID: 2044663233}
@@ -7490,7 +7490,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
-  m_Color: {r: 0.21176474, g: 0.48235294, b: 0.32443553, a: 1}
+  m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
