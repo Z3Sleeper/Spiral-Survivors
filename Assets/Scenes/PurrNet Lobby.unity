@@ -5340,19 +5340,19 @@ MonoBehaviour:
   m_text: 'HELLO FRIEND
 
 
+    ESC = Pause
+
     Space = Dash
 
-    Hold Right Click = Surge
+    Hold Right Click
+    = Surge
 
 
-    Surge
-    makes you attack faster but slows you and costs energy
+    Surge makes you attack faster but slows you and costs energy
 
 
-    Shield = 10% of
-    max HP
-
-    Purple bar next to health is the shield regen timer'
+    Shield
+    = 10% of max HP'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

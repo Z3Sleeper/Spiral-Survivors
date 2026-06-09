@@ -31,7 +31,6 @@ public class LocalUIManager : MonoBehaviour
     private List<AugmentCardUI> _cardPool = new();
 
     [Header("Pause System")]
-    [SerializeField] private GameObject pauseCountdownOverlay;
     [SerializeField] private TextMeshProUGUI pauseCountdownText;
     [SerializeField] private GameObject pauseScreen;
     [SerializeField] private GameObject singlePlayerResumePanel;
@@ -50,7 +49,7 @@ public class LocalUIManager : MonoBehaviour
     {
         instance = this;
         levelUpScreen.SetActive(false);
-        pauseCountdownOverlay.SetActive(false);
+        pauseCountdownText.gameObject.SetActive(false);
         pauseScreen.SetActive(false);
     }
 
@@ -100,19 +99,19 @@ public class LocalUIManager : MonoBehaviour
 
     public void ShowPauseCountdown(int seconds)
     {
-        pauseCountdownOverlay.SetActive(true);
-        pauseCountdownText.text = seconds.ToString();
+        pauseCountdownText.gameObject.SetActive(true);
+        pauseCountdownText.text = $"Pausing in {seconds}...";
     }
 
     public void UpdatePauseCountdown(int seconds)
     {
-        if (seconds <= 0) { pauseCountdownOverlay.SetActive(false); return; }
-        pauseCountdownText.text = seconds.ToString();
+        if (seconds <= 0) { pauseCountdownText.gameObject.SetActive(false); return; }
+        pauseCountdownText.text = $"Pausing in {seconds}...";
     }
 
     public void ShowPauseScreen(bool isSinglePlayer)
     {
-        pauseCountdownOverlay.SetActive(false);
+        pauseCountdownText.gameObject.SetActive(false);
         _isReadyForUnpause = false;
         if (pauseReadyButtonText != null) pauseReadyButtonText.text = "Ready Up";
         if (pauseReadyCountText != null) pauseReadyCountText.text = $"0/{NetworkManager.main.playerCount} Ready";
@@ -126,7 +125,7 @@ public class LocalUIManager : MonoBehaviour
     {
         _isReadyForUnpause = false;
         pauseScreen.SetActive(false);
-        pauseCountdownOverlay.SetActive(false);
+        pauseCountdownText.gameObject.SetActive(false);
     }
 
     public void UpdatePauseReadyCount(int ready, int total)
