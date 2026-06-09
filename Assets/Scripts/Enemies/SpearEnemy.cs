@@ -24,7 +24,7 @@ public class SpearEnemy : EnemyBase
 
     public enum State { Moving, Windup, Stabbing, PostStab }
     private float _stateTimer;
-    private float _attackCooldownTimer = 3f;
+    private float _attackCooldownTimer;
     private int _attacksRemaining;
     [HideInInspector] public SyncVar<State> _syncState = new SyncVar<State>(State.Moving);
     private State _state
@@ -50,6 +50,7 @@ public class SpearEnemy : EnemyBase
                 _animator.SetFloat(PostStabSpeedHash, clip.length / postStabPause);
         }
         _attacksRemaining = attacksPerAttack;
+        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
     }
 
     private void OnStateChanged(State state)

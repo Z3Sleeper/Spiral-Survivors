@@ -15,7 +15,7 @@ public class BlitzEnemy : EnemyBase
 
     public enum State { Moving, Windup, Blitzing, PostBlitz }
     private float _stateTimer;
-    private float _attackCooldownTimer = 3f;
+    private float _attackCooldownTimer;
     private Vector3 _blitzDirection;
     private Vector3 _blitzEndPoint;
     private int _blitzesRemaining = 0;
@@ -34,7 +34,7 @@ public class BlitzEnemy : EnemyBase
         OnStateChanged(_syncState.value);
         hasContactDamage = false;
         _blitzesRemaining = blitzesPerAttack;
-        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
+        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
     }
 
     private void OnStateChanged(State state)

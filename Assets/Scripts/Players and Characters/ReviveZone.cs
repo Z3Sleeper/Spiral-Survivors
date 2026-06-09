@@ -45,9 +45,9 @@ public class ReviveZone : NetworkIdentity
 
         // Scale on all clients from synced timer
         reviveProgressArea.transform.localScale = new Vector3(
-            ChargeTimer / _stats.reviveTime * 5f,
+            ChargeTimer / _stats.reviveTime * 10f,
             reviveProgressArea.transform.localScale.y,
-            ChargeTimer / _stats.reviveTime * 5f
+            ChargeTimer / _stats.reviveTime * 10f
         );
 
         if (!isServer) return;

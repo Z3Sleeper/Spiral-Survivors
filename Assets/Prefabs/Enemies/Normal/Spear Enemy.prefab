@@ -294,12 +294,12 @@ MonoBehaviour:
   _visitiblityRules: {fileID: 0}
   moveSpeed: 0.6
   backpedalSpeedDivisor: 1.5
-  maxHealth: 30
+  maxHealth: 60
   preferredRange: 3.5
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
   damage: 10
-  xpValue: 2
+  xpValue: 5
   hasContactDamage: 0
   contactCooldown: 0.5
   _currentHealthSync:
@@ -311,7 +311,7 @@ MonoBehaviour:
   windupDuration: 0.4
   stabDuration: 0.1
   postStabPause: 0.3
-  attackCooldown: 4
+  attackCooldown: 3
   attacksPerAttack: 1
   dangerIndicator: {fileID: 1900264130550196311}
   _syncState:

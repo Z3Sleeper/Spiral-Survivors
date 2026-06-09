@@ -1015,7 +1015,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7600638646727349221}
   - component: {fileID: 3528644101431230945}
-  m_Layer: 8
+  m_Layer: 12
   m_Name: PhysicsCollider
   m_TagString: Untagged
   m_Icon: {fileID: 0}

@@ -74,6 +74,10 @@ public class PlayerController : NetworkIdentity
             SweepForOrbs();
         }
 
+        // Pause input
+        if (_input.Player.Pause.WasPressedThisFrame())
+            GameManager.instance.RequestPauseRpc();
+
         // Dash input
         if (_input.Player.Dash.WasPressedThisFrame() && _currentCharges > 0 && !_isDashing)
             StartDash();

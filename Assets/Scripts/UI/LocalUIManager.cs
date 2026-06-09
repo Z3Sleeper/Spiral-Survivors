@@ -30,6 +30,17 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private Transform cardContainer;
     private List<AugmentCardUI> _cardPool = new();
 
+    [Header("Pause System")]
+    [SerializeField] private GameObject pauseCountdownOverlay;
+    [SerializeField] private TextMeshProUGUI pauseCountdownText;
+    [SerializeField] private GameObject pauseScreen;
+    [SerializeField] private GameObject singlePlayerResumePanel;
+    [SerializeField] private GameObject multiplayerPausePanel;
+    [SerializeField] private TextMeshProUGUI pauseReadyCountText;
+    [SerializeField] private TextMeshProUGUI pauseFallbackTimerText;
+    [SerializeField] private TextMeshProUGUI pauseReadyButtonText;
+    private bool _isReadyForUnpause;
+
     private readonly System.Text.StringBuilder _statsSB = new();
 
     private CharacterStats _stats;
@@ -39,6 +50,8 @@ public class LocalUIManager : MonoBehaviour
     {
         instance = this;
         levelUpScreen.SetActive(false);
+        pauseCountdownOverlay.SetActive(false);
+        pauseScreen.SetActive(false);
     }
 
     public void SetPlayer(CharacterStats stats)
@@ -83,6 +96,63 @@ public class LocalUIManager : MonoBehaviour
     {
         foreach (var card in _cardPool)
             card.gameObject.SetActive(false);
+    }
+
+    public void ShowPauseCountdown(int seconds)
+    {
+        pauseCountdownOverlay.SetActive(true);
+        pauseCountdownText.text = seconds.ToString();
+    }
+
+    public void UpdatePauseCountdown(int seconds)
+    {
+        if (seconds <= 0) { pauseCountdownOverlay.SetActive(false); return; }
+        pauseCountdownText.text = seconds.ToString();
+    }
+
+    public void ShowPauseScreen(bool isSinglePlayer)
+    {
+        pauseCountdownOverlay.SetActive(false);
+        _isReadyForUnpause = false;
+        if (pauseReadyButtonText != null) pauseReadyButtonText.text = "Ready Up";
+        if (pauseReadyCountText != null) pauseReadyCountText.text = $"0/{NetworkManager.main.playerCount} Ready";
+        if (pauseFallbackTimerText != null) pauseFallbackTimerText.gameObject.SetActive(false);
+        singlePlayerResumePanel.SetActive(isSinglePlayer);
+        multiplayerPausePanel.SetActive(!isSinglePlayer);
+        pauseScreen.SetActive(true);
+    }
+
+    public void HidePauseScreen()
+    {
+        _isReadyForUnpause = false;
+        pauseScreen.SetActive(false);
+        pauseCountdownOverlay.SetActive(false);
+    }
+
+    public void UpdatePauseReadyCount(int ready, int total)
+    {
+        if (pauseReadyCountText != null)
+            pauseReadyCountText.text = $"{ready}/{total} Ready";
+    }
+
+    public void SetFallbackTimer(int seconds, bool visible)
+    {
+        if (pauseFallbackTimerText == null) return;
+        pauseFallbackTimerText.gameObject.SetActive(visible);
+        if (visible) pauseFallbackTimerText.text = $"Auto-resume in {seconds}s";
+    }
+
+    public void OnPauseReadyClicked()
+    {
+        _isReadyForUnpause = !_isReadyForUnpause;
+        if (pauseReadyButtonText != null)
+            pauseReadyButtonText.text = _isReadyForUnpause ? "Unready" : "Ready Up";
+        GameManager.instance.TogglePauseReadyRpc(NetworkManager.main.localPlayer);
+    }
+
+    public void OnResumeClicked()
+    {
+        GameManager.instance.RequestPauseRpc();
     }
 
     private AugmentCardUI GetCard(int index)

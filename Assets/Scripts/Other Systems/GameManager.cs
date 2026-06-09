@@ -26,7 +26,7 @@ public class GameManager : NetworkIdentity
         set => _level.value = value;
     }
 
-    [NonSerialized] public SyncVar<float> _xpToNextLevel = new(5);
+    public SyncVar<float> _xpToNextLevel = new(5);
     public float XPToNextLevel
     {
         get => _xpToNextLevel.value;
@@ -49,6 +49,11 @@ public class GameManager : NetworkIdentity
     private HashSet<PlayerID> _pauseReadyPlayers = new();
     private Coroutine _levelUpTimerCoroutine;
     private int _playersLoaded;
+
+    private HashSet<PlayerID> _manualPauseReadyPlayers = new();
+    private bool _isPendingPause;
+    private Coroutine _pauseCountdownCoroutine;
+    private Coroutine _pauseFallbackCoroutine;
 
     private const float LevelUpTimerDuration = 30f;
 
@@ -267,10 +272,126 @@ public class GameManager : NetworkIdentity
         Time.timeScale = 1f;
         _playersLoaded = 0;
         PurrLobby.LobbyFlags.IsReturningFromGame = true;
-        NetworkManager.main.sceneModule.LoadSceneAsync("PurrNet Lobby", new PurrSceneSettings
+        NetworkManager.main.sceneModule.LoadSceneAsync(GameStartData.LobbySceneName, new PurrSceneSettings
         {
             mode = LoadSceneMode.Single,
             isPublic = true
         });
     }
+
+    [ServerRpc(requireOwnership: false)]
+    public void RequestPauseRpc()
+    {
+        if (networkManager.playerCount == 1 && IsPaused)
+        {
+            Unpause();
+            return;
+        }
+        if (_isPendingPause || IsPaused) return;
+        _isPendingPause = true;
+
+        if (networkManager.playerCount == 1)
+        {
+            IsPaused = true;
+            _isPendingPause = false;
+            ShowPauseScreenRpc(true);
+            return;
+        }
+
+        _pauseCountdownCoroutine = StartCoroutine(PauseCountdownCoroutine());
+    }
+
+    private IEnumerator PauseCountdownCoroutine()
+    {
+        int countdown = 3;
+        ShowPauseCountdownRpc(countdown);
+        while (countdown > 0)
+        {
+            yield return new WaitForSecondsRealtime(1f);
+            countdown--;
+            UpdatePauseCountdownRpc(countdown);
+        }
+        IsPaused = true;
+        _isPendingPause = false;
+        _manualPauseReadyPlayers.Clear();
+        ShowPauseScreenRpc(false);
+    }
+
+    [ServerRpc(requireOwnership: false)]
+    public void TogglePauseReadyRpc(PlayerID player)
+    {
+        if (!IsPaused) return;
+
+        bool wasEmpty = _manualPauseReadyPlayers.Count == 0;
+
+        if (_manualPauseReadyPlayers.Contains(player))
+            _manualPauseReadyPlayers.Remove(player);
+        else
+            _manualPauseReadyPlayers.Add(player);
+
+        bool nowEmpty = _manualPauseReadyPlayers.Count == 0;
+
+        UpdatePauseReadyCountRpc(_manualPauseReadyPlayers.Count, networkManager.playerCount);
+
+        if (nowEmpty && _pauseFallbackCoroutine != null)
+        {
+            StopCoroutine(_pauseFallbackCoroutine);
+            _pauseFallbackCoroutine = null;
+            SetFallbackTimerRpc(0, false);
+            return;
+        }
+
+        if (wasEmpty && !nowEmpty)
+            _pauseFallbackCoroutine = StartCoroutine(PauseFallbackCoroutine());
+
+        if (_manualPauseReadyPlayers.Count >= networkManager.playerCount)
+            Unpause();
+    }
+
+    private IEnumerator PauseFallbackCoroutine()
+    {
+        for (int remaining = 30; remaining > 0; remaining--)
+        {
+            SetFallbackTimerRpc(remaining, true);
+            yield return new WaitForSecondsRealtime(1f);
+        }
+        Unpause();
+    }
+
+    private void Unpause()
+    {
+        if (_pauseFallbackCoroutine != null)
+        {
+            StopCoroutine(_pauseFallbackCoroutine);
+            _pauseFallbackCoroutine = null;
+        }
+        _manualPauseReadyPlayers.Clear();
+        _isPendingPause = false;
+        IsPaused = false;
+        HidePauseScreenRpc();
+    }
+
+    [ObserversRpc]
+    private void ShowPauseCountdownRpc(int seconds)
+        => LocalUIManager.instance.ShowPauseCountdown(seconds);
+
+    [ObserversRpc]
+    private void UpdatePauseCountdownRpc(int seconds)
+        => LocalUIManager.instance.UpdatePauseCountdown(seconds);
+
+    [ObserversRpc]
+    private void ShowPauseScreenRpc(bool isSinglePlayer)
+        => LocalUIManager.instance.ShowPauseScreen(isSinglePlayer);
+
+    [ObserversRpc]
+    private void HidePauseScreenRpc()
+        => LocalUIManager.instance.HidePauseScreen();
+
+    [ObserversRpc]
+    private void UpdatePauseReadyCountRpc(int ready, int total)
+        => LocalUIManager.instance.UpdatePauseReadyCount(ready, total);
+
+    [ObserversRpc]
+    private void SetFallbackTimerRpc(int seconds, bool visible)
+        => LocalUIManager.instance.SetFallbackTimer(seconds, visible);
 }

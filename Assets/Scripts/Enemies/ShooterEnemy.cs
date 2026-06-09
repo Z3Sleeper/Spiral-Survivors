@@ -15,7 +15,7 @@ public class ShooterEnemy : EnemyBase
 
     public enum State { Moving, Dashing, Windup, PostShot }
     private float _stateTimer;
-    private float _attackCooldownTimer = 3f;
+    private float _attackCooldownTimer;
     private Vector3 _dashTarget;
     [SerializeField] private float windupDuration = 0.5f;
     [SerializeField] private float postShotPause = 0.3f;
@@ -41,6 +41,7 @@ public class ShooterEnemy : EnemyBase
         OnStateChanged(_syncState.value);
         TryGetComponent(out _animator);
         _shotsRemaining = shotsToShoot;
+        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
     }
 
     private void OnStateChanged(State state)

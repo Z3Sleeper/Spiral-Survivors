@@ -48,13 +48,19 @@ public class CharacterSelectUI : MonoBehaviour
 
     public void OnReadyClicked()
     {
-        lobbyManager.ToggleLocalReady();
+        lobbyManager?.ToggleLocalReady();
     }
 
     private void SelectCharacter(int index)
     {
-        if (string.IsNullOrEmpty(GameStartData.LocalUserId)) return;
         GameStartData.LocalCharacterIndex = index;
+        if (lobbyManager == null || string.IsNullOrEmpty(GameStartData.LocalUserId)) return;
         lobbyManager.SetLobbyData($"char_{GameStartData.LocalUserId}", index.ToString());
+
+        var lobby = lobbyManager.CurrentLobby;
+        if (!lobby.IsValid || lobby.Properties == null) return;
+        lobby.Properties = new(lobby.Properties);
+        lobby.Properties[$"char_{GameStartData.LocalUserId}"] = index.ToString();
+        RefreshFromLobby(lobby);
     }
 }

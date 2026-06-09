@@ -297,7 +297,7 @@ MonoBehaviour:
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
   damage: 10
-  xpValue: 2
+  xpValue: 5
   hasContactDamage: 0
   contactCooldown: 0.5
   _currentHealthSync:
@@ -306,7 +306,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   projectilePrefab: {fileID: 2942187867930129664, guid: c0f958d6a0df73d44aba515d36d38697, type: 3}
   gun: {fileID: 3869802202908258147}
-  attackCooldown: 4
+  attackCooldown: 3
   minAttackRange: 8
   dashSpeed: 40
   windupDuration: 0.2

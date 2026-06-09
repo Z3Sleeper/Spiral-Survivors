@@ -22,10 +22,11 @@ public class LeaperEnemy : EnemyBase
 
     public enum State { Moving, Windup, Leaping, Landing, PostLeap }
     private float _stateTimer;
-    private float _attackCooldownTimer = 2f;
+    private float _attackCooldownTimer;
     private Vector3 _leapStart;
     private Vector3 _leapTarget;
     private int _leapsRemaining;
+    private float _clientLeapElapsed;
 
     [HideInInspector] public SyncVar<State> _syncState = new(State.Moving);
     private State _state
@@ -50,6 +51,7 @@ public class LeaperEnemy : EnemyBase
             else if (clip.name == "Leaper Enemy Leap")
                 _animator.SetFloat(LeapSpeedHash, clip.length / leapDuration);
         }
+        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
         if (!isServer) return;
         aoeHitbox.enabled = false;
         _leapsRemaining = leapsPerAttack;
@@ -61,7 +63,16 @@ public class LeaperEnemy : EnemyBase
         if (state == State.Windup)
             _animator.Play(WindupHash, 0, 0f);
         else if (state == State.Leaping)
+        {
             _animator.Play(LeapHash, 0, 0f);
+            dangerIndicator.transform.SetParent(null);
+            dangerIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
+            _clientLeapElapsed = 0f;
+        }
+        else
+        {
+            dangerIndicator.transform.SetParent(transform);
+        }
     }
 
     private void OnLeapTargetChanged(Vector3 target)
@@ -114,11 +125,21 @@ public class LeaperEnemy : EnemyBase
 
         if (_state == State.Leaping)
         {
-            float t = 1f - (_stateTimer / leapDuration);
-            Vector3 flatPos = Vector3.Lerp(_leapStart, _leapTarget, t);
-            _rb.MovePosition(flatPos);
-            float arcY = Mathf.Sin(t * Mathf.PI) * leapHeight;
-            model.localPosition = new Vector3(0f, 0.5f + arcY, 0f);
+            if (isServer)
+            {
+                float t = 1f - (_stateTimer / leapDuration);
+                Vector3 flatPos = Vector3.Lerp(_leapStart, _leapTarget, t);
+                _rb.MovePosition(flatPos);
+                float arcY = Mathf.Sin(t * Mathf.PI) * leapHeight;
+                model.localPosition = new Vector3(0f, 0.5f + arcY, 0f);
+            }
+            else
+            {
+                _clientLeapElapsed += Time.fixedDeltaTime;
+                float t = Mathf.Clamp01(_clientLeapElapsed / leapDuration);
+                float arcY = Mathf.Sin(t * Mathf.PI) * leapHeight;
+                model.localPosition = new Vector3(0f, 0.5f + arcY, 0f);
+            }
         }
     }
 
@@ -142,7 +163,6 @@ public class LeaperEnemy : EnemyBase
         _physicsCollider.enabled = false;
         _hurtbox.enabled = false;
 
-        dangerIndicator.transform.SetParent(null);
     }
 
     private void Land()
@@ -158,7 +178,6 @@ public class LeaperEnemy : EnemyBase
         _state = State.Landing;
         _stateTimer = landingDuration;
 
-        dangerIndicator.transform.SetParent(transform);
         dangerIndicator.SetActive(false);
     }
 

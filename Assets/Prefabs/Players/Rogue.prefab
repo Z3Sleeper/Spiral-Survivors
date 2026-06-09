@@ -422,14 +422,14 @@ MonoBehaviour:
   _hurtbox: {fileID: 1046179636567246685}
   _physicsCollider: {fileID: 2665468359510037400}
   baseMoveSpeed: 1.4
-  baseWeaponDamage: 15
+  baseWeaponDamage: 30
   bonusWeaponDamagePercent: 1
   baseWeaponRadius: 0
   baseWeaponSpeed: 225
   baseWeaponCount: 1
   baseWeaponRange: 1
   continuousFire: 0
-  baseCritChance: 0.2
+  baseCritChance: 0.05
   baseCritDamage: 3
   _baseMaxHealth:
     _value: 25
@@ -978,7 +978,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 2.5
+  m_Radius: 5
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &2664827818621550075
 MonoBehaviour:

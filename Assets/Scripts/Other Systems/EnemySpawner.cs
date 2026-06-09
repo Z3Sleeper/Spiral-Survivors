@@ -38,7 +38,6 @@ public class EnemySpawner : NetworkIdentity
     public float spawnTimeCycleScalar = 0.9f;
     public float coopSpawnTimeScalar = 0.5f;
     [SerializeField] private float coopBossHealthScalar = 0.5f;
-    [SerializeField] private bool waitForPlayersLoaded = true;
     [SerializeField] private int maxEnemies = 300;
 
     private List<EnemyEntry> _normalEnemies = new();
@@ -46,6 +45,7 @@ public class EnemySpawner : NetworkIdentity
     private List<EnemyEntry> _minibossEnemies = new();
     private List<EnemyEntry> _bossEnemies = new();
     private List<EnemyEntry> _plebEnemies = new();
+    [SerializeField] private int plebSpawnAmount = 5;
     [SerializeField] private float plebSpawnInterval = 1f;
 
     private List<EnemyEntry> _currentSet = new();
@@ -62,6 +62,7 @@ public class EnemySpawner : NetworkIdentity
     private float _currentEliteChance;
     private int _currentEliteCap;
     private int _playerCount;
+    [SerializeField] private bool waitForPlayersLoaded = true;
 
     private void Awake()
     {
@@ -141,7 +142,7 @@ public class EnemySpawner : NetworkIdentity
         float interval = plebSpawnInterval / (1f + (_playerCount - 1) * coopSpawnTimeScalar);
         while (true)
         {
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < plebSpawnAmount; i++)
             {
                 if (EnemyBase.ActiveCount < maxEnemies)
                     SpawnThisEnemy(GetWeightedRandom(_plebEnemies), false);

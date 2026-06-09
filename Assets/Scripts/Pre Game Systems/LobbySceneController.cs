@@ -12,6 +12,7 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private GameObject mainMenuPanel;
     [SerializeField] private GameObject purrLobbyPanel;
     [SerializeField] private GameObject characterSelectPanel;
+    [SerializeField] private ViewManager viewManager;
 
     private int _expectedPlayerCount;
     private bool _initializedForLobby;
@@ -53,6 +54,7 @@ public class LobbySceneController : MonoBehaviour
     {
         mainMenuPanel.SetActive(false);
         purrLobbyPanel.SetActive(true);
+        viewManager.OnLeaveBrowseClicked();
     }
 
     private void OnRoomJoined(Lobby lobby)

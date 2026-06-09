@@ -297,7 +297,7 @@ MonoBehaviour:
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
   damage: 10
-  xpValue: 2
+  xpValue: 5
   hasContactDamage: 0
   contactCooldown: 0.5
   _currentHealthSync:
@@ -306,7 +306,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   windupDuration: 0.5
   postBlitzPause: 0.5
-  attackCooldown: 4
+  attackCooldown: 3
   blitzDistance: 15
   blitzSpeed: 30
   blitzesPerAttack: 1
