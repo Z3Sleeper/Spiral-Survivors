@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using PurrLobby.Providers;
 using PurrNet;
 using PurrNet.Logging;
 using UnityEngine;
@@ -77,11 +78,16 @@ namespace PurrLobby
                 return;
             }
 
-            if (_lobbyDataHolder.CurrentLobby.IsValid)
+            if (_lobbyDataHolder.CurrentLobby.IsValid && !LobbyFlags.IsReturningFromGame)
             {
                 LeaveLobby(_lobbyDataHolder.CurrentLobby.LobbyId);
                 _lobbyDataHolder.SetCurrentLobby(default);
             }
+            LobbyFlags.IsReturningFromGame = false;
+
+            // Restore provider's internal lobby ID — it resets to nil on scene reload
+            if (_lobbyDataHolder.CurrentLobby.IsValid && _currentProvider is SteamLobbyProvider steamProvider)
+                steamProvider.RestoreCurrentLobby(_lobbyDataHolder.CurrentLobby.LobbyId);
         }
 
         private void Update()
@@ -384,11 +390,23 @@ namespace PurrLobby
         private async void CallOnAllReady()
         {
             await WaitForAllTasksAsync();
-            if(_currentLobby.IsValid && _currentLobby.Members.TrueForAll(x => x.IsReady))
+            bool allReady = _currentLobby.IsValid && _currentLobby.Members.TrueForAll(x => x.IsReady);
+            if (allReady)
             {
-                await _currentProvider.SetAllReadyAsync();
-
-                OnAllReady?.Invoke();
+                try
+                {
+                    await _currentProvider.SetAllReadyAsync();
+                    OnAllReady?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    PurrLogger.LogError($"SetAllReadyAsync threw: {ex.Message}");
+                    IsStarting = false;
+                }
+            }
+            else
+            {
+                IsStarting = false;
             }
         }
         

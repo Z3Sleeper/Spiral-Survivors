@@ -9,22 +9,21 @@ public class PlayerData : NetworkIdentity
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        if (!isServer) return;
+        if (isOwner)
+            ReportCharacterRpc(GameStartData.LocalCharacterIndex);
+    }
 
-        int index = CharacterSelectManager.instance != null
-            ? CharacterSelectManager.instance.playerCharacterChoices[owner.Value]
-            : 0;
-
+    [ServerRpc]
+    private void ReportCharacterRpc(int index)
+    {
         characterIndex.value = index;
         GameManager.instance.characterSpawner.SpawnCharacter(index, this);
-        
         StartCoroutine(NotifyLoaded());
     }
 
     private IEnumerator NotifyLoaded()
     {
-        yield return new WaitForSeconds(0.5f); // change from yield return null to this
-        if (CharacterSelectManager.instance != null)
-            CharacterSelectManager.instance.PlayerLoaded(owner.Value);
+        yield return new WaitForSeconds(0.5f);
+        GameManager.instance?.PlayerLoaded();
     }
 }

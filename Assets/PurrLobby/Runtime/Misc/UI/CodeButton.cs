@@ -13,6 +13,7 @@ namespace PurrLobby
         
         public void Init(string roomId)
         {
+            if (string.IsNullOrEmpty(roomId)) return;
             _roomId = roomId;
             codeText.text = _roomId;
         }
@@ -20,27 +21,18 @@ namespace PurrLobby
         public void CopyCode()
         {
             GUIUtility.systemCopyBuffer = _roomId;
-            
+
             if(_clickEffectCoroutine != null)
                 StopCoroutine(_clickEffectCoroutine);
-            _clickEffectCoroutine = StartCoroutine(ClickEffect());
-            
+            _clickEffectCoroutine = StartCoroutine(ClickEffect(_roomId));
         }
 
-        private WaitForSeconds _wait = new (0.13f);
         private WaitForSeconds _waitToReturn = new (1f);
-        private IEnumerator ClickEffect()
+        private IEnumerator ClickEffect(string roomId)
         {
-            codeText.text = "Copied!"; 
-
+            codeText.text = "Copied!";
             yield return _waitToReturn;
-            
-            codeText.text = "";
-            for (int i = 0; i < _roomId.Length; i++)
-            {
-                codeText.text += _roomId[i];
-                yield return _wait;
-            }
+            codeText.text = roomId;
         }
     }
 }

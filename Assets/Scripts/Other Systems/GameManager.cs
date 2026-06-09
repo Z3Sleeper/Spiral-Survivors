@@ -48,6 +48,7 @@ public class GameManager : NetworkIdentity
     private HashSet<PlayerID> _gameOverReadyPlayers = new();
     private HashSet<PlayerID> _pauseReadyPlayers = new();
     private Coroutine _levelUpTimerCoroutine;
+    private int _playersLoaded;
 
     private const float LevelUpTimerDuration = 30f;
 
@@ -243,12 +244,30 @@ public class GameManager : NetworkIdentity
         NetworkedUIManager.instance.UpdateReadyText(ready, total);
     }
 
+    public void PlayerLoaded()
+    {
+        if (!isServer) return;
+        _playersLoaded++;
+        if (_playersLoaded >= networkManager.playerCount)
+        {
+            _playersLoaded = 0;
+            HideLoadingScreenRpc();
+            EnemySpawner.instance.StartSpawning();
+        }
+    }
+
+    [ObserversRpc]
+    private void HideLoadingScreenRpc()
+    {
+        LoadingScreen.instance.Hide();
+    }
+
     private void ReturnToLobby()
     {
         Time.timeScale = 1f;
-        if (CharacterSelectManager.instance != null)
-            CharacterSelectManager.instance.ResetLobby();
-        NetworkManager.main.sceneModule.LoadSceneAsync("Lobby Scene", new PurrSceneSettings
+        _playersLoaded = 0;
+        PurrLobby.LobbyFlags.IsReturningFromGame = true;
+        NetworkManager.main.sceneModule.LoadSceneAsync("PurrNet Lobby", new PurrSceneSettings
         {
             mode = LoadSceneMode.Single,
             isPublic = true

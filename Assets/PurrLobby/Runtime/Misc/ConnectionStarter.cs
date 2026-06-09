@@ -27,10 +27,10 @@ namespace PurrLobby
     {
         private NetworkManager _networkManager;
         private LobbyDataHolder _lobbyDataHolder;
-        
-        // Prevents duplicate network starts if scene loads multiple times
-        private static bool _hasStarted = false;
         private bool _useUnityRelay = false;
+#if UTP_LOBBYRELAY
+        private static bool _hasStarted = false;
+#endif
         
         private void Awake()
         {
@@ -100,18 +100,23 @@ namespace PurrLobby
                 PurrLogger.LogError($"Failed to start connection. {nameof(NetworkManager)} is null!", this);
                 return;
             }
-            
+
             if (!_lobbyDataHolder)
             {
                 PurrLogger.LogError($"Failed to start connection. {nameof(LobbyDataHolder)} is null!", this);
                 return;
             }
-            
+
             if (!_lobbyDataHolder.CurrentLobby.IsValid)
             {
                 PurrLogger.LogError($"Failed to start connection. Lobby is invalid!", this);
                 return;
             }
+
+            // Network already running (e.g. returning from a game session) — skip auto-start
+            var main = NetworkManager.main;
+            if (main != null && (main.isServer || main.isClient))
+                return;
 
             if(_networkManager.transport is PurrTransport) {
                 (_networkManager.transport as PurrTransport).roomName = _lobbyDataHolder.CurrentLobby.LobbyId;

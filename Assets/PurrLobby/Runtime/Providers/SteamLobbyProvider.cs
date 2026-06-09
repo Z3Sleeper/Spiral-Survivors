@@ -37,8 +37,10 @@ namespace PurrLobby.Providers
         public event UnityAction<string> OnLobbyJoinFailed;
         public event UnityAction OnLobbyLeft;
         public event UnityAction<Lobby> OnLobbyUpdated;
+#pragma warning disable CS0067
         public event UnityAction<List<LobbyUser>> OnLobbyPlayerListUpdated;
         public event UnityAction<List<FriendUser>> OnFriendListPulled;
+#pragma warning restore CS0067
         public event UnityAction<string> OnError;
         
         [SerializeField] private bool handleSteamInit = false;
@@ -329,6 +331,14 @@ namespace PurrLobby.Providers
             });
 
             return await tcs.Task;
+        }
+
+        public void RestoreCurrentLobby(string lobbyId)
+        {
+#if STEAMWORKS_NET_PACKAGE && !DISABLESTEAMWORKS
+            if (!string.IsNullOrEmpty(lobbyId) && ulong.TryParse(lobbyId, out ulong id))
+                _currentLobby = new Steamworks.CSteamID(id);
+#endif
         }
 
         public Task SetIsReadyAsync(string userId, bool isReady)

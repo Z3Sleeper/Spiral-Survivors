@@ -1,68 +1,60 @@
-using PurrNet;
+using PurrLobby;
 using TMPro;
 using UnityEngine;
 
 public class CharacterSelectUI : MonoBehaviour
 {
+    public static CharacterSelectUI instance;
+
     [SerializeField] private TextMeshProUGUI playerListText;
+    [SerializeField] private LobbyManager lobbyManager;
+    [SerializeField] private CodeButton codeButton;
 
-    public void OnKnightClicked()
+    private void Awake()
     {
-        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
-        CharacterSelectManager.instance.SelectCharacter(0, NetworkManager.main.localPlayer);
+        if (instance != null) { Destroy(gameObject); return; }
+        instance = this;
     }
 
-    public void OnRogueClicked()
+    public void RefreshFromLobby(Lobby lobby)
     {
-        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
-        CharacterSelectManager.instance.SelectCharacter(1, NetworkManager.main.localPlayer);
+        if (playerListText == null || CharacterRegistry.instance == null) return;
+        codeButton?.Init(lobby.LobbyId);
+
+        var sb = new System.Text.StringBuilder("Player List:\n");
+        foreach (var member in lobby.Members)
+        {
+            string charName = "...";
+            if (lobby.Properties != null
+                && lobby.Properties.TryGetValue($"char_{member.Id}", out string val)
+                && int.TryParse(val, out int idx))
+                charName = CharacterRegistry.instance.GetPrefab(idx).name;
+
+            string readyState = member.IsReady ? "Ready" : "Not Ready";
+            sb.AppendLine($"{readyState} - {member.DisplayName} - {charName}");
+        }
+        playerListText.text = sb.ToString();
     }
 
-    public void OnArcherClicked()
-    {
-        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
-        CharacterSelectManager.instance.SelectCharacter(2, NetworkManager.main.localPlayer);
-    }
-
-    public void OnBladeweaverClicked()
-    {
-        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
-        CharacterSelectManager.instance.SelectCharacter(3, NetworkManager.main.localPlayer);
-    }
+    public void OnKnightClicked()      => SelectCharacter(0);
+    public void OnRogueClicked()       => SelectCharacter(1);
+    public void OnArcherClicked()      => SelectCharacter(2);
+    public void OnBladeweaverClicked() => SelectCharacter(3);
 
     public void OnRandomClicked()
     {
-        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
-        CharacterSelectManager.instance.SelectRandom(NetworkManager.main.localPlayer);
+        SelectCharacter(UnityEngine.Random.Range(0, CharacterRegistry.instance.PrefabCount()));
     }
 
     public void OnReadyClicked()
     {
-        if (CharacterSelectManager.instance == null || !CharacterSelectManager.instance.isSpawned) return;
-        CharacterSelectManager.instance.ReadyUp(NetworkManager.main.localPlayer);
+        lobbyManager.ToggleLocalReady();
     }
 
-    private void Update()
+    private void SelectCharacter(int index)
     {
-        UpdatePlayerList();
-    }
-
-    private void UpdatePlayerList()
-    {
-        if (CharacterSelectManager.instance == null) return;
-        if (CharacterRegistry.instance == null) return;
-
-        var sb = new System.Text.StringBuilder("Player List:\n");
-        foreach (var kvp in CharacterSelectManager.instance.playerCharacterChoices)
-        {
-            var characterName = CharacterRegistry.instance.GetPrefab(kvp.Value).name;
-            var readyState = CharacterSelectManager.instance._readyStates.TryGetValue(kvp.Key, out bool ready) && ready 
-                ? "Ready" 
-                : "Not Ready";
-            sb.AppendLine($"{readyState} - Player {kvp.Key} - {characterName}");
-        }
-        sb.AppendLine($"isServer: {CharacterSelectManager.instance.isServer}");
-        sb.AppendLine($"players: {NetworkManager.main?.playerCount ?? -1}");
-        playerListText.text = sb.ToString();
+        if (string.IsNullOrEmpty(GameStartData.LocalUserId)) return;
+        GameStartData.LocalCharacterIndex = index;
+        lobbyManager.SetLobbyData($"char_{GameStartData.LocalUserId}", index.ToString());
     }
 }
