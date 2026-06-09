@@ -38,7 +38,8 @@ public class WeaponBow : WeaponBase
 
     private bool HasEnemyInLoS()
     {
-        if (Physics.Raycast(transform.position, transform.forward, out RaycastHit hit, _stats.WeaponRange, enemyHurtboxLayer))
+        var origin = transform.position - transform.forward * 0.5f;
+        if (Physics.Raycast(origin, transform.forward, out RaycastHit hit, _stats.WeaponRange + 0.5f, enemyHurtboxLayer))
             return hit.collider.GetComponentInParent<EnemyBase>() != null;
         return false;
     }
