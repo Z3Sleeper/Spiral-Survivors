@@ -2895,8 +2895,8 @@ MonoBehaviour:
   _visitiblityRules: {fileID: 0}
   ScalingHealthFactor: 1.15
   ScalingHealthAddend: 0.5
-  ScalingDamageFactor: 1
-  ScalingDamageAddend: 0.1
+  ScalingDamageFactor: 1.15
+  ScalingDamageAddend: 0.5
   ScalingSpeedFactor: 1
   ScalingSpeedAddend: 0.1
   enemyEntries:
@@ -2957,8 +2957,8 @@ MonoBehaviour:
   spawnMinDistance: 25
   spawnMaxDistance: 40
   baseSpawnInterval: 0.5
-  cycleInterval: 150
-  baseEliteChance: 0.005
+  cycleInterval: 120
+  baseEliteChance: 0.006
   baseEliteCap: 2
   coopSpawnTimeScalar: 0.5
   coopBossHealthScalar: 0.5

@@ -9,9 +9,6 @@ EditorBuildSettings:
     path: Assets/Scenes/PurrNet Lobby.unity
     guid: 7aa3434afdb3aae40a450e7e391a3361
   - enabled: 1
-    path: Assets/Scenes/Lobby Scene.unity
-    guid: 65d84264d583d6944be80b2a207ddf0e
-  - enabled: 1
     path: Assets/Scenes/Networked Game Scene.unity
     guid: 99c9720ab356a0642a771bea13969a05
   m_configObjects:
