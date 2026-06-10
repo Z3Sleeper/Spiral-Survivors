@@ -14,6 +14,9 @@ public class CharacterStats : NetworkBehaviour
     [SerializeField] private Collider _hurtbox;
     [SerializeField] private Collider _physicsCollider;
 
+    [Header("Audio")]
+    public AudioClip hitSound;
+
     [Header("Movement")]
     public float baseMoveSpeed = 1f;
     [NonSerialized] public float bonusMoveSpeedFlat = 0f;

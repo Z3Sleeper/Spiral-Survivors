@@ -32,5 +32,7 @@ public class WeaponBlade : WeaponBase
             damage *= _stats.CritDamage;
 
         enemy.TakeDamageRpc(damage);
+
+        SFXManager.instance?.Play(_stats.hitSound, enemy.transform.position);
     }
 }

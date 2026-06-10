@@ -137,7 +137,7 @@ public class PlayerController : NetworkIdentity
         {
             var orb = _orbHits[i].GetComponent<XPOrb>();
             if (orb != null)
-                orb.StartAttractingRPC(transform);
+                orb.StartAttractingRPC(transform, owner ?? default);
         }
     }
 

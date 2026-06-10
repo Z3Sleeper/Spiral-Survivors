@@ -12,6 +12,7 @@ public class WeaponArrow : NetworkIdentity
     private float _distanceTravelled;
     private bool _hit;
     private Vector3 _spawnPoint;
+    private AudioClip _hitSound;
 
     protected override void OnSpawned()
     {
@@ -19,7 +20,7 @@ public class WeaponArrow : NetworkIdentity
         enabled = isOwner;
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, AudioClip hitSound = null)
     {
         _damage = damage;
         _maxRange = maxRange;
@@ -28,6 +29,7 @@ public class WeaponArrow : NetworkIdentity
         _critChance = critChance;
         _critDamage = critDamage;
         _spawnPoint = transform.position;
+        _hitSound = hitSound;
     }
 
     private void Update()
@@ -58,6 +60,7 @@ public class WeaponArrow : NetworkIdentity
             damage *= _critDamage;
 
         enemy.TakeDamageRpc(damage);
+        SFXManager.instance?.Play(_hitSound, transform.position);
         Destroy(gameObject);
     }
 }

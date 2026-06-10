@@ -60,6 +60,7 @@ MonoBehaviour:
   scatterForce: 3
   attractSpeed: 25
   collectRadius: 0.5
+  collectSound: {fileID: 8300000, guid: f831e9f89c7b67f4c8d9579fb370bdac, type: 3}
 --- !u!54 &-5675643182975690526
 Rigidbody:
   m_ObjectHideFlags: 0

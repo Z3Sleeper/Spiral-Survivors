@@ -253,7 +253,7 @@ public class GameManager : NetworkIdentity
     {
         if (!isServer) return;
         _playersLoaded++;
-        if (_playersLoaded >= networkManager.playerCount)
+        if (_playersLoaded >= GameStartData.ExpectedPlayerCount)
         {
             _playersLoaded = 0;
             HideLoadingScreenRpc();

@@ -421,6 +421,7 @@ MonoBehaviour:
   _controller: {fileID: 5418513144571543119}
   _hurtbox: {fileID: 1046179636567246685}
   _physicsCollider: {fileID: 2665468359510037400}
+  hitSound: {fileID: 8300000, guid: 4bd816b58e589244fb213589f12d8a7c, type: 3}
   baseMoveSpeed: 1.4
   baseWeaponDamage: 30
   bonusWeaponDamagePercent: 1

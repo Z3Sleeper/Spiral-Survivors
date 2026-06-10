@@ -66,6 +66,7 @@ public class LobbySceneController : MonoBehaviour
         GameStartData.LocalCharacterIndex = 0;
         lobbyManager.SetLobbyData($"char_{GameStartData.LocalUserId}", "0");
         ShowCharacterSelect();
+        CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0);
         CharacterSelectUI.instance?.RefreshFromLobby(lobby);
     }
 
@@ -91,6 +92,7 @@ public class LobbySceneController : MonoBehaviour
         if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
         var lobby = lobbyManager.CurrentLobby;
         _expectedPlayerCount = lobby.Members.Count;
+        GameStartData.ExpectedPlayerCount = _expectedPlayerCount;
 
         if (lobby.IsOwner)
         {

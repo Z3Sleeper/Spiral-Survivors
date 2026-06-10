@@ -12,8 +12,10 @@ public class XPOrb : NetworkIdentity
     [SerializeField] private float scatterForce = 3f;
     [SerializeField] private float attractSpeed = 8f;
     [SerializeField] private float collectRadius = 0.5f;
+    [SerializeField] private AudioClip collectSound;
 
     private Transform _attractTarget;
+    private PlayerID _collectorId;
 
     private void Awake()
     {
@@ -45,10 +47,11 @@ public class XPOrb : NetworkIdentity
     }
 
     [ServerRpc(requireOwnership:false)]
-    public void StartAttractingRPC(Transform target)
+    public void StartAttractingRPC(Transform target, PlayerID collectorId)
     {
         if (_attractTarget != null) return;
         _attractTarget = target;
+        _collectorId = collectorId;
     }
 
     private void Update()
@@ -72,7 +75,14 @@ public class XPOrb : NetworkIdentity
     {
         if (_collected) return;
         _collected = true;
+        PlayCollectSoundRpc(_collectorId);
         GameManager.instance.AddXPRpc(_value);
         Destroy(gameObject);
+    }
+
+    [TargetRpc]
+    private void PlayCollectSoundRpc(PlayerID target)
+    {
+        SFXManager.instance?.Play(collectSound, transform.position);
     }
 }

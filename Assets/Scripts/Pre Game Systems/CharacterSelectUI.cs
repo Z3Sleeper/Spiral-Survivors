@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using PurrLobby;
 using TMPro;
 using UnityEngine;
@@ -10,10 +11,18 @@ public class CharacterSelectUI : MonoBehaviour
     [SerializeField] private LobbyManager lobbyManager;
     [SerializeField] private CodeButton codeButton;
 
+    private readonly Dictionary<string, int> _charSelections = new();
+
     private void Awake()
     {
         if (instance != null) { Destroy(gameObject); return; }
         instance = this;
+    }
+
+    public void SetLocalDefault(string userId, int index)
+    {
+        if (!string.IsNullOrEmpty(userId))
+            _charSelections[userId] = index;
     }
 
     public void RefreshFromLobby(Lobby lobby)
@@ -21,14 +30,22 @@ public class CharacterSelectUI : MonoBehaviour
         if (playerListText == null || CharacterRegistry.instance == null) return;
         codeButton?.Init(lobby.LobbyId);
 
+        if (lobby.Properties != null)
+        {
+            foreach (var member in lobby.Members)
+            {
+                if (lobby.Properties.TryGetValue($"char_{member.Id}", out string val)
+                    && int.TryParse(val, out int idx))
+                    _charSelections[member.Id] = idx;
+            }
+        }
+
         var sb = new System.Text.StringBuilder("Player List:\n");
         foreach (var member in lobby.Members)
         {
             string charName = "...";
-            if (lobby.Properties != null
-                && lobby.Properties.TryGetValue($"char_{member.Id}", out string val)
-                && int.TryParse(val, out int idx))
-                charName = CharacterRegistry.instance.GetPrefab(idx).name;
+            if (_charSelections.TryGetValue(member.Id, out int charIdx))
+                charName = CharacterRegistry.instance.GetPrefab(charIdx).name;
 
             string readyState = member.IsReady ? "Ready" : "Not Ready";
             sb.AppendLine($"{readyState} - {member.DisplayName} - {charName}");
@@ -54,13 +71,16 @@ public class CharacterSelectUI : MonoBehaviour
     private void SelectCharacter(int index)
     {
         GameStartData.LocalCharacterIndex = index;
-        if (lobbyManager == null || string.IsNullOrEmpty(GameStartData.LocalUserId)) return;
-        lobbyManager.SetLobbyData($"char_{GameStartData.LocalUserId}", index.ToString());
 
+        if (!string.IsNullOrEmpty(GameStartData.LocalUserId))
+        {
+            _charSelections[GameStartData.LocalUserId] = index;
+            lobbyManager?.SetLobbyData($"char_{GameStartData.LocalUserId}", index.ToString());
+        }
+
+        if (lobbyManager == null) return;
         var lobby = lobbyManager.CurrentLobby;
-        if (!lobby.IsValid || lobby.Properties == null) return;
-        lobby.Properties = new(lobby.Properties);
-        lobby.Properties[$"char_{GameStartData.LocalUserId}"] = index.ToString();
-        RefreshFromLobby(lobby);
+        if (lobby.IsValid)
+            RefreshFromLobby(lobby);
     }
 }
