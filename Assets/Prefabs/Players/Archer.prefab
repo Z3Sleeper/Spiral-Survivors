@@ -235,7 +235,9 @@ MonoBehaviour:
   _controller: {fileID: 5418513144571543119}
   _hurtbox: {fileID: 1046179636567246685}
   _physicsCollider: {fileID: 7874162270675813079}
-  hitSound: {fileID: 8300000, guid: 4bd816b58e589244fb213589f12d8a7c, type: 3}
+  hitSound: {fileID: 8300000, guid: 46eb98bbef4754d43b95d85ec992d28f, type: 3}
+  _renderers:
+  - {fileID: 4797182340578565043}
   baseMoveSpeed: 1
   baseWeaponDamage: 15
   bonusWeaponDamagePercent: 1
@@ -273,7 +275,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
-  baseEnergyRegen: 5
+  baseEnergyRegen: 10
   dashCharges: 3
   baseDashCooldown: 5
   dashHaste: 0

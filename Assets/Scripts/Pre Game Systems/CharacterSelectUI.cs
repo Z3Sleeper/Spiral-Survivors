@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using PurrLobby;
+using Steamworks;
 using TMPro;
 using UnityEngine;
 
@@ -30,12 +31,15 @@ public class CharacterSelectUI : MonoBehaviour
         if (playerListText == null || CharacterRegistry.instance == null) return;
         codeButton?.Init(lobby.LobbyId);
 
-        if (lobby.Properties != null)
+        if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
         {
+            var lobbyCSteamID = new CSteamID(lobbyIdRaw);
             foreach (var member in lobby.Members)
             {
-                if (lobby.Properties.TryGetValue($"char_{member.Id}", out string val)
-                    && int.TryParse(val, out int idx))
+                if (member.Id == GameStartData.LocalUserId) continue;
+                if (!ulong.TryParse(member.Id, out ulong memberIdRaw)) continue;
+                string val = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, new CSteamID(memberIdRaw), "char");
+                if (int.TryParse(val, out int idx))
                     _charSelections[member.Id] = idx;
             }
         }
@@ -44,7 +48,9 @@ public class CharacterSelectUI : MonoBehaviour
         foreach (var member in lobby.Members)
         {
             string charName = "...";
-            if (_charSelections.TryGetValue(member.Id, out int charIdx))
+            if (member.Id == GameStartData.LocalUserId)
+                charName = CharacterRegistry.instance.GetPrefab(GameStartData.LocalCharacterIndex).name;
+            else if (_charSelections.TryGetValue(member.Id, out int charIdx))
                 charName = CharacterRegistry.instance.GetPrefab(charIdx).name;
 
             string readyState = member.IsReady ? "Ready" : "Not Ready";
@@ -71,16 +77,15 @@ public class CharacterSelectUI : MonoBehaviour
     private void SelectCharacter(int index)
     {
         GameStartData.LocalCharacterIndex = index;
-
-        if (!string.IsNullOrEmpty(GameStartData.LocalUserId))
-        {
-            _charSelections[GameStartData.LocalUserId] = index;
-            lobbyManager?.SetLobbyData($"char_{GameStartData.LocalUserId}", index.ToString());
-        }
+        _charSelections[GameStartData.LocalUserId] = index;
 
         if (lobbyManager == null) return;
         var lobby = lobbyManager.CurrentLobby;
-        if (lobby.IsValid)
-            RefreshFromLobby(lobby);
+        if (!lobby.IsValid) return;
+
+        if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
+            SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "char", index.ToString());
+
+        RefreshFromLobby(lobby);
     }
 }

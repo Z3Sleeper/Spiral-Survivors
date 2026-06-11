@@ -11,6 +11,7 @@ public class GameManager : NetworkIdentity
     public static GameManager instance;
     public CharacterSpawner characterSpawner;
     [SerializeField] private float xpLevelStep = 5f;
+    [SerializeField] private AudioClip levelUpSound;
 
     [NonSerialized] public SyncVar<float> _currentXP = new(0);
     public float CurrentXP
@@ -203,6 +204,7 @@ public class GameManager : NetworkIdentity
     private void ShowLevelUpScreenRpc()
     {
         LocalUIManager.instance.ShowLevelUpScreen();
+        SFXManager.instance?.Play(levelUpSound, Vector3.zero);
     }
 
     [ObserversRpc]
@@ -253,7 +255,8 @@ public class GameManager : NetworkIdentity
     {
         if (!isServer) return;
         _playersLoaded++;
-        if (_playersLoaded >= GameStartData.ExpectedPlayerCount)
+        Debug.Log($"[PlayerLoaded] _playersLoaded={_playersLoaded}, playerCount={networkManager.playerCount}");
+        if (_playersLoaded >= networkManager.playerCount)
         {
             _playersLoaded = 0;
             HideLoadingScreenRpc();
@@ -265,6 +268,7 @@ public class GameManager : NetworkIdentity
     private void HideLoadingScreenRpc()
     {
         LoadingScreen.instance.Hide();
+        MusicPlayer.instance?.Play();
     }
 
     private void ReturnToLobby()

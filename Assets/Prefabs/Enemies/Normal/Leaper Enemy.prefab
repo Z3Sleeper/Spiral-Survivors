@@ -472,9 +472,9 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  moveSpeed: 0.6
-  backpedalSpeedDivisor: 1.5
-  maxHealth: 60
+  moveSpeed: 1.2
+  backpedalSpeedDivisor: 3
+  maxHealth: 50
   preferredRange: 10
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
@@ -486,6 +486,8 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
+  _renderers:
+  - {fileID: 3448404629509916890}
   windupDuration: 0.4
   leapDuration: 0.4
   postLeapPause: 0.5

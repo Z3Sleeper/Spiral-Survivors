@@ -18,11 +18,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
       propertyPath: xpValue
-      value: 25
+      value: 115
       objectReference: {fileID: 0}
     - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
       propertyPath: maxHealth
-      value: 300
+      value: 250
       objectReference: {fileID: 0}
     - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
       propertyPath: leapDuration

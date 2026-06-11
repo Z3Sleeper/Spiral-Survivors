@@ -11,18 +11,20 @@ public class SpearEnemy : EnemyBase
     private static readonly int StabSpeedHash = Animator.StringToHash("StabSpeed");
     private static readonly int PostStabSpeedHash = Animator.StringToHash("PostStabSpeed");
     private Animator _animator;
+    private float _postStabClipLength;
 
     [Header("Spear Settings")]
     [SerializeField] private Collider spearHitbox;
     public float stabDamageMultiplier = 1f;
     [SerializeField] private float windupDuration = 0.5f;
     [SerializeField] private float stabDuration = 0.1f;
+    [SerializeField] private float betweenStabPause = 0.2f;
     [SerializeField] private float postStabPause = 0.5f;
     [SerializeField] private float attackCooldown = 5f;
     [SerializeField] private int attacksPerAttack = 1;
     [SerializeField] private GameObject dangerIndicator;
 
-    public enum State { Moving, Windup, Stabbing, PostStab }
+    public enum State { Moving, Windup, Stabbing, BetweenStabs, PostStab }
     private float _stateTimer;
     private float _attackCooldownTimer;
     private int _attacksRemaining;
@@ -47,7 +49,10 @@ public class SpearEnemy : EnemyBase
             else if (clip.name == "Spear Enemy Stab")
                 _animator.SetFloat(StabSpeedHash, clip.length / stabDuration);
             else if (clip.name == "Spear Enemy PostStab")
+            {
+                _postStabClipLength = clip.length;
                 _animator.SetFloat(PostStabSpeedHash, clip.length / postStabPause);
+            }
         }
         _attacksRemaining = attacksPerAttack;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
@@ -60,8 +65,16 @@ public class SpearEnemy : EnemyBase
             _animator.Play(SpearWindupHash, 0, 0f);
         else if (state == State.Stabbing)
             _animator.Play(SpearStabHash, 0, 0f);
-        else if (state == State.PostStab)
+        else if (state == State.BetweenStabs)
+        {
+            _animator.SetFloat(PostStabSpeedHash, _postStabClipLength / betweenStabPause);
             _animator.Play(SpearPostStabHash, 0, 0f);
+        }
+        else if (state == State.PostStab)
+        {
+            _animator.SetFloat(PostStabSpeedHash, _postStabClipLength / postStabPause);
+            _animator.Play(SpearPostStabHash, 0, 0f);
+        }
     }
 
     protected override void Update()
@@ -88,15 +101,22 @@ public class SpearEnemy : EnemyBase
 
             case State.Stabbing:
                 if (_stateTimer <= 0f)
-                    EnterPostStab();
+                {
+                    if (_attacksRemaining > 0)
+                        EnterBetweenStabs();
+                    else
+                        EnterPostStab();
+                }
+                break;
+
+            case State.BetweenStabs:
+                if (_stateTimer <= 0f)
+                    EnterWindup();
                 break;
 
             case State.PostStab:
                 if (_stateTimer <= 0f)
-                    if (_attacksRemaining > 0)
-                        EnterWindup();
-                    else
-                        EnterMoving();
+                    EnterMoving();
                 break;
         }
     }
@@ -130,6 +150,13 @@ public class SpearEnemy : EnemyBase
         _stateTimer = stabDuration;
         spearHitbox.enabled = true;
         _attacksRemaining--;
+    }
+
+    private void EnterBetweenStabs()
+    {
+        _state = State.BetweenStabs;
+        _stateTimer = betweenStabPause;
+        spearHitbox.enabled = false;
     }
 
     private void EnterPostStab()

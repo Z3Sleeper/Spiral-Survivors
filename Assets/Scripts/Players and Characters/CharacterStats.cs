@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
@@ -16,6 +17,10 @@ public class CharacterStats : NetworkBehaviour
 
     [Header("Audio")]
     public AudioClip hitSound;
+
+    [Header("Visual")]
+    [SerializeField] private Renderer[] _renderers;
+    private Color[] _originalColors;
 
     [Header("Movement")]
     public float baseMoveSpeed = 1f;
@@ -214,6 +219,9 @@ public class CharacterStats : NetworkBehaviour
     {
         base.OnSpawned();
         All.Add(this);
+        _originalColors = new Color[_renderers.Length];
+        for (int i = 0; i < _renderers.Length; i++)
+            _originalColors[i] = _renderers[i].material.color;
 
         _isDeadSync.onChanged += OnDeathStateChanged;
 
@@ -291,6 +299,21 @@ public class CharacterStats : NetworkBehaviour
         TakeDamage(damage);
     }
 
+    [ObserversRpc]
+    private void FlashHitRpc()
+    {
+        StartCoroutine(FlashCoroutine());
+    }
+
+    private IEnumerator FlashCoroutine()
+    {
+        for (int i = 0; i < _renderers.Length; i++)
+            _renderers[i].material.color = Color.red;
+        yield return new WaitForSeconds(0.08f);
+        for (int i = 0; i < _renderers.Length; i++)
+            _renderers[i].material.color = _originalColors[i];
+    }
+
     private void TakeDamage(float damage)
     {
         if (!isServer) return;
@@ -298,6 +321,7 @@ public class CharacterStats : NetworkBehaviour
         if (invincible) return;
 
         _shieldRechargeTimer = ShieldRegenTime;
+        FlashHitRpc();
 
         if (CurrentShield > 0)
         {

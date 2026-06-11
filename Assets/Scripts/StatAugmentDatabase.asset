@@ -15,51 +15,55 @@ MonoBehaviour:
   stats:
   - statType: 0
     displayName: Max Health
+    color: {r: 0, g: 1, b: 0, a: 1}
     value: 15
     prependText: +
     appendText: 
   - statType: 1
     displayName: Damage
+    color: {r: 1, g: 0.3137255, b: 0, a: 1}
     value: 3
     prependText: +
     appendText: 
   - statType: 2
     displayName: Movement Speed
+    color: {r: 1, g: 1, b: 1, a: 1}
     value: 1
     prependText: +
     appendText: 
   - statType: 3
     displayName: Range
+    color: {r: 0.3137255, g: 0.3137255, b: 0.990566, a: 1}
     value: 1
     prependText: +
     appendText: 
   - statType: 4
     displayName: Attack Speed
+    color: {r: 1, g: 0, b: 0.3137255, a: 1}
     value: 15
     prependText: +
     appendText: '%'
   - statType: 5
     displayName: HP Regen
+    color: {r: 0.49019608, g: 1, b: 0, a: 1}
     value: 0.5
     prependText: +
     appendText: 
-  - statType: 6
-    displayName: Max HP Shield
-    value: 5
-    prependText: +
-    appendText: '%'
   - statType: 7
     displayName: Energy Regen
+    color: {r: 1, g: 1, b: 0, a: 1}
     value: 1
     prependText: +
     appendText: 
   - statType: 8
     displayName: Dash Haste
+    color: {r: 0, g: 1, b: 1, a: 1}
     value: 15
     prependText: +
     appendText: 
   - statType: 9
     displayName: Crit Chance
+    color: {r: 1, g: 0, b: 0, a: 1}
     value: 2.5
     prependText: +
     appendText: '%'

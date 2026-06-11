@@ -10,6 +10,7 @@ public class AugmentCardUI : MonoBehaviour
     [SerializeField] private Image augmentImage;
     [SerializeField] private Button pickButton;
     [SerializeField] private Sprite statAugmentSprite;
+    [SerializeField] private AudioClip pickSound;
 
     private int _cardIndex;
     private PlayerID _player;
@@ -21,8 +22,8 @@ public class AugmentCardUI : MonoBehaviour
         pickButton.interactable = true; // add this
 
         augmentImage.sprite = statAugmentSprite;
-        titleText.text = $"{pair.statA.displayName} & {pair.statB.displayName}";
-        descriptionText.text = $"{pair.statA.prependText}{pair.statA.value}{pair.statA.appendText} {pair.statA.displayName}\n{pair.statB.prependText}{pair.statB.value}{pair.statB.appendText} {pair.statB.displayName}";
+        titleText.text = $"{pair.statA.ColoredName} & {pair.statB.ColoredName}";
+        descriptionText.text = $"{pair.statA.Colored($"{pair.statA.prependText}{pair.statA.value}{pair.statA.appendText} {pair.statA.displayName}")}\n{pair.statB.Colored($"{pair.statB.prependText}{pair.statB.value}{pair.statB.appendText} {pair.statB.displayName}")}";
         
         pickButton.onClick.RemoveAllListeners();
         pickButton.onClick.AddListener(OnPicked);
@@ -30,6 +31,7 @@ public class AugmentCardUI : MonoBehaviour
 
     private void OnPicked()
     {
+        SFXManager.instance?.Play(pickSound, Vector3.zero);
         LocalUIManager.instance.HideAllCards();
         AugmentManager.instance.PickAugmentRpc(_player, _cardIndex);
     }

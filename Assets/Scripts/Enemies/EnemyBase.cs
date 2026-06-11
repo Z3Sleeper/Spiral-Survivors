@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
@@ -55,6 +56,7 @@ public class EnemyBase : NetworkIdentity
         baseMoveSpeed = moveSpeed;
 
         _findTargetTimer = UnityEngine.Random.Range(0f, FindTargetInterval);
+        CacheRenderers();
     }
 
     protected override void OnSpawned()
@@ -174,8 +176,34 @@ public class EnemyBase : NetworkIdentity
         if (!isServer) return;
         if (CurrentHealth <= 0) return;
         CurrentHealth -= damage;
+        FlashHitRpc();
         if (CurrentHealth <= 0)
             Die();
+    }
+
+    [SerializeField] private Renderer[] _renderers;
+    private Color[] _originalColors;
+
+    private void CacheRenderers()
+    {
+        _originalColors = new Color[_renderers.Length];
+        for (int i = 0; i < _renderers.Length; i++)
+            _originalColors[i] = _renderers[i].material.color;
+    }
+
+    [ObserversRpc]
+    private void FlashHitRpc()
+    {
+        StartCoroutine(FlashCoroutine());
+    }
+
+    private IEnumerator FlashCoroutine()
+    {
+        for (int i = 0; i < _renderers.Length; i++)
+            _renderers[i].material.color = Color.red;
+        yield return new WaitForSeconds(0.08f);
+        for (int i = 0; i < _renderers.Length; i++)
+            _renderers[i].material.color = _originalColors[i];
     }
 
     [ServerRpc(requireOwnership: false)]

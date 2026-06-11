@@ -9,6 +9,7 @@ public class PlayerData : NetworkIdentity
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        Debug.Log($"[PlayerData.OnSpawned] isOwner={isOwner}, LocalCharacterIndex={GameStartData.LocalCharacterIndex}, LocalUserId={GameStartData.LocalUserId}");
         if (isOwner)
             ReportCharacterRpc(GameStartData.LocalCharacterIndex);
     }
@@ -16,6 +17,7 @@ public class PlayerData : NetworkIdentity
     [ServerRpc]
     private void ReportCharacterRpc(int index)
     {
+        Debug.Log($"[ReportCharacterRpc] Received on server, index={index}, GameManager.instance={GameManager.instance != null}, spawner={GameManager.instance?.characterSpawner != null}");
         characterIndex.value = index;
         GameManager.instance.characterSpawner.SpawnCharacter(index, this);
         StartCoroutine(NotifyLoaded());
@@ -24,6 +26,7 @@ public class PlayerData : NetworkIdentity
     private IEnumerator NotifyLoaded()
     {
         yield return new WaitForSeconds(0.5f);
+        Debug.Log($"[NotifyLoaded] Calling PlayerLoaded. GameManager.instance={GameManager.instance != null}");
         GameManager.instance?.PlayerLoaded();
     }
 }

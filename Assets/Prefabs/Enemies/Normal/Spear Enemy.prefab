@@ -292,9 +292,9 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  moveSpeed: 0.6
-  backpedalSpeedDivisor: 1.5
-  maxHealth: 60
+  moveSpeed: 1.2
+  backpedalSpeedDivisor: 3
+  maxHealth: 50
   preferredRange: 3.5
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
@@ -306,11 +306,14 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
+  _renderers:
+  - {fileID: 3448404629509916890}
   spearHitbox: {fileID: 9054564917381773716}
   stabDamageMultiplier: 1
   windupDuration: 0.4
   stabDuration: 0.1
-  postStabPause: 0.3
+  betweenStabPause: 0.3
+  postStabPause: 0.6
   attackCooldown: 3
   attacksPerAttack: 1
   dangerIndicator: {fileID: 1900264130550196311}

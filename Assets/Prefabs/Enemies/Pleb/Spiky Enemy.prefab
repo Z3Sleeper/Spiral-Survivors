@@ -395,6 +395,8 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
+  _renderers:
+  - {fileID: 3448404629509916890}
 --- !u!114 &-8394223174193477460
 MonoBehaviour:
   m_ObjectHideFlags: 0

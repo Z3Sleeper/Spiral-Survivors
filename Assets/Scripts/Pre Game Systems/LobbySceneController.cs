@@ -92,7 +92,7 @@ public class LobbySceneController : MonoBehaviour
         if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
         var lobby = lobbyManager.CurrentLobby;
         _expectedPlayerCount = lobby.Members.Count;
-        GameStartData.ExpectedPlayerCount = _expectedPlayerCount;
+        Debug.Log($"[OnAllReady] Members: {lobby.Members.Count}, IsOwner: {lobby.IsOwner}");
 
         if (lobby.IsOwner)
         {
