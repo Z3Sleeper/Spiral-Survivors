@@ -71,6 +71,17 @@ public class XPOrb : NetworkIdentity
         }
     }
 
+    private void OnTriggerStay(Collider other)
+    {
+        if (!_settled || _collected) return;
+        if (other.gameObject.layer != LayerMask.NameToLayer("Bounds")) return;
+        transform.position = Vector3.MoveTowards(
+            transform.position,
+            new Vector3(0f, transform.position.y, 0f),
+            attractSpeed * Time.deltaTime
+        );
+    }
+
     private void Collect()
     {
         if (_collected) return;

@@ -15,6 +15,7 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private ViewManager viewManager;
 
     private int _expectedPlayerCount;
+    private int _purrNetPlayersJoined;
     private bool _initializedForLobby;
 
     private void Start()
@@ -92,24 +93,19 @@ public class LobbySceneController : MonoBehaviour
         if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
         var lobby = lobbyManager.CurrentLobby;
         _expectedPlayerCount = lobby.Members.Count;
-        Debug.Log($"[OnAllReady] Members: {lobby.Members.Count}, IsOwner: {lobby.IsOwner}");
+        Debug.Log($"[OnAllReady] Members: {lobby.Members.Count}, IsOwner: {lobby.IsOwner}, isServer={networkManager.isServer}, isClient={networkManager.isClient}, playerCount={networkManager.playerCount}");
 
         if (lobby.IsOwner)
         {
-            if (networkManager.isServer)
-            {
-                networkManager.sceneModule.LoadSceneAsync("Networked Game Scene", new PurrSceneSettings
-                {
-                    mode = LoadSceneMode.Single,
-                    isPublic = true
-                });
-            }
-            else
-            {
+            if (!networkManager.isServer)
                 networkManager.StartServer();
-                networkManager.onPlayerJoined += OnPurrNetPlayerJoined;
+            if (!networkManager.isClient)
                 StartCoroutine(StartClientDelayed());
-            }
+
+            _purrNetPlayersJoined = networkManager.playerCount;
+            Debug.Log($"[OnAllReady] seeding _purrNetPlayersJoined={_purrNetPlayersJoined}, expected={_expectedPlayerCount}");
+            networkManager.onPlayerJoined += OnPurrNetPlayerJoined;
+            TryLoadGameScene();
         }
         else if (!networkManager.isClient)
         {
@@ -119,15 +115,23 @@ public class LobbySceneController : MonoBehaviour
 
     private IEnumerator StartClientDelayed()
     {
+        Debug.Log("[StartClientDelayed] waiting...");
         yield return new WaitForSeconds(1f);
+        Debug.Log("[StartClientDelayed] calling StartClient");
         networkManager.StartClient();
     }
 
     private void OnPurrNetPlayerJoined(PlayerID player, bool isReconnect, bool asServer)
     {
         if (!asServer) return;
-        if (networkManager.playerCount < _expectedPlayerCount) return;
+        _purrNetPlayersJoined++;
+        Debug.Log($"[OnPurrNetPlayerJoined] joined={_purrNetPlayersJoined}, expected={_expectedPlayerCount}");
+        TryLoadGameScene();
+    }
 
+    private void TryLoadGameScene()
+    {
+        if (_purrNetPlayersJoined < _expectedPlayerCount) return;
         networkManager.onPlayerJoined -= OnPurrNetPlayerJoined;
         networkManager.sceneModule.LoadSceneAsync("Networked Game Scene", new PurrSceneSettings
         {

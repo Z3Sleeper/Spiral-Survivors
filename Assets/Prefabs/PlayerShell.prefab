@@ -86,6 +86,6 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   characterIndex:
-    _value: -1
+    _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0

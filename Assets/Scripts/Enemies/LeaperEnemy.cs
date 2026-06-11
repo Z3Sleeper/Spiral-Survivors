@@ -61,11 +61,14 @@ public class LeaperEnemy : EnemyBase
     {
         dangerIndicator.SetActive(state == State.Windup || state == State.Leaping);
         if (state == State.Windup)
+        {
             _animator.Play(WindupHash, 0, 0f);
+            dangerIndicator.transform.SetParent(null);
+            dangerIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
+        }
         else if (state == State.Leaping)
         {
             _animator.Play(LeapHash, 0, 0f);
-            dangerIndicator.transform.SetParent(null);
             dangerIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
             _clientLeapElapsed = 0f;
         }

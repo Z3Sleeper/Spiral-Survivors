@@ -96,7 +96,7 @@ public class AugmentManager : NetworkBehaviour
                 stats.bonusMoveSpeedFlat += entry.value * 0.1f;
                 break;
             case StatType.WeaponRange:
-                stats.bonusWeaponRangeFlat += entry.value * 0.2f;
+                stats.bonusWeaponRangeFlat += entry.value * 0.2f * stats.baseWeaponRange;
                 break;
             case StatType.AttackSpeed:
                 stats.bonusWeaponSpeedFlat += entry.value * 0.01f * stats.baseWeaponSpeed;

@@ -18,6 +18,8 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private Image energyImage;
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private TextMeshProUGUI statsNumbersText;
+    [SerializeField] private Slider spBar;
+    [SerializeField] private TextMeshProUGUI spText;
     [SerializeField] private Slider xpBar;
     [SerializeField] private TextMeshProUGUI xpText;
     [SerializeField] private TextMeshProUGUI timerText;
@@ -169,35 +171,49 @@ public class LocalUIManager : MonoBehaviour
     private void Update()
     {
         if (_stats == null || _controller == null) return;
+        UpdateHealthAndShields();
+        UpdateHealthRegen();
+        UpdateDash();
+        UpdateEnergy();
+        UpdateStats();
+        UpdateSP();
+        UpdateXP();
+        UpdateRunClock();
+        UpdateBossCountdown();
+    }
 
-        // Health and Shields
+    private void UpdateHealthAndShields()
+    {
         healthBar.value = _stats.CurrentHealth / _stats.MaxHealth;
         shieldBar.value = _stats.CurrentShield / _stats.MaxShield;
         shieldRegenBar.value = (_stats.ShieldRegenTime - _stats._shieldRechargeTimer) / _stats.ShieldRegenTime;
         healthText.text = $"<b><color=#FF00FF>{(int)_stats.CurrentShield}/{(int)_stats.MaxShield}</color> {(int)_stats.CurrentHealth}/{(int)_stats.MaxHealth}</b>";
+    }
 
-        // Health Regen
+    private void UpdateHealthRegen()
+    {
         healthRegenText.text = $"<b>+{_stats.HealthRegen:G4}/s</b>";
+    }
 
-        // Dash
-        if (_controller._currentCharges < _stats.dashCharges)
-            dashChargeCooldownImage.fillAmount = 1f - (_controller._chargeRegenTimer / _stats.DashCooldown);
-        else
-            dashChargeCooldownImage.fillAmount = 1f;
+    private void UpdateDash()
+    {
+        dashChargeCooldownImage.fillAmount = _controller._currentCharges < _stats.dashCharges
+            ? 1f - (_controller._chargeRegenTimer / _stats.DashCooldown)
+            : 1f;
         dashChargesText.text = $"<b>{_controller._currentCharges}</b>";
+    }
 
-        // Energy / Surge
-        if (_stats.CurrentEnergy < _stats.MaxEnergy)
-            energyImage.fillAmount = _stats.CurrentEnergy / _stats.MaxEnergy;
-        else
-            energyImage.fillAmount = 1f;
-        if (_stats.CurrentEnergy < _stats.SurgeActivationThreshhold)
-            energyImage.color = Color.red;
-        else
-            energyImage.color = Color.yellow;
+    private void UpdateEnergy()
+    {
+        energyImage.fillAmount = _stats.CurrentEnergy < _stats.MaxEnergy
+            ? _stats.CurrentEnergy / _stats.MaxEnergy
+            : 1f;
+        energyImage.color = _stats.CurrentEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow;
         energyText.text = $"<b>{(int)_stats.CurrentEnergy}</b>";
+    }
 
-        // Stats
+    private void UpdateStats()
+    {
         _statsSB.Clear();
         _statsSB.AppendLine($" {_stats.WeaponDamage:G4}");
         _statsSB.AppendLine($" {_stats.AttackSpeed:G4}");
@@ -208,27 +224,35 @@ public class LocalUIManager : MonoBehaviour
         _statsSB.AppendLine($" {_stats.CritChance * 100f:G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
         statsNumbersText.text = _statsSB.ToString();
+    }
 
-        // XP
-        if (GameManager.instance != null)
-        {
-            xpBar.value = GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
-            xpText.text = $"<b>Level {GameManager.instance.Level} | {GameManager.instance.CurrentXP:G4}/{GameManager.instance.XPToNextLevel:G4} XP</b>";
-        }
+    private void UpdateSP()
+    {
+        spBar.value = _stats.CurrentSP / _stats.MaxSP;
+        spText.text = _stats.CurrentSP >= _stats.MaxSP ? "<b>BURST</b>" : $"<b>{(int)_stats.CurrentSP}/{(int)_stats.MaxSP}</b>";
+    }
 
-        // Run Clock
+    private void UpdateXP()
+    {
+        if (GameManager.instance == null) return;
+        xpBar.value = GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
+        xpText.text = $"<b>Level {GameManager.instance.Level} | {GameManager.instance.CurrentXP:G4}/{GameManager.instance.XPToNextLevel:G4} XP</b>";
+    }
+
+    private void UpdateRunClock()
+    {
         float runtime = Time.timeSinceLevelLoad;
         int minutes = (int)(runtime / 60f);
         int seconds = (int)(runtime % 60f);
         timerText.text = $"<b>{minutes:00}:{seconds:00}</b>";
+    }
 
-        // Boss Countdown
-        if (EnemySpawner.instance != null)
-        {
-            int bossSeconds = (int)EnemySpawner.instance.CycleTimer;
-            int bossMinutes = bossSeconds / 60;
-            int bossSecondsRemainder = bossSeconds % 60;
-            bossTimerText.text = $"<b>Next Boss: {bossMinutes:00}:{bossSecondsRemainder:00}</b>";
-        }
+    private void UpdateBossCountdown()
+    {
+        if (EnemySpawner.instance == null) return;
+        int bossSeconds = (int)EnemySpawner.instance.CycleTimer;
+        int bossMinutes = bossSeconds / 60;
+        int bossSecondsRemainder = bossSeconds % 60;
+        bossTimerText.text = $"<b>Next Boss: {bossMinutes:00}:{bossSecondsRemainder:00}</b>";
     }
 }

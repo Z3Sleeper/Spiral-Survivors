@@ -17,6 +17,7 @@ public class CharacterStats : NetworkBehaviour
 
     [Header("Audio")]
     public AudioClip hitSound;
+    [SerializeField] private AudioClip damagedSound;
 
     [Header("Visual")]
     [SerializeField] private Renderer[] _renderers;
@@ -50,7 +51,7 @@ public class CharacterStats : NetworkBehaviour
     public int WeaponCount => (baseWeaponCount + bonusWeaponCountFlat) * bonusWeaponCountMultiplier;
 
     public float baseWeaponRange = 1f;
-    [NonSerialized] public float bonusWeaponRangeFlat = 0f;
+    public float bonusWeaponRangeFlat = 0f;
     [NonSerialized] public float bonusWeaponRangePercent = 1f;
     public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent;
 
@@ -173,6 +174,19 @@ public class CharacterStats : NetworkBehaviour
     public float dashHaste = 0f;
     public float DashCooldown => baseDashCooldown / (1f + dashHaste / 100f);
 
+    [Header("Burst + SP")]
+    public float baseMaxSP = 100f;
+    [NonSerialized] public float bonusMaxSPFlat = 0f;
+    [NonSerialized] public float bonusMaxSPPercent = 1f;
+    public float MaxSP => (baseMaxSP + bonusMaxSPFlat) * bonusMaxSPPercent;
+    [HideInInspector] public SyncVar<float> _currentSP = new(0, ownerAuth: true);
+    public float CurrentSP
+    {
+        get => _currentSP.value;
+        set => _currentSP.value = value;
+    }
+
+
     [Header("Misc")]
     private float _baseXPMod = 1f;
     public float BaseXPMod
@@ -229,7 +243,10 @@ public class CharacterStats : NetworkBehaviour
             LocalUIManager.instance.SetPlayer(this);
 
         if (isOwner)
+        {
             CurrentEnergy = MaxEnergy;
+            CurrentSP = MaxSP;
+        }
 
         if (!isServer) return;
         CurrentHealth = MaxHealth;
@@ -302,6 +319,8 @@ public class CharacterStats : NetworkBehaviour
     [ObserversRpc]
     private void FlashHitRpc()
     {
+        if (isOwner)
+            SFXManager.instance?.Play(damagedSound, transform.position);
         StartCoroutine(FlashCoroutine());
     }
 

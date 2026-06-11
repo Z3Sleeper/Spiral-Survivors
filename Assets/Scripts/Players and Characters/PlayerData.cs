@@ -4,7 +4,7 @@ using UnityEngine;
 
 public class PlayerData : NetworkIdentity
 {
-    public SyncVar<int> characterIndex = new SyncVar<int>(-1);
+    public SyncVar<int> characterIndex = new SyncVar<int>(0);
 
     protected override void OnSpawned()
     {
