@@ -248,7 +248,7 @@ MonoBehaviour:
   baseWeaponRange: 2
   bonusWeaponRangeFlat: 5
   continuousFire: 0
-  baseCritChance: 0.05
+  baseCritChance: 0.25
   baseCritDamage: 3
   _baseMaxHealth:
     _value: 25
@@ -277,10 +277,15 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
-  baseEnergyRegen: 10
+  baseEnergyRegen: 5
   dashCharges: 3
   baseDashCooldown: 5
   dashHaste: 0
+  baseMaxSP: 100
+  _currentSP:
+    _value: 0
+    _ownerAuth: 1
+    _sendIntervalInSeconds: 0
   _isDeadSync:
     _value: 0
     _ownerAuth: 0

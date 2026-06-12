@@ -1,5 +1,7 @@
+using PurrLobby;
 using PurrNet;
 using PurrNet.Modules;
+using Steamworks;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -65,6 +67,14 @@ public class GameManager : NetworkIdentity
     {
         if (instance != null) { Destroy(gameObject); return; }
         instance = this;
+    }
+
+    private void OnApplicationQuit()
+    {
+        var lobbyDataHolder = FindFirstObjectByType<LobbyDataHolder>();
+        if (lobbyDataHolder != null && lobbyDataHolder.CurrentLobby.IsValid &&
+            ulong.TryParse(lobbyDataHolder.CurrentLobby.LobbyId, out var lobbyId))
+            SteamMatchmaking.LeaveLobby(new CSteamID(lobbyId));
     }
 
     protected override void OnSpawned()

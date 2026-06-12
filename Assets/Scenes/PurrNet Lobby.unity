@@ -2342,8 +2342,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 'Fires projectiles at enemies in range and LoS at 10x Attack Speed
 
-    +5
-    Energy Regen
+    +20%
+    Crit Chance
 
     +100% Range & +25 Range'
   m_isRightToLeft: 0

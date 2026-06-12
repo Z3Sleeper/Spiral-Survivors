@@ -2,6 +2,8 @@ using System.Collections;
 using PurrLobby;
 using PurrNet;
 using PurrNet.Modules;
+using PurrNet.Steam;
+using Steamworks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -51,6 +53,11 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.OnAllReady.RemoveListener(OnAllReady);
     }
 
+    private void OnApplicationQuit()
+    {
+        lobbyManager.LeaveLobby();
+    }
+
     public void OnMultiplayerClicked()
     {
         mainMenuPanel.SetActive(false);
@@ -65,7 +72,8 @@ public class LobbySceneController : MonoBehaviour
 
         GameStartData.LocalUserId = lobbyManager.CurrentProvider.GetLocalUserIdAsync().Result;
         GameStartData.LocalCharacterIndex = 0;
-        lobbyManager.SetLobbyData($"char_{GameStartData.LocalUserId}", "0");
+        if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
+            SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "char", "0");
         ShowCharacterSelect();
         CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0);
         CharacterSelectUI.instance?.RefreshFromLobby(lobby);
@@ -93,39 +101,70 @@ public class LobbySceneController : MonoBehaviour
         if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
         var lobby = lobbyManager.CurrentLobby;
         _expectedPlayerCount = lobby.Members.Count;
-        Debug.Log($"[OnAllReady] Members: {lobby.Members.Count}, IsOwner: {lobby.IsOwner}, isServer={networkManager.isServer}, isClient={networkManager.isClient}, playerCount={networkManager.playerCount}");
 
         if (lobby.IsOwner)
         {
+            lobbyManager.SetLobbyStarted();
             if (!networkManager.isServer)
                 networkManager.StartServer();
             if (!networkManager.isClient)
                 StartCoroutine(StartClientDelayed());
 
             _purrNetPlayersJoined = networkManager.playerCount;
-            Debug.Log($"[OnAllReady] seeding _purrNetPlayersJoined={_purrNetPlayersJoined}, expected={_expectedPlayerCount}");
             networkManager.onPlayerJoined += OnPurrNetPlayerJoined;
             TryLoadGameScene();
         }
         else if (!networkManager.isClient)
         {
-            StartCoroutine(StartClientDelayed());
+            if (networkManager.transport is SteamTransport steamTransport &&
+                ulong.TryParse(lobby.LobbyId, out var lobbyIdRaw))
+            {
+                var hostSteamId = SteamMatchmaking.GetLobbyOwner(new CSteamID(lobbyIdRaw));
+                steamTransport.address = hostSteamId.m_SteamID.ToString();
+            }
+            StartCoroutine(ConnectToHostWithRetry());
         }
     }
 
-    private IEnumerator StartClientDelayed()
+    private IEnumerator StartClientDelayed(float delay = 1f)
     {
-        Debug.Log("[StartClientDelayed] waiting...");
-        yield return new WaitForSeconds(1f);
-        Debug.Log("[StartClientDelayed] calling StartClient");
+        yield return new WaitForSeconds(delay);
         networkManager.StartClient();
+    }
+
+    private IEnumerator ConnectToHostWithRetry()
+    {
+        const int maxAttempts = 20;
+        const float attemptTimeout = 4f;
+        var initialWait = new WaitForSeconds(1f);
+        var retryWait = new WaitForSeconds(1f);
+
+        yield return initialWait;
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            networkManager.StartClient();
+
+            float elapsed = 0f;
+            while (elapsed < attemptTimeout && !networkManager.isClient)
+            {
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            if (networkManager.isClient)
+                yield break;
+
+            yield return retryWait;
+        }
+
+        Debug.LogError("Failed to connect to host after all attempts.");
     }
 
     private void OnPurrNetPlayerJoined(PlayerID player, bool isReconnect, bool asServer)
     {
         if (!asServer) return;
         _purrNetPlayersJoined++;
-        Debug.Log($"[OnPurrNetPlayerJoined] joined={_purrNetPlayersJoined}, expected={_expectedPlayerCount}");
         TryLoadGameScene();
     }
 
