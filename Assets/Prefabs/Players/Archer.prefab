@@ -241,12 +241,18 @@ MonoBehaviour:
   - {fileID: 4797182340578565043}
   baseMoveSpeed: 1
   baseWeaponDamage: 15
+  bonusWeaponDamageFlat: 0
   bonusWeaponDamagePercent: 1
   baseWeaponRadius: 0
   baseWeaponSpeed: 180
+  bonusWeaponSpeedFlat: 0
+  bonusWeaponSpeedPercent: 1
   baseWeaponCount: 1
-  baseWeaponRange: 2
-  bonusWeaponRangeFlat: 5
+  bonusWeaponCountFlat: 0
+  bonusWeaponCountMultiplier: 1
+  baseWeaponRange: 5
+  bonusWeaponRangeFlat: 10
+  bonusWeaponRangePercent: 2
   continuousFire: 0
   baseCritChance: 0.25
   baseCritDamage: 3

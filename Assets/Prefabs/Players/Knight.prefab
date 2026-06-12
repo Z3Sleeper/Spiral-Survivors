@@ -521,12 +521,18 @@ MonoBehaviour:
   - {fileID: 4797182340578565043}
   baseMoveSpeed: 1
   baseWeaponDamage: 15
+  bonusWeaponDamageFlat: 0
   bonusWeaponDamagePercent: 1
   baseWeaponRadius: 0
   baseWeaponSpeed: 180
+  bonusWeaponSpeedFlat: 0
+  bonusWeaponSpeedPercent: 1
   baseWeaponCount: 1
-  baseWeaponRange: 1.5
-  bonusWeaponRangeFlat: 1
+  bonusWeaponCountFlat: 0
+  bonusWeaponCountMultiplier: 1
+  baseWeaponRange: 5
+  bonusWeaponRangeFlat: 3
+  bonusWeaponRangePercent: 1.5
   continuousFire: 0
   baseCritChance: 0.05
   baseCritDamage: 3
@@ -561,6 +567,11 @@ MonoBehaviour:
   dashCharges: 3
   baseDashCooldown: 5
   dashHaste: 0
+  baseMaxSP: 100
+  _currentSP:
+    _value: 0
+    _ownerAuth: 1
+    _sendIntervalInSeconds: 0
   _isDeadSync:
     _value: 0
     _ownerAuth: 0

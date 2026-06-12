@@ -30,8 +30,8 @@ public class CharacterStats : NetworkBehaviour
     public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent;
 
     [Header("Weapon")]
-    public float baseWeaponDamage = 10f;
-    [NonSerialized] public float bonusWeaponDamageFlat = 0f;
+    public float baseWeaponDamage = 15f;
+    public float bonusWeaponDamageFlat = 0f;
     public float bonusWeaponDamagePercent = 1f;
     public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent;
 
@@ -41,19 +41,19 @@ public class CharacterStats : NetworkBehaviour
     public float WeaponRadius => (baseWeaponRadius + bonusWeaponRadiusFlat) * bonusWeaponRadiusPercent;
 
     public float baseWeaponSpeed = 180f;
-    [NonSerialized] public float bonusWeaponSpeedFlat = 0f;
-    [NonSerialized] public float bonusWeaponSpeedPercent = 1f;
+    public float bonusWeaponSpeedFlat = 0f;
+    public float bonusWeaponSpeedPercent = 1f;
     public float WeaponSpeed => (baseWeaponSpeed + bonusWeaponSpeedFlat) * bonusWeaponSpeedPercent;
 
     public int baseWeaponCount = 1;
-    [NonSerialized] public int bonusWeaponCountFlat = 0;
-    [NonSerialized] public int bonusWeaponCountMultiplier = 1;
+    public int bonusWeaponCountFlat = 0;
+    public int bonusWeaponCountMultiplier = 1;
     public int WeaponCount => (baseWeaponCount + bonusWeaponCountFlat) * bonusWeaponCountMultiplier;
 
-    public float baseWeaponRange = 1f;
+    public float baseWeaponRange = 5f;
     public float bonusWeaponRangeFlat = 0f;
-    [NonSerialized] public float bonusWeaponRangePercent = 1f;
-    public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent;
+    public float bonusWeaponRangePercent = 1f;
+    public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent * 0.2f;
 
     public float AttackSpeed => WeaponSpeed / 360f;
 

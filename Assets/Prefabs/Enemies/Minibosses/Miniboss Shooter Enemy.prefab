@@ -47,7 +47,7 @@ PrefabInstance:
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: projectilePrefab
       value: 
-      objectReference: {fileID: 7110861719028891612, guid: 4355ada4f95725e4c99c9476bbb21e82, type: 3}
+      objectReference: {fileID: 5753013154518978268, guid: 5aa2edaf9d125ce4e880dec6fa04a6e1, type: 3}
     - target: {fileID: 1597157536724350220, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: m_Name
       value: Miniboss Shooter Enemy
