@@ -254,8 +254,14 @@ MonoBehaviour:
   bonusWeaponRangeFlat: 10
   bonusWeaponRangePercent: 2
   continuousFire: 0
-  baseCritChance: 0.25
-  baseCritDamage: 3
+  bonusCritChanceFlat: 0
+  bonusCritChancePercent: 1
+  bonusCritDamageFlat: 0
+  bonusCritDamagePercent: 1
+  isRanged: 1
+  basePierce: 0
+  bonusPierceFlat: 0
+  bonusPiercePercent: 1
   _baseMaxHealth:
     _value: 25
     _ownerAuth: 0

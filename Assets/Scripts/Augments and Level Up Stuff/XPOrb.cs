@@ -74,12 +74,22 @@ public class XPOrb : NetworkIdentity
     private void OnTriggerStay(Collider other)
     {
         if (!_settled || _collected) return;
-        if (other.gameObject.layer != LayerMask.NameToLayer("Bounds")) return;
-        transform.position = Vector3.MoveTowards(
-            transform.position,
-            new Vector3(0f, transform.position.y, 0f),
-            attractSpeed * Time.deltaTime
-        );
+
+        if (other.gameObject.layer == LayerMask.NameToLayer("Bounds"))
+        {
+            transform.position = Vector3.MoveTowards(
+                transform.position,
+                new Vector3(0f, transform.position.y, 0f),
+                attractSpeed * Time.deltaTime
+            );
+        }
+        else if (other.gameObject.layer == LayerMask.NameToLayer("Obstacle"))
+        {
+            Vector3 obstacleCenter = other.bounds.center;
+            Vector3 dir = new Vector3(transform.position.x - obstacleCenter.x, 0f, transform.position.z - obstacleCenter.z);
+            if (dir == Vector3.zero) dir = Vector3.right;
+            transform.position += dir.normalized * attractSpeed * Time.deltaTime;
+        }
     }
 
     private void Collect()

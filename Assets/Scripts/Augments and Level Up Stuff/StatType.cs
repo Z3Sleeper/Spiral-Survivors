@@ -9,5 +9,7 @@ public enum StatType
     MaxShield,
     EnergyRegen,
     DashCooldown,
-    CritChance
+    CritChance,
+    Pierce,
+    Ricochet
 }

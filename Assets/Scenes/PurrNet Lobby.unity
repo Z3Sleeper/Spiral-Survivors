@@ -134,7 +134,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &6321156
 RectTransform:
   m_ObjectHideFlags: 0
@@ -1548,7 +1548,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -715.93945, y: -200.44498}
+  m_AnchoredPosition: {x: -715.94, y: -200.44}
   m_SizeDelta: {x: 392, y: 342.8004}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &385738602
@@ -2205,8 +2205,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: 'Fires projectiles at enemies in range and LoS at 10x Attack Speed
 
-    +20%
-    Crit Chance
+    Can
+    find Pierce in stat selections
 
     +10 Range & +100% Total Range'
   m_isRightToLeft: 0

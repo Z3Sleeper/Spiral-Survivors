@@ -58,14 +58,25 @@ public class CharacterStats : NetworkBehaviour
     public float AttackSpeed => WeaponSpeed / 360f;
 
     public bool continuousFire = false;
-    public float baseCritChance = 0.05f;
-    [NonSerialized] public float bonusCritChanceFlat = 0f;
-    [NonSerialized] public float bonusCritChancePercent = 1f;
+    [NonSerialized] public float baseCritChance = 0.05f;
+    public float bonusCritChanceFlat = 0f;
+    public float bonusCritChancePercent = 1f;
     public float CritChance => (baseCritChance + bonusCritChanceFlat) * bonusCritChancePercent;
-    public float baseCritDamage = 3f;
-    [NonSerialized] public float bonusCritDamageFlat = 0f;
-    [NonSerialized] public float bonusCritDamagePercent = 1f;
+    [NonSerialized] public float baseCritDamage = 3f;
+    public float bonusCritDamageFlat = 0f;
+    public float bonusCritDamagePercent = 1f;
     public float CritDamage => (baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent;
+
+    [Header("Ranged Weapons")]
+    public bool isRanged = false;
+    public float basePierce = 0f;
+    public float bonusPierceFlat = 0f;
+    public float bonusPiercePercent = 1f;
+    public float Pierce => (basePierce + bonusPierceFlat) * bonusPiercePercent;
+    public float baseRicochet = 0f;
+    public float bonusRicochetFlat = 0f;
+    public float bonusRicochetPercent = 1f;
+    public float Ricochet => (baseRicochet + bonusRicochetFlat) * bonusRicochetPercent;
 
     [Header("Health")]
     public SyncVar<float> _baseMaxHealth = new(50f);

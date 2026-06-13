@@ -21,7 +21,16 @@ public class AugmentManager : NetworkBehaviour
     {
         var options = new List<StatAugmentPair>();
         var usedPairs = new HashSet<string>();
-        var stats = statDatabase.stats;
+
+        bool isRanged = false;
+        foreach (var s in FindObjectsByType<CharacterStats>(FindObjectsSortMode.None))
+        {
+            if (s.owner == player) { isRanged = s.isRanged; break; }
+        }
+
+        var stats = new List<StatAugmentEntry>();
+        foreach (var entry in statDatabase.stats)
+            if (!entry.rangedOnly || isRanged) stats.Add(entry);
 
         int attempts = 0;
         while (options.Count < 3 && attempts < 50)
@@ -115,6 +124,12 @@ public class AugmentManager : NetworkBehaviour
                 break;
             case StatType.CritChance:
                 stats.bonusCritChanceFlat += entry.value * 0.01f;
+                break;
+            case StatType.Pierce:
+                stats.bonusPierceFlat += entry.value;
+                break;
+            case StatType.Ricochet:
+                stats.bonusRicochetFlat += entry.value;
                 break;
         }
     }

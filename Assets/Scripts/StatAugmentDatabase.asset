@@ -19,51 +19,74 @@ MonoBehaviour:
     value: 15
     prependText: +
     appendText: 
+    rangedOnly: 0
   - statType: 1
     displayName: Damage
     color: {r: 1, g: 0.3137255, b: 0, a: 1}
     value: 3
     prependText: +
     appendText: 
+    rangedOnly: 0
   - statType: 2
     displayName: Movement Speed
     color: {r: 1, g: 1, b: 1, a: 1}
     value: 1
     prependText: +
     appendText: 
+    rangedOnly: 0
   - statType: 3
     displayName: Range
-    color: {r: 0.3137255, g: 0.3137255, b: 0.990566, a: 1}
+    color: {r: 0.3137255, g: 0.3137255, b: 1, a: 1}
     value: 1
     prependText: +
     appendText: 
+    rangedOnly: 0
   - statType: 4
     displayName: Attack Speed
     color: {r: 1, g: 0, b: 0.3137255, a: 1}
     value: 15
     prependText: +
     appendText: '%'
+    rangedOnly: 0
   - statType: 5
     displayName: HP Regen
     color: {r: 0.49019608, g: 1, b: 0, a: 1}
     value: 0.5
     prependText: +
     appendText: 
+    rangedOnly: 0
   - statType: 7
     displayName: Energy Regen
     color: {r: 1, g: 1, b: 0, a: 1}
     value: 2.5
     prependText: +
     appendText: 
+    rangedOnly: 0
   - statType: 8
     displayName: Dash Haste
     color: {r: 0, g: 1, b: 1, a: 1}
     value: 15
     prependText: +
     appendText: 
+    rangedOnly: 0
   - statType: 9
     displayName: Crit Chance
     color: {r: 1, g: 0, b: 0, a: 1}
     value: 2.5
     prependText: +
     appendText: '%'
+    rangedOnly: 0
+  - statType: 10
+    displayName: Pierce
+    color: {r: 0.23529412, g: 0, b: 1, a: 1}
+    value: 0.25
+    prependText: +
+    appendText: 
+    rangedOnly: 1
+  - statType: 11
+    displayName: Ricochet
+    color: {r: 0.23529412, g: 0, b: 1, a: 1}
+    value: 0.25
+    prependText: +
+    appendText: 
+    rangedOnly: 1

@@ -46,8 +46,16 @@ public class WeaponBow : WeaponBase
 
     private void Fire()
     {
+        float rawPierce = _stats.Pierce;
+        int pierce = (int)rawPierce;
+        if (Random.value < rawPierce - pierce) pierce++;
+
+        float rawRicochet = _stats.Ricochet;
+        int ricochet = (int)rawRicochet;
+        if (Random.value < rawRicochet - ricochet) ricochet++;
+
         var arrow = Instantiate(arrowPrefab, transform.position, transform.rotation);
         var arrowScript = arrow.GetComponent<WeaponArrow>();
-        arrowScript.Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, transform.forward, projectileSpeed, _stats.CritChance, _stats.CritDamage, _stats.hitSound);
+        arrowScript.Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, transform.forward, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound);
     }
 }

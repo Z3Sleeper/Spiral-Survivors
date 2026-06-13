@@ -5855,7 +5855,7 @@ GameObject:
   - component: {fileID: 1504619716}
   - component: {fileID: 1504619718}
   - component: {fileID: 1504619714}
-  m_Layer: 6
+  m_Layer: 14
   m_Name: Orb of Doom
   m_TagString: Untagged
   m_Icon: {fileID: 0}
