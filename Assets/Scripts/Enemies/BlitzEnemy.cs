@@ -2,7 +2,7 @@ using System.Collections;
 using PurrNet;
 using UnityEngine;
 
-public class BlitzEnemy : EnemyBase
+public class BlitzEnemy : EnemyBase, IEnemyAttack
 {
     [Header("Blitz Settings")]
     [SerializeField] private float windupDuration = 0.7f;
@@ -27,12 +27,13 @@ public class BlitzEnemy : EnemyBase
         set => _syncState.value = value;
     }
 
+    public float GetDamage() => _state == State.Blitzing ? damage : 0f;
+
     protected override void OnSpawned()
     {
         base.OnSpawned();
         _syncState.onChanged += OnStateChanged;
         OnStateChanged(_syncState.value);
-        hasContactDamage = false;
         _blitzesRemaining = blitzesPerAttack;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
     }
@@ -99,7 +100,6 @@ public class BlitzEnemy : EnemyBase
     {
         _stateTimer = windupDuration;
         _rb.linearVelocity = Vector3.zero;
-        hasContactDamage = false;
         _physicsCollider.enabled = true;
 
         // Snap to face target
@@ -121,7 +121,6 @@ public class BlitzEnemy : EnemyBase
     {
         _state = State.Blitzing;
         _blitzEndPoint = transform.position + _blitzDirection * blitzDistance;
-        hasContactDamage = true;
         _physicsCollider.enabled = false;
         _rb.linearVelocity = Vector3.zero;
         _blitzesRemaining--;
@@ -131,7 +130,6 @@ public class BlitzEnemy : EnemyBase
     {
         _state = State.PostBlitz;
         _stateTimer = postBlitzPause;
-        hasContactDamage = false;
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);

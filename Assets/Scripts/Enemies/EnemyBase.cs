@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
 
@@ -22,11 +21,10 @@ public class EnemyBase : NetworkIdentity
     public float rangeToleranceClose = 0.3f;
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
-    public int xpValue = 1;
+    public float xpValue = 1f;
     [Header("Contact Damage")]
     public bool hasContactDamage = false;
     public float contactCooldown = 0.5f;
-    private Dictionary<CharacterStats, float> _contactCooldowns = new();
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
 
@@ -43,7 +41,6 @@ public class EnemyBase : NetworkIdentity
     private float _findTargetTimer = 0;
     private const float FindTargetInterval = 1f;
     protected Transform _target;
-    private readonly List<CharacterStats> _cooldownKeysBuffer = new();
 
     private void Awake()
     {
@@ -80,14 +77,6 @@ public class EnemyBase : NetworkIdentity
             FindTarget();
         }
 
-        _cooldownKeysBuffer.Clear();
-        _cooldownKeysBuffer.AddRange(_contactCooldowns.Keys);
-        foreach (var player in _cooldownKeysBuffer)
-        {
-            _contactCooldowns[player] -= Time.deltaTime;
-            if (_contactCooldowns[player] <= 0)
-                _contactCooldowns.Remove(player);
-        }
     }
 
     protected virtual void FixedUpdate()
@@ -231,19 +220,4 @@ public class EnemyBase : NetworkIdentity
         Destroy(gameObject);
     }
 
-    private void OnTriggerEnter(Collider other) => TryContactDamage(other);
-    private void OnTriggerStay(Collider other) => TryContactDamage(other);
-
-    private void TryContactDamage(Collider other)
-    {
-        if (!isServer) return;
-        if (!hasContactDamage) return;
-        if (other.gameObject.layer != LayerMask.NameToLayer("PlayerHurtbox")) return;
-        var player = other.GetComponentInParent<CharacterStats>();
-        if (player == null) return;
-        if (_contactCooldowns.ContainsKey(player)) return;
-
-        _contactCooldowns[player] = contactCooldown;
-        player.TakeDamageRpc(damage);
-    }
 }

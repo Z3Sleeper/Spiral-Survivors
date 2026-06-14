@@ -243,7 +243,10 @@ public class EnemySpawner : NetworkIdentity
             enemy.moveSpeed *= ScalingSpeedFactor;
         }
         if (isBoss)
+        {
             enemy.maxHealth *= 1f + (_playerCount - 1) * coopBossHealthScalar;
+            enemy.xpValue *= 1f + (_playerCount - 1) * coopSpawnTimeScalar;
+        }
     }
 
     private EnemyEntry GetWeightedRandom(List<EnemyEntry> entries)

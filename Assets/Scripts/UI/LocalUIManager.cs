@@ -40,6 +40,7 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI pauseReadyCountText;
     [SerializeField] private TextMeshProUGUI pauseFallbackTimerText;
     [SerializeField] private TextMeshProUGUI pauseReadyButtonText;
+    [SerializeField] private GameObject returnToLobbyButton;
     private bool _isReadyForUnpause;
 
     private readonly System.Text.StringBuilder _statsSB = new();
@@ -120,6 +121,8 @@ public class LocalUIManager : MonoBehaviour
         if (pauseFallbackTimerText != null) pauseFallbackTimerText.gameObject.SetActive(false);
         singlePlayerResumePanel.SetActive(isSinglePlayer);
         multiplayerPausePanel.SetActive(!isSinglePlayer);
+        if (returnToLobbyButton != null)
+            returnToLobbyButton.SetActive(NetworkManager.main.isServer);
         pauseScreen.SetActive(true);
     }
 
@@ -154,6 +157,11 @@ public class LocalUIManager : MonoBehaviour
     public void OnResumeClicked()
     {
         GameManager.instance.RequestPauseRpc();
+    }
+
+    public void OnReturnToLobbyClicked()
+    {
+        GameManager.instance.ReturnToLobbyFromPauseRpc();
     }
 
     private AugmentCardUI GetCard(int index)

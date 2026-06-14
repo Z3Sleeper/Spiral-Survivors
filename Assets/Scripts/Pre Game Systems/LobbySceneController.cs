@@ -30,8 +30,9 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.OnRoomUpdated.AddListener(OnRoomUpdated);
         lobbyManager.OnAllReady.AddListener(OnAllReady);
 
-        if (lobbyManager.CurrentLobby.IsValid)
+        if (LobbyFlags.IsReturningFromGame || lobbyManager.CurrentLobby.IsValid)
         {
+            LobbyFlags.IsReturningFromGame = false;
             _initializedForLobby = true;
             ShowCharacterSelect();
             lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
@@ -63,6 +64,17 @@ public class LobbySceneController : MonoBehaviour
         mainMenuPanel.SetActive(false);
         purrLobbyPanel.SetActive(true);
         viewManager.OnLeaveBrowseClicked();
+    }
+
+    public void OnBackToMainMenuClicked()
+    {
+        purrLobbyPanel.SetActive(false);
+        mainMenuPanel.SetActive(true);
+    }
+
+    public void OnExitClicked()
+    {
+        Application.Quit();
     }
 
     private void OnRoomJoined(Lobby lobby)

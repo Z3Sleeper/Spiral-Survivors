@@ -15,9 +15,9 @@ public class XPOrbManager : MonoBehaviour
         instance = this;
     }
 
-    public void SpawnOrbs(Vector3 position, int xpValue)
+    public void SpawnOrbs(Vector3 position, float xpValue)
     {
-        int remaining = xpValue;
+        int remaining = Mathf.RoundToInt(xpValue);
 
         int count100 = remaining / 100;
         remaining %= 100;

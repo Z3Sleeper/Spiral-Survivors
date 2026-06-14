@@ -59,7 +59,7 @@ MonoBehaviour:
   _syncPosition: 1
   _syncRotation: 1
   _syncScale: 1
-  _syncParent: 1
+  _syncParent: 0
   _interpolateSettings: 7
   _minBufferSize: 1
   _maxBufferSize: 2
@@ -87,6 +87,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
+  bladeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
 --- !u!65 &3464808760796646086
 BoxCollider:
   m_ObjectHideFlags: 0

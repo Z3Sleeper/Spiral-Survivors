@@ -1,11 +1,12 @@
 using PurrNet;
 using UnityEngine;
 
-public class ShooterEnemyProjectile : NetworkIdentity
+public class ShooterEnemyProjectile : NetworkIdentity, IEnemyAttack
 {
     private float _speed;
     private float _maxRange;
     private float _damage;
+    public float GetDamage() => _damage;
     private Vector3 _direction;
     private float _distanceTravelled;
 
@@ -37,10 +38,6 @@ public class ShooterEnemyProjectile : NetworkIdentity
     {
         if (!isServer) return;
         if (other.gameObject.layer != LayerMask.NameToLayer("PlayerHurtbox")) return;
-        var player = other.GetComponentInParent<CharacterStats>();
-        if (player == null || player.IsDead || player.invincible) return;
-
-        player.TakeDamageRpc(_damage);
         Destroy(gameObject);
     }
 }

@@ -235,6 +235,14 @@ public class GameManager : NetworkIdentity
         var players = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None);
         foreach (var player in players)
             if (!player.IsDead) return;
+
+        if (_pauseCountdownCoroutine != null)
+        {
+            StopCoroutine(_pauseCountdownCoroutine);
+            _pauseCountdownCoroutine = null;
+            _isPendingPause = false;
+        }
+
         IsPaused = true;
         ShowGameOverRPC();
     }
@@ -291,6 +299,13 @@ public class GameManager : NetworkIdentity
             mode = LoadSceneMode.Single,
             isPublic = true
         });
+    }
+
+    [ServerRpc(requireOwnership: false)]
+    public void ReturnToLobbyFromPauseRpc()
+    {
+        if (!IsPaused) return;
+        ReturnToLobby();
     }
 
     [ServerRpc(requireOwnership: false)]

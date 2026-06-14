@@ -528,11 +528,11 @@ MonoBehaviour:
   _visitiblityRules: {fileID: 0}
   _syncPosition: 1
   _syncRotation: 1
-  _syncScale: 1
-  _syncParent: 1
+  _syncScale: 0
+  _syncParent: 0
   _interpolateSettings: 7
-  _minBufferSize: 1
-  _maxBufferSize: 2
+  _minBufferSize: 2
+  _maxBufferSize: 4
   _characterControllerPatch: 0
   _ownerAuth: 1
   _interpolationTiming: 0

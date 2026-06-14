@@ -22,15 +22,18 @@ public class AugmentManager : NetworkBehaviour
         var options = new List<StatAugmentPair>();
         var usedPairs = new HashSet<string>();
 
-        bool isRanged = false;
+        CharacterStats.CharacterClass playerClass = CharacterStats.CharacterClass.Knight;
         foreach (var s in FindObjectsByType<CharacterStats>(FindObjectsSortMode.None))
         {
-            if (s.owner == player) { isRanged = s.isRanged; break; }
+            if (s.owner == player) { playerClass = s.characterClass; break; }
         }
 
         var stats = new List<StatAugmentEntry>();
         foreach (var entry in statDatabase.stats)
-            if (!entry.rangedOnly || isRanged) stats.Add(entry);
+        {
+            if (entry.allowedClasses.Length > 0 && System.Array.IndexOf(entry.allowedClasses, playerClass) < 0) continue;
+            stats.Add(entry);
+        }
 
         int attempts = 0;
         while (options.Count < 3 && attempts < 50)

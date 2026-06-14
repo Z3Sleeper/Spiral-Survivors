@@ -68,7 +68,6 @@ public class CharacterStats : NetworkBehaviour
     public float CritDamage => (baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent;
 
     [Header("Ranged Weapons")]
-    public bool isRanged = false;
     public float basePierce = 0f;
     public float bonusPierceFlat = 0f;
     public float bonusPiercePercent = 1f;

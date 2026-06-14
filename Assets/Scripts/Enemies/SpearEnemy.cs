@@ -40,7 +40,6 @@ public class SpearEnemy : EnemyBase
         base.OnSpawned();
         _syncState.onChanged += OnStateChanged;
         OnStateChanged(_syncState.value);
-        spearHitbox.enabled = false;
         TryGetComponent(out _animator);
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
@@ -60,6 +59,7 @@ public class SpearEnemy : EnemyBase
 
     private void OnStateChanged(State state)
     {
+        spearHitbox.enabled = (state == State.Stabbing);
         dangerIndicator.SetActive(state == State.Windup);
         if (state == State.Windup)
             _animator.Play(SpearWindupHash, 0, 0f);
@@ -130,7 +130,6 @@ public class SpearEnemy : EnemyBase
     private void EnterWindup()
     {
         _stateTimer = windupDuration;
-        spearHitbox.enabled = false;
 
         // Snap to face target
         if (_target != null)
@@ -148,7 +147,6 @@ public class SpearEnemy : EnemyBase
     {
         _state = State.Stabbing;
         _stateTimer = stabDuration;
-        spearHitbox.enabled = true;
         _attacksRemaining--;
     }
 
@@ -156,14 +154,12 @@ public class SpearEnemy : EnemyBase
     {
         _state = State.BetweenStabs;
         _stateTimer = betweenStabPause;
-        spearHitbox.enabled = false;
     }
 
     private void EnterPostStab()
     {
         _state = State.PostStab;
         _stateTimer = postStabPause;
-        spearHitbox.enabled = false;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
     }
 

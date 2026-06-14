@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class SpearHitbox : MonoBehaviour
+public class SpearHitbox : MonoBehaviour, IEnemyAttack
 {
     private SpearEnemy _spear;
 
@@ -9,12 +9,5 @@ public class SpearHitbox : MonoBehaviour
         _spear = GetComponentInParent<SpearEnemy>();
     }
 
-    private void OnTriggerEnter(Collider other)
-    {
-        if (!_spear.isServer) return;
-        if (other.gameObject.layer != LayerMask.NameToLayer("PlayerHurtbox")) return;
-        var player = other.GetComponentInParent<CharacterStats>();
-        if (player == null) return;
-        player.TakeDamageRpc(_spear.damage * _spear.stabDamageMultiplier);
-    }
+    public float GetDamage() => _spear.damage * _spear.stabDamageMultiplier;
 }

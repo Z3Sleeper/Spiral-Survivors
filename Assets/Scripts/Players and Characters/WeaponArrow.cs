@@ -4,6 +4,8 @@ using UnityEngine;
 
 public class WeaponArrow : NetworkIdentity
 {
+    [SerializeField] private Vector3 arrowHalfExtents = new(0.1f, 0.1f, 0.25f);
+
     private float _speed;
     private float _damage;
     private float _maxRange;
@@ -15,10 +17,15 @@ public class WeaponArrow : NetworkIdentity
     private int _piercesRemaining;
     private readonly HashSet<EnemyBase> _hitEnemies = new();
     private AudioClip _hitSound;
+    private Vector3 _prevPosition;
+    private int _enemyHurtboxMask;
+    private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
+    private bool _destroyed;
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
         enabled = isOwner;
     }
 
@@ -33,6 +40,7 @@ public class WeaponArrow : NetworkIdentity
         _piercesRemaining = pierce;
         _ricochetsRemaining = ricochet;
         _hitSound = hitSound;
+        _prevPosition = transform.position;
     }
 
     private void Update()
@@ -42,16 +50,31 @@ public class WeaponArrow : NetworkIdentity
         _distanceTravelled += step;
 
         if (_distanceTravelled >= _maxRange)
+        {
             Destroy(gameObject);
+            return;
+        }
+
+        Vector3 delta = transform.position - _prevPosition;
+        float dist = delta.magnitude;
+        if (dist > 0.001f)
+        {
+            Vector3 scaledHalfExtents = Vector3.Scale(arrowHalfExtents, transform.lossyScale);
+            int hitCount = Physics.BoxCastNonAlloc(_prevPosition, scaledHalfExtents, delta / dist, _sweepResults, transform.rotation, dist, _enemyHurtboxMask);
+            for (int i = 0; i < hitCount; i++)
+            {
+                var enemy = _sweepResults[i].collider.GetComponentInParent<EnemyBase>();
+                if (enemy == null || _hitEnemies.Contains(enemy)) continue;
+                ProcessHit(enemy);
+                if (_destroyed) break;
+            }
+        }
+
+        _prevPosition = transform.position;
     }
 
-    private void OnTriggerEnter(Collider other)
+    private void ProcessHit(EnemyBase enemy)
     {
-        if (other.gameObject.layer != LayerMask.NameToLayer("EnemyHurtbox")) return;
-
-        var enemy = other.GetComponentInParent<EnemyBase>();
-        if (enemy == null || _hitEnemies.Contains(enemy)) return;
-
         _hitEnemies.Add(enemy);
 
         float damage = _damage;
@@ -81,6 +104,7 @@ public class WeaponArrow : NetworkIdentity
         }
 
         Destroy(gameObject);
+        _destroyed = true;
     }
 
     private EnemyBase FindNearestUnhitEnemy()

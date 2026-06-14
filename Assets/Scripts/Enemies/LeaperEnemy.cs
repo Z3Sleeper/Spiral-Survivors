@@ -53,12 +53,12 @@ public class LeaperEnemy : EnemyBase
         }
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
         if (!isServer) return;
-        aoeHitbox.enabled = false;
         _leapsRemaining = leapsPerAttack;
     }
 
     private void OnStateChanged(State state)
     {
+        aoeHitbox.enabled = (state == State.Landing);
         dangerIndicator.SetActive(state == State.Windup || state == State.Leaping);
         if (state == State.Windup)
         {
@@ -177,7 +177,6 @@ public class LeaperEnemy : EnemyBase
         _rb.linearVelocity = Vector3.zero;
         model.localPosition = new Vector3(0f, 0.5f, 0f);
 
-        aoeHitbox.enabled = true;
         _state = State.Landing;
         _stateTimer = landingDuration;
 
@@ -186,7 +185,6 @@ public class LeaperEnemy : EnemyBase
 
     private void EnterPostLand()
     {
-        aoeHitbox.enabled = false;
         _leapsRemaining--;
         if (_leapsRemaining > 0)
             EnterWindup();

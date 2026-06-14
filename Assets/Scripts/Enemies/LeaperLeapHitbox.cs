@@ -1,20 +1,13 @@
 using UnityEngine;
 
-public class LeaperLeapHitbox : MonoBehaviour
+public class LeaperLeapHitbox : MonoBehaviour, IEnemyAttack
 {
-    private LeaperEnemy _leaperEnemy;
+    private LeaperEnemy _leaper;
 
     private void Awake()
     {
-        _leaperEnemy = GetComponentInParent<LeaperEnemy>();
+        _leaper = GetComponentInParent<LeaperEnemy>();
     }
 
-    private void OnTriggerEnter(Collider other)
-    {
-        if (!_leaperEnemy.isServer) return;
-        if (other.gameObject.layer != LayerMask.NameToLayer("PlayerHurtbox")) return;
-        var player = other.GetComponentInParent<CharacterStats>();
-        if (player == null || player.IsDead) return;
-        player.TakeDamageRpc(_leaperEnemy.baseDamage);
-    }
+    public float GetDamage() => _leaper.damage;
 }

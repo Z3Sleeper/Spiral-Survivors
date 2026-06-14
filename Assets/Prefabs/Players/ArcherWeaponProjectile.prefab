@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 7965949495438917252}
   - component: {fileID: -3199902600759759578}
   - component: {fileID: 4394618201896549309}
-  - component: {fileID: 2314240069474305881}
+  - component: {fileID: 9089666097260833337}
   m_Layer: 0
   m_Name: ArcherWeaponProjectile
   m_TagString: Untagged
@@ -59,7 +59,7 @@ MonoBehaviour:
   _syncPosition: 1
   _syncRotation: 1
   _syncScale: 1
-  _syncParent: 1
+  _syncParent: 0
   _interpolateSettings: 7
   _minBufferSize: 1
   _maxBufferSize: 2
@@ -87,7 +87,8 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
---- !u!65 &2314240069474305881
+  arrowHalfExtents: {x: 0.1, y: 0.1, z: 0.25}
+--- !u!65 &9089666097260833337
 BoxCollider:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}

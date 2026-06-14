@@ -387,7 +387,7 @@ MonoBehaviour:
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 5
+  damage: 2
   xpValue: 1
   hasContactDamage: 1
   contactCooldown: 0.5
@@ -420,8 +420,8 @@ MonoBehaviour:
   _visitiblityRules: {fileID: 0}
   _syncPosition: 1
   _syncRotation: 1
-  _syncScale: 1
-  _syncParent: 1
+  _syncScale: 0
+  _syncParent: 0
   _interpolateSettings: 7
   _minBufferSize: 1
   _maxBufferSize: 2
