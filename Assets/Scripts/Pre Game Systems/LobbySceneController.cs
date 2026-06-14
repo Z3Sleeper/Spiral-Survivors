@@ -14,6 +14,7 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private GameObject mainMenuPanel;
     [SerializeField] private GameObject purrLobbyPanel;
     [SerializeField] private GameObject characterSelectPanel;
+    [SerializeField] private GameObject settingsPanel;
     [SerializeField] private ViewManager viewManager;
 
     private int _expectedPlayerCount;
@@ -69,6 +70,18 @@ public class LobbySceneController : MonoBehaviour
     public void OnBackToMainMenuClicked()
     {
         purrLobbyPanel.SetActive(false);
+        mainMenuPanel.SetActive(true);
+    }
+
+    public void OnSettingsClicked()
+    {
+        mainMenuPanel.SetActive(false);
+        settingsPanel.SetActive(true);
+    }
+
+    public void OnSettingsBackClicked()
+    {
+        settingsPanel.SetActive(false);
         mainMenuPanel.SetActive(true);
     }
 
