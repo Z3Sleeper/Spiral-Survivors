@@ -314,7 +314,7 @@ MonoBehaviour:
   stabDuration: 0.1
   betweenStabPause: 0.3
   postStabPause: 0.6
-  attackCooldown: 3
+  attackCooldown: 5
   attacksPerAttack: 1
   dangerIndicator: {fileID: 1900264130550196311}
   _syncState:

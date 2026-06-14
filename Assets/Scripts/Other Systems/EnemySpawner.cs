@@ -11,8 +11,8 @@ public enum EnemyTier { Normal, Elite, Miniboss, Boss, Pleb }
 public class EnemyEntry
 {
     public GameObject prefab;
-    public float weight = 1f;
     public EnemyTier tier;
+    public int progressionTier = 1;
 }
 
 public class EnemySpawner : NetworkIdentity
@@ -79,6 +79,7 @@ public class EnemySpawner : NetworkIdentity
         // Sort entries by tier
         foreach (var entry in enemyEntries)
         {
+            if (entry.progressionTier != 1) continue;
             switch (entry.tier)
             {
                 case EnemyTier.Normal: _normalEnemies.Add(entry); break;
@@ -124,12 +125,12 @@ public class EnemySpawner : NetworkIdentity
                 if (_eliteEnemies.Count > 0 && _elitesSpawnedThisCycle < _currentEliteCap
                     && UnityEngine.Random.value < _currentEliteChance)
                 {
-                    SpawnThisEnemy(GetWeightedRandom(_eliteEnemies), false);
+                    SpawnThisEnemy(GetRandom(_eliteEnemies), false);
                     _elitesSpawnedThisCycle++;
                 }
                 else if (_currentSet.Count > 0)
                 {
-                    SpawnThisEnemy(GetWeightedRandom(_currentSet), false);
+                    SpawnThisEnemy(GetRandom(_currentSet), false);
                 }
             }
 
@@ -145,7 +146,7 @@ public class EnemySpawner : NetworkIdentity
             for (int i = 0; i < plebSpawnAmount; i++)
             {
                 if (EnemyBase.ActiveCount < maxEnemies)
-                    SpawnThisEnemy(GetWeightedRandom(_plebEnemies), false);
+                    SpawnThisEnemy(GetRandom(_plebEnemies), false);
             }
             yield return new WaitForSeconds(interval);
         }
@@ -173,9 +174,9 @@ public class EnemySpawner : NetworkIdentity
 
             // Spawn miniboss or boss
             if (_cycleCount % 4 == 0 && _bossEnemies.Count > 0)
-                SpawnThisEnemy(GetWeightedRandom(_bossEnemies), true);
+                SpawnThisEnemy(GetRandom(_bossEnemies), true);
             else if (_minibossEnemies.Count > 0)
-                SpawnThisEnemy(GetWeightedRandom(_minibossEnemies), true);
+                SpawnThisEnemy(GetRandom(_minibossEnemies), true);
 
             RollNewSet();
         }
@@ -233,6 +234,7 @@ public class EnemySpawner : NetworkIdentity
     {
         var obj = Instantiate(entry.prefab, GetSpawnPosition(), Quaternion.identity);
         var enemy = obj.GetComponent<EnemyBase>();
+        enemy.isFinalBoss = entry.tier == EnemyTier.Boss;
         if (_cycleCount > 0)
         {
             enemy.maxHealth += enemy.baseHealth * ScalingHealthAddend * _cycleCount;
@@ -249,17 +251,9 @@ public class EnemySpawner : NetworkIdentity
         }
     }
 
-    private EnemyEntry GetWeightedRandom(List<EnemyEntry> entries)
+    private EnemyEntry GetRandom(List<EnemyEntry> entries)
     {
-        float total = entries.Sum(e => e.weight);
-        float roll = UnityEngine.Random.Range(0f, total);
-        float cumulative = 0f;
-        foreach (var entry in entries)
-        {
-            cumulative += entry.weight;
-            if (roll <= cumulative) return entry;
-        }
-        return entries[^1];
+        return entries[UnityEngine.Random.Range(0, entries.Count)];
     }
 
     private Vector3 GetSpawnPosition()

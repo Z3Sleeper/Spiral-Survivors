@@ -475,7 +475,7 @@ MonoBehaviour:
   moveSpeed: 1.2
   backpedalSpeedDivisor: 3
   maxHealth: 50
-  preferredRange: 10
+  preferredRange: 5
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
   damage: 10
@@ -491,7 +491,7 @@ MonoBehaviour:
   windupDuration: 0.4
   leapDuration: 0.4
   postLeapPause: 0.5
-  attackCooldown: 3
+  attackCooldown: 5
   model: {fileID: 1223438665833396019}
   aoeHitbox: {fileID: 5201244920850104230}
   dangerIndicator: {fileID: 1438732309334146974}

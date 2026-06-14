@@ -27,6 +27,7 @@ public class EnemyBase : NetworkIdentity
     public float contactCooldown = 0.5f;
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
+    [NonSerialized] public bool isFinalBoss = false;
 
 
     public SyncVar<float> _currentHealthSync = new(0);
@@ -205,6 +206,9 @@ public class EnemyBase : NetworkIdentity
     {
         _isDead = true;
         ActiveCount--;
+
+        if (isFinalBoss)
+            GameManager.instance.TriggerWin();
 
         XPOrbManager.instance.SpawnOrbs(transform.position, xpValue);
 

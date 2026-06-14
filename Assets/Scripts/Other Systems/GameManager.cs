@@ -229,6 +229,20 @@ public class GameManager : NetworkIdentity
         LocalUIManager.instance.UpdateTimer(secondsRemaining);
     }
 
+    public void TriggerWin()
+    {
+        if (!isServer) return;
+        IsPaused = true;
+        ShowWinScreenRpc();
+    }
+
+    [ObserversRpc]
+    private void ShowWinScreenRpc()
+    {
+        _gameOverReadyPlayers.Clear();
+        NetworkedUIManager.instance.ShowWinScreen();
+    }
+
     [ServerRpc(requireOwnership: false)]
     public void CheckAllPlayersDead()
     {
