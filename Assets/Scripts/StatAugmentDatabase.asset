@@ -72,7 +72,7 @@ MonoBehaviour:
   - statType: 10
     displayName: Pierce
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 0.25
+    value: 0.2
     prependText: +
     appendText: 
     allowedClasses: 02000000

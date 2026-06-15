@@ -2,11 +2,11 @@ using UnityEngine;
 
 public class LeaperLeapHitbox : MonoBehaviour, IEnemyAttack
 {
-    private LeaperEnemy _leaper;
+    private LeaperGloom _leaper;
 
     private void Awake()
     {
-        _leaper = GetComponentInParent<LeaperEnemy>();
+        _leaper = GetComponentInParent<LeaperGloom>();
     }
 
     public float GetDamage() => _leaper.damage;

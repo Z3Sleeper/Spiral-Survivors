@@ -1515,7 +1515,7 @@ Camera:
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 32759
+    m_Bits: 65527
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0
@@ -4923,9 +4923,7 @@ MonoBehaviour:
     - {fileID: 8970153102034162631, guid: 97a21ec154c2b514bbdaa6392c8687dc, type: 3}
     - {fileID: 5392031640422321644, guid: bfe4f0af1e3b8e748b1798a56b3882f4, type: 3}
     boss:
-    - {fileID: 2037630420138304940, guid: 0af96ab41d40766488d3f9d051a60ebb, type: 3}
-    - {fileID: 1685494273323310291, guid: c236d7d90b83e6740a0c42853e1d6dda, type: 3}
-    - {fileID: 1467630046995747894, guid: d723b3aa53475a04a9ff5125adb13710, type: 3}
+    - {fileID: 1597157536724350220, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
     pleb:
     - {fileID: 1597157536724350220, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
   tier2:
@@ -4951,8 +4949,8 @@ MonoBehaviour:
   spawnMinDistance: 25
   spawnMaxDistance: 35
   baseSpawnInterval: 2
-  cycleInterval: 150
-  baseEliteChance: 0.025
+  cycleInterval: 120
+  baseEliteChance: 0.02
   baseEliteCap: 2
   spawnTimeCycleScalar: 0.9
   coopSpawnTimeScalar: 0.1

@@ -58,7 +58,7 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         if (_stats == null || !_stats.isOwner || _stats.IsDead || _stats.invincible) return;
 
         var enemy = other.GetComponentInParent<EnemyBase>();
-        if (enemy == null || enemy._isDead) return;
+        if (enemy == null || enemy._isDead || !enemy.CanContactDamage) return;
         if (_contactCooldowns.ContainsKey(enemy)) return;
 
         float dmg = enemy.GetDamage();

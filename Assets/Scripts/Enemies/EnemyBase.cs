@@ -10,10 +10,13 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     protected Collider _hurtbox;
     protected Collider _physicsCollider;
 
+    [Header("Identity")]
+    public string enemyName = "Enemy";
+
     [Header("Stats")]
     public float moveSpeed = 0.6f;
     [NonSerialized] public float baseMoveSpeed;
-    public float backpedalSpeedDivisor = 2f;
+    public float backpedalSpeedDivisor = 3f;
     public float maxHealth = 30f;
     [NonSerialized] public float baseHealth;
     public float preferredRange = 0f; // 0 = melee, >0 = ranged
@@ -25,12 +28,12 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     [Header("Contact Damage")]
     public bool hasContactDamage = false;
     public float contactCooldown = 0.5f;
-    [SerializeField] protected Collider contactDamageCollider;
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
     [NonSerialized] public bool isFinalBoss = false;
     public EnemyBase Source => this;
-    public float GetDamage() => damage;
+    public virtual float GetDamage() => damage;
+    public virtual bool CanContactDamage => hasContactDamage;
 
 
     public SyncVar<float> _currentHealthSync = new(0);
@@ -65,9 +68,6 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         base.OnSpawned();
 
         enabled = isServer;
-
-        if (contactDamageCollider != null)
-            contactDamageCollider.enabled = hasContactDamage;
 
         if (!isServer) return;
         CurrentHealth = maxHealth;
@@ -237,8 +237,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         foreach (var renderer in GetComponentsInChildren<Renderer>())
             renderer.enabled = false;
 
-        // Destroy after short delay to let any in-flight RPCs resolve
-        Destroy(gameObject);
+        Destroy(gameObject, 0.5f);
     }
 
 }
