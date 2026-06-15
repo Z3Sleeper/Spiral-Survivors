@@ -173,7 +173,7 @@ public class EnemySpawner : NetworkIdentity
             _spawnInterval = baseSpawnInterval / (1f + (_playerCount - 1) * coopSpawnTimeScalar) * Mathf.Pow(spawnTimeCycleScalar, _cycleCount);
 
             // Spawn miniboss or boss
-            if (_cycleCount % 4 == 0 && _bossEnemies.Count > 0)
+            if (_cycleCount % 2 == 0 && _bossEnemies.Count > 0)
                 SpawnThisEnemy(GetRandom(_bossEnemies), true);
             else if (_minibossEnemies.Count > 0)
                 SpawnThisEnemy(GetRandom(_minibossEnemies), true);

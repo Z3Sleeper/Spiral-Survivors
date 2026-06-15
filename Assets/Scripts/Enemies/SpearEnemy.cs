@@ -38,8 +38,6 @@ public class SpearEnemy : EnemyBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        _syncState.onChanged += OnStateChanged;
-        OnStateChanged(_syncState.value);
         TryGetComponent(out _animator);
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
@@ -55,6 +53,8 @@ public class SpearEnemy : EnemyBase
         }
         _attacksRemaining = attacksPerAttack;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
+        _syncState.onChanged += OnStateChanged;
+        OnStateChanged(_syncState.value);
     }
 
     private void OnStateChanged(State state)

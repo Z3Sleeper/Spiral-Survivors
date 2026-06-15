@@ -2,7 +2,7 @@ using System.Collections;
 using PurrNet;
 using UnityEngine;
 
-public class BlitzEnemy : EnemyBase, IEnemyAttack
+public class BlitzEnemy : EnemyBase
 {
     [Header("Blitz Settings")]
     [SerializeField] private float windupDuration = 0.7f;
@@ -27,7 +27,6 @@ public class BlitzEnemy : EnemyBase, IEnemyAttack
         set => _syncState.value = value;
     }
 
-    public float GetDamage() => _state == State.Blitzing ? damage : 0f;
 
     protected override void OnSpawned()
     {
@@ -101,6 +100,7 @@ public class BlitzEnemy : EnemyBase, IEnemyAttack
         _stateTimer = windupDuration;
         _rb.linearVelocity = Vector3.zero;
         _physicsCollider.enabled = true;
+        if (contactDamageCollider != null) contactDamageCollider.enabled = false;
 
         // Snap to face target
         if (_target != null)
@@ -124,6 +124,7 @@ public class BlitzEnemy : EnemyBase, IEnemyAttack
         _physicsCollider.enabled = false;
         _rb.linearVelocity = Vector3.zero;
         _blitzesRemaining--;
+        if (contactDamageCollider != null) contactDamageCollider.enabled = true;
     }
 
     private void EnterPostBlitz()
@@ -133,6 +134,7 @@ public class BlitzEnemy : EnemyBase, IEnemyAttack
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
+        if (contactDamageCollider != null) contactDamageCollider.enabled = false;
     }
 
     private void EnterMoving()

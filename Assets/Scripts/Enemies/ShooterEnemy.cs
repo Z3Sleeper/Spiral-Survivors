@@ -24,6 +24,8 @@ public class ShooterEnemy : EnemyBase
     [Header("Projectile Settings")]
     [SerializeField] private float speed = 8f;
     [SerializeField] private float maxRange = 30f;
+    [SerializeField] private int multishot = 1;
+    [SerializeField] private float shotSpreadAngle = 60f;
 
     private int _shotsRemaining;
 
@@ -155,11 +157,22 @@ public class ShooterEnemy : EnemyBase
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
 
         if (_target == null) return;
-        Vector3 dir = _target.position - transform.position;
-        dir.y = 0;
+        Vector3 baseDir = _target.position - transform.position;
+        baseDir.y = 0;
+        baseDir.Normalize();
+
         Vector3 spawnPosition = new(gun.transform.position.x, 0f, gun.transform.position.z);
-        var proj = Instantiate(projectilePrefab, spawnPosition, Quaternion.LookRotation(dir.normalized));
-        proj.GetComponent<ShooterEnemyProjectile>().Init(damage, dir.normalized, speed, maxRange);
+
+        float startAngle = multishot > 1 ? -shotSpreadAngle / 2f : 0f;
+        float angleStep = multishot > 1 ? shotSpreadAngle / (multishot - 1) : 0f;
+
+        for (int i = 0; i < multishot; i++)
+        {
+            float angle = startAngle + i * angleStep;
+            Vector3 dir = Quaternion.Euler(0, angle, 0) * baseDir;
+            var proj = Instantiate(projectilePrefab, spawnPosition, Quaternion.LookRotation(dir));
+            proj.GetComponent<ShooterEnemyProjectile>().Init(damage, dir, speed, maxRange, this);
+        }
 
         _shotsRemaining--;
     }

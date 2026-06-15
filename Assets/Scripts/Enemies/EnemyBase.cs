@@ -4,7 +4,7 @@ using PurrNet;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
-public class EnemyBase : NetworkIdentity
+public class EnemyBase : NetworkIdentity, IEnemyAttack
 {
     protected Rigidbody _rb;
     protected Collider _hurtbox;
@@ -25,9 +25,12 @@ public class EnemyBase : NetworkIdentity
     [Header("Contact Damage")]
     public bool hasContactDamage = false;
     public float contactCooldown = 0.5f;
+    [SerializeField] protected Collider contactDamageCollider;
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
     [NonSerialized] public bool isFinalBoss = false;
+    public EnemyBase Source => this;
+    public float GetDamage() => damage;
 
 
     public SyncVar<float> _currentHealthSync = new(0);
@@ -62,6 +65,9 @@ public class EnemyBase : NetworkIdentity
         base.OnSpawned();
 
         enabled = isServer;
+
+        if (contactDamageCollider != null)
+            contactDamageCollider.enabled = hasContactDamage;
 
         if (!isServer) return;
         CurrentHealth = maxHealth;

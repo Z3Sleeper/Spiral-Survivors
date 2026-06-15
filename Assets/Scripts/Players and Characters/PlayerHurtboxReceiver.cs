@@ -4,6 +4,7 @@ using UnityEngine;
 public class PlayerHurtboxReceiver : MonoBehaviour
 {
     private CharacterStats _stats;
+    private readonly Dictionary<EnemyBase, float> _multiHitCooldowns = new();
     private readonly Dictionary<EnemyBase, float> _contactCooldowns = new();
     private readonly List<EnemyBase> _cooldownBuffer = new();
 
@@ -15,6 +16,14 @@ public class PlayerHurtboxReceiver : MonoBehaviour
     private void Update()
     {
         if (_stats == null || !_stats.isOwner) return;
+        _cooldownBuffer.Clear();
+        _cooldownBuffer.AddRange(_multiHitCooldowns.Keys);
+        foreach (var enemy in _cooldownBuffer)
+        {
+            _multiHitCooldowns[enemy] -= Time.deltaTime;
+            if (_multiHitCooldowns[enemy] <= 0f)
+                _multiHitCooldowns.Remove(enemy);
+        }
         _cooldownBuffer.Clear();
         _cooldownBuffer.AddRange(_contactCooldowns.Keys);
         foreach (var enemy in _cooldownBuffer)
@@ -32,8 +41,16 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         var attack = other.GetComponentInParent<IEnemyAttack>();
         if (attack == null || attack is EnemyBase) return; // EnemyBase attackers handled in OnTriggerStay
 
+        var source = attack.Source;
+        if (source != null && _multiHitCooldowns.ContainsKey(source)) return;
+
         float dmg = attack.GetDamage();
-        if (dmg > 0f) _stats.TakeDamageRpc(dmg);
+        if (dmg > 0f)
+        {
+            _stats.TakeDamageRpc(dmg);
+            if (source != null)
+                _multiHitCooldowns[source] = 0.5f;
+        }
     }
 
     private void OnTriggerStay(Collider other)
@@ -44,12 +61,7 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         if (enemy == null || enemy._isDead) return;
         if (_contactCooldowns.ContainsKey(enemy)) return;
 
-        float dmg = 0f;
-        if (enemy.hasContactDamage)
-            dmg = enemy.damage;
-        else if (enemy is IEnemyAttack attack)
-            dmg = attack.GetDamage();
-
+        float dmg = enemy.GetDamage();
         if (dmg <= 0f) return;
         _contactCooldowns[enemy] = enemy.contactCooldown;
         _stats.TakeDamageRpc(dmg);

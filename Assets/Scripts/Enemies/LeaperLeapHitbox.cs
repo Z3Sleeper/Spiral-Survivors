@@ -10,4 +10,5 @@ public class LeaperLeapHitbox : MonoBehaviour, IEnemyAttack
     }
 
     public float GetDamage() => _leaper.damage;
+    public EnemyBase Source => _leaper;
 }

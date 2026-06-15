@@ -10,4 +10,5 @@ public class SpearHitbox : MonoBehaviour, IEnemyAttack
     }
 
     public float GetDamage() => _spear.damage * _spear.stabDamageMultiplier;
+    public EnemyBase Source => _spear;
 }

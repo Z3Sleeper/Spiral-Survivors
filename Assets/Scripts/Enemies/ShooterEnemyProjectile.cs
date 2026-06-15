@@ -7,6 +7,7 @@ public class ShooterEnemyProjectile : NetworkIdentity, IEnemyAttack
     private float _maxRange;
     private float _damage;
     public float GetDamage() => _damage;
+    public EnemyBase Source { get; private set; }
     private Vector3 _direction;
     private float _distanceTravelled;
 
@@ -16,9 +17,10 @@ public class ShooterEnemyProjectile : NetworkIdentity, IEnemyAttack
         enabled = isServer;
     }
 
-    public void Init(float damage, Vector3 direction, float speed, float maxRange)
+    public void Init(float damage, Vector3 direction, float speed, float maxRange, EnemyBase source)
     {
         _damage = damage;
+        Source = source;
         _direction = direction.normalized;
         _speed = speed;
         _maxRange = maxRange;
