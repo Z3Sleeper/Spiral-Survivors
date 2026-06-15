@@ -531,7 +531,7 @@ MonoBehaviour:
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
   baseWeaponRange: 5
-  bonusWeaponRangeFlat: 7
+  bonusWeaponRangeFlat: 3
   bonusWeaponRangePercent: 1.25
   continuousFire: 0
   bonusCritChanceFlat: 0

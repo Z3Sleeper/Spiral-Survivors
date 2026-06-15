@@ -152,6 +152,7 @@ public class LeaperEnemy : EnemyBase
         _leapTarget = _target.position;
         _syncLeapTarget.value = _leapTarget;
 
+        SnapFaceTarget();
         _state = State.Windup;
         _stateTimer = windupDuration;
     }

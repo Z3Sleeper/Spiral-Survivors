@@ -137,17 +137,9 @@ public class ShooterEnemy : EnemyBase
 
     private void EnterWindup()
     {
-        _state = State.Windup;
+        SnapFaceTarget();
         _stateTimer = windupDuration;
-
-        // Snap to face target
-        if (_target != null)
-        {
-            Vector3 dir = _target.position - transform.position;
-            dir.y = 0;
-            if (dir != Vector3.zero)
-                _rb.MoveRotation(Quaternion.LookRotation(dir));
-        }
+        _state = State.Windup;
     }
 
     private void Shoot()

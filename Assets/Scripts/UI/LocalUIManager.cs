@@ -229,7 +229,7 @@ public class LocalUIManager : MonoBehaviour
         _statsSB.AppendLine($" {_stats.WeaponRange * 5f:G4}");
         _statsSB.AppendLine($" {_stats.MoveSpeed * 10f:G4}");
         _statsSB.AppendLine($" {_stats.dashHaste:G4}");
-        _statsSB.AppendLine($" {_stats.CritChance * 100f:G4}%");
+        _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
         statsNumbersText.text = _statsSB.ToString();
     }

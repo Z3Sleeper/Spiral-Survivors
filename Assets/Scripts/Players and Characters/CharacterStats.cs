@@ -65,7 +65,7 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float baseCritDamage = 3f;
     public float bonusCritDamageFlat = 0f;
     public float bonusCritDamagePercent = 1f;
-    public float CritDamage => (baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent;
+    public float CritDamage => ((baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent) + Mathf.Max(0f, CritChance - 1f) * 0.5f;
 
     [Header("Ranged Weapons")]
     public float basePierce = 0f;

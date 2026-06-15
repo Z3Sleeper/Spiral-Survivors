@@ -102,18 +102,9 @@ public class BlitzEnemy : EnemyBase
         _physicsCollider.enabled = true;
         if (contactDamageCollider != null) contactDamageCollider.enabled = false;
 
-        // Snap to face target
-        if (_target != null)
-        {
-            Vector3 dir = _target.position - transform.position;
-            dir.y = 0;
-            if (dir != Vector3.zero)
-            {
-                _blitzDirection = dir.normalized;
-                _rb.MoveRotation(Quaternion.LookRotation(_blitzDirection));
-            }
-        }
-        
+        var snapDir = SnapFaceTarget();
+        if (snapDir != Vector3.zero) _blitzDirection = snapDir;
+
         _state = State.Windup;
     }
 

@@ -130,16 +130,7 @@ public class SpearEnemy : EnemyBase
     private void EnterWindup()
     {
         _stateTimer = windupDuration;
-
-        // Snap to face target
-        if (_target != null)
-        {
-            Vector3 dir = (_target.position - transform.position);
-            dir.y = 0;
-            if (dir != Vector3.zero)
-                _rb.rotation = Quaternion.LookRotation(dir.normalized);
-        }
-        
+        SnapFaceTarget();
         _state = State.Windup;
     }
 

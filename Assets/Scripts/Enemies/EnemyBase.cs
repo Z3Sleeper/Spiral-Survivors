@@ -161,6 +161,17 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     }
 
 
+    protected Vector3 SnapFaceTarget()
+    {
+        if (_target == null) return Vector3.zero;
+        Vector3 dir = _target.position - transform.position;
+        dir.y = 0;
+        if (dir == Vector3.zero) return Vector3.zero;
+        dir.Normalize();
+        _rb.rotation = Quaternion.LookRotation(dir);
+        return dir;
+    }
+
     protected bool TargetInRange()
     {
         if (_target == null) return false;
