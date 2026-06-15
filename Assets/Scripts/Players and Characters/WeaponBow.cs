@@ -6,6 +6,7 @@ public class WeaponBow : WeaponBase
     [SerializeField] private LayerMask enemyHurtboxLayer;
     public float projectileSpeed = 20f;
     public float bowAttackSpeedScaling = 10f;
+    [SerializeField] private float multishotSpreadAngle = 60f;
 
     private float _fireTimer;
     public override bool IsMelee => false;
@@ -54,8 +55,19 @@ public class WeaponBow : WeaponBase
         int ricochet = (int)rawRicochet;
         if (Random.value < rawRicochet - ricochet) ricochet++;
 
-        var arrow = Instantiate(arrowPrefab, transform.position, transform.rotation);
-        var arrowScript = arrow.GetComponent<WeaponArrow>();
-        arrowScript.Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, transform.forward, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound);
+        float rawMultishot = _stats.Multishot;
+        int bonusShots = (int)rawMultishot;
+        if (Random.value < rawMultishot - bonusShots) bonusShots++;
+        int multishot = 1 + bonusShots;
+
+        float startAngle = multishot > 1 ? -multishotSpreadAngle / 2f : 0f;
+        float angleStep = multishot > 1 ? multishotSpreadAngle / (multishot - 1) : 0f;
+
+        for (int i = 0; i < multishot; i++)
+        {
+            Vector3 dir = Quaternion.Euler(0, startAngle + i * angleStep, 0) * transform.forward;
+            var arrow = Instantiate(arrowPrefab, transform.position, Quaternion.LookRotation(dir));
+            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound);
+        }
     }
 }

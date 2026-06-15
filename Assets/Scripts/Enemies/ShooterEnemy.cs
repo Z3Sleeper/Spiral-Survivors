@@ -19,12 +19,12 @@ public class ShooterEnemy : EnemyBase
     private Vector3 _dashTarget;
     [SerializeField] private float windupDuration = 0.5f;
     [SerializeField] private float postShotPause = 0.3f;
-    [SerializeField] private int shotsToShoot = 1;
+    [SerializeField] private int shotsPerAttack = 1;
 
     [Header("Projectile Settings")]
     [SerializeField] private float speed = 8f;
     [SerializeField] private float maxRange = 30f;
-    [SerializeField] private int multishot = 1;
+    [SerializeField] private int multishot = 0;
     [SerializeField] private float shotSpreadAngle = 60f;
 
     private int _shotsRemaining;
@@ -42,7 +42,7 @@ public class ShooterEnemy : EnemyBase
         _syncState.onChanged += OnStateChanged;
         OnStateChanged(_syncState.value);
         TryGetComponent(out _animator);
-        _shotsRemaining = shotsToShoot;
+        _shotsRemaining = shotsPerAttack;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
     }
 
@@ -163,10 +163,11 @@ public class ShooterEnemy : EnemyBase
 
         Vector3 spawnPosition = new(gun.transform.position.x, 0f, gun.transform.position.z);
 
-        float startAngle = multishot > 1 ? -shotSpreadAngle / 2f : 0f;
-        float angleStep = multishot > 1 ? shotSpreadAngle / (multishot - 1) : 0f;
+        int totalShots = 1 + multishot;
+        float startAngle = totalShots > 1 ? -shotSpreadAngle / 2f : 0f;
+        float angleStep = totalShots > 1 ? shotSpreadAngle / (totalShots - 1) : 0f;
 
-        for (int i = 0; i < multishot; i++)
+        for (int i = 0; i < totalShots; i++)
         {
             float angle = startAngle + i * angleStep;
             Vector3 dir = Quaternion.Euler(0, angle, 0) * baseDir;
@@ -180,6 +181,6 @@ public class ShooterEnemy : EnemyBase
     private void EnterMoving()
     {
         _state = State.Moving;
-        _shotsRemaining = shotsToShoot;
+        _shotsRemaining = shotsPerAttack;
     }
 }

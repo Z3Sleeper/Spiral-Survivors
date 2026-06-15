@@ -11,5 +11,6 @@ public enum StatType
     DashCooldown,
     CritChance,
     Pierce,
-    Ricochet
+    Ricochet,
+    Multishot
 }

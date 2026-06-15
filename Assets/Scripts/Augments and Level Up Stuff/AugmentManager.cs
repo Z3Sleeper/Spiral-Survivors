@@ -134,6 +134,9 @@ public class AugmentManager : NetworkBehaviour
             case StatType.Ricochet:
                 stats.bonusRicochetFlat += entry.value;
                 break;
+            case StatType.Multishot:
+                stats.bonusMultishotFlat += entry.value;
+                break;
         }
     }
 

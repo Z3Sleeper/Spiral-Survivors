@@ -318,7 +318,7 @@ MonoBehaviour:
   shotsToShoot: 1
   speed: 8
   maxRange: 30
-  multishot: 1
+  multishot: 0
   shotSpreadAngle: 60
   _syncState:
     _value: 0

@@ -77,6 +77,11 @@ public class CharacterStats : NetworkBehaviour
     public float bonusRicochetPercent = 1f;
     public float Ricochet => (baseRicochet + bonusRicochetFlat) * bonusRicochetPercent;
 
+    public float baseMultishot = 0f;
+    public float bonusMultishotFlat = 0f;
+    public float bonusMultishotPercent = 1f;
+    public float Multishot => (baseMultishot + bonusMultishotFlat) * bonusMultishotPercent;
+
     [Header("Health")]
     public SyncVar<float> _baseMaxHealth = new(50f);
     [HideInInspector] public float BaseMaxHealth

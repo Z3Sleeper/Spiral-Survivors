@@ -251,8 +251,8 @@ MonoBehaviour:
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
   baseWeaponRange: 5
-  bonusWeaponRangeFlat: 10
-  bonusWeaponRangePercent: 2
+  bonusWeaponRangeFlat: 35
+  bonusWeaponRangePercent: 1
   continuousFire: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 1
@@ -264,6 +264,9 @@ MonoBehaviour:
   baseRicochet: 0
   bonusRicochetFlat: 0
   bonusRicochetPercent: 1
+  baseMultishot: 0
+  bonusMultishotFlat: 0
+  bonusMultishotPercent: 1
   _baseMaxHealth:
     _value: 25
     _ownerAuth: 0

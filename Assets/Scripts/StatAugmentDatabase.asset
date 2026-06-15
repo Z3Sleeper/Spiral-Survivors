@@ -34,13 +34,6 @@ MonoBehaviour:
     prependText: +
     appendText: 
     allowedClasses: 
-  - statType: 3
-    displayName: Range
-    color: {r: 0.47058824, g: 0.47058824, b: 1, a: 1}
-    value: 1
-    prependText: +
-    appendText: 
-    allowedClasses: 
   - statType: 4
     displayName: Attack Speed
     color: {r: 1, g: 0, b: 0.3137255, a: 1}
@@ -78,13 +71,6 @@ MonoBehaviour:
     allowedClasses: 
   - statType: 10
     displayName: Pierce
-    color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 0.25
-    prependText: +
-    appendText: 
-    allowedClasses: 02000000
-  - statType: 11
-    displayName: Ricochet
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
     value: 0.25
     prependText: +
