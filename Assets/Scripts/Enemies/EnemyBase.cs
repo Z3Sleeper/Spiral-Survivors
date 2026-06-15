@@ -37,6 +37,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
 
 
     public SyncVar<float> _currentHealthSync = new(0);
+    public SyncVar<float> _syncMaxHealth = new(0);
     public float CurrentHealth
     {
         get => _currentHealthSync.value;
@@ -67,9 +68,10 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     {
         base.OnSpawned();
 
-        enabled = isServer;
+        _syncMaxHealth.onChanged += val => maxHealth = val;
 
         if (!isServer) return;
+        _syncMaxHealth.value = maxHealth;
         CurrentHealth = maxHealth;
         ActiveCount++;
     }
@@ -77,6 +79,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     protected virtual void Update()
     {
         if (_isDead) return;
+        if (!isServer) return;
         _findTargetTimer -= Time.deltaTime;
         if (_findTargetTimer <= 0f)
         {
@@ -89,6 +92,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     protected virtual void FixedUpdate()
     {
         if (_isDead) return;
+        if (!isServer) return;
         if (_target == null)
         {
             FindTarget();

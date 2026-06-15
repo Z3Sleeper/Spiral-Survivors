@@ -36,7 +36,7 @@ public class PlayerHurtboxReceiver : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (_stats == null || !_stats.isOwner || _stats.IsDead || _stats.invincible) return;
+        if (_stats == null || !_stats.isOwner || _stats.IsDead || _stats.IsInvincible) return;
 
         var attack = other.GetComponentInParent<IEnemyAttack>();
         if (attack == null || attack is EnemyBase) return; // EnemyBase attackers handled in OnTriggerStay
@@ -55,7 +55,7 @@ public class PlayerHurtboxReceiver : MonoBehaviour
 
     private void OnTriggerStay(Collider other)
     {
-        if (_stats == null || !_stats.isOwner || _stats.IsDead || _stats.invincible) return;
+        if (_stats == null || !_stats.isOwner || _stats.IsDead || _stats.IsInvincible) return;
 
         var enemy = other.GetComponentInParent<EnemyBase>();
         if (enemy == null || enemy._isDead || !enemy.CanContactDamage) return;

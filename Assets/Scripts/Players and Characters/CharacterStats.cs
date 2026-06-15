@@ -241,6 +241,8 @@ public class CharacterStats : NetworkBehaviour
     }
 
     public bool invincible = false;
+    [HideInInspector] public SyncVar<bool> _reviveInvincible = new(false);
+    public bool IsInvincible => invincible || _reviveInvincible.value;
 
     protected override void OnDestroy() { All.Remove(this); base.OnDestroy(); }
 
@@ -318,6 +320,16 @@ public class CharacterStats : NetworkBehaviour
         IsDead = false;
         CurrentHealth = MaxHealth * healthPercent;
         CurrentShield = MaxShield;
+        _reviveInvincible.value = true;
+        StartCoroutine(ReviveInvincibilityCoroutine());
+    }
+
+    private static readonly WaitForSeconds ReviveInvincibilityWait = new(2f);
+
+    private IEnumerator ReviveInvincibilityCoroutine()
+    {
+        yield return ReviveInvincibilityWait;
+        _reviveInvincible.value = false;
     }
 
     private void RecalculateXPMod()
@@ -352,7 +364,7 @@ public class CharacterStats : NetworkBehaviour
     {
         if (!isServer) return;
         if (IsDead) return;
-        if (invincible) return;
+        if (IsInvincible) return;
 
         _shieldRechargeTimer = ShieldRegenTime;
         FlashHitRpc();

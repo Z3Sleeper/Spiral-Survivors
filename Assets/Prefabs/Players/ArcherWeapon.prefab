@@ -91,7 +91,7 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 1024
   projectileSpeed: 20
-  bowAttackSpeedScaling: 5
+  bowAttackSpeedScaling: 8
   multishotSpreadAngle: 60
 --- !u!1 &6381208085429435541
 GameObject:

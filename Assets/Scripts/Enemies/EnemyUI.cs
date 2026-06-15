@@ -17,6 +17,12 @@ public class EnemyUI : MonoBehaviour
 
     private void Update()
     {
+        if (_enemy._isDead)
+        {
+            healthBar.gameObject.SetActive(false);
+            healthText.gameObject.SetActive(false);
+            return;
+        }
         healthBar.value = _enemy.CurrentHealth / _enemy.maxHealth;
         healthText.text = $"<b>{(int)_enemy.CurrentHealth}/{(int)_enemy.maxHealth}</b>";
     }

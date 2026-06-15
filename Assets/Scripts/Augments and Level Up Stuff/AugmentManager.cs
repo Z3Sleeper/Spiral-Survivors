@@ -91,6 +91,43 @@ public class AugmentManager : NetworkBehaviour
             ApplyStat(stats, pair.statB);
             break;
         }
+
+        int idxA = statDatabase.stats.IndexOf(pair.statA);
+        int idxB = statDatabase.stats.IndexOf(pair.statB);
+        ApplyAugmentLocalRpc(player, idxA, idxB);
+    }
+
+    [TargetRpc]
+    private void ApplyAugmentLocalRpc(PlayerID target, int idxA, int idxB)
+    {
+        CharacterStats stats = null;
+        foreach (var s in CharacterStats.All)
+        {
+            if (s.isOwner) { stats = s; break; }
+        }
+        if (stats == null) return;
+        ApplyStatLocal(stats, statDatabase.stats[idxA]);
+        ApplyStatLocal(stats, statDatabase.stats[idxB]);
+    }
+
+    private void ApplyStatLocal(CharacterStats stats, StatAugmentEntry entry)
+    {
+        switch (entry.statType)
+        {
+            case StatType.WeaponDamage:   stats.bonusWeaponDamageFlat += entry.value; break;
+            case StatType.MoveSpeed:      stats.bonusMoveSpeedFlat += entry.value * 0.1f; break;
+            case StatType.WeaponRange:    stats.bonusWeaponRangeFlat += entry.value * 0.2f * stats.baseWeaponRange; break;
+            case StatType.AttackSpeed:    stats.bonusWeaponSpeedFlat += entry.value * 0.01f * stats.baseWeaponSpeed; break;
+            case StatType.HealthRegen:    stats.bonusHealthRegenFlat += entry.value; break;
+            case StatType.MaxShield:      stats.bonusMaxShieldFlat += entry.value * 0.01f; break;
+            case StatType.EnergyRegen:    stats.bonusEnergyRegenFlat += entry.value; break;
+            case StatType.DashCooldown:   stats.dashHaste += entry.value; break;
+            case StatType.CritChance:     stats.bonusCritChanceFlat += entry.value * 0.01f; break;
+            case StatType.Pierce:         stats.bonusPierceFlat += entry.value; break;
+            case StatType.Ricochet:       stats.bonusRicochetFlat += entry.value; break;
+            case StatType.Multishot:      stats.bonusMultishotFlat += entry.value; break;
+            // MaxHealth is SyncVar-backed — server handles it via ApplyStat
+        }
     }
 
     private void ApplyStat(CharacterStats stats, StatAugmentEntry entry)

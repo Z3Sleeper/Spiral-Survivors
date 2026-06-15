@@ -1,7 +1,7 @@
 using PurrNet;
 using UnityEngine;
 
-public class ShooterGloomProjectile : NetworkIdentity, IEnemyAttack
+public class ShooterGloomProjectile : MonoBehaviour, IEnemyAttack
 {
     private float _speed;
     private float _maxRange;
@@ -10,12 +10,6 @@ public class ShooterGloomProjectile : NetworkIdentity, IEnemyAttack
     public EnemyBase Source { get; private set; }
     private Vector3 _direction;
     private float _distanceTravelled;
-
-    protected override void OnSpawned()
-    {
-        base.OnSpawned();
-        enabled = isServer;
-    }
 
     public void Init(float damage, Vector3 direction, float speed, float maxRange, EnemyBase source)
     {
@@ -38,8 +32,9 @@ public class ShooterGloomProjectile : NetworkIdentity, IEnemyAttack
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!isServer) return;
         if (other.gameObject.layer != LayerMask.NameToLayer("PlayerHurtbox")) return;
-        Destroy(gameObject);
+        var stats = other.GetComponentInParent<CharacterStats>();
+        if (stats != null && stats.isOwner)
+            Destroy(gameObject);
     }
 }

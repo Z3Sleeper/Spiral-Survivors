@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
 
@@ -54,6 +55,7 @@ public class DreadKingSpike : BossBase
     private int _chargesRemaining;
     private float _preSurgeMoveSpeed;
     private bool _isSurging;
+    private readonly List<GameObject> _activeBombIndicators = new();
 
     protected override void OnSpawned()
     {
@@ -217,7 +219,7 @@ public class DreadKingSpike : BossBase
     {
         foreach (var stats in CharacterStats.All)
         {
-            if (!stats.isOwner || stats.IsDead || stats.invincible) continue;
+            if (!stats.isOwner || stats.IsDead || stats.IsInvincible) continue;
             if (Vector3.Distance(stats.transform.position, position) <= radius)
                 stats.TakeDamageRpc(dmg);
         }
@@ -255,6 +257,7 @@ public class DreadKingSpike : BossBase
             var s = danger.transform.localScale;
             danger.transform.localScale = new Vector3(0f, s.y, 0f);
             Destroy(danger, bombWarningDuration + 0.1f);
+            _activeBombIndicators.Add(danger);
             StartCoroutine(GrowBombIndicator(danger, diameter));
         }
 
@@ -264,6 +267,7 @@ public class DreadKingSpike : BossBase
             var s = windup.transform.localScale;
             windup.transform.localScale = new Vector3(diameter, s.y, diameter);
             Destroy(windup, bombWarningDuration + 0.1f);
+            _activeBombIndicators.Add(windup);
         }
 
         StartCoroutine(BombDamageCoroutine(position));
@@ -288,10 +292,24 @@ public class DreadKingSpike : BossBase
 
         foreach (var stats in CharacterStats.All)
         {
-            if (!stats.isOwner || stats.IsDead || stats.invincible) continue;
+            if (!stats.isOwner || stats.IsDead || stats.IsInvincible) continue;
             if (Vector3.Distance(stats.transform.position, position) <= bombRadius)
                 stats.TakeDamageRpc(bombDamage);
         }
+    }
+
+    protected override void Die()
+    {
+        ClearBombIndicatorsRpc();
+        base.Die();
+    }
+
+    [ObserversRpc]
+    private void ClearBombIndicatorsRpc()
+    {
+        foreach (var indicator in _activeBombIndicators)
+            if (indicator != null) Destroy(indicator);
+        _activeBombIndicators.Clear();
     }
 
     protected override void OnEnrage()

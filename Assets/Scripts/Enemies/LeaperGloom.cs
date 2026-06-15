@@ -206,8 +206,14 @@ public class LeaperGloom : EnemyBase
 
     protected override void Die()
     {
+        DestroyDangerIndicatorRpc();
+        base.Die();
+    }
+
+    [ObserversRpc]
+    private void DestroyDangerIndicatorRpc()
+    {
         if (dangerIndicator != null)
             Destroy(dangerIndicator);
-        base.Die();
     }
 }

@@ -164,11 +164,17 @@ public class ShooterGloom : EnemyBase
         {
             float angle = startAngle + i * angleStep;
             Vector3 dir = Quaternion.Euler(0, angle, 0) * baseDir;
-            var proj = Instantiate(projectilePrefab, spawnPosition, Quaternion.LookRotation(dir));
-            proj.GetComponent<ShooterGloomProjectile>().Init(damage, dir, speed, maxRange, this);
+            SpawnProjectileRpc(spawnPosition, dir, damage, speed, maxRange);
         }
 
         _shotsRemaining--;
+    }
+
+    [ObserversRpc]
+    private void SpawnProjectileRpc(Vector3 position, Vector3 direction, float dmg, float spd, float range)
+    {
+        var proj = Instantiate(projectilePrefab, position, Quaternion.LookRotation(direction));
+        proj.GetComponent<ShooterGloomProjectile>().Init(dmg, direction, spd, range, this);
     }
 
     private void EnterMoving()

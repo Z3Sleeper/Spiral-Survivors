@@ -3038,7 +3038,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Fires projectiles at enemies in range and LoS at 10x Attack Speed
+  m_text: 'Fires projectiles at enemies in range and LoS at x8 Attack Speed
 
     Range
     swapped for Pierce in stat selections
