@@ -498,6 +498,8 @@ MonoBehaviour:
   _renderers:
   - {fileID: 4797182340578565043}
   baseMoveSpeed: 1
+  bonusMoveSpeedFlat: 0
+  bonusMoveSpeedPercent: 1
   baseWeaponDamage: 15
   bonusWeaponDamageFlat: 0
   bonusWeaponDamagePercent: 0.4
@@ -522,6 +524,9 @@ MonoBehaviour:
   baseRicochet: 0
   bonusRicochetFlat: 0
   bonusRicochetPercent: 1
+  baseMultishot: 0
+  bonusMultishotFlat: 0
+  bonusMultishotPercent: 1
   _baseMaxHealth:
     _value: 25
     _ownerAuth: 0
@@ -539,7 +544,23 @@ MonoBehaviour:
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
   baseHealthRegen: 0.5
+  _bonusHealthRegenFlat:
+    _value: 0
+    _ownerAuth: 1
+    _sendIntervalInSeconds: 0
+  _bonusHealthRegenPercent:
+    _value: 1
+    _ownerAuth: 1
+    _sendIntervalInSeconds: 0
   baseMaxShield: 0.1
+  _bonusMaxShieldFlat:
+    _value: 0
+    _ownerAuth: 1
+    _sendIntervalInSeconds: 0
+  _bonusMaxShieldPercent:
+    _value: 1
+    _ownerAuth: 1
+    _sendIntervalInSeconds: 0
   _currentShield:
     _value: 0
     _ownerAuth: 0
@@ -563,6 +584,10 @@ MonoBehaviour:
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
   invincible: 0
+  _reviveInvincible:
+    _value: 0
+    _ownerAuth: 0
+    _sendIntervalInSeconds: 0
 --- !u!114 &6361539828381301634
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -844,7 +869,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 21300000, guid: 0a349fb9d8f785d4bafd55742a768328, type: 3}
+  m_Sprite: {fileID: 21300000, guid: dde926bf990150f42beb9fd3120f4dd0, type: 3}
   m_Color: {r: 0, g: 1, b: 1, a: 0.5882353}
   m_FlipX: 0
   m_FlipY: 0
@@ -852,7 +877,7 @@ SpriteRenderer:
   m_Size: {x: 2.56, y: 2.56}
   m_AdaptiveModeThreshold: 0.5
   m_SpriteTileMode: 0
-  m_WasSpriteAssigned: 0
+  m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
 --- !u!1 &3953905479949839896
 GameObject:

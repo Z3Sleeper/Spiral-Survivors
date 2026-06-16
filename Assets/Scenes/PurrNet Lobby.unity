@@ -3763,11 +3763,11 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '+25% Total Attack Speed
+  m_text: '+18 Damage
 
-    +15 Damage
+    +15% Total Attack Speed
 
-    +4 Movement Speed'
+    +10% Movement Speed'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -4534,7 +4534,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "+3 Range & +25% Total Range \n+30 Health\n+1.5 Health Regen"
+  m_text: "+2 Range & +25% Total Range \n+30 Health\n+1 Health Regen"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

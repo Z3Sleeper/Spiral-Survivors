@@ -25,8 +25,8 @@ public class CharacterStats : NetworkBehaviour
 
     [Header("Movement")]
     public float baseMoveSpeed = 1f;
-    [NonSerialized] public float bonusMoveSpeedFlat = 0f;
-    [NonSerialized] public float bonusMoveSpeedPercent = 1f;
+    public float bonusMoveSpeedFlat = 0f;
+    public float bonusMoveSpeedPercent = 1f;
     public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent;
 
     [Header("Weapon")]

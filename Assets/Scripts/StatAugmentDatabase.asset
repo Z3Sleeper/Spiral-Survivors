@@ -30,7 +30,7 @@ MonoBehaviour:
   - statType: 2
     displayName: Movement Speed
     color: {r: 1, g: 1, b: 1, a: 1}
-    value: 1
+    value: 0.5
     prependText: +
     appendText: 
     allowedClasses: 
@@ -76,3 +76,10 @@ MonoBehaviour:
     prependText: +
     appendText: 
     allowedClasses: 02000000
+  - statType: 3
+    displayName: Range
+    color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
+    value: 1
+    prependText: +
+    appendText: 
+    allowedClasses: 000000000100000003000000
