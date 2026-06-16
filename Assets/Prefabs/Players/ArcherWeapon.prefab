@@ -93,6 +93,7 @@ MonoBehaviour:
   projectileSpeed: 20
   bowAttackSpeedScaling: 8
   multishotSpreadAngle: 60
+  shotDelay: 0.01
 --- !u!1 &6381208085429435541
 GameObject:
   m_ObjectHideFlags: 0

@@ -173,7 +173,15 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         if (dir == Vector3.zero) return Vector3.zero;
         dir.Normalize();
         _rb.rotation = Quaternion.LookRotation(dir);
+        SnapRotationRpc(dir);
         return dir;
+    }
+
+    [ObserversRpc]
+    private void SnapRotationRpc(Vector3 direction)
+    {
+        if (isServer) return;
+        _rb.rotation = Quaternion.LookRotation(direction);
     }
 
     protected bool TargetInRange()

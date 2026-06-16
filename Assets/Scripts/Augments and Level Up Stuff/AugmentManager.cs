@@ -83,15 +83,6 @@ public class AugmentManager : NetworkBehaviour
 
     private void ApplyStatAugment(PlayerID player, StatAugmentPair pair)
     {
-        var players = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None);
-        foreach (var stats in players)
-        {
-            if (stats.owner != player) continue;
-            ApplyStat(stats, pair.statA);
-            ApplyStat(stats, pair.statB);
-            break;
-        }
-
         int idxA = statDatabase.stats.IndexOf(pair.statA);
         int idxB = statDatabase.stats.IndexOf(pair.statB);
         ApplyAugmentLocalRpc(player, idxA, idxB);
@@ -114,66 +105,19 @@ public class AugmentManager : NetworkBehaviour
     {
         switch (entry.statType)
         {
+            case StatType.MaxHealth:      stats.BonusMaxHealthFlat += entry.value; break;
+            case StatType.HealthRegen:    stats.bonusHealthRegenFlat += entry.value; break;
+            case StatType.MaxShield:      stats.bonusMaxShieldFlat += entry.value * 0.01f; break;
             case StatType.WeaponDamage:   stats.bonusWeaponDamageFlat += entry.value; break;
             case StatType.MoveSpeed:      stats.bonusMoveSpeedFlat += entry.value * 0.1f; break;
             case StatType.WeaponRange:    stats.bonusWeaponRangeFlat += entry.value * 0.2f * stats.baseWeaponRange; break;
             case StatType.AttackSpeed:    stats.bonusWeaponSpeedFlat += entry.value * 0.01f * stats.baseWeaponSpeed; break;
-            case StatType.HealthRegen:    stats.bonusHealthRegenFlat += entry.value; break;
-            case StatType.MaxShield:      stats.bonusMaxShieldFlat += entry.value * 0.01f; break;
             case StatType.EnergyRegen:    stats.bonusEnergyRegenFlat += entry.value; break;
             case StatType.DashCooldown:   stats.dashHaste += entry.value; break;
             case StatType.CritChance:     stats.bonusCritChanceFlat += entry.value * 0.01f; break;
             case StatType.Pierce:         stats.bonusPierceFlat += entry.value; break;
             case StatType.Ricochet:       stats.bonusRicochetFlat += entry.value; break;
             case StatType.Multishot:      stats.bonusMultishotFlat += entry.value; break;
-            // MaxHealth is SyncVar-backed — server handles it via ApplyStat
-        }
-    }
-
-    private void ApplyStat(CharacterStats stats, StatAugmentEntry entry)
-    {
-        switch (entry.statType)
-        {
-            case StatType.MaxHealth:
-                stats.BonusMaxHealthFlat += entry.value;
-                stats.CurrentHealth += entry.value;
-                break;
-            case StatType.WeaponDamage:
-                stats.bonusWeaponDamageFlat += entry.value;
-                break;
-            case StatType.MoveSpeed:
-                stats.bonusMoveSpeedFlat += entry.value * 0.1f;
-                break;
-            case StatType.WeaponRange:
-                stats.bonusWeaponRangeFlat += entry.value * 0.2f * stats.baseWeaponRange;
-                break;
-            case StatType.AttackSpeed:
-                stats.bonusWeaponSpeedFlat += entry.value * 0.01f * stats.baseWeaponSpeed;
-                break;
-            case StatType.HealthRegen:
-                stats.bonusHealthRegenFlat += entry.value;
-                break;
-            case StatType.MaxShield:
-                stats.bonusMaxShieldFlat += entry.value * 0.01f;
-                break;
-            case StatType.EnergyRegen:
-                stats.bonusEnergyRegenFlat += entry.value;
-                break;
-            case StatType.DashCooldown:
-                stats.dashHaste += entry.value;
-                break;
-            case StatType.CritChance:
-                stats.bonusCritChanceFlat += entry.value * 0.01f;
-                break;
-            case StatType.Pierce:
-                stats.bonusPierceFlat += entry.value;
-                break;
-            case StatType.Ricochet:
-                stats.bonusRicochetFlat += entry.value;
-                break;
-            case StatType.Multishot:
-                stats.bonusMultishotFlat += entry.value;
-                break;
         }
     }
 

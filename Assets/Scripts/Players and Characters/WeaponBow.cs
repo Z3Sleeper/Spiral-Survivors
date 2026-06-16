@@ -7,8 +7,10 @@ public class WeaponBow : WeaponBase
     public float projectileSpeed = 20f;
     public float bowAttackSpeedScaling = 10f;
     [SerializeField] private float multishotSpreadAngle = 60f;
+    [SerializeField] private float shotDelay = 0.05f;
 
     private float _fireTimer;
+    private float _shotDelayTimer = -1f;
     public override bool IsMelee => false;
 
     protected override void OnSpawned()
@@ -28,19 +30,30 @@ public class WeaponBow : WeaponBase
         if (_stats == null || _stats.IsDead) return;
 
         _fireTimer -= Time.deltaTime;
-        if (_fireTimer > 0f) return;
+        if (_fireTimer > 0f) { _shotDelayTimer = -1f; return; }
 
         if (_stats.continuousFire || HasEnemyInLoS())
         {
+            if (_shotDelayTimer < 0f)
+                _shotDelayTimer = shotDelay / _stats.AttackSpeed;
+
+            _shotDelayTimer -= Time.deltaTime;
+            if (_shotDelayTimer > 0f) return;
+
+            _shotDelayTimer = -1f;
             Fire();
             _fireTimer = 1f / (_stats.AttackSpeed * bowAttackSpeedScaling);
+        }
+        else
+        {
+            _shotDelayTimer = -1f;
         }
     }
 
     private bool HasEnemyInLoS()
     {
-        var origin = transform.position - transform.forward * 0.5f;
-        if (Physics.Raycast(origin, transform.forward, out RaycastHit hit, _stats.WeaponRange + 0.5f, enemyHurtboxLayer))
+        var origin = transform.position - transform.forward * 1.0f;
+        if (Physics.Raycast(origin, transform.forward, out RaycastHit hit, _stats.WeaponRange + 1f, enemyHurtboxLayer))
             return hit.collider.GetComponentInParent<EnemyBase>() != null;
         return false;
     }

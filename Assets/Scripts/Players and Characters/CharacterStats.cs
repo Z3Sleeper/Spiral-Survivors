@@ -89,12 +89,13 @@ public class CharacterStats : NetworkBehaviour
         get => _baseMaxHealth.value;
         set => _baseMaxHealth.value = value;
     }
-    [HideInInspector] public SyncVar<float> _bonusMaxHealthFlat = new(0f);
+    [HideInInspector] public SyncVar<float> _bonusMaxHealthFlat = new(0f, ownerAuth: true);
     [HideInInspector] public float BonusMaxHealthFlat
     {
         get => _bonusMaxHealthFlat.value;
         set => _bonusMaxHealthFlat.value = value;
     }
+    private float _prevBonusMaxHealth = 0f;
     [HideInInspector] public SyncVar<float> _bonusMaxHealthPercent = new(1f);
     [HideInInspector] public float BonusMaxHealthPercent
     {
@@ -110,9 +111,19 @@ public class CharacterStats : NetworkBehaviour
         set => _currentHealth.value = value;
     }
     public float baseHealthRegen = 0.5f;
-    [NonSerialized] public float bonusHealthRegenFlat = 0f;
-    [NonSerialized] public float bonusHealthRegenPercent = 1f;
-    public float HealthRegen => (baseHealthRegen + bonusHealthRegenFlat) * bonusHealthRegenPercent;
+    [HideInInspector] public SyncVar<float> _bonusHealthRegenFlat = new(0f, ownerAuth: true);
+    public float bonusHealthRegenFlat
+    {
+        get => _bonusHealthRegenFlat.value;
+        set => _bonusHealthRegenFlat.value = value;
+    }
+    [HideInInspector] public SyncVar<float> _bonusHealthRegenPercent = new(1f, ownerAuth: true);
+    public float BonusHealthRegenPercent
+    {
+        get => _bonusHealthRegenPercent.value;
+        set => _bonusHealthRegenPercent.value = value;
+    }
+    public float HealthRegen => (baseHealthRegen + bonusHealthRegenFlat) * BonusHealthRegenPercent;
     [NonSerialized] public float _healthRegenTimer = 0f;
     [NonSerialized] public float _healthRegenInterval = 1f;
 
@@ -121,9 +132,19 @@ public class CharacterStats : NetworkBehaviour
     /// </summary>
     [Header("Shield")]
     public float baseMaxShield = 0.1f;
-    [NonSerialized] public float bonusMaxShieldFlat = 0f;
-    [NonSerialized] public float bonusMaxShieldPercent = 1f;
-    public float MaxShieldPercentOfMaxHealth => (baseMaxShield + bonusMaxShieldFlat) * bonusMaxShieldPercent;
+    [HideInInspector] public SyncVar<float> _bonusMaxShieldFlat = new(0f, ownerAuth: true);
+    public float bonusMaxShieldFlat
+    {
+        get => _bonusMaxShieldFlat.value;
+        set => _bonusMaxShieldFlat.value = value;
+    }
+    [HideInInspector] public SyncVar<float> _bonusMaxShieldPercent = new(1f, ownerAuth: true);
+    public float BonusMaxShieldPercent
+    {
+        get => _bonusMaxShieldPercent.value;
+        set => _bonusMaxShieldPercent.value = value;
+    }
+    public float MaxShieldPercentOfMaxHealth => (baseMaxShield + bonusMaxShieldFlat) * BonusMaxShieldPercent;
     public float MaxShield => MaxHealth * MaxShieldPercentOfMaxHealth;
     [HideInInspector] public SyncVar<float> _currentShield = new(0);
     [HideInInspector] public float CurrentShield
@@ -255,6 +276,18 @@ public class CharacterStats : NetworkBehaviour
             _originalColors[i] = _renderers[i].material.color;
 
         _isDeadSync.onChanged += OnDeathStateChanged;
+
+        _prevBonusMaxHealth = _bonusMaxHealthFlat.value;
+        _bonusMaxHealthFlat.onChanged += val =>
+        {
+            if (!isServer) return;
+            float delta = val - _prevBonusMaxHealth;
+            _prevBonusMaxHealth = val;
+            if (delta > 0f)
+                CurrentHealth += delta;
+            else
+                CurrentHealth = Mathf.Min(CurrentHealth, MaxHealth);
+        };
 
         if (isOwner && LocalUIManager.instance != null)
             LocalUIManager.instance.SetPlayer(this);
