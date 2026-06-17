@@ -41,7 +41,7 @@ public class AugmentManager : NetworkBehaviour
     {
         var options = new List<LevelUpOption>();
         int level = GameManager.instance.Level;
-        bool isAugmentLevel = level == 2 || level % 5 == 0;
+        bool isAugmentLevel = level == 2 || level % 10 == 0;
 
         if (isAugmentLevel && _playerPools.TryGetValue(player, out var pool) && pool.Count > 0)
         {
@@ -59,10 +59,16 @@ public class AugmentManager : NetworkBehaviour
             }
         }
 
+        var usedStats = new HashSet<StatAugmentEntry>();
         while (options.Count < 3)
         {
-            var pair = GenerateStatFallback(player);
-            if (pair != null) options.Add(LevelUpOption.FromStatAugment(pair));
+            var pair = GenerateStatFallback(player, usedStats);
+            if (pair != null)
+            {
+                usedStats.Add(pair.statA);
+                usedStats.Add(pair.statB);
+                options.Add(LevelUpOption.FromStatAugment(pair));
+            }
             else break;
         }
 
@@ -100,7 +106,7 @@ public class AugmentManager : NetworkBehaviour
         return true;
     }
 
-    private StatAugmentPair GenerateStatFallback(PlayerID player)
+    private StatAugmentPair GenerateStatFallback(PlayerID player, HashSet<StatAugmentEntry> usedStats = null)
     {
         CharacterStats.CharacterClass playerClass = CharacterStats.CharacterClass.Knight;
         foreach (var s in CharacterStats.All)
@@ -108,7 +114,8 @@ public class AugmentManager : NetworkBehaviour
 
         var validStats = new List<StatAugmentEntry>();
         foreach (var entry in statDatabase.stats)
-            if (entry.allowedClasses.Length == 0 || Array.IndexOf(entry.allowedClasses, playerClass) >= 0)
+            if ((entry.allowedClasses.Length == 0 || Array.IndexOf(entry.allowedClasses, playerClass) >= 0)
+                && (usedStats == null || !usedStats.Contains(entry)))
                 validStats.Add(entry);
 
         if (validStats.Count < 2) return null;

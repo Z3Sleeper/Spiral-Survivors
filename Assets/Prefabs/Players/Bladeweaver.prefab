@@ -556,6 +556,9 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
+  baseOnHitEffectiveness: 1
+  bonusOnHitEffectivenessMultiplier: 1
+  bonusOnHitEffectivenessPenalty: 0.4
   _reviveTimeSync:
     _value: 3
     _ownerAuth: 0

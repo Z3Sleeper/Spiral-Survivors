@@ -226,8 +226,11 @@ public class CharacterStats : NetworkBehaviour
         set => _currentSP.value = value;
     }
 
-
     [Header("Misc")]
+    public float baseOnHitEffectiveness = 1f;
+    public float bonusOnHitEffectivenessMultiplier = 1f;
+    public float bonusOnHitEffectivenessPenalty = 1f;
+    public float OnHitEffectiveness => baseOnHitEffectiveness * bonusOnHitEffectivenessMultiplier * bonusOnHitEffectivenessPenalty;
     private float _baseXPMod = 1f;
     public float BaseXPMod
     {

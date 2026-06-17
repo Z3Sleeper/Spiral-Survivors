@@ -81,7 +81,7 @@ public class WeaponBow : WeaponBase
             Vector3 dir = Quaternion.Euler(0, startAngle + i * angleStep, 0) * transform.forward;
             var arrow = Instantiate(arrowPrefab, transform.position, Quaternion.LookRotation(dir));
             arrow.transform.localScale *= _stats.WeaponSize;
-            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound);
+            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound, _stats);
         }
     }
 }

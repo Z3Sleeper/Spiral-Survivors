@@ -21,6 +21,7 @@ public class WeaponArrow : NetworkIdentity
     private int _enemyHurtboxMask;
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
     private bool _destroyed;
+    private CharacterStats _ownerStats;
 
     protected override void OnSpawned()
     {
@@ -29,8 +30,9 @@ public class WeaponArrow : NetworkIdentity
         enabled = isOwner;
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null)
     {
+        _ownerStats = ownerStats;
         _damage = damage;
         _maxRange = maxRange;
         _direction = direction.normalized;
@@ -82,6 +84,7 @@ public class WeaponArrow : NetworkIdentity
             damage *= _critDamage;
 
         enemy.TakeDamageRpc(damage);
+        if (_ownerStats != null) WeaponBase.RaiseOnHit(_ownerStats, enemy);
         SFXManager.instance?.Play(_hitSound, transform.position);
 
         if (_ricochetsRemaining > 0)

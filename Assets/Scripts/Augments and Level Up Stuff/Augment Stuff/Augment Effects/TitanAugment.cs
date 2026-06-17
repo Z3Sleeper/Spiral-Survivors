@@ -6,7 +6,7 @@ public class TitanAugment : MonoBehaviour
     [SerializeField] private float _healthBonus = 0.3f;
     [SerializeField] private float _damageBonus = 0.15f;
 
-    private static readonly string[] _unscaledChildren = { "ReviveZone", "WorldspaceUI" };
+    private static readonly string[] _unscaledChildren = { "ReviveZone", "WorldspaceUI", "Minimap Icon" };
 
     private void Start()
     {

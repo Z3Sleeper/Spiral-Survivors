@@ -6,7 +6,7 @@ public class GremlinAugment : MonoBehaviour
     [SerializeField] private float _attackSpeedPercentBonus = 1f;
     [SerializeField] private float _moveSpeedPercentBonus = 0.25f;
 
-    private static readonly string[] _unscaledChildren = { "ReviveZone", "WorldspaceUI" };
+    private static readonly string[] _unscaledChildren = { "ReviveZone", "WorldspaceUI", "Minimap Icon" };
 
     private void Start()
     {
