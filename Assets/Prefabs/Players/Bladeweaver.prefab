@@ -476,7 +476,8 @@ MonoBehaviour:
   bonusMoveSpeedPercent: 1
   baseWeaponDamage: 15
   bonusWeaponDamageFlat: 0
-  bonusWeaponDamagePercent: 0.4
+  bonusWeaponDamagePercent: 1
+  bonusWeaponDamagePenalty: 0.4
   baseWeaponRadius: 4
   baseWeaponSpeed: 180
   bonusWeaponSpeedFlat: 0
@@ -487,6 +488,8 @@ MonoBehaviour:
   baseWeaponRange: 5
   bonusWeaponRangeFlat: 0
   bonusWeaponRangePercent: 0.4
+  baseWeaponSize: 1
+  bonusWeaponSizePercent: 1
   continuousFire: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 1
@@ -552,6 +555,10 @@ MonoBehaviour:
   _currentSP:
     _value: 0
     _ownerAuth: 1
+    _sendIntervalInSeconds: 0
+  _reviveTimeSync:
+    _value: 3
+    _ownerAuth: 0
     _sendIntervalInSeconds: 0
   _isDeadSync:
     _value: 0

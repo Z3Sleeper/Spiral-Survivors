@@ -67,12 +67,18 @@ public class LocalUIManager : MonoBehaviour
         energyImage.fillAmount = 1f;
     }
 
-    public void SetUpLevelUpScreen(List<StatAugmentPair> options, PlayerID playerID)
+    public void SetUpLevelUpScreen(List<LevelUpOption> options, PlayerID playerID)
     {
         levelUpTimerText.text = NetworkManager.main.playerCount > 1 ? "Time Remaining: 30s" : "";
         HideAllCards();
         for (int i = 0; i < options.Count; i++)
-            GetCard(i).StatAugmentSetup(options[i], i, playerID);
+        {
+            var card = GetCard(i);
+            if (options[i].type == LevelUpOption.OptionType.Augment)
+                card.AugmentSetup(options[i].augmentData, i, playerID);
+            else
+                card.StatAugmentSetup(options[i].statPair, i, playerID);
+        }
         GameManager.instance.ReadyToLevelRpc(playerID);
     }
 

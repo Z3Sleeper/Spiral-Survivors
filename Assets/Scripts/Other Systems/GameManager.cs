@@ -138,7 +138,7 @@ public class GameManager : NetworkIdentity
         OnLevelUp?.Invoke();
 
         foreach (var player in networkManager.players)
-            AugmentManager.instance.GenerateStatOptions(player);
+            AugmentManager.instance.GenerateOptions(player);
 
         bool isMultiplayer = networkManager != null && networkManager.playerCount >= 2;
         if (isMultiplayer)

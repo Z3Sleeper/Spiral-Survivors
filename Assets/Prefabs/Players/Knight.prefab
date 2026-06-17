@@ -288,7 +288,7 @@ Transform:
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 4644740684117971822}
   - {fileID: 1784258740639185447}
@@ -345,6 +345,8 @@ MonoBehaviour:
   baseWeaponRange: 5
   bonusWeaponRangeFlat: 3
   bonusWeaponRangePercent: 1.25
+  baseWeaponSize: 1
+  bonusWeaponSizePercent: 1
   continuousFire: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 1
@@ -375,7 +377,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  baseHealthRegen: 2
+  baseHealthRegen: 1.5
   _bonusHealthRegenFlat:
     _value: 0
     _ownerAuth: 1
@@ -410,6 +412,10 @@ MonoBehaviour:
   _currentSP:
     _value: 0
     _ownerAuth: 1
+    _sendIntervalInSeconds: 0
+  _reviveTimeSync:
+    _value: 3
+    _ownerAuth: 0
     _sendIntervalInSeconds: 0
   _isDeadSync:
     _value: 0

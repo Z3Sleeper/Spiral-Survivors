@@ -299,7 +299,7 @@ MonoBehaviour:
   preferredRange: 10
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 5
+  damage: 10
   xpValue: 5
   hasContactDamage: 1
   contactCooldown: 0.5

@@ -8,5 +8,7 @@ public class CharacterSpawner : NetworkIdentity
         var prefab = CharacterRegistry.instance.GetPrefab(index);
         var character = Instantiate(prefab, shell.transform.position, shell.transform.rotation);
         character.GetComponent<NetworkIdentity>().GiveOwnership(shell.owner);
+        var stats = character.GetComponent<CharacterStats>();
+        AugmentManager.instance?.InitializePlayerPool(shell.owner.Value, stats.characterClass);
     }
 }

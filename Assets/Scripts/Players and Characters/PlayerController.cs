@@ -17,6 +17,8 @@ public class PlayerController : NetworkIdentity
     [HideInInspector] public float _dashTimer;
     private Collider _physicsCollider;
 
+    public static event System.Action<PlayerController> OnDashStarted;
+
     public bool isSurging { get; private set; }
     private float _surgeTickTimer;
     private const float SurgeTickInterval = 0.1f;
@@ -169,6 +171,7 @@ public class PlayerController : NetworkIdentity
 
     private void StartDash()
     {
+        OnDashStarted?.Invoke(this);
         _isDashing = true;
         _currentCharges--;
         if (_chargeRegenTimer <= 0f)

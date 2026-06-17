@@ -552,9 +552,9 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _renderers:
   - {fileID: 3448404629509916890}
-  chargeDamage: 50
-  aoeDamage: 100
-  bombDamage: 20
+  chargeDamageMultiplier: 5
+  aoeDamageMultiplier: 10
+  bombDamageMultiplier: 2
   chargeWindupDuration: 0.4
   chargeSpeed: 45
   chargeDistance: 25

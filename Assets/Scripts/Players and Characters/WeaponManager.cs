@@ -6,14 +6,14 @@ using UnityEngine.Analytics;
 public class WeaponManager : NetworkBehaviour
 {
     [SerializeField] private GameObject weaponPrefab;
-    private SphereCollider _hurtbox;
-
     private CharacterStats _stats;
     private List<WeaponBase> _weapons = new List<WeaponBase>();
     private float _currentAngle;
 
     private int _currentCount;
     private float _currentRange;
+    private float _currentSize;
+    private Vector3 _weaponPrefabScale;
 
     protected override void OnSpawned()
     {
@@ -27,9 +27,10 @@ public class WeaponManager : NetworkBehaviour
     {
         if (_stats != null) return;
         _stats = GetComponent<CharacterStats>();
-        _hurtbox = GetComponentInChildren<SphereCollider>();
         _currentCount = _stats.WeaponCount;
         _currentRange = _stats.WeaponRange;
+        _currentSize = _stats.WeaponSize;
+        _weaponPrefabScale = weaponPrefab.transform.localScale;
         SpawnWeapons(_stats.WeaponCount);
         enabled = true;
     }
@@ -41,6 +42,7 @@ public class WeaponManager : NetworkBehaviour
             var obj = Instantiate(weaponPrefab, transform.position, Quaternion.identity);
             var weapon = obj.GetComponent<WeaponBase>();
             weapon.Init(_stats);
+            weapon.transform.localScale = _weaponPrefabScale * _currentSize;
             SetWeaponRange(weapon);
             _weapons.Add(weapon);
         }
@@ -85,6 +87,16 @@ public class WeaponManager : NetworkBehaviour
                 SetWeaponRange(weapon);
         }
 
+        if (_stats.WeaponSize != _currentSize)
+        {
+            _currentSize = _stats.WeaponSize;
+            foreach (var weapon in _weapons)
+            {
+                weapon.transform.localScale = _weaponPrefabScale * _currentSize;
+                SetWeaponRange(weapon);
+            }
+        }
+
         _currentAngle -= _stats.WeaponSpeed * Time.deltaTime;
 
         for (int i = 0; i < _weapons.Count; i++)
@@ -93,7 +105,7 @@ public class WeaponManager : NetworkBehaviour
             float angle = (_currentAngle + angleOffset) * Mathf.Deg2Rad;
 
             float halfRange = _weapons[i].IsMelee ? _currentRange / 2f : 0.25f;
-            float totalRadius = _stats.WeaponRadius + (_hurtbox != null ? _hurtbox.radius * 2 : 0f) + halfRange;
+            float totalRadius = _stats.WeaponRadius + transform.lossyScale.x * 0.5f + halfRange;
 
             Vector3 offset = new(
                 Mathf.Cos(angle) * totalRadius,

@@ -6,9 +6,9 @@ using UnityEngine;
 public class DreadKingSpike : BossBase
 {
     [Header("Damage")]
-    [SerializeField] private float chargeDamage = 20f;
-    [SerializeField] private float aoeDamage = 30f;
-    [SerializeField] private float bombDamage = 15f;
+    [SerializeField] private float chargeDamageMultiplier = 1f;
+    [SerializeField] private float aoeDamageMultiplier = 1.5f;
+    [SerializeField] private float bombDamageMultiplier = 0.75f;
 
     [Header("Charge")]
     [SerializeField] private float chargeWindupDuration = 0.7f;
@@ -47,7 +47,7 @@ public class DreadKingSpike : BossBase
 
     [HideInInspector] public SyncVar<Vector3> _syncChargeDirection = new(Vector3.forward);
 
-    public override float GetDamage() => _state == State.Charging ? chargeDamage : damage;
+    public override float GetDamage() => _state == State.Charging ? damage * chargeDamageMultiplier : damage;
 
     private float _stateTimer;
     private float _attackCooldownTimer = float.MaxValue;
@@ -215,7 +215,7 @@ public class DreadKingSpike : BossBase
 
     private void FireAoe()
     {
-        TriggerAoeRpc(transform.position, aoeRadius, aoeDamage);
+        TriggerAoeRpc(transform.position, aoeRadius, damage * aoeDamageMultiplier);
 
         _attackCooldownTimer = attackCooldown;
         _state = State.Moving;
@@ -303,7 +303,7 @@ public class DreadKingSpike : BossBase
         {
             if (!stats.isOwner || stats.IsDead || stats.IsInvincible) continue;
             if (Vector3.Distance(stats.transform.position, position) <= bombRadius)
-                stats.TakeDamageRpc(bombDamage);
+                stats.TakeDamageRpc(damage * bombDamageMultiplier);
         }
     }
 

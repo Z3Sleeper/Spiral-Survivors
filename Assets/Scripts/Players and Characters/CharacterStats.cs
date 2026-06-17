@@ -33,7 +33,8 @@ public class CharacterStats : NetworkBehaviour
     public float baseWeaponDamage = 15f;
     public float bonusWeaponDamageFlat = 0f;
     public float bonusWeaponDamagePercent = 1f;
-    public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent;
+    public float bonusWeaponDamagePenalty = 1f;
+    public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent * bonusWeaponDamagePenalty;
 
     public float baseWeaponRadius = 0f;
     [NonSerialized] public float bonusWeaponRadiusFlat = 0f;
@@ -54,6 +55,10 @@ public class CharacterStats : NetworkBehaviour
     public float bonusWeaponRangeFlat = 0f;
     public float bonusWeaponRangePercent = 1f;
     public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent * 0.2f;
+
+    public float baseWeaponSize = 1f;
+    public float bonusWeaponSizePercent = 1f;
+    public float WeaponSize => baseWeaponSize * bonusWeaponSizePercent;
 
     public float AttackSpeed => WeaponSpeed / 360f;
 
@@ -377,6 +382,20 @@ public class CharacterStats : NetworkBehaviour
     private void RecalculateXPMod()
     {
         GameManager.instance.UpdateXPModRpc(owner.Value, XPModifier);
+    }
+
+    [ServerRpc(requireOwnership: true)]
+    public void HealRpc(float amount)
+    {
+        CurrentHealth = Mathf.Min(CurrentHealth + amount, MaxHealth);
+    }
+
+    [ServerRpc(requireOwnership: true)]
+    public void MultiplyMaxHealthRpc(float multiplier)
+    {
+        float prevMax = MaxHealth;
+        BonusMaxHealthPercent *= multiplier;
+        CurrentHealth = Mathf.Min(CurrentHealth + (MaxHealth - prevMax), MaxHealth);
     }
 
     [ServerRpc(requireOwnership: false)]

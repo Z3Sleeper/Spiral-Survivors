@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
@@ -7,9 +8,11 @@ public class AugmentManager : NetworkBehaviour
     public static AugmentManager instance;
 
     [SerializeField] private StatAugmentDatabase statDatabase;
+    [SerializeField] private AugmentDatabase augmentDatabase;
 
-    // Each player's current 3 card options (pairs of stats)
-    private Dictionary<PlayerID, List<StatAugmentPair>> _playerOptions = new();
+    private Dictionary<PlayerID, List<AugmentData>> _playerPools = new();
+    private Dictionary<PlayerID, HashSet<AugmentData>> _playerPickedAugments = new();
+    private Dictionary<PlayerID, List<LevelUpOption>> _playerOptions = new();
 
     private void Awake()
     {
@@ -17,54 +20,109 @@ public class AugmentManager : NetworkBehaviour
         instance = this;
     }
 
-    public void GenerateStatOptions(PlayerID player)
+    public void InitializePlayerPool(PlayerID player, CharacterStats.CharacterClass characterClass)
     {
-        var options = new List<StatAugmentPair>();
-        var usedPairs = new HashSet<string>();
+        var pool = new List<AugmentData>();
+        foreach (var augment in augmentDatabase.augments)
+            if (augment.IsAvailableForClass(characterClass))
+                pool.Add(augment);
 
-        CharacterStats.CharacterClass playerClass = CharacterStats.CharacterClass.Knight;
-        foreach (var s in FindObjectsByType<CharacterStats>(FindObjectsSortMode.None))
+        for (int i = pool.Count - 1; i > 0; i--)
         {
-            if (s.owner == player) { playerClass = s.characterClass; break; }
+            int j = UnityEngine.Random.Range(0, i + 1);
+            (pool[i], pool[j]) = (pool[j], pool[i]);
         }
 
-        var stats = new List<StatAugmentEntry>();
-        foreach (var entry in statDatabase.stats)
+        _playerPools[player] = pool;
+        _playerPickedAugments[player] = new HashSet<AugmentData>();
+    }
+
+    public void GenerateOptions(PlayerID player)
+    {
+        var options = new List<LevelUpOption>();
+        int level = GameManager.instance.Level;
+        bool isAugmentLevel = level == 2 || level % 5 == 0;
+
+        if (isAugmentLevel && _playerPools.TryGetValue(player, out var pool) && pool.Count > 0)
         {
-            if (entry.allowedClasses.Length > 0 && System.Array.IndexOf(entry.allowedClasses, playerClass) < 0) continue;
-            stats.Add(entry);
+            _playerPickedAugments.TryGetValue(player, out var picked);
+            var available = pool.FindAll(a => IsPrerequisiteMet(a, picked));
+            int drawCount = Mathf.Min(3, available.Count);
+            var drawnIndices = new HashSet<int>();
+            for (int i = 0; i < drawCount; i++)
+            {
+                int idx, attempts = 0;
+                do { idx = UnityEngine.Random.Range(0, available.Count); attempts++; }
+                while (drawnIndices.Contains(idx) && attempts < 20);
+                drawnIndices.Add(idx);
+                options.Add(LevelUpOption.FromAugment(available[idx]));
+            }
         }
 
-        int attempts = 0;
-        while (options.Count < 3 && attempts < 50)
+        while (options.Count < 3)
         {
-            attempts++;
-            int idxA = Random.Range(0, stats.Count);
-            int idxB = Random.Range(0, stats.Count);
-
-            if (idxA == idxB) continue;
-
-            // Create a unique key for this pair regardless of order
-            string key = idxA < idxB ? $"{idxA}_{idxB}" : $"{idxB}_{idxA}";
-            if (usedPairs.Contains(key)) continue;
-
-            usedPairs.Add(key);
-            options.Add(new StatAugmentPair(stats[idxA], stats[idxB]));
+            var pair = GenerateStatFallback(player);
+            if (pair != null) options.Add(LevelUpOption.FromStatAugment(pair));
+            else break;
         }
 
         _playerOptions[player] = options;
 
-        var indicesA = new int[options.Count];
-        var indicesB = new int[options.Count];
+        var types = new int[options.Count];
+        var primaryIndices = new int[options.Count];
+        var secondaryIndices = new int[options.Count];
+
         for (int i = 0; i < options.Count; i++)
         {
-            indicesA[i] = statDatabase.stats.IndexOf(options[i].statA);
-            indicesB[i] = statDatabase.stats.IndexOf(options[i].statB);
+            if (options[i].type == LevelUpOption.OptionType.Augment)
+            {
+                types[i] = 0;
+                primaryIndices[i] = augmentDatabase.augments.IndexOf(options[i].augmentData);
+                secondaryIndices[i] = -1;
+            }
+            else
+            {
+                types[i] = 1;
+                primaryIndices[i] = statDatabase.stats.IndexOf(options[i].statPair.statA);
+                secondaryIndices[i] = statDatabase.stats.IndexOf(options[i].statPair.statB);
+            }
         }
-        SendOptionsToPlayerRpc(player, indicesA, indicesB);
+
+        SendOptionsToPlayerRpc(player, types, primaryIndices, secondaryIndices);
     }
 
-    public List<StatAugmentPair> GetOptionsForPlayer(PlayerID player)
+    private bool IsPrerequisiteMet(AugmentData augment, HashSet<AugmentData> picked)
+    {
+        if (augment.requiredAugments == null || augment.requiredAugments.Length == 0) return true;
+        if (picked == null) return false;
+        foreach (var req in augment.requiredAugments)
+            if (!picked.Contains(req)) return false;
+        return true;
+    }
+
+    private StatAugmentPair GenerateStatFallback(PlayerID player)
+    {
+        CharacterStats.CharacterClass playerClass = CharacterStats.CharacterClass.Knight;
+        foreach (var s in CharacterStats.All)
+            if (s.owner == player) { playerClass = s.characterClass; break; }
+
+        var validStats = new List<StatAugmentEntry>();
+        foreach (var entry in statDatabase.stats)
+            if (entry.allowedClasses.Length == 0 || Array.IndexOf(entry.allowedClasses, playerClass) >= 0)
+                validStats.Add(entry);
+
+        if (validStats.Count < 2) return null;
+
+        int idxA = UnityEngine.Random.Range(0, validStats.Count);
+        int idxB;
+        int attempts = 0;
+        do { idxB = UnityEngine.Random.Range(0, validStats.Count); attempts++; }
+        while (idxB == idxA && attempts < 20);
+
+        return new StatAugmentPair(validStats[idxA], validStats[idxB]);
+    }
+
+    public List<LevelUpOption> GetOptionsForPlayer(PlayerID player)
     {
         return _playerOptions.TryGetValue(player, out var options) ? options : null;
     }
@@ -75,10 +133,43 @@ public class AugmentManager : NetworkBehaviour
         if (!_playerOptions.TryGetValue(player, out var options)) return;
         if (cardIndex < 0 || cardIndex >= options.Count) return;
 
-        ApplyStatAugment(player, options[cardIndex]);
-        _playerOptions.Remove(player);
+        var option = options[cardIndex];
+        if (option.type == LevelUpOption.OptionType.Augment)
+        {
+            ApplyRealAugment(player, option.augmentData);
+            if (_playerPickedAugments.TryGetValue(player, out var picked))
+                picked.Add(option.augmentData);
+            if (_playerPools.TryGetValue(player, out var pool))
+            {
+                pool.Remove(option.augmentData);
+                if (option.augmentData.incompatibleAugments != null)
+                    foreach (var incompatible in option.augmentData.incompatibleAugments)
+                        pool.Remove(incompatible);
+            }
+        }
+        else
+            ApplyStatAugment(player, option.statPair);
 
+        _playerOptions.Remove(player);
         GameManager.instance.ConfirmReadyRpc(player);
+    }
+
+    private void ApplyRealAugment(PlayerID player, AugmentData augment)
+    {
+        int index = augmentDatabase.augments.IndexOf(augment);
+        ApplyAugmentEffectRpc(player, index);
+    }
+
+    [ObserversRpc]
+    private void ApplyAugmentEffectRpc(PlayerID player, int augmentIndex)
+    {
+        var augment = augmentDatabase.augments[augmentIndex];
+        if (augment.effectPrefab == null) return;
+        CharacterStats stats = null;
+        foreach (var s in CharacterStats.All)
+            if (s.owner == player) { stats = s; break; }
+        if (stats == null) return;
+        Instantiate(augment.effectPrefab, stats.transform);
     }
 
     private void ApplyStatAugment(PlayerID player, StatAugmentPair pair)
@@ -119,9 +210,7 @@ public class AugmentManager : NetworkBehaviour
     {
         CharacterStats stats = null;
         foreach (var s in CharacterStats.All)
-        {
             if (s.isOwner) { stats = s; break; }
-        }
         if (stats == null) return;
         ApplyStatLocal(stats, statDatabase.stats[idxA]);
         ApplyStatLocal(stats, statDatabase.stats[idxB]);
@@ -145,21 +234,30 @@ public class AugmentManager : NetworkBehaviour
     }
 
     [TargetRpc]
-    private void SendOptionsToPlayerRpc(PlayerID target, int[] statIndicesA, int[] statIndicesB)
+    private void SendOptionsToPlayerRpc(PlayerID target, int[] types, int[] primaryIndices, int[] secondaryIndices)
     {
-        var options = new List<StatAugmentPair>();
-        for (int i = 0; i < statIndicesA.Length; i++)
-            options.Add(new StatAugmentPair(statDatabase.stats[statIndicesA[i]], statDatabase.stats[statIndicesB[i]]));
-        
+        var options = new List<LevelUpOption>();
+        for (int i = 0; i < types.Length; i++)
+        {
+            if (types[i] == 0)
+                options.Add(LevelUpOption.FromAugment(augmentDatabase.augments[primaryIndices[i]]));
+            else
+                options.Add(LevelUpOption.FromStatAugment(new StatAugmentPair(
+                    statDatabase.stats[primaryIndices[i]],
+                    statDatabase.stats[secondaryIndices[i]])));
+        }
         LocalUIManager.instance.SetUpLevelUpScreen(options, target);
     }
 
     public void ApplyRandomAugment(PlayerID player)
     {
-        if (!_playerOptions.TryGetValue(player, out var options)) return;
-        if (options.Count == 0) return;
+        if (!_playerOptions.TryGetValue(player, out var options) || options.Count == 0) return;
         int randomIndex = UnityEngine.Random.Range(0, options.Count);
-        ApplyStatAugment(player, options[randomIndex]);
+        var option = options[randomIndex];
+        if (option.type == LevelUpOption.OptionType.Augment)
+            ApplyRealAugment(player, option.augmentData);
+        else
+            ApplyStatAugment(player, option.statPair);
         _playerOptions.Remove(player);
     }
 }

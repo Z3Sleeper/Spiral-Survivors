@@ -6702,24 +6702,26 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'HELLO FRIEND
+  m_text: 'CONTROLS BELOW PLEASE READ
 
 
     ESC = Pause
 
     M = Mute
 
-    Space = Dash
+    Space
+    = Dash
 
-    Hold
-    Right Click = Surge
-
-
-    Surge makes you attack faster but slows you and costs
-    energy
+    Hold Right Click = Surge
 
 
-    Shield = 10% of max HP'
+    Surge makes you attack faster but
+    slows you and costs energy
+
+
+    Shield = 10% of max HP
+
+    Takes 5s to recharge'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -6746,8 +6748,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 36
-  m_fontSizeBase: 36
+  m_fontSize: 30
+  m_fontSizeBase: 30
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
