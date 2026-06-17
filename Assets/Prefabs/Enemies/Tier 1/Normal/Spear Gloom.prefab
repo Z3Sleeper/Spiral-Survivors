@@ -675,7 +675,6 @@ GameObject:
   - component: {fileID: 1140142782684208091}
   - component: {fileID: 4611144221517566192}
   - component: {fileID: 621882969407249736}
-  - component: {fileID: 8748157558138796269}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -766,20 +765,6 @@ MonoBehaviour:
   m_BlockingMask:
     serializedVersion: 2
     m_Bits: 4294967295
---- !u!114 &8748157558138796269
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4505715573231893459}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4ca61d090f5fbf9499d3dab56bbbc88c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::EnemyUI
-  healthBar: {fileID: 7808567258647226029}
-  healthText: {fileID: 6206502339432572645}
 --- !u!1 &4956986420625025371
 GameObject:
   m_ObjectHideFlags: 0
@@ -790,6 +775,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7463328635450202238}
   - component: {fileID: 7808567258647226029}
+  - component: {fileID: 3758659693746186906}
   m_Layer: 5
   m_Name: HealthBar
   m_TagString: Untagged
@@ -870,6 +856,20 @@ MonoBehaviour:
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &3758659693746186906
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4956986420625025371}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ca61d090f5fbf9499d3dab56bbbc88c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyUI
+  healthBar: {fileID: 7808567258647226029}
+  healthText: {fileID: 6206502339432572645}
 --- !u!1 &5761304531725705543
 GameObject:
   m_ObjectHideFlags: 0

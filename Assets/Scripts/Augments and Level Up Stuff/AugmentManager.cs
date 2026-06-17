@@ -83,9 +83,35 @@ public class AugmentManager : NetworkBehaviour
 
     private void ApplyStatAugment(PlayerID player, StatAugmentPair pair)
     {
+        CharacterStats stats = null;
+        foreach (var s in CharacterStats.All)
+            if (s.owner == player) { stats = s; break; }
+        if (stats != null)
+        {
+            ApplyServerStat(stats, pair.statA);
+            ApplyServerStat(stats, pair.statB);
+        }
+
         int idxA = statDatabase.stats.IndexOf(pair.statA);
         int idxB = statDatabase.stats.IndexOf(pair.statB);
         ApplyAugmentLocalRpc(player, idxA, idxB);
+    }
+
+    private void ApplyServerStat(CharacterStats stats, StatAugmentEntry entry)
+    {
+        switch (entry.statType)
+        {
+            case StatType.MaxHealth:
+                stats.BonusMaxHealthFlat += entry.value;
+                stats.CurrentHealth = Mathf.Min(stats.CurrentHealth + entry.value, stats.MaxHealth);
+                break;
+            case StatType.HealthRegen:
+                stats.BonusHealthRegenFlat += entry.value;
+                break;
+            case StatType.MaxShield:
+                stats.BonusMaxShieldFlat += entry.value * 0.01f;
+                break;
+        }
     }
 
     [TargetRpc]
@@ -105,9 +131,6 @@ public class AugmentManager : NetworkBehaviour
     {
         switch (entry.statType)
         {
-            case StatType.MaxHealth:      stats.BonusMaxHealthFlat += entry.value; break;
-            case StatType.HealthRegen:    stats.bonusHealthRegenFlat += entry.value; break;
-            case StatType.MaxShield:      stats.bonusMaxShieldFlat += entry.value * 0.01f; break;
             case StatType.WeaponDamage:   stats.bonusWeaponDamageFlat += entry.value; break;
             case StatType.MoveSpeed:      stats.bonusMoveSpeedFlat += entry.value * 0.1f; break;
             case StatType.WeaponRange:    stats.bonusWeaponRangeFlat += entry.value * 0.2f * stats.baseWeaponRange; break;

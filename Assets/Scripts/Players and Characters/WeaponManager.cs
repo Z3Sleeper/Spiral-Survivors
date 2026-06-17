@@ -20,14 +20,18 @@ public class WeaponManager : NetworkBehaviour
         base.OnSpawned();
         enabled = isOwner;
         if (!isOwner) return;
+        InitializeForOwner();
+    }
 
+    public void InitializeForOwner()
+    {
+        if (_stats != null) return;
         _stats = GetComponent<CharacterStats>();
         _hurtbox = GetComponentInChildren<SphereCollider>();
-
         _currentCount = _stats.WeaponCount;
         _currentRange = _stats.WeaponRange;
-
         SpawnWeapons(_stats.WeaponCount);
+        enabled = true;
     }
 
     private void SpawnWeapons(int count)

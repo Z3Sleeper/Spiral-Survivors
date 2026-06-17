@@ -29,6 +29,6 @@ public class EnemyUI : MonoBehaviour
 
     private void LateUpdate()
     {
-        transform.forward = _camera.transform.forward;
+        transform.rotation = _camera.transform.rotation;
     }
 }

@@ -538,7 +538,7 @@ MonoBehaviour:
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 15
+  damage: 10
   xpValue: 300
   hasContactDamage: 1
   contactCooldown: 0.5
@@ -552,14 +552,14 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _renderers:
   - {fileID: 3448404629509916890}
-  chargeDamage: 30
-  aoeDamage: 60
-  bombDamage: 15
+  chargeDamage: 50
+  aoeDamage: 100
+  bombDamage: 20
   chargeWindupDuration: 0.4
   chargeSpeed: 45
   chargeDistance: 25
   attackRange: 12.5
-  attackCooldown: 8
+  attackCooldown: 12
   chargesPerAttack: 3
   betweenChargePause: 0.2
   chargeDangerIndicator: {fileID: 1526711595620230950}
@@ -577,6 +577,10 @@ MonoBehaviour:
   bombInitialDelay: 1
   _syncState:
     _value: 0
+    _ownerAuth: 0
+    _sendIntervalInSeconds: 0
+  _syncChargeDirection:
+    _value: {x: 0, y: 0, z: 1}
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
 --- !u!114 &-8394223174193477460
@@ -904,7 +908,6 @@ GameObject:
   - component: {fileID: 1140142782684208091}
   - component: {fileID: 4611144221517566192}
   - component: {fileID: 621882969407249736}
-  - component: {fileID: 8885664925207935526}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -995,20 +998,6 @@ MonoBehaviour:
   m_BlockingMask:
     serializedVersion: 2
     m_Bits: 4294967295
---- !u!114 &8885664925207935526
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 4505715573231893459}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4ca61d090f5fbf9499d3dab56bbbc88c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::EnemyUI
-  healthBar: {fileID: 7808567258647226029}
-  healthText: {fileID: 6206502339432572645}
 --- !u!1 &4956986420625025371
 GameObject:
   m_ObjectHideFlags: 0
@@ -1019,6 +1008,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7463328635450202238}
   - component: {fileID: 7808567258647226029}
+  - component: {fileID: 4129614508992477199}
   m_Layer: 5
   m_Name: HealthBar
   m_TagString: Untagged
@@ -1099,6 +1089,20 @@ MonoBehaviour:
   m_OnValueChanged:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &4129614508992477199
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4956986420625025371}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ca61d090f5fbf9499d3dab56bbbc88c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::EnemyUI
+  healthBar: {fileID: 7808567258647226029}
+  healthText: {fileID: 6206502339432572645}
 --- !u!1 &4982543687721398593
 GameObject:
   m_ObjectHideFlags: 0

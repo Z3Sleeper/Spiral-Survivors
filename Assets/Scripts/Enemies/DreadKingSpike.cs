@@ -45,6 +45,8 @@ public class DreadKingSpike : BossBase
         set => _syncState.value = value;
     }
 
+    [HideInInspector] public SyncVar<Vector3> _syncChargeDirection = new(Vector3.forward);
+
     public override float GetDamage() => _state == State.Charging ? chargeDamage : damage;
 
     private float _stateTimer;
@@ -94,6 +96,9 @@ public class DreadKingSpike : BossBase
     protected override void Update()
     {
         base.Update();
+
+        if (_state == State.ChargeWindup && chargeDangerIndicator != null && chargeDangerIndicator.activeSelf)
+            chargeDangerIndicator.transform.rotation = Quaternion.LookRotation(_syncChargeDirection.value);
 
         if (_state == State.AoeWindup && aoeDangerIndicator != null && aoeDangerIndicator.activeSelf)
         {
@@ -175,7 +180,11 @@ public class DreadKingSpike : BossBase
         }
         _rb.linearVelocity = Vector3.zero;
         var snapDir = SnapFaceTarget();
-        if (snapDir != Vector3.zero) _chargeDirection = snapDir;
+        if (snapDir != Vector3.zero)
+        {
+            _chargeDirection = snapDir;
+            _syncChargeDirection.value = snapDir;
+        }
         _stateTimer = chargeWindupDuration;
         _state = State.ChargeWindup;
     }

@@ -48,7 +48,7 @@ AnimationClip:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    path: Model/Cylinder (1)
+    path: Model/Right Arm
   - curve:
       serializedVersion: 2
       m_Curve:
@@ -82,7 +82,7 @@ AnimationClip:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    path: Model/Cylinder
+    path: Model/Left Arm
   m_ScaleCurves: []
   m_FloatCurves: []
   m_PPtrCurves: []
@@ -168,7 +168,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.x
-    path: Model/Cylinder (1)
+    path: Model/Right Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -207,7 +207,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.y
-    path: Model/Cylinder (1)
+    path: Model/Right Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -246,7 +246,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.z
-    path: Model/Cylinder (1)
+    path: Model/Right Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -285,7 +285,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.x
-    path: Model/Cylinder
+    path: Model/Left Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -324,7 +324,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.y
-    path: Model/Cylinder
+    path: Model/Left Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -363,7 +363,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.z
-    path: Model/Cylinder
+    path: Model/Left Arm
     classID: 4
     script: {fileID: 0}
     flags: 0

@@ -27,6 +27,8 @@ public class BlitzGloom : EnemyBase
         set => _syncState.value = value;
     }
 
+    [HideInInspector] public SyncVar<Vector3> _syncBlitzDirection = new(Vector3.forward);
+
     public override bool CanContactDamage => _state == State.Blitzing;
 
 
@@ -47,6 +49,10 @@ public class BlitzGloom : EnemyBase
     protected override void Update()
     {
         base.Update();
+
+        if (_state == State.Windup && dangerIndicator != null && dangerIndicator.activeSelf)
+            dangerIndicator.transform.rotation = Quaternion.LookRotation(_syncBlitzDirection.value);
+
         if (!isServer) return;
         if (_isDead) return;
 
@@ -105,7 +111,11 @@ public class BlitzGloom : EnemyBase
         _physicsCollider.enabled = true;
 
         var snapDir = SnapFaceTarget();
-        if (snapDir != Vector3.zero) _blitzDirection = snapDir;
+        if (snapDir != Vector3.zero)
+        {
+            _blitzDirection = snapDir;
+            _syncBlitzDirection.value = snapDir;
+        }
 
         _state = State.Windup;
     }

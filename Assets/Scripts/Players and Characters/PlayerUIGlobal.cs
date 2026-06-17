@@ -40,6 +40,6 @@ public class PlayerUIGlobal : NetworkBehaviour
         if (_camera == null)
             _camera = Camera.main;
         if (_camera == null) return;
-        transform.forward = _camera.transform.forward;
+        transform.rotation = _camera.transform.rotation;
     }
 }

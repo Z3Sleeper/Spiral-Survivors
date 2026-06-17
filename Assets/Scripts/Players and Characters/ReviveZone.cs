@@ -44,10 +44,11 @@ public class ReviveZone : NetworkIdentity
         if (!_stats.IsDead) return;
 
         // Scale on all clients from synced timer
+        float t = Mathf.Clamp01(ChargeTimer / _stats.reviveTime);
         reviveProgressArea.transform.localScale = new Vector3(
-            ChargeTimer / _stats.reviveTime * 10f,
+            t * 10f,
             reviveProgressArea.transform.localScale.y,
-            ChargeTimer / _stats.reviveTime * 10f
+            t * 10f
         );
 
         if (!isServer) return;

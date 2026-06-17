@@ -308,11 +308,18 @@ public class GameManager : NetworkIdentity
         Time.timeScale = 1f;
         _playersLoaded = 0;
         PurrLobby.LobbyFlags.IsReturningFromGame = true;
+        SetReturningFromGameRpc();
         NetworkManager.main.sceneModule.LoadSceneAsync(GameStartData.LobbySceneName, new PurrSceneSettings
         {
             mode = LoadSceneMode.Single,
             isPublic = true
         });
+    }
+
+    [ObserversRpc]
+    private void SetReturningFromGameRpc()
+    {
+        PurrLobby.LobbyFlags.IsReturningFromGame = true;
     }
 
     [ServerRpc(requireOwnership: false)]

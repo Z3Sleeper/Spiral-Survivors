@@ -55,12 +55,18 @@ public class PlayerController : NetworkIdentity
         base.OnSpawned();
         enabled = isOwner;
         if (!isOwner) return;
+        InitializeForOwner();
+    }
 
+    public void InitializeForOwner()
+    {
+        if (_input != null) return;
         _input = new InputSystem_Actions();
         _input.Enable();
         _stats = GetComponent<CharacterStats>();
         _currentCharges = _stats.dashCharges;
         GameManager.OnPauseChanged += OnPauseChanged;
+        enabled = true;
     }
 
     private void Update()

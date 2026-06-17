@@ -89,13 +89,12 @@ public class CharacterStats : NetworkBehaviour
         get => _baseMaxHealth.value;
         set => _baseMaxHealth.value = value;
     }
-    [HideInInspector] public SyncVar<float> _bonusMaxHealthFlat = new(0f, ownerAuth: true);
+    [HideInInspector] public SyncVar<float> _bonusMaxHealthFlat = new(0f);
     [HideInInspector] public float BonusMaxHealthFlat
     {
         get => _bonusMaxHealthFlat.value;
         set => _bonusMaxHealthFlat.value = value;
     }
-    private float _prevBonusMaxHealth = 0f;
     [HideInInspector] public SyncVar<float> _bonusMaxHealthPercent = new(1f);
     [HideInInspector] public float BonusMaxHealthPercent
     {
@@ -111,19 +110,19 @@ public class CharacterStats : NetworkBehaviour
         set => _currentHealth.value = value;
     }
     public float baseHealthRegen = 0.5f;
-    [HideInInspector] public SyncVar<float> _bonusHealthRegenFlat = new(0f, ownerAuth: true);
-    public float bonusHealthRegenFlat
+    [HideInInspector] public SyncVar<float> _bonusHealthRegenFlat = new(0f);
+    public float BonusHealthRegenFlat
     {
         get => _bonusHealthRegenFlat.value;
         set => _bonusHealthRegenFlat.value = value;
     }
-    [HideInInspector] public SyncVar<float> _bonusHealthRegenPercent = new(1f, ownerAuth: true);
+    [HideInInspector] public SyncVar<float> _bonusHealthRegenPercent = new(1f);
     public float BonusHealthRegenPercent
     {
         get => _bonusHealthRegenPercent.value;
         set => _bonusHealthRegenPercent.value = value;
     }
-    public float HealthRegen => (baseHealthRegen + bonusHealthRegenFlat) * BonusHealthRegenPercent;
+    public float HealthRegen => (baseHealthRegen + BonusHealthRegenFlat) * BonusHealthRegenPercent;
     [NonSerialized] public float _healthRegenTimer = 0f;
     [NonSerialized] public float _healthRegenInterval = 1f;
 
@@ -132,19 +131,19 @@ public class CharacterStats : NetworkBehaviour
     /// </summary>
     [Header("Shield")]
     public float baseMaxShield = 0.1f;
-    [HideInInspector] public SyncVar<float> _bonusMaxShieldFlat = new(0f, ownerAuth: true);
-    public float bonusMaxShieldFlat
+    [HideInInspector] public SyncVar<float> _bonusMaxShieldFlat = new(0f);
+    public float BonusMaxShieldFlat
     {
         get => _bonusMaxShieldFlat.value;
         set => _bonusMaxShieldFlat.value = value;
     }
-    [HideInInspector] public SyncVar<float> _bonusMaxShieldPercent = new(1f, ownerAuth: true);
+    [HideInInspector] public SyncVar<float> _bonusMaxShieldPercent = new(1f);
     public float BonusMaxShieldPercent
     {
         get => _bonusMaxShieldPercent.value;
         set => _bonusMaxShieldPercent.value = value;
     }
-    public float MaxShieldPercentOfMaxHealth => (baseMaxShield + bonusMaxShieldFlat) * BonusMaxShieldPercent;
+    public float MaxShieldPercentOfMaxHealth => (baseMaxShield + BonusMaxShieldFlat) * BonusMaxShieldPercent;
     public float MaxShield => MaxHealth * MaxShieldPercentOfMaxHealth;
     [HideInInspector] public SyncVar<float> _currentShield = new(0);
     [HideInInspector] public float CurrentShield
@@ -251,8 +250,15 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusXPRadiusPercent = 1f;
     public float XPRadius => (baseXPRadius + bonusXPRadiusFlat) * bonusXPRadiusPercent;
 
-    [NonSerialized] public float reviveTime = 3f;
+    [HideInInspector] public SyncVar<float> _reviveTimeSync = new(3f);
+    public float reviveTime
+    {
+        get => _reviveTimeSync.value;
+        set => _reviveTimeSync.value = value;
+    }
     [NonSerialized] public float revivePower = 1f;
+
+    private bool _ownerInitialized = false;
 
     [HideInInspector] public SyncVar<bool> _isDeadSync = new(false);
     public bool IsDead
@@ -277,23 +283,11 @@ public class CharacterStats : NetworkBehaviour
 
         _isDeadSync.onChanged += OnDeathStateChanged;
 
-        _prevBonusMaxHealth = _bonusMaxHealthFlat.value;
-        _bonusMaxHealthFlat.onChanged += val =>
-        {
-            if (!isServer) return;
-            float delta = val - _prevBonusMaxHealth;
-            _prevBonusMaxHealth = val;
-            if (delta > 0f)
-                CurrentHealth += delta;
-            else
-                CurrentHealth = Mathf.Min(CurrentHealth, MaxHealth);
-        };
-
-        if (isOwner && LocalUIManager.instance != null)
-            LocalUIManager.instance.SetPlayer(this);
-
         if (isOwner)
         {
+            _ownerInitialized = true;
+            if (LocalUIManager.instance != null)
+                LocalUIManager.instance.SetPlayer(this);
             CurrentEnergy = MaxEnergy;
             CurrentSP = MaxSP;
         }
@@ -304,8 +298,24 @@ public class CharacterStats : NetworkBehaviour
         RecalculateXPMod();
     }
 
+    private void LateOwnerInit()
+    {
+        if (LocalUIManager.instance != null)
+            LocalUIManager.instance.SetPlayer(this);
+        CurrentEnergy = MaxEnergy;
+        CurrentSP = MaxSP;
+        _controller.InitializeForOwner();
+        GetComponent<WeaponManager>().InitializeForOwner();
+    }
+
     private void Update()
     {
+        if (!_ownerInitialized && isOwner)
+        {
+            _ownerInitialized = true;
+            LateOwnerInit();
+        }
+
         if (!isServer) return;
         if (IsDead) return;
 
@@ -319,7 +329,6 @@ public class CharacterStats : NetworkBehaviour
                 _healthRegenTimer = _healthRegenInterval;
             }
         }
-
 
         // Shield regen
         if (CurrentShield < MaxShield)

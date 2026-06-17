@@ -34,7 +34,7 @@ public class ShooterGloomProjectile : MonoBehaviour, IEnemyAttack
     {
         if (other.gameObject.layer != LayerMask.NameToLayer("PlayerHurtbox")) return;
         var stats = other.GetComponentInParent<CharacterStats>();
-        if (stats != null && stats.isOwner && !stats.IsInvincible)
+        if (stats != null && !stats.IsInvincible)
             Destroy(gameObject);
     }
 }
