@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
+  m_Name: MultiShotx2
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: I Said MORE Bullets
+  description: '<color=#3278FF>x2 Multishot</color>
+
+    <color=#FF5000>-60% Damage</color>
+
+    <color=#FF0050>-60%
+    On-Hit Effectiveness</color>'
+  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  restrictedToClasses: 02000000
+  excludedClasses: 
+  effectPrefab: {fileID: 5974715987542056492, guid: f2d0a15233c7c464d94e2130fb90d6fe, type: 3}
+  incompatibleAugments: []
+  requiredAugments:
+  - {fileID: 11400000, guid: 42937f28886713b42946fda41299122b, type: 2}

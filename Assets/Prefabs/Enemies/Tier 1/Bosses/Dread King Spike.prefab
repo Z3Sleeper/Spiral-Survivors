@@ -534,7 +534,7 @@ MonoBehaviour:
   enemyName: Dread King Spike
   moveSpeed: 0.6
   backpedalSpeedDivisor: 3
-  maxHealth: 3000
+  maxHealth: 7200
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
@@ -552,9 +552,9 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _renderers:
   - {fileID: 3448404629509916890}
-  chargeDamageMultiplier: 5
+  chargeDamageMultiplier: 3
   aoeDamageMultiplier: 10
-  bombDamageMultiplier: 2
+  bombDamageMultiplier: 3
   chargeWindupDuration: 0.4
   chargeSpeed: 45
   chargeDistance: 25

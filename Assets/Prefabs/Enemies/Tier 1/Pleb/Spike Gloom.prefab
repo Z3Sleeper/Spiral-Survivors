@@ -443,7 +443,7 @@ MonoBehaviour:
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 5
+  damage: 2
   xpValue: 1
   hasContactDamage: 1
   contactCooldown: 0.5

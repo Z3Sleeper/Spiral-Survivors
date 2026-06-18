@@ -19,6 +19,7 @@ public class LeaperGloom : EnemyBase
     [SerializeField] private GameObject dangerIndicator;
     [SerializeField] private float landingDuration = 0.1f;
     [SerializeField] private int leapsPerAttack = 1;
+    [SerializeField] private float leapOffsetRadius = 1f;
 
     public enum State { Moving, Windup, Leaping, Landing, PostLeap }
     private float _stateTimer;
@@ -150,7 +151,8 @@ public class LeaperGloom : EnemyBase
     private void EnterWindup()
     {
         if (_target == null) return;
-        _leapTarget = _target.position;
+        Vector2 offset2D = UnityEngine.Random.insideUnitCircle.normalized * leapOffsetRadius;
+        _leapTarget = _target.position + new Vector3(offset2D.x, 0f, offset2D.y);
         _syncLeapTarget.value = _leapTarget;
 
         SnapFaceTarget();

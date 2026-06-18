@@ -16,7 +16,7 @@ MonoBehaviour:
   - statType: 0
     displayName: Max Health
     color: {r: 0, g: 1, b: 0, a: 1}
-    value: 15
+    value: 5
     prependText: +
     appendText: 
     allowedClasses: 
@@ -72,7 +72,7 @@ MonoBehaviour:
   - statType: 10
     displayName: Pierce
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 0.2
+    value: 0.5
     prependText: +
     appendText: 
     allowedClasses: 02000000

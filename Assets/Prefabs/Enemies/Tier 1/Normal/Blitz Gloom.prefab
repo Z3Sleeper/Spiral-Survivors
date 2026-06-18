@@ -295,11 +295,11 @@ MonoBehaviour:
   enemyName: Blitz Gloom
   moveSpeed: 1.2
   backpedalSpeedDivisor: 3
-  maxHealth: 50
+  maxHealth: 100
   preferredRange: 10
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 10
+  damage: 5
   xpValue: 5
   hasContactDamage: 1
   contactCooldown: 0.5
@@ -315,7 +315,7 @@ MonoBehaviour:
   - {fileID: 3448404629509916890}
   windupDuration: 0.5
   postBlitzPause: 0.5
-  attackCooldown: 5
+  attackCooldown: 3
   blitzDistance: 15
   blitzSpeed: 30
   blitzesPerAttack: 1

@@ -27,7 +27,8 @@ public class CharacterStats : NetworkBehaviour
     public float baseMoveSpeed = 1f;
     public float bonusMoveSpeedFlat = 0f;
     public float bonusMoveSpeedPercent = 1f;
-    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent;
+    public float moveSpeedPenalty = 1f;
+    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent * moveSpeedPenalty;
 
     [Header("Weapon")]
     public float baseWeaponDamage = 15f;
@@ -35,6 +36,7 @@ public class CharacterStats : NetworkBehaviour
     public float bonusWeaponDamagePercent = 1f;
     public float bonusWeaponDamagePenalty = 1f;
     public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent * bonusWeaponDamagePenalty;
+    public float UnpenalizedWeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent;
 
     public float baseWeaponRadius = 0f;
     [NonSerialized] public float bonusWeaponRadiusFlat = 0f;
@@ -44,7 +46,11 @@ public class CharacterStats : NetworkBehaviour
     public float baseWeaponSpeed = 180f;
     public float bonusWeaponSpeedFlat = 0f;
     public float bonusWeaponSpeedPercent = 1f;
-    public float WeaponSpeed => (baseWeaponSpeed + bonusWeaponSpeedFlat) * bonusWeaponSpeedPercent;
+    public float weaponSpeedPenalty = 1f;
+    public float WeaponSpeed => (baseWeaponSpeed + bonusWeaponSpeedFlat) * bonusWeaponSpeedPercent * weaponSpeedPenalty;
+
+    public float AttackSpeed => WeaponSpeed / 360f;
+    public float AttackSpeedPercent => bonusWeaponSpeedPercent * weaponSpeedPenalty;
 
     public int baseWeaponCount = 1;
     public int bonusWeaponCountFlat = 0;
@@ -54,13 +60,12 @@ public class CharacterStats : NetworkBehaviour
     public float baseWeaponRange = 5f;
     public float bonusWeaponRangeFlat = 0f;
     public float bonusWeaponRangePercent = 1f;
-    public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent * 0.2f;
+    public float weaponRangePenalty = 1f;
+    public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent * weaponRangePenalty * 0.2f;
 
     public float baseWeaponSize = 1f;
     public float bonusWeaponSizePercent = 1f;
     public float WeaponSize => baseWeaponSize * bonusWeaponSizePercent;
-
-    public float AttackSpeed => WeaponSpeed / 360f;
 
     public bool continuousFire = false;
     [NonSerialized] public float baseCritChance = 0.05f;
@@ -86,6 +91,11 @@ public class CharacterStats : NetworkBehaviour
     public float bonusMultishotFlat = 0f;
     public float bonusMultishotPercent = 1f;
     public float Multishot => (baseMultishot + bonusMultishotFlat) * bonusMultishotPercent;
+    public float multishotSpreadAngle = 75f;
+
+    public float baseProjectileDamageDropoff = 0.5f;
+    public float projectileDamageDropoffReduction = 1f;
+    public float ProjectileDamageDropoff => baseProjectileDamageDropoff * projectileDamageDropoffReduction;
 
     [Header("Health")]
     public SyncVar<float> _baseMaxHealth = new(50f);
@@ -182,7 +192,8 @@ public class CharacterStats : NetworkBehaviour
     public float baseEnergyRegen = 5f;
     [NonSerialized] public float bonusEnergyRegenFlat = 0f;
     [NonSerialized] public float bonusEnergyRegenPercent = 1f;
-    public float EnergyRegen => (baseEnergyRegen + bonusEnergyRegenFlat) * bonusEnergyRegenPercent;
+    [NonSerialized] public float energyRegenPenalty = 1f;
+    public float EnergyRegen => (baseEnergyRegen + bonusEnergyRegenFlat) * bonusEnergyRegenPercent * energyRegenPenalty;
     /// <summary>
     /// Value limits the activation of surge to itself. To adjust the energy expended during surge, use surgeCost.
     /// </summary>
@@ -191,22 +202,15 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusSurgeCostFlat = 0f;
     [NonSerialized] public float bonusSurgeCostPercent = 1f;
     public float SurgeCost => (baseSurgeCost + bonusSurgeCostFlat) * bonusSurgeCostPercent;
-    [NonSerialized] public float baseSurgeEffectiveness = 1f;
-    [NonSerialized] public float bonusSurgeEffectivenessFlat = 0f;
-    [NonSerialized] public float bonusSurgeEffectivenessPercent = 1f;
-    public float SurgeEffectiveness => (baseSurgeEffectiveness + bonusSurgeEffectivenessFlat) * bonusSurgeEffectivenessPercent;
-    [NonSerialized] public float baseSurgeMoveSpeedMulti = 0.5f;
-    [NonSerialized] public float bonusSurgeMoveSpeedMultiFlat = 0f;
-    [NonSerialized] public float bonusSurgeMoveSpeedMultiPercent = 1f;
-    public float SurgeMoveSpeedMulti => (baseSurgeMoveSpeedMulti + bonusSurgeMoveSpeedMultiFlat) * bonusSurgeMoveSpeedMultiPercent;
-    [NonSerialized] public float baseSurgeWeaponSpeedMulti = 3f;
-    [NonSerialized] public float bonusSurgeWeaponSpeedMultiFlat = 0f;
-    [NonSerialized] public float bonusSurgeWeaponSpeedMultiPercent = 1f;
-    public float SurgeWeaponSpeedMultiplier => (baseSurgeWeaponSpeedMulti + bonusSurgeWeaponSpeedMultiFlat) * bonusSurgeWeaponSpeedMultiPercent;
-    [NonSerialized] public float baseSurgeAttackSpeedMulti = 3f;
-    [NonSerialized] public float bonusSurgeAttackSpeedMultiFlat = 0f;
-    [NonSerialized] public float bonusSurgeAttackSpeedMultiPercent = 1f;
-    public float SurgeAttackSpeedMultiplier => (baseSurgeAttackSpeedMulti + bonusSurgeAttackSpeedMultiFlat) * bonusSurgeAttackSpeedMultiPercent;
+    [NonSerialized] public float surgeEffectiveness = 1f;
+    [NonSerialized] public float surgeEffectivenessPenalty = 1f;
+    public float SurgeEffectiveness => surgeEffectiveness * surgeEffectivenessPenalty;
+    [NonSerialized] public float surgeMoveSpeedMulti = 1f;
+    [NonSerialized] public float surgeMoveSpeedPenalty = 0.5f;
+    public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty * SurgeEffectiveness;
+    [NonSerialized] public float surgeWeaponSpeedMulti = 3f;
+    [NonSerialized] public float surgeWeaponSpeedPenalty = 1f;
+    public float SurgeWeaponSpeedMultiplier => surgeWeaponSpeedMulti * surgeWeaponSpeedPenalty * SurgeEffectiveness;
 
     [Header("Dash")]
     public int dashCharges = 3;
@@ -393,6 +397,12 @@ public class CharacterStats : NetworkBehaviour
         CurrentHealth = Mathf.Min(CurrentHealth + amount, MaxHealth);
     }
 
+    [ServerRpc(requireOwnership: false)]
+    public void ReceiveHealRpc(float amount)
+    {
+        CurrentHealth = Mathf.Min(CurrentHealth + amount, MaxHealth);
+    }
+
     [ServerRpc(requireOwnership: true)]
     public void MultiplyMaxHealthRpc(float multiplier)
     {
@@ -400,6 +410,16 @@ public class CharacterStats : NetworkBehaviour
         BonusMaxHealthPercent *= multiplier;
         CurrentHealth = Mathf.Min(CurrentHealth + (MaxHealth - prevMax), MaxHealth);
     }
+
+    public static event Action<CharacterStats, Vector3, float, float, string> OnVFXBroadcast;
+
+    [ServerRpc(requireOwnership: true)]
+    public void BroadcastVFXRpc(Vector3 position, float size, float duration, string vfxTag)
+        => ShowVFXRpc(position, size, duration, vfxTag);
+
+    [ObserversRpc]
+    private void ShowVFXRpc(Vector3 position, float size, float duration, string vfxTag)
+        => OnVFXBroadcast?.Invoke(this, position, size, duration, vfxTag);
 
     [ServerRpc(requireOwnership: false)]
     public void TakeDamageRpc(float damage)

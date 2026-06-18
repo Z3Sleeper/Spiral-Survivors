@@ -6,11 +6,8 @@ public class WeaponBow : WeaponBase
     [SerializeField] private LayerMask enemyHurtboxLayer;
     public float projectileSpeed = 20f;
     public float bowAttackSpeedScaling = 10f;
-    [SerializeField] private float multishotSpreadAngle = 60f;
-    [SerializeField] private float shotDelay = 0.05f;
 
     private float _fireTimer;
-    private float _shotDelayTimer = -1f;
     public override bool IsMelee => false;
 
     protected override void OnSpawned()
@@ -30,35 +27,28 @@ public class WeaponBow : WeaponBase
         if (_stats == null || _stats.IsDead) return;
 
         _fireTimer -= Time.deltaTime;
-        if (_fireTimer > 0f) { _shotDelayTimer = -1f; return; }
+        if (_fireTimer > 0f) return;
 
-        if (_stats.continuousFire || HasEnemyInLoS())
+        Vector3? target = GetTargetPosition();
+        if (_stats.continuousFire || target.HasValue)
         {
-            if (_shotDelayTimer < 0f)
-                _shotDelayTimer = shotDelay / _stats.AttackSpeed;
-
-            _shotDelayTimer -= Time.deltaTime;
-            if (_shotDelayTimer > 0f) return;
-
-            _shotDelayTimer = -1f;
-            Fire();
+            Fire(target ?? (transform.position + transform.forward));
             _fireTimer = 1f / (_stats.AttackSpeed * bowAttackSpeedScaling);
-        }
-        else
-        {
-            _shotDelayTimer = -1f;
         }
     }
 
-    private bool HasEnemyInLoS()
+    private Vector3? GetTargetPosition()
     {
         var origin = transform.position - transform.forward * 1.0f;
         if (Physics.Raycast(origin, transform.forward, out RaycastHit hit, _stats.WeaponRange + 1f, enemyHurtboxLayer))
-            return hit.collider.GetComponentInParent<EnemyBase>() != null;
-        return false;
+        {
+            if (hit.collider.GetComponentInParent<EnemyBase>() != null)
+                return hit.collider.bounds.center;
+        }
+        return null;
     }
 
-    private void Fire()
+    private void Fire(Vector3 targetPosition)
     {
         float rawPierce = _stats.Pierce;
         int pierce = (int)rawPierce;
@@ -73,15 +63,16 @@ public class WeaponBow : WeaponBase
         if (Random.value < rawMultishot - bonusShots) bonusShots++;
         int multishot = 1 + bonusShots;
 
-        float startAngle = multishot > 1 ? -multishotSpreadAngle / 2f : 0f;
-        float angleStep = multishot > 1 ? multishotSpreadAngle / (multishot - 1) : 0f;
+        Vector3 baseDir = (targetPosition - transform.position).normalized;
+        float startAngle = multishot > 1 ? -_stats.multishotSpreadAngle / 2f : 0f;
+        float angleStep = multishot > 1 ? _stats.multishotSpreadAngle / (multishot - 1) : 0f;
 
         for (int i = 0; i < multishot; i++)
         {
-            Vector3 dir = Quaternion.Euler(0, startAngle + i * angleStep, 0) * transform.forward;
+            Vector3 dir = Quaternion.Euler(0, startAngle + i * angleStep, 0) * baseDir;
             var arrow = Instantiate(arrowPrefab, transform.position, Quaternion.LookRotation(dir));
             arrow.transform.localScale *= _stats.WeaponSize;
-            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound, _stats);
+            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound, _stats, _stats.ProjectileDamageDropoff);
         }
     }
 }

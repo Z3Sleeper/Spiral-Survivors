@@ -16,7 +16,6 @@ public class GremlinAugment : MonoBehaviour
         stats.transform.localScale *= _sizeChange;
         stats.bonusWeaponRadiusPercent *= _sizeChange;
         stats.bonusWeaponSizePercent *= _sizeChange;
-        stats.bonusWeaponRangePercent *= _sizeChange;
 
         foreach (var childName in _unscaledChildren)
         {

@@ -49,7 +49,7 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         {
             _stats.TakeDamageRpc(dmg);
             if (source != null)
-                _multiHitCooldowns[source] = 0.5f;
+                _multiHitCooldowns[source] = 0.1f;
         }
     }
 

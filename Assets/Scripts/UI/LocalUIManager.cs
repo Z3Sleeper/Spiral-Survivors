@@ -3,6 +3,7 @@ using PurrNet;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using Unity.VisualScripting.Antlr3.Runtime.Misc;
 
 public class LocalUIManager : MonoBehaviour
 {
@@ -17,7 +18,11 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI dashChargesText;
     [SerializeField] private Image energyImage;
     [SerializeField] private TextMeshProUGUI energyText;
+    [SerializeField] private GameObject statsUI;
     [SerializeField] private TextMeshProUGUI statsNumbersText;
+    [SerializeField] private GameObject statsUIExpanded;
+    [SerializeField] private TextMeshProUGUI statsWordsTextExpanded;
+    [SerializeField] private TextMeshProUGUI statsNumbersTextExpanded;
     [SerializeField] private Slider spBar;
     [SerializeField] private TextMeshProUGUI spText;
     [SerializeField] private Slider xpBar;
@@ -44,22 +49,36 @@ public class LocalUIManager : MonoBehaviour
     private bool _isReadyForUnpause;
 
     private readonly System.Text.StringBuilder _statsSB = new();
+    private readonly System.Text.StringBuilder _statsExpandedSB = new();
 
     private CharacterStats _stats;
     private PlayerController _controller;
+    private bool _isRanged;
 
     private void Awake()
     {
         instance = this;
         levelUpScreen.SetActive(false);
         pauseCountdownText.gameObject.SetActive(false);
+        statsUI.SetActive(true);
+        statsUIExpanded.SetActive(false);
         pauseScreen.SetActive(false);
+    }
+
+    public void SetStatsExpanded(bool expanded)
+    {
+        statsUI.SetActive(!expanded);
+        statsUIExpanded.SetActive(expanded);
     }
 
     public void SetPlayer(CharacterStats stats)
     {
         _stats = stats;
         _controller = stats.GetComponent<PlayerController>();
+        _isRanged = stats.GetComponent<WeaponManager>().IsRanged;
+        statsWordsTextExpanded.text = _isRanged
+            ? "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nPierce:\nRicochet:\nMultishot:"
+            : "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:";
         healthBar.value = 1f;
         shieldBar.value = 1f;
         shieldRegenBar.value = 1f;
@@ -190,6 +209,7 @@ public class LocalUIManager : MonoBehaviour
         UpdateDash();
         UpdateEnergy();
         UpdateStats();
+        UpdateStatsExpanded();
         UpdateSP();
         UpdateXP();
         UpdateRunClock();
@@ -238,6 +258,24 @@ public class LocalUIManager : MonoBehaviour
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
         statsNumbersText.text = _statsSB.ToString();
+    }
+
+    private void UpdateStatsExpanded()
+    {
+        _statsExpandedSB.Clear();
+        _statsExpandedSB.AppendLine($" +{_stats.bonusWeaponDamagePercent * _stats.bonusWeaponDamagePenalty * 100f - 100f:F1}%");
+        _statsExpandedSB.AppendLine($" +{_stats.bonusWeaponSpeedPercent * _stats.weaponSpeedPenalty * 100f - 100f:F1}%");
+        _statsExpandedSB.AppendLine($" +{_stats.bonusEnergyRegenPercent * _stats.energyRegenPenalty * 100f - 100f:F1}%");
+        _statsExpandedSB.AppendLine($" +{_stats.bonusWeaponRangePercent * _stats.weaponRangePenalty * 100f - 100f:F1}%");
+        _statsExpandedSB.AppendLine($" +{_stats.bonusMoveSpeedPercent * _stats.moveSpeedPenalty * 100f - 100f:F1}%");
+        _statsExpandedSB.AppendLine($" {_stats.DashCooldown:F1}s");
+        if (_isRanged)
+        {
+            _statsExpandedSB.AppendLine($" {_stats.Pierce}");
+            _statsExpandedSB.AppendLine($" {_stats.Ricochet}");
+            _statsExpandedSB.AppendLine($" {_stats.Multishot}");
+        }
+        statsNumbersTextExpanded.text = _statsExpandedSB.ToString();
     }
 
     private void UpdateSP()

@@ -60,6 +60,7 @@ public class SpearGloom : EnemyBase
     private void OnStateChanged(State state)
     {
         spearHitbox.enabled = (state == State.Stabbing);
+        _physicsCollider.enabled = (state == State.Moving || state == State.PostStab);
         dangerIndicator.SetActive(state == State.Windup);
         if (state == State.Windup)
             _animator.Play(SpearWindupHash, 0, 0f);

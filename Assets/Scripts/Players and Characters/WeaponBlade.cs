@@ -60,7 +60,7 @@ public class WeaponBlade : WeaponBase
         if (Random.value < _stats.CritChance)
             damage *= _stats.CritDamage;
         enemy.TakeDamageRpc(damage);
-        InvokeOnHit(enemy);
+        InvokeOnStrike(enemy);
         SFXManager.instance?.Play(_stats.hitSound, enemy.transform.position);
     }
 }

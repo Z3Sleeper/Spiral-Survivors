@@ -15,6 +15,7 @@ public class WeaponArrow : NetworkIdentity
     private float _distanceTravelled;
     private int _ricochetsRemaining;
     private int _piercesRemaining;
+    private float _damageDropoff;
     private readonly HashSet<EnemyBase> _hitEnemies = new();
     private AudioClip _hitSound;
     private Vector3 _prevPosition;
@@ -30,10 +31,11 @@ public class WeaponArrow : NetworkIdentity
         enabled = isOwner;
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f)
     {
         _ownerStats = ownerStats;
         _damage = damage;
+        _damageDropoff = damageDropoff;
         _maxRange = maxRange;
         _direction = direction.normalized;
         _speed = speed;
@@ -84,7 +86,8 @@ public class WeaponArrow : NetworkIdentity
             damage *= _critDamage;
 
         enemy.TakeDamageRpc(damage);
-        if (_ownerStats != null) WeaponBase.RaiseOnHit(_ownerStats, enemy);
+        _damage *= 1f - _damageDropoff;
+        if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy);
         SFXManager.instance?.Play(_hitSound, transform.position);
 
         if (_ricochetsRemaining > 0)

@@ -41,7 +41,7 @@ public class AugmentManager : NetworkBehaviour
     {
         var options = new List<LevelUpOption>();
         int level = GameManager.instance.Level;
-        bool isAugmentLevel = level == 2 || level % 10 == 0;
+        bool isAugmentLevel = level % 5 == 0;
 
         if (isAugmentLevel && _playerPools.TryGetValue(player, out var pool) && pool.Count > 0)
         {

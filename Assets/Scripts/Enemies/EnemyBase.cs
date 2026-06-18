@@ -45,6 +45,10 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     }
 
     public static int ActiveCount = 0;
+    public static int ActiveNormalCount = 0;
+    public static int ActivePlebCount = 0;
+    [NonSerialized] public bool isPleb = false;
+    [NonSerialized] public bool isUncapped = false;
 
     private float _findTargetTimer = 0;
     private const float FindTargetInterval = 1f;
@@ -74,6 +78,8 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         _syncMaxHealth.value = maxHealth;
         CurrentHealth = maxHealth;
         ActiveCount++;
+        if (isPleb) ActivePlebCount++;
+        else if (!isUncapped) ActiveNormalCount++;
     }
 
     protected virtual void Update()
@@ -235,6 +241,8 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     {
         _isDead = true;
         ActiveCount--;
+        if (isPleb) ActivePlebCount--;
+        else if (!isUncapped) ActiveNormalCount--;
 
         if (isFinalBoss)
             GameManager.instance.TriggerWin();

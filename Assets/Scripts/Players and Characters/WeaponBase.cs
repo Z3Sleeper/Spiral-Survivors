@@ -6,9 +6,20 @@ public class WeaponBase : NetworkIdentity
     protected PlayerController _controller;
     public virtual bool IsMelee => true;
 
-    public static event System.Action<CharacterStats, EnemyBase> OnHit;
-    protected void InvokeOnHit(EnemyBase enemy) => OnHit?.Invoke(_stats, enemy);
-    public static void RaiseOnHit(CharacterStats stats, EnemyBase enemy) => OnHit?.Invoke(stats, enemy);
+    public static event System.Action<CharacterStats, EnemyBase> OnStrike;
+    protected void InvokeOnStrike(EnemyBase enemy)
+    {
+        OnStrike?.Invoke(_stats, enemy);
+        RaiseOnHit(_stats, enemy);
+    }
+    public static void RaiseOnStrike(CharacterStats stats, EnemyBase enemy)
+    {
+        OnStrike?.Invoke(stats, enemy);
+        RaiseOnHit(stats, enemy);
+    }
+
+    public static event System.Action<CharacterStats, EnemyBase, float> OnHit;
+    public static void RaiseOnHit(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f) => OnHit?.Invoke(stats, enemy, effectiveness);
 
     public virtual void Init(CharacterStats stats)
     {

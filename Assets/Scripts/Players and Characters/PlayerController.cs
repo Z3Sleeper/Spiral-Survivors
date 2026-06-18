@@ -18,6 +18,7 @@ public class PlayerController : NetworkIdentity
     private Collider _physicsCollider;
 
     public static event System.Action<PlayerController> OnDashStarted;
+    public static event System.Action<PlayerController> OnDashEnded;
 
     public bool isSurging { get; private set; }
     private float _surgeTickTimer;
@@ -84,7 +85,23 @@ public class PlayerController : NetworkIdentity
 
         // Pause input
         if (_input.Player.Pause.WasPressedThisFrame())
-            GameManager.instance.RequestPauseRpc();
+        {
+            if (GameManager.instance.IsPaused)
+            {
+                if (NetworkManager.main.playerCount == 1)
+                    GameManager.instance.RequestPauseRpc();
+                else
+                    GameManager.instance.TogglePauseReadyRpc(NetworkManager.main.localPlayer);
+            }
+            else
+                GameManager.instance.RequestPauseRpc();
+        }
+
+        // Stats panel
+        if (_input.Player.Tab.WasPressedThisFrame())
+            LocalUIManager.instance?.SetStatsExpanded(true);
+        else if (_input.Player.Tab.WasReleasedThisFrame())
+            LocalUIManager.instance?.SetStatsExpanded(false);
 
         // Dash input
         if (_input.Player.Dash.WasPressedThisFrame() && _currentCharges > 0 && !_isDashing)
@@ -165,8 +182,18 @@ public class PlayerController : NetworkIdentity
 
     private void OnPauseChanged(bool paused)
     {
-        if (paused) _input.Disable();
-        else _input.Enable();
+        if (paused)
+        {
+            _input.Player.Move.Disable();
+            _input.Player.Dash.Disable();
+            _input.Player.Surge.Disable();
+        }
+        else
+        {
+            _input.Player.Move.Enable();
+            _input.Player.Dash.Enable();
+            _input.Player.Surge.Enable();
+        }
     }
 
     private void StartDash()
@@ -190,6 +217,7 @@ public class PlayerController : NetworkIdentity
         _stats.invincible = false;
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
+        OnDashEnded?.Invoke(this);
     }
 
     private void StartSurge()
@@ -198,9 +226,8 @@ public class PlayerController : NetworkIdentity
         _stats.CurrentEnergy -= _stats.SurgeCost;
         _surgeTickTimer = SurgeTickInterval;
 
-        float effectiveness = _stats.SurgeEffectiveness;
-        _surgeMoveSpeedBonus = _stats.SurgeMoveSpeedMulti * effectiveness;
-        _surgeWeaponSpeedBonus = _stats.SurgeWeaponSpeedMultiplier * effectiveness;
+        _surgeMoveSpeedBonus = _stats.SurgeMoveSpeedMulti;
+        _surgeWeaponSpeedBonus = _stats.SurgeWeaponSpeedMultiplier;
 
         _stats.bonusMoveSpeedPercent *= _surgeMoveSpeedBonus;
         _stats.bonusWeaponSpeedPercent *= _surgeWeaponSpeedBonus;

@@ -295,11 +295,11 @@ MonoBehaviour:
   enemyName: Shooter Gloom
   moveSpeed: 1.2
   backpedalSpeedDivisor: 3
-  maxHealth: 50
+  maxHealth: 100
   preferredRange: 10
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 10
+  damage: 5
   xpValue: 5
   hasContactDamage: 0
   contactCooldown: 0.5
@@ -315,7 +315,7 @@ MonoBehaviour:
   - {fileID: 3448404629509916890}
   projectilePrefab: {fileID: 2942187867930129664, guid: c0f958d6a0df73d44aba515d36d38697, type: 3}
   gun: {fileID: 3869802202908258147}
-  attackCooldown: 5
+  attackCooldown: 3
   minAttackRange: 8
   dashSpeed: 40
   windupDuration: 0.2
@@ -324,7 +324,7 @@ MonoBehaviour:
   speed: 8
   maxRange: 30
   multishot: 0
-  shotSpreadAngle: 60
+  shotSpreadAngle: 75
   _syncState:
     _value: 0
     _ownerAuth: 0
