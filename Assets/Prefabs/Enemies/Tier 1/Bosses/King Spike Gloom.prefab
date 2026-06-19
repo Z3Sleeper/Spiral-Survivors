@@ -512,7 +512,7 @@ GameObject:
   - component: {fileID: -8394223174193477460}
   - component: {fileID: -6973549993052189348}
   m_Layer: 0
-  m_Name: Dread King Spike
+  m_Name: King Spike Gloom
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -563,7 +563,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  enemyName: Dread King Spike
+  enemyName: King Spike Gloom
   moveSpeed: 0.6
   backpedalSpeedDivisor: 3
   maxHealth: 7200
@@ -587,8 +587,8 @@ MonoBehaviour:
   chargeDamageMultiplier: 3
   aoeDamageMultiplier: 10
   bombDamageMultiplier: 3
-  chargeWindupDuration: 0.4
-  chargeSpeed: 45
+  chargeWindupDuration: 0.5
+  chargeSpeed: 35
   chargeDistance: 25
   attackRange: 12.5
   attackCooldown: 12
@@ -1378,7 +1378,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 13d4c174e1cc2b64f9bdcfbaed6dfcb1, type: 2}
+  - {fileID: 2100000, guid: 55f8204d9f6d63b4485b80a49c2570bd, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -2024,7 +2024,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 55f8204d9f6d63b4485b80a49c2570bd, type: 2}
+  - {fileID: 2100000, guid: 13d4c174e1cc2b64f9bdcfbaed6dfcb1, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

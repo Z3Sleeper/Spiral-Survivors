@@ -15,6 +15,7 @@ public class MissingHealthToRegenAugment : MonoBehaviour
 
     private void Update()
     {
+        if (!_stats.isSpawned) return;
         float newContribution = (_stats.MaxHealth - _stats.CurrentHealth) * _healthPercent;
         if (newContribution == _contribution) return;
 
@@ -24,7 +25,7 @@ public class MissingHealthToRegenAugment : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (_stats != null)
+        if (_stats != null && _stats.isSpawned)
             _stats.BonusHealthRegenFlat -= _contribution;
     }
 }

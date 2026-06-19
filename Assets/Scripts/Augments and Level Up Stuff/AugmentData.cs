@@ -11,6 +11,7 @@ public class AugmentData : ScriptableObject
     public GameObject effectPrefab;
     public AugmentData[] incompatibleAugments;
     public AugmentData[] requiredAugments;
+    public AugmentData[] requiredOneOfAugments;
 
     public bool IsAvailableForClass(CharacterStats.CharacterClass characterClass)
     {

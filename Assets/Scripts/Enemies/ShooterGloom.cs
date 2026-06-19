@@ -77,6 +77,7 @@ public class ShooterGloom : EnemyBase
                 if (Vector3.Distance(transform.position, _dashTarget) < 0.2f)
                 {
                     _physicsCollider.enabled = true;
+                    _rb.linearVelocity = new Vector3(0f, _rb.linearVelocity.y, 0f);
                     EnterWindup();
                 }
                 break;

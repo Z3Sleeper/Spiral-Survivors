@@ -18,7 +18,7 @@ public class DamageBasedOnMissingEnergyAugment : MonoBehaviour
 
     private void Update()
     {
-        if (_stats == null) return;
+        if (_stats == null || !_stats.isSpawned) return;
 
         float missingEnergyPercent = 1f - Mathf.Clamp01(_stats.CurrentEnergy / _stats.MaxEnergy);
         float newBonus = missingEnergyPercent * _damagePerEnergy;
@@ -30,7 +30,7 @@ public class DamageBasedOnMissingEnergyAugment : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (_stats != null)
+        if (_stats != null && _stats.isSpawned)
             _stats.bonusWeaponDamagePercent -= _currentBonus;
     }
 }

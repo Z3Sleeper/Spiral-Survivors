@@ -13,10 +13,13 @@ MonoBehaviour:
   m_Name: SurgeNoMoveSpeedPenalty
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Surge Mastery
-  description: '<color=#FFFFFF>Movement Speed</color> while <color=#FFFF00>Surging</color>
-    is no longer reduced.
+  description: '<color=#FFFF00>Surging</color> no longer reduces <color=#FFFFFF>Movement
+    Speed</color>.
 
-    <color=#FFFF00>+25% Energy Regen</color>'
+    <color=#FFFF00>+10 Energy Regen</color>
+
+    <color=#FFFF00>+25%
+    Energy Regen</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 

@@ -345,12 +345,12 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   enemyName: Shielder Gloom
-  moveSpeed: 0.9
+  moveSpeed: 0.8
   backpedalSpeedDivisor: 3
   maxHealth: 100
-  preferredRange: 2.5
-  rangeToleranceFar: 1
-  rangeToleranceClose: 0.3
+  preferredRange: 1
+  rangeToleranceFar: 0.1
+  rangeToleranceClose: 0.03
   damage: 5
   xpValue: 5
   contactColliderEnabled: 0
@@ -805,7 +805,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7600638646727349221}
   - component: {fileID: 3528644101431230945}
-  m_Layer: 12
+  m_Layer: 8
   m_Name: PhysicsCollider
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1130,7 +1130,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 10, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 7839943648137112170}
@@ -1206,15 +1206,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2083188982215853157, guid: 0de5224476fe8f546a62d2e66b3d9d54, type: 3}
       propertyPath: m_LocalScale.x
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2083188982215853157, guid: 0de5224476fe8f546a62d2e66b3d9d54, type: 3}
       propertyPath: m_LocalScale.y
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2083188982215853157, guid: 0de5224476fe8f546a62d2e66b3d9d54, type: 3}
       propertyPath: m_LocalScale.z
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2083188982215853157, guid: 0de5224476fe8f546a62d2e66b3d9d54, type: 3}
       propertyPath: m_LocalPosition.x
@@ -1258,7 +1258,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2083188982215853157, guid: 0de5224476fe8f546a62d2e66b3d9d54, type: 3}
       propertyPath: m_ConstrainProportionsScale
-      value: 1
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

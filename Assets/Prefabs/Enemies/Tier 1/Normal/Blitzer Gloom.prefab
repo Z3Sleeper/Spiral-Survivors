@@ -335,7 +335,6 @@ MonoBehaviour:
   rangeToleranceClose: 0.3
   damage: 5
   xpValue: 5
-  hasContactDamage: 1
   contactColliderEnabled: 0
   contactCooldown: 0.5
   _currentHealthSync:
@@ -1181,7 +1180,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 10, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 7839943648137112170}

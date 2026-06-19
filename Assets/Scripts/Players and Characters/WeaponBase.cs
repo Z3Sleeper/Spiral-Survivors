@@ -12,10 +12,10 @@ public class WeaponBase : NetworkIdentity
         OnStrike?.Invoke(_stats, enemy);
         RaiseOnHit(_stats, enemy);
     }
-    public static void RaiseOnStrike(CharacterStats stats, EnemyBase enemy)
+    public static void RaiseOnStrike(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f)
     {
         OnStrike?.Invoke(stats, enemy);
-        RaiseOnHit(stats, enemy);
+        RaiseOnHit(stats, enemy, effectiveness);
     }
 
     public static event System.Action<CharacterStats, EnemyBase, float> OnHit;

@@ -97,6 +97,10 @@ public class CharacterStats : NetworkBehaviour
     public float projectileDamageDropoffReduction = 1f;
     public float ProjectileDamageDropoff => baseProjectileDamageDropoff * projectileDamageDropoffReduction;
 
+    public float baseProjectileOnHitDropoff = 0.5f;
+    public float projectileOnHitDropoffReduction = 1f;
+    public float ProjectileOnHitDropoff => baseProjectileOnHitDropoff * projectileOnHitDropoffReduction;
+
     [Header("Health")]
     public SyncVar<float> _baseMaxHealth = new(50f);
     [HideInInspector] public float BaseMaxHealth

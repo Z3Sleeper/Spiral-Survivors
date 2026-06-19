@@ -99,10 +99,22 @@ public class AugmentManager : NetworkBehaviour
 
     private bool IsPrerequisiteMet(AugmentData augment, HashSet<AugmentData> picked)
     {
-        if (augment.requiredAugments == null || augment.requiredAugments.Length == 0) return true;
-        if (picked == null) return false;
-        foreach (var req in augment.requiredAugments)
-            if (!picked.Contains(req)) return false;
+        if (picked == null)
+            return (augment.requiredAugments == null || augment.requiredAugments.Length == 0)
+                && (augment.requiredOneOfAugments == null || augment.requiredOneOfAugments.Length == 0);
+
+        if (augment.requiredAugments != null)
+            foreach (var req in augment.requiredAugments)
+                if (!picked.Contains(req)) return false;
+
+        if (augment.requiredOneOfAugments != null && augment.requiredOneOfAugments.Length > 0)
+        {
+            bool anyMet = false;
+            foreach (var req in augment.requiredOneOfAugments)
+                if (picked.Contains(req)) { anyMet = true; break; }
+            if (!anyMet) return false;
+        }
+
         return true;
     }
 

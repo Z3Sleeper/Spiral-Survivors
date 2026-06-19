@@ -15,10 +15,10 @@ MonoBehaviour:
   displayName: Gremlin
   description: 'Become smol, reducing your <color=#FF00FF>Size</color> by <color=#FF00FF>50%</color>.
 
-    <color=#FF0050>+50%
+    <color=#FF0050>+25%
     Total Attack Speed</color>
 
-    <color=#FFFFFF>+25% Movement Speed</color>'
+    <color=#FFFFFF>+15% Movement Speed</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
@@ -26,3 +26,4 @@ MonoBehaviour:
   incompatibleAugments:
   - {fileID: 11400000, guid: 9ab11cee8db2d9a468c2754ffb14a313, type: 2}
   requiredAugments: []
+  requiredOneOfAugments: []

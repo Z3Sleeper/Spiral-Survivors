@@ -46,5 +46,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DashHealAugment
   _healPercent: 0.15
   _healRadius: 5
+  _bonusDashHaste: 30
   _vfxPrefab: {fileID: 5351432771132445161, guid: eb077459f841ad54aaf5b25d288b7d19, type: 3}
-  _vfxDuration: 0.1
+  _vfxDuration: 0.2

@@ -44,8 +44,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9ba4d0f7a6ceb874f91dd8419f7e5e70, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DashExplosionAugment
-  _damagePercent: 2.5
-  _onHitEffectiveness: 2.5
+  _damagePercent: 3
+  _onHitEffectiveness: 3
   _radius: 5
   _vfxPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
-  _vfxDuration: 0.1
+  _vfxDuration: 0.2

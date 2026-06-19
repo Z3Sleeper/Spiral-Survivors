@@ -10,13 +10,13 @@ public class TierEnemies
 {
     public List<GameObject> normal = new();
     public List<GameObject> elite = new();
-    public List<GameObject> miniboss = new();
     public List<GameObject> boss = new();
     public List<GameObject> pleb = new();
 }
 
 public class EnemySpawner : NetworkIdentity
 {
+    private static readonly WaitForSeconds _waitForSeconds0_1 = new(0.1f);
     private static readonly WaitForSeconds _waitForSeconds0_5 = new(0.5f);
     public static EnemySpawner instance;
 
@@ -27,16 +27,24 @@ public class EnemySpawner : NetworkIdentity
 
     [SerializeField] private float spawnMinDistance = 25f;
     [SerializeField] private float spawnMaxDistance = 40f;
-    [SerializeField] private float baseSpawnInterval = 1f;
+    [Header("Spawn Scaling")]
+    [SerializeField] private float spawnIntervalQ1 = 6f;
+    [SerializeField] private float spawnIntervalQ2 = 3f;
+    [SerializeField] private float spawnIntervalQ3 = 1.5f;
+    [SerializeField] private float spawnIntervalQ4 = 0.75f;
     [SerializeField] private float cycleInterval = 150f;
-    [SerializeField] private float baseEliteChance = 0.1f;
-    [SerializeField] private int baseEliteCap = 2;
+    [SerializeField] private float eliteChanceQ2 = 0.01f;
+    [SerializeField] private float eliteChanceQ3 = 0.05f;
+    [SerializeField] private float eliteChanceQ4 = 0.1f;
     public float coopSpawnTimeScalar = 0.5f;
     [SerializeField] private float coopBossHealthScalar = 0.5f;
     [SerializeField] private int maxNormalEnemies = 100;
     [SerializeField] private int maxPlebEnemies = 300;
     [SerializeField] private int plebSpawnAmount = 5;
-    [SerializeField] private float plebSpawnInterval = 1f;
+    [SerializeField] private float plebSpawnIntervalQ1 = 1f;
+    [SerializeField] private float plebSpawnIntervalQ2 = 0.75f;
+    [SerializeField] private float plebSpawnIntervalQ3 = 0.5f;
+    [SerializeField] private float plebSpawnIntervalQ4 = 0.25f;
 
     private List<GameObject> _currentSet = new();
     private List<GameObject> _previousSet = new();
@@ -48,12 +56,12 @@ public class EnemySpawner : NetworkIdentity
         get => _cycleTimer.value;
         set => _cycleTimer.value = value;
     }
-    private int _cycleCount = 0;
-    private int _elitesSpawnedThisCycle = 0;
-    private int _currentSpawnMultiplier = 1;
     private float _currentEliteChance;
-    private int _currentEliteCap;
     private int _playerCount;
+    private float _currentSpawnInterval = 1f;
+    private float _currentPlebSpawnInterval = 1f;
+    private int _spawnPhase = 0;
+    private bool _bossWasAlive = false;
     [SerializeField] private bool waitForPlayersLoaded = true;
 
     private void Awake()
@@ -86,9 +94,12 @@ public class EnemySpawner : NetworkIdentity
         EnemyBase.ActiveNormalCount = 0;
         EnemyBase.ActivePlebCount = 0;
         _playerCount = networkManager.playerCount;
-        _currentEliteChance = baseEliteChance;
-        _currentEliteCap = baseEliteCap * _playerCount;
+        _currentEliteChance = 0f;
         CycleTimer = cycleInterval;
+        _currentSpawnInterval = spawnIntervalQ1;
+        _currentPlebSpawnInterval = plebSpawnIntervalQ1;
+        _spawnPhase = 0;
+        _bossWasAlive = false;
         StartCoroutine(SpawnLoop());
         StartCoroutine(CycleLoop());
         if (tier1.pleb.Count > 0)
@@ -99,20 +110,48 @@ public class EnemySpawner : NetworkIdentity
     {
         while (true)
         {
-            if (!IsBossAlive())
+            if (_spawnPhase < 1 && CycleTimer < cycleInterval * 0.75f)
             {
-                for (int i = 0; i < _currentSpawnMultiplier; i++)
+                _spawnPhase = 1;
+                _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ2);
+                _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ2);
+                _currentEliteChance = eliteChanceQ2;
+            }
+            if (_spawnPhase < 2 && CycleTimer < cycleInterval * 0.5f)
+            {
+                _spawnPhase = 2;
+                _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ3);
+                _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ3);
+                _currentEliteChance = eliteChanceQ3;
+            }
+            if (_spawnPhase < 3 && CycleTimer < cycleInterval * 0.25f)
+            {
+                _spawnPhase = 3;
+                _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ4);
+                _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ4);
+                _currentEliteChance = eliteChanceQ4;
+            }
+
+            bool bossAlive = IsBossAlive();
+            if (_bossWasAlive && !bossAlive && _activeBoss != null)
+            {
+                _currentSpawnInterval = spawnIntervalQ1;
+                _currentPlebSpawnInterval = plebSpawnIntervalQ1;
+                _spawnPhase = 0;
+                _currentEliteChance = 0f;
+            }
+            _bossWasAlive = bossAlive;
+
+            if (!bossAlive)
+            {
+                if (tier1.elite.Count > 0 && _spawnPhase >= 1
+                    && UnityEngine.Random.value < _currentEliteChance)
                 {
-                    if (tier1.elite.Count > 0 && _elitesSpawnedThisCycle < _currentEliteCap
-                        && UnityEngine.Random.value < _currentEliteChance)
-                    {
-                        SpawnThisEnemy(GetRandom(tier1.elite), false, isUncapped: true);
-                        _elitesSpawnedThisCycle++;
-                    }
-                    else if (_currentSet.Count > 0 && EnemyBase.ActiveNormalCount < maxNormalEnemies)
-                    {
-                        SpawnThisEnemy(GetRandom(_currentSet), false);
-                    }
+                    SpawnThisEnemy(GetRandom(tier1.elite), false, isUncapped: true);
+                }
+                else if (_currentSet.Count > 0 && EnemyBase.ActiveNormalCount < maxNormalEnemies)
+                {
+                    SpawnThisEnemy(GetRandom(_currentSet), false);
                 }
             }
 
@@ -122,18 +161,17 @@ public class EnemySpawner : NetworkIdentity
 
     private IEnumerator PlebSpawnLoop()
     {
-        float interval = plebSpawnInterval / (1f + (_playerCount - 1) * coopSpawnTimeScalar);
+        float coopScale = 1f + (_playerCount - 1) * coopSpawnTimeScalar;
         while (true)
         {
             bool bossAlive = IsBossAlive();
-            int mult = bossAlive ? (_cycleCount % 2 == 0 ? 2 : 1) : _currentSpawnMultiplier;
-            int count = plebSpawnAmount * mult;
+            int count = plebSpawnAmount;
             for (int i = 0; i < count; i++)
             {
                 if (EnemyBase.ActivePlebCount < maxPlebEnemies)
                     SpawnThisEnemy(GetRandom(tier1.pleb), false, noXP: bossAlive, isPleb: true);
             }
-            yield return new WaitForSeconds(interval);
+            yield return new WaitForSeconds(_currentPlebSpawnInterval / coopScale);
         }
     }
 
@@ -141,24 +179,17 @@ public class EnemySpawner : NetworkIdentity
     {
         while (true)
         {
-            yield return new WaitForSeconds(baseSpawnInterval * 0.1f);
+            yield return _waitForSeconds0_1;
 
             if (!IsBossAlive())
-                CycleTimer -= baseSpawnInterval * 0.1f;
+                CycleTimer -= 0.1f;
             if (CycleTimer > 0f) continue;
 
             CycleTimer = cycleInterval;
-            _cycleCount++;
-            _elitesSpawnedThisCycle = 0;
+            _spawnPhase = 0;
 
-            _currentEliteChance += baseEliteChance * 0.5f;
-            _currentEliteCap = (baseEliteCap + _cycleCount) * _playerCount;
-            _currentSpawnMultiplier = _cycleCount % 2 != 0 ? 2 : 1;
-
-            if (_cycleCount % 2 == 0 && tier1.boss.Count > 0)
+            if (tier1.boss.Count > 0)
                 SpawnThisEnemy(GetRandom(tier1.boss), true, true);
-            else if (tier1.miniboss.Count > 0)
-                SpawnThisEnemy(GetRandom(tier1.miniboss), true, false);
 
             RollNewSet();
         }
@@ -213,10 +244,7 @@ public class EnemySpawner : NetworkIdentity
     private float GetSpawnInterval()
     {
         float coopScale = 1f + (_playerCount - 1) * coopSpawnTimeScalar;
-        bool isFirstCycleType = _cycleCount == 0 || _cycleCount % 2 != 0;
-        bool isSecondHalf = CycleTimer < cycleInterval * 0.5f;
-        float multiplier = isFirstCycleType ? (isSecondHalf ? 1.5f : 1f) : (isSecondHalf ? 2.5f : 2f);
-        return baseSpawnInterval / multiplier / coopScale;
+        return _currentSpawnInterval / coopScale;
     }
 
     private void SpawnThisEnemy(GameObject prefab, bool isBoss, bool isFinalBoss = false, bool noXP = false, bool isPleb = false, bool isUncapped = false)

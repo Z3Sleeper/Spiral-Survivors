@@ -18,6 +18,7 @@ public class MaxHealthToDamageAugment : MonoBehaviour
 
     private void Update()
     {
+        if (!_stats.isSpawned) return;
         float newContribution = _stats.MaxHealth * _healthPercent;
         if (newContribution == _contribution) return;
 
@@ -27,7 +28,7 @@ public class MaxHealthToDamageAugment : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (_stats != null)
+        if (_stats != null && _stats.isSpawned)
             _stats.bonusWeaponDamageFlat -= _contribution;
     }
 }

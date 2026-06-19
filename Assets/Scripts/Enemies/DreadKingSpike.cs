@@ -63,7 +63,7 @@ public class DreadKingSpike : BossBase
         base.OnSpawned();
         _syncState.onChanged += OnStateChanged;
         OnStateChanged(_syncState.value);
-        _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
+        _attackCooldownTimer = attackCooldown * 0.5f;
 
         if (aoeWindupIndicator != null) aoeWindupIndicator.SetActive(false);
         if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);

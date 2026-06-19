@@ -226,7 +226,7 @@ public class LocalUIManager : MonoBehaviour
 
     private void UpdateHealthRegen()
     {
-        healthRegenText.text = $"<b>+{_stats.HealthRegen:G4}/s</b>";
+        healthRegenText.text = $"<b>+{_stats.HealthRegen:F1}/s</b>";
     }
 
     private void UpdateDash()
@@ -263,11 +263,11 @@ public class LocalUIManager : MonoBehaviour
     private void UpdateStatsExpanded()
     {
         _statsExpandedSB.Clear();
-        _statsExpandedSB.AppendLine($" +{_stats.bonusWeaponDamagePercent * _stats.bonusWeaponDamagePenalty * 100f - 100f:F1}%");
-        _statsExpandedSB.AppendLine($" +{_stats.bonusWeaponSpeedPercent * _stats.weaponSpeedPenalty * 100f - 100f:F1}%");
-        _statsExpandedSB.AppendLine($" +{_stats.bonusEnergyRegenPercent * _stats.energyRegenPenalty * 100f - 100f:F1}%");
-        _statsExpandedSB.AppendLine($" +{_stats.bonusWeaponRangePercent * _stats.weaponRangePenalty * 100f - 100f:F1}%");
-        _statsExpandedSB.AppendLine($" +{_stats.bonusMoveSpeedPercent * _stats.moveSpeedPenalty * 100f - 100f:F1}%");
+        _statsExpandedSB.AppendLine($" {_stats.bonusWeaponDamagePercent * _stats.bonusWeaponDamagePenalty * 100f - 100f:+0.0;-0.0}%");
+        _statsExpandedSB.AppendLine($" {_stats.bonusWeaponSpeedPercent * _stats.weaponSpeedPenalty * 100f - 100f:+0.0;-0.0}%");
+        _statsExpandedSB.AppendLine($" {_stats.bonusEnergyRegenPercent * _stats.energyRegenPenalty * 100f - 100f:+0.0;-0.0}%");
+        _statsExpandedSB.AppendLine($" {_stats.bonusWeaponRangePercent * _stats.weaponRangePenalty * 100f - 100f:+0.0;-0.0}%");
+        _statsExpandedSB.AppendLine($" {_stats.bonusMoveSpeedPercent * _stats.moveSpeedPenalty * 100f - 100f:+0.0;-0.0}%");
         _statsExpandedSB.AppendLine($" {_stats.DashCooldown:F1}s");
         if (_isRanged)
         {

@@ -5,8 +5,9 @@ using UnityEngine;
 public class WeaponArrow : NetworkIdentity
 {
     [SerializeField] private Vector3 arrowHalfExtents = new(0.1f, 0.1f, 0.25f);
-
     private float _speed;
+    private float _onHitEffectiveness = 1f;
+    private float _onHitDropOff;
     private float _damage;
     private float _maxRange;
     private float _critChance;
@@ -35,11 +36,12 @@ public class WeaponArrow : NetworkIdentity
         enabled = isOwner;
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f, float onHitDropOff = 0f)
     {
         _ownerStats = ownerStats;
         _damage = damage;
         _damageDropoff = damageDropoff;
+        _onHitDropOff = onHitDropOff;
         _maxRange = maxRange;
         _direction = direction.normalized;
         _speed = speed;
@@ -104,7 +106,8 @@ public class WeaponArrow : NetworkIdentity
 
         enemy.TakeDamageRpc(damage);
         _damage *= 1f - _damageDropoff;
-        if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy);
+        if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy, _onHitEffectiveness);
+        _onHitEffectiveness *= 1f - _onHitDropOff;
         SFXManager.instance?.Play(_hitSound, transform.position);
 
         if (_ricochetsRemaining > 0)
