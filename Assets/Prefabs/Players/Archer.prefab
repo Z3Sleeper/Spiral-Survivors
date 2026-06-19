@@ -277,9 +277,9 @@ MonoBehaviour:
   bonusMultishotFlat: 0
   bonusMultishotPercent: 1
   multishotSpreadAngle: 75
-  baseProjectileDamageDropoff: 0.5
+  baseProjectileDamageDropoff: 0.25
   projectileDamageDropoffReduction: 1
-  baseProjectileOnHitDropoff: 0.5
+  baseProjectileOnHitDropoff: 0.25
   projectileOnHitDropoffReduction: 1
   _baseMaxHealth:
     _value: 25

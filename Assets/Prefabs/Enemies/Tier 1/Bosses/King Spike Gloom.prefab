@@ -566,7 +566,7 @@ MonoBehaviour:
   enemyName: King Spike Gloom
   moveSpeed: 0.6
   backpedalSpeedDivisor: 3
-  maxHealth: 7200
+  maxHealth: 10000
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
