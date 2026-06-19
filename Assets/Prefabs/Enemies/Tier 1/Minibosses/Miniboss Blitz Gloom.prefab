@@ -16,10 +16,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: Miniboss Blitz Gloom
       objectReference: {fileID: 0}
-    - target: {fileID: 1900264130550196311, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
-      propertyPath: m_IsActive
-      value: 0
-      objectReference: {fileID: 0}
     - target: {fileID: 3812485605274019885, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: m_AnchorMax.x
       value: 0
@@ -27,6 +23,18 @@ PrefabInstance:
     - target: {fileID: 3812485605274019885, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: m_AnchorMax.y
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6502335633623974989, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 2.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 7007230205895130193, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.375
+      objectReference: {fileID: 0}
+    - target: {fileID: 7007230205895130193, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 1.875
       objectReference: {fileID: 0}
     - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: damage

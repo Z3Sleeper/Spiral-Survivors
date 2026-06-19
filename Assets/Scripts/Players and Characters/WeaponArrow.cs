@@ -17,10 +17,13 @@ public class WeaponArrow : NetworkIdentity
     private int _piercesRemaining;
     private float _damageDropoff;
     private readonly HashSet<EnemyBase> _hitEnemies = new();
+    private readonly HashSet<IStrikeable> _hitStrikeables = new();
     private AudioClip _hitSound;
     private Vector3 _prevPosition;
     private int _enemyHurtboxMask;
+    private int _strikeableMask;
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
+    private readonly RaycastHit[] _strikeableResults = new RaycastHit[8];
     private bool _destroyed;
     private CharacterStats _ownerStats;
 
@@ -28,6 +31,7 @@ public class WeaponArrow : NetworkIdentity
     {
         base.OnSpawned();
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
+        _strikeableMask = LayerMask.GetMask("Strikeable");
         enabled = isOwner;
     }
 
@@ -72,6 +76,19 @@ public class WeaponArrow : NetworkIdentity
                 ProcessHit(enemy);
                 if (_destroyed) break;
             }
+
+            if (!_destroyed)
+            {
+                int sCount = Physics.BoxCastNonAlloc(_prevPosition, scaledHalfExtents, delta / dist, _strikeableResults, transform.rotation, dist, _strikeableMask);
+                for (int i = 0; i < sCount; i++)
+                {
+                    var strikeable = _strikeableResults[i].collider.GetComponentInParent<IStrikeable>();
+                    if (strikeable == null || !_hitStrikeables.Add(strikeable)) continue;
+                    strikeable.OnStruck();
+                    ProcessStrikeableHit();
+                    if (_destroyed) break;
+                }
+            }
         }
 
         _prevPosition = transform.position;
@@ -88,6 +105,33 @@ public class WeaponArrow : NetworkIdentity
         enemy.TakeDamageRpc(damage);
         _damage *= 1f - _damageDropoff;
         if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy);
+        SFXManager.instance?.Play(_hitSound, transform.position);
+
+        if (_ricochetsRemaining > 0)
+        {
+            var target = FindNearestUnhitEnemy();
+            if (target != null)
+            {
+                _direction = (target.transform.position - transform.position).normalized;
+                transform.forward = _direction;
+                _distanceTravelled = 0f;
+                _ricochetsRemaining--;
+                return;
+            }
+        }
+
+        if (_piercesRemaining > 0)
+        {
+            _piercesRemaining--;
+            return;
+        }
+
+        Destroy(gameObject);
+        _destroyed = true;
+    }
+
+    private void ProcessStrikeableHit()
+    {
         SFXManager.instance?.Play(_hitSound, transform.position);
 
         if (_ricochetsRemaining > 0)

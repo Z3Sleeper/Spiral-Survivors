@@ -22,9 +22,10 @@ public class SpearGloom : EnemyBase
     [SerializeField] private float postStabPause = 0.5f;
     [SerializeField] private float attackCooldown = 5f;
     [SerializeField] private int attacksPerAttack = 1;
-    [SerializeField] private GameObject dangerIndicator;
+    [SerializeField] private GameObject windupIndicator;
+    [SerializeField] private WindupFill windupFill;
 
-    public enum State { Moving, Windup, Stabbing, BetweenStabs, PostStab }
+    public enum State { Moving, Windup, Stabbing, BetweenStabs, PostStab, DashingToTarget }
     private float _stateTimer;
     private float _attackCooldownTimer;
     private int _attacksRemaining;
@@ -60,8 +61,13 @@ public class SpearGloom : EnemyBase
     private void OnStateChanged(State state)
     {
         spearHitbox.enabled = (state == State.Stabbing);
-        _physicsCollider.enabled = (state == State.Moving || state == State.PostStab);
-        dangerIndicator.SetActive(state == State.Windup);
+        _physicsCollider.enabled = (state == State.Moving || state == State.PostStab || state == State.DashingToTarget);
+        windupIndicator.SetActive(state == State.Windup);
+        if (windupFill != null)
+        {
+            if (state == State.Windup) windupFill.StartFill(windupDuration);
+            else windupFill.ResetFill();
+        }
         if (state == State.Windup)
             _animator.Play(SpearWindupHash, 0, 0f);
         else if (state == State.Stabbing)
@@ -112,7 +118,15 @@ public class SpearGloom : EnemyBase
 
             case State.BetweenStabs:
                 if (_stateTimer <= 0f)
-                    EnterWindup();
+                {
+                    if (!TargetInRange())
+                        EnterDashToTarget();
+                    else
+                        EnterWindup();
+                }
+                break;
+
+            case State.DashingToTarget:
                 break;
 
             case State.PostStab:
@@ -146,6 +160,18 @@ public class SpearGloom : EnemyBase
     {
         _state = State.BetweenStabs;
         _stateTimer = betweenStabPause;
+    }
+
+    private void EnterDashToTarget()
+    {
+        _state = State.DashingToTarget;
+        StartCoroutine(DashToTargetThenWindup());
+    }
+
+    private System.Collections.IEnumerator DashToTargetThenWindup()
+    {
+        yield return StartCoroutine(DashToTarget(moveSpeed * 20f, preferredRange / 2f));
+        EnterWindup();
     }
 
     private void EnterPostStab()

@@ -11,7 +11,8 @@ public class BlitzGloom : EnemyBase
     [SerializeField] private float blitzDistance = 10f;
     [SerializeField] private float blitzSpeed = 20f;
     [SerializeField] private int blitzesPerAttack = 1;
-    [SerializeField] private GameObject dangerIndicator;
+    [SerializeField] private GameObject windupIndicator;
+    [SerializeField] private WindupFill windupFill;
 
     public enum State { Moving, Windup, Blitzing, PostBlitz }
     private float _stateTimer;
@@ -43,15 +44,20 @@ public class BlitzGloom : EnemyBase
 
     private void OnStateChanged(State state)
     {
-        dangerIndicator.SetActive(state == State.Windup);
+        if (windupIndicator != null) windupIndicator.SetActive(state == State.Windup);
+        if (windupFill != null)
+        {
+            if (state == State.Windup) windupFill.StartFill(windupDuration);
+            else windupFill.ResetFill();
+        }
     }
 
     protected override void Update()
     {
         base.Update();
 
-        if (_state == State.Windup && dangerIndicator != null && dangerIndicator.activeSelf)
-            dangerIndicator.transform.rotation = Quaternion.LookRotation(_syncBlitzDirection.value);
+        if (_state == State.Windup && windupIndicator != null && windupIndicator.activeSelf)
+            windupIndicator.transform.rotation = Quaternion.LookRotation(_syncBlitzDirection.value);
 
         if (!isServer) return;
         if (_isDead) return;

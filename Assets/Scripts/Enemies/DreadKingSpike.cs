@@ -18,17 +18,17 @@ public class DreadKingSpike : BossBase
     [SerializeField] private float attackCooldown = 8f;
     [SerializeField] private int chargesPerAttack = 2;
     [SerializeField] private float betweenChargePause = 0.5f;
-    [SerializeField] private GameObject chargeDangerIndicator;
+    [SerializeField] private GameObject chargeWindupIndicator;
+    [SerializeField] private WindupFill chargeWindupFill;
 
     [Header("AoE")]
     [SerializeField] private float aoeWindupDuration = 1.5f;
     [SerializeField] private float aoeRadius = 8f;
-    [SerializeField] private GameObject aoeDangerIndicator;
     [SerializeField] private GameObject aoeWindupIndicator;
+    [SerializeField] private WindupFill aoeWindupFill;
 
     [Header("Bombs")]
-    [SerializeField] private GameObject bombDangerIndicatorPrefab;
-    [SerializeField] private GameObject bombWindupIndicatorPrefab;
+    [SerializeField] private GameObject bombIndicatorPrefab;
     [SerializeField] private float bombOffsetRadius = 1f;
     [SerializeField] private float bombWarningDuration = 0.5f;
     [SerializeField] private float bombRadius = 3f;
@@ -53,7 +53,6 @@ public class DreadKingSpike : BossBase
     private float _attackCooldownTimer = float.MaxValue;
     private Vector3 _chargeDirection;
     private Vector3 _chargeEndPoint;
-    private float _aoeWindupElapsed;
     private int _chargesRemaining;
     private float _preSurgeMoveSpeed;
     private bool _isSurging;
@@ -66,48 +65,33 @@ public class DreadKingSpike : BossBase
         OnStateChanged(_syncState.value);
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
 
-        if (aoeDangerIndicator != null)
-            aoeDangerIndicator.SetActive(false);
-        if (aoeWindupIndicator != null)
-            aoeWindupIndicator.SetActive(false);
-        if (chargeDangerIndicator != null)
-            chargeDangerIndicator.SetActive(false);
+        if (aoeWindupIndicator != null) aoeWindupIndicator.SetActive(false);
+        if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
     }
 
     private void OnStateChanged(State state)
     {
-        if (chargeDangerIndicator != null)
-            chargeDangerIndicator.SetActive(state == State.ChargeWindup);
-
-        if (aoeDangerIndicator != null)
+        if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(state == State.ChargeWindup);
+        if (chargeWindupFill != null)
         {
-            aoeDangerIndicator.SetActive(state == State.AoeWindup);
-            if (state == State.AoeWindup)
-            {
-                _aoeWindupElapsed = 0f;
-                var s = aoeDangerIndicator.transform.localScale;
-                aoeDangerIndicator.transform.localScale = new Vector3(0f, s.y, 0f);
-            }
+            if (state == State.ChargeWindup) chargeWindupFill.StartFill(chargeWindupDuration);
+            else chargeWindupFill.ResetFill();
         }
-        if (aoeWindupIndicator != null)
-            aoeWindupIndicator.SetActive(state == State.AoeWindup);
+
+        if (aoeWindupIndicator != null) aoeWindupIndicator.SetActive(state == State.AoeWindup);
+        if (aoeWindupFill != null)
+        {
+            if (state == State.AoeWindup) aoeWindupFill.StartFill(aoeWindupDuration);
+            else aoeWindupFill.ResetFill();
+        }
     }
 
     protected override void Update()
     {
         base.Update();
 
-        if (_state == State.ChargeWindup && chargeDangerIndicator != null && chargeDangerIndicator.activeSelf)
-            chargeDangerIndicator.transform.rotation = Quaternion.LookRotation(_syncChargeDirection.value);
-
-        if (_state == State.AoeWindup && aoeDangerIndicator != null && aoeDangerIndicator.activeSelf)
-        {
-            _aoeWindupElapsed += Time.deltaTime;
-            float t = Mathf.Clamp01(_aoeWindupElapsed / aoeWindupDuration);
-            float diameter = Mathf.Lerp(0f, aoeRadius * 2f, t);
-            var s = aoeDangerIndicator.transform.localScale;
-            aoeDangerIndicator.transform.localScale = new Vector3(diameter, s.y, diameter);
-        }
+        if (_state == State.ChargeWindup && chargeWindupIndicator != null && chargeWindupIndicator.activeSelf)
+            chargeWindupIndicator.transform.rotation = Quaternion.LookRotation(_syncChargeDirection.value);
 
         if (!isServer || _isDead) return;
 
@@ -258,41 +242,17 @@ public class DreadKingSpike : BossBase
     private void SpawnBombRpc(Vector3 position)
     {
         Vector3 pos = new Vector3(position.x, 0.05f, position.z);
-        float diameter = bombRadius * 2f;
 
-        if (bombDangerIndicatorPrefab != null)
+        if (bombIndicatorPrefab != null)
         {
-            var danger = Instantiate(bombDangerIndicatorPrefab, pos, Quaternion.identity);
-            var s = danger.transform.localScale;
-            danger.transform.localScale = new Vector3(0f, s.y, 0f);
-            Destroy(danger, bombWarningDuration + 0.1f);
-            _activeBombIndicators.Add(danger);
-            StartCoroutine(GrowBombIndicator(danger, diameter));
-        }
-
-        if (bombWindupIndicatorPrefab != null)
-        {
-            var windup = Instantiate(bombWindupIndicatorPrefab, pos, Quaternion.identity);
-            var s = windup.transform.localScale;
-            windup.transform.localScale = new Vector3(diameter, s.y, diameter);
-            Destroy(windup, bombWarningDuration + 0.1f);
-            _activeBombIndicators.Add(windup);
+            var indicator = Instantiate(bombIndicatorPrefab, pos, Quaternion.identity);
+            Destroy(indicator, bombWarningDuration + 0.1f);
+            _activeBombIndicators.Add(indicator);
+            var fill = indicator.GetComponentInChildren<WindupFill>();
+            if (fill != null) fill.StartFill(bombWarningDuration);
         }
 
         StartCoroutine(BombDamageCoroutine(position));
-    }
-
-    private IEnumerator GrowBombIndicator(GameObject indicator, float targetDiameter)
-    {
-        float elapsed = 0f;
-        while (elapsed < bombWarningDuration && indicator != null)
-        {
-            elapsed += Time.deltaTime;
-            float t = Mathf.Clamp01(elapsed / bombWarningDuration);
-            var s = indicator.transform.localScale;
-            indicator.transform.localScale = new Vector3(Mathf.Lerp(0f, targetDiameter, t), s.y, Mathf.Lerp(0f, targetDiameter, t));
-            yield return null;
-        }
     }
 
     private IEnumerator BombDamageCoroutine(Vector3 position)

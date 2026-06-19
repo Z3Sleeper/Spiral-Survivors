@@ -16,7 +16,8 @@ public class LeaperGloom : EnemyBase
     [SerializeField] private float attackCooldown = 4f;
     [SerializeField] private Transform model;
     [SerializeField] private Collider aoeHitbox;
-    [SerializeField] private GameObject dangerIndicator;
+    [SerializeField] private GameObject windupIndicator;
+    [SerializeField] private WindupFill windupFill;
     [SerializeField] private float landingDuration = 0.1f;
     [SerializeField] private int leapsPerAttack = 1;
     [SerializeField] private float leapOffsetRadius = 1f;
@@ -60,28 +61,30 @@ public class LeaperGloom : EnemyBase
     private void OnStateChanged(State state)
     {
         aoeHitbox.enabled = (state == State.Landing);
-        dangerIndicator.SetActive(state == State.Windup || state == State.Leaping);
+        windupIndicator.SetActive(state == State.Windup || state == State.Leaping);
         if (state == State.Windup)
         {
             _animator.Play(WindupHash, 0, 0f);
-            dangerIndicator.transform.SetParent(null);
-            dangerIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
+            windupIndicator.transform.SetParent(null);
+            windupIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
+            if (windupFill != null) windupFill.StartFill(windupDuration + leapDuration);
         }
         else if (state == State.Leaping)
         {
             _animator.Play(LeapHash, 0, 0f);
-            dangerIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
+            windupIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
             _clientLeapElapsed = 0f;
         }
         else
         {
-            dangerIndicator.transform.SetParent(transform);
+            windupIndicator.transform.SetParent(transform);
+            if (windupFill != null) windupFill.ResetFill();
         }
     }
 
     private void OnLeapTargetChanged(Vector3 target)
     {
-        dangerIndicator.transform.position = new Vector3(target.x, 0.05f, target.z);
+        windupIndicator.transform.position = new Vector3(target.x, 0.05f, target.z);
     }
 
     protected override void Update()
@@ -184,7 +187,8 @@ public class LeaperGloom : EnemyBase
         _state = State.Landing;
         _stateTimer = landingDuration;
 
-        dangerIndicator.SetActive(false);
+        windupIndicator.SetActive(false);
+        if (windupFill != null) windupFill.ResetFill();
     }
 
     private void EnterPostLand()
@@ -215,7 +219,7 @@ public class LeaperGloom : EnemyBase
     [ObserversRpc]
     private void DestroyDangerIndicatorRpc()
     {
-        if (dangerIndicator != null)
-            Destroy(dangerIndicator);
+        if (windupIndicator != null)
+            Destroy(windupIndicator);
     }
 }

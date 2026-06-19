@@ -5,16 +5,22 @@ public class WeaponBlade : WeaponBase
 {
     [SerializeField] private Vector3 bladeHalfExtents = new(0.1f, 0.1f, 0.5f);
     private int _enemyHurtboxMask;
+    private int _strikeableMask;
     private readonly RaycastHit[] _sweepResults = new RaycastHit[32];
     private readonly Collider[] _overlapResults = new Collider[32];
+    private readonly RaycastHit[] _strikeableSweepResults = new RaycastHit[16];
+    private readonly Collider[] _strikeableOverlapResults = new Collider[16];
     private HashSet<EnemyBase> _currentOverlaps = new();
     private HashSet<EnemyBase> _newOverlaps = new();
+    private HashSet<IStrikeable> _currentStrikeables = new();
+    private HashSet<IStrikeable> _newStrikeables = new();
     private Vector3 _prevPosition;
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
+        _strikeableMask = LayerMask.GetMask("Strikeable");
         _prevPosition = transform.position;
         enabled = isOwner;
     }
@@ -25,6 +31,7 @@ public class WeaponBlade : WeaponBase
 
         Vector3 scaledHalfExtents = Vector3.Scale(bladeHalfExtents, transform.lossyScale);
         _newOverlaps.Clear();
+        _newStrikeables.Clear();
 
         Vector3 delta = transform.position - _prevPosition;
         float distance = delta.magnitude;
@@ -37,6 +44,13 @@ public class WeaponBlade : WeaponBase
                 var enemy = _sweepResults[i].collider.GetComponentInParent<EnemyBase>();
                 if (enemy != null) _newOverlaps.Add(enemy);
             }
+
+            int sCount = Physics.BoxCastNonAlloc(_prevPosition, scaledHalfExtents, delta / distance, _strikeableSweepResults, transform.rotation, distance, _strikeableMask);
+            for (int i = 0; i < sCount; i++)
+            {
+                var strikeable = _strikeableSweepResults[i].collider.GetComponentInParent<IStrikeable>();
+                if (strikeable != null) _newStrikeables.Add(strikeable);
+            }
         }
 
         int overlapCount = Physics.OverlapBoxNonAlloc(transform.position, scaledHalfExtents, _overlapResults, transform.rotation, _enemyHurtboxMask);
@@ -46,11 +60,27 @@ public class WeaponBlade : WeaponBase
             if (enemy != null) _newOverlaps.Add(enemy);
         }
 
+        int sOverlapCount = Physics.OverlapBoxNonAlloc(transform.position, scaledHalfExtents, _strikeableOverlapResults, transform.rotation, _strikeableMask);
+        for (int i = 0; i < sOverlapCount; i++)
+        {
+            var strikeable = _strikeableOverlapResults[i].GetComponentInParent<IStrikeable>();
+            if (strikeable != null) _newStrikeables.Add(strikeable);
+        }
+
         foreach (var enemy in _newOverlaps)
             if (!_currentOverlaps.Contains(enemy))
                 Hit(enemy);
 
+        foreach (var strikeable in _newStrikeables)
+            if (!_currentStrikeables.Contains(strikeable))
+            {
+                strikeable.OnStruck();
+                Vector3 hitPos = strikeable is Component c ? c.transform.position : transform.position;
+                SFXManager.instance?.Play(_stats.hitSound, hitPos);
+            }
+
         (_currentOverlaps, _newOverlaps) = (_newOverlaps, _currentOverlaps);
+        (_currentStrikeables, _newStrikeables) = (_newStrikeables, _currentStrikeables);
         _prevPosition = transform.position;
     }
 

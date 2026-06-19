@@ -60,6 +60,18 @@ PrefabInstance:
       propertyPath: m_Name
       value: Elite Shooter Gloom
       objectReference: {fileID: 0}
+    - target: {fileID: 1723240842023080235, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 5
+      objectReference: {fileID: 0}
+    - target: {fileID: 3812485605274019885, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3812485605274019885, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 7839943648137112170, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: m_LocalScale.x
       value: 2

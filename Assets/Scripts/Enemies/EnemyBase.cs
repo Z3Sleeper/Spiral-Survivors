@@ -9,6 +9,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     protected Rigidbody _rb;
     protected Collider _hurtbox;
     protected Collider _physicsCollider;
+    protected Collider _contactDamageCollider;
 
     [Header("Identity")]
     public string enemyName = "Enemy";
@@ -26,14 +27,14 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
     [Header("Contact Damage")]
-    public bool hasContactDamage = false;
+    public bool contactColliderEnabled = true;
     public float contactCooldown = 0.5f;
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
     [NonSerialized] public bool isFinalBoss = false;
     public EnemyBase Source => this;
     public virtual float GetDamage() => damage;
-    public virtual bool CanContactDamage => hasContactDamage;
+    public virtual bool CanContactDamage => true;
 
 
     public SyncVar<float> _currentHealthSync = new(0);
@@ -50,6 +51,8 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     [NonSerialized] public bool isPleb = false;
     [NonSerialized] public bool isUncapped = false;
 
+    public Transform CurrentTarget => _target;
+
     private float _findTargetTimer = 0;
     private const float FindTargetInterval = 1f;
     protected Transform _target;
@@ -57,8 +60,19 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     private void Awake()
     {
         _rb = GetComponent<Rigidbody>();
-        _hurtbox = transform.Find("Hurtbox").GetComponent<Collider>();
-        _physicsCollider = transform.Find("PhysicsCollider").GetComponent<Collider>();
+
+        var hurtboxChild = transform.Find("Hurtbox");
+        if (hurtboxChild != null) _hurtbox = hurtboxChild.GetComponent<Collider>();
+
+        var physicsChild = transform.Find("PhysicsCollider");
+        if (physicsChild != null) _physicsCollider = physicsChild.GetComponent<Collider>();
+
+        var contactChild = transform.Find("ContactDamageCollider");
+        if (contactChild != null)
+        {
+            _contactDamageCollider = contactChild.GetComponent<Collider>();
+            _contactDamageCollider.enabled = contactColliderEnabled;
+        }
 
         baseHealth = maxHealth;
         baseDamage = damage;
@@ -194,6 +208,21 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     {
         if (_target == null) return false;
         return Vector3.Distance(transform.position, _target.position) <= preferredRange + rangeToleranceFar;
+    }
+
+    protected IEnumerator DashToTarget(float speed, float stopDistance)
+    {
+        while (!_isDead && _target != null && Vector3.Distance(transform.position, _target.position) > stopDistance)
+        {
+            Vector3 toTarget = _target.position - transform.position;
+            toTarget.y = 0f;
+            Vector3 dir = toTarget.normalized;
+            _rb.linearVelocity = dir * speed;
+            if (dir != Vector3.zero)
+                _rb.MoveRotation(Quaternion.LookRotation(dir));
+            yield return null;
+        }
+        _rb.linearVelocity = Vector3.zero;
     }
 
     public virtual void TakeDamage(float damage)

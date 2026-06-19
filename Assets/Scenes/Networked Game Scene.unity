@@ -5082,6 +5082,7 @@ MonoBehaviour:
     - {fileID: 1597157536724350220, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
     - {fileID: 1597157536724350220, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
     - {fileID: 1597157536724350220, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
+    - {fileID: 1597157536724350220, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
     elite:
     - {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
     - {fileID: 8365554543068639129, guid: 427f6ece90e93cb47b6e51c56f1e43fd, type: 3}
@@ -5097,7 +5098,10 @@ MonoBehaviour:
     - {fileID: 1597157536724350220, guid: 5582946baac56054385e9374fd23a0d6, type: 3}
   tier2:
     normal:
+    - {fileID: 536332022644787569, guid: 5c01dcc94c787c8499071403c9d5b958, type: 3}
+    - {fileID: 6839534502293854224, guid: 1be34773563bc2044a878f6031398737, type: 3}
     - {fileID: 8752698864854581044, guid: cf5c8507dd0e6de49a30c69d8646758e, type: 3}
+    - {fileID: 4647792432446857248, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
     elite: []
     miniboss: []
     boss: []

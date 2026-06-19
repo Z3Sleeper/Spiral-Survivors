@@ -21,8 +21,8 @@ TagManager:
   - XPOrb
   - Obstacle
   - ContactDamage
-  - 
-  - 
+  - Strikeable
+  - EnemyObject
   - 
   - 
   - Minimap Icon
