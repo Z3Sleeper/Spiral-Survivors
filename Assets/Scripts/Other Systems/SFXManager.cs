@@ -6,7 +6,7 @@ public class SFXManager : MonoBehaviour
     public static SFXManager instance;
 
     [SerializeField] private AudioMixerGroup sfxGroup;
-    [SerializeField] private int poolSize = 10;
+    [SerializeField] private int poolSize = 64;
 
     private AudioSource[] _pool;
     private int _index;

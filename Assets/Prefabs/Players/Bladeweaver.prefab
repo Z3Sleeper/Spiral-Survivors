@@ -781,7 +781,7 @@ MonoBehaviour:
   _controller: {fileID: 5418513144571543119}
   _hurtbox: {fileID: 1046179636567246685}
   _physicsCollider: {fileID: 7874162270675813079}
-  hitSound: {fileID: 8300000, guid: 46eb98bbef4754d43b95d85ec992d28f, type: 3}
+  hitSound: {fileID: 8300000, guid: 719c88378fbe95e48a7810292b6df95b, type: 3}
   damagedSound: {fileID: 8300000, guid: 48b83bb02b5dbe1428951aaa5c764aaa, type: 3}
   _renderers:
   - {fileID: 4797182340578565043}
