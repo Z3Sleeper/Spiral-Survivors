@@ -33,9 +33,7 @@ public class EnemySpawner : NetworkIdentity
     [SerializeField] private float spawnIntervalQ3 = 1.5f;
     [SerializeField] private float spawnIntervalQ4 = 0.75f;
     [SerializeField] private float cycleInterval = 150f;
-    [SerializeField] private float eliteChanceQ2 = 0.01f;
-    [SerializeField] private float eliteChanceQ3 = 0.05f;
-    [SerializeField] private float eliteChanceQ4 = 0.1f;
+    [SerializeField] private float eliteChance = 0.05f;
     public float coopSpawnTimeScalar = 0.5f;
     [SerializeField] private float coopBossHealthScalar = 0.5f;
     [SerializeField] private int maxNormalEnemies = 100;
@@ -56,7 +54,7 @@ public class EnemySpawner : NetworkIdentity
         get => _cycleTimer.value;
         set => _cycleTimer.value = value;
     }
-    private float _currentEliteChance;
+    private float _elitePrdChance;
     private int _playerCount;
     private float _currentSpawnInterval = 1f;
     private float _currentPlebSpawnInterval = 1f;
@@ -94,7 +92,7 @@ public class EnemySpawner : NetworkIdentity
         EnemyBase.ActiveNormalCount = 0;
         EnemyBase.ActivePlebCount = 0;
         _playerCount = networkManager.playerCount;
-        _currentEliteChance = 0f;
+        _elitePrdChance = 0f;
         CycleTimer = cycleInterval;
         _currentSpawnInterval = spawnIntervalQ1;
         _currentPlebSpawnInterval = plebSpawnIntervalQ1;
@@ -110,26 +108,25 @@ public class EnemySpawner : NetworkIdentity
     {
         while (true)
         {
+            float interval = GetSpawnInterval();
+
             if (_spawnPhase < 1 && CycleTimer < cycleInterval * 0.75f)
             {
                 _spawnPhase = 1;
                 _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ2);
                 _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ2);
-                _currentEliteChance = eliteChanceQ2;
             }
             if (_spawnPhase < 2 && CycleTimer < cycleInterval * 0.5f)
             {
                 _spawnPhase = 2;
                 _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ3);
                 _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ3);
-                _currentEliteChance = eliteChanceQ3;
             }
             if (_spawnPhase < 3 && CycleTimer < cycleInterval * 0.25f)
             {
                 _spawnPhase = 3;
                 _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ4);
                 _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ4);
-                _currentEliteChance = eliteChanceQ4;
             }
 
             bool bossAlive = IsBossAlive();
@@ -138,16 +135,24 @@ public class EnemySpawner : NetworkIdentity
                 _currentSpawnInterval = spawnIntervalQ1;
                 _currentPlebSpawnInterval = plebSpawnIntervalQ1;
                 _spawnPhase = 0;
-                _currentEliteChance = 0f;
+                _elitePrdChance = 0f;
             }
             _bossWasAlive = bossAlive;
 
             if (!bossAlive)
             {
-                if (tier1.elite.Count > 0 && _spawnPhase >= 1
-                    && UnityEngine.Random.value < _currentEliteChance)
+                if (tier1.elite.Count > 0 && _spawnPhase >= 1)
                 {
-                    SpawnThisEnemy(GetRandom(tier1.elite), false, isUncapped: true);
+                    _elitePrdChance += eliteChance;
+                    if (UnityEngine.Random.value < _elitePrdChance)
+                    {
+                        SpawnThisEnemy(GetRandom(tier1.elite), false, isUncapped: true);
+                        _elitePrdChance = 0f;
+                    }
+                    else if (_currentSet.Count > 0 && EnemyBase.ActiveNormalCount < maxNormalEnemies)
+                    {
+                        SpawnThisEnemy(GetRandom(_currentSet), false);
+                    }
                 }
                 else if (_currentSet.Count > 0 && EnemyBase.ActiveNormalCount < maxNormalEnemies)
                 {
@@ -155,7 +160,7 @@ public class EnemySpawner : NetworkIdentity
                 }
             }
 
-            yield return new WaitForSeconds(GetSpawnInterval());
+            yield return new WaitForSeconds(interval);
         }
     }
 
@@ -199,6 +204,7 @@ public class EnemySpawner : NetworkIdentity
     {
         if (tier1.normal.Count == 0) return;
 
+        // Step 1: pick up to 3 enemies randomly from the full pool (the fallback set)
         List<GameObject> pool = new(tier1.normal);
         List<GameObject> newSet = new();
 
@@ -210,31 +216,30 @@ public class EnemySpawner : NetworkIdentity
             pool.RemoveAt(idx);
         }
 
-        if (_previousSet.Count == 3 && newSet.Count == 3)
+        // Step 2: try to replace newSet with a fully exclusive pick (no enemies from last cycle)
+        // This only runs if there was a previous cycle to compare against
+        if (_previousSet.Count > 0 && newSet.Count > 0)
         {
-            bool allSame = !newSet.Except(_previousSet).Any();
-            if (allSame)
-            {
-                var excluded = tier1.normal.Except(newSet).FirstOrDefault();
-                if (excluded != null)
-                    newSet[UnityEngine.Random.Range(0, newSet.Count)] = excluded;
-            }
-
-            /* TODO: When more than 4 enemies are available, use this instead:
             var availablePool = tier1.normal.Except(_previousSet).ToList();
-            if (availablePool.Count >= 3)
+
+            if (availablePool.Count >= pickCount)
             {
+                // Enough fresh enemies exist → overwrite newSet with exclusive picks
+                // 6+ enemies: always reaches here
                 newSet.Clear();
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < pickCount; i++)
                 {
-                    int idx = Random.Range(0, availablePool.Count);
+                    int idx = UnityEngine.Random.Range(0, availablePool.Count);
                     newSet.Add(availablePool[idx]);
                     availablePool.RemoveAt(idx);
                 }
             }
-            */
+            // Not enough fresh enemies → keep the random newSet from Step 1
+            // 4-5 enemies: some repeats from last cycle are possible
+            // 3 or fewer enemies: repetition is unavoidable
         }
 
+        // Step 3: slide the window — current becomes previous, new becomes current
         _previousSet = new List<GameObject>(_currentSet);
         _currentSet = newSet;
     }

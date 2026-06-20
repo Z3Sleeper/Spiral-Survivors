@@ -80,6 +80,7 @@ public class GameManager : NetworkIdentity
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        Time.timeScale = 1f;
         _isPaused.onChanged += OnPausedChanged;
     }
 

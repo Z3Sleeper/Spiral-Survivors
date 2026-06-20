@@ -2,7 +2,7 @@ using UnityEngine;
 
 public class SurgeNoMoveSpeedPenaltyAugment : MonoBehaviour
 {
-    [SerializeField] private float _energyRegenFlatBonus = 10f;
+    [SerializeField] private float _energyRegenFlatBonus = 5f;
     [SerializeField] private float _energyRegenPercentBonus = 0.25f;
     private void Start()
     {

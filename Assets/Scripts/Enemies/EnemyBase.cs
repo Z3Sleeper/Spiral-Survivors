@@ -278,15 +278,17 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
 
         XPOrbManager.instance.SpawnOrbs(transform.position, xpValue);
 
-        // Disable colliders
+        HideOnDeathRpc();
+        Destroy(gameObject, 0.5f);
+    }
+
+    [ObserversRpc]
+    private void HideOnDeathRpc()
+    {
         foreach (var col in GetComponentsInChildren<Collider>())
             col.enabled = false;
-
-        // Hide visually
         foreach (var renderer in GetComponentsInChildren<Renderer>())
             renderer.enabled = false;
-
-        Destroy(gameObject, 0.5f);
     }
 
 }

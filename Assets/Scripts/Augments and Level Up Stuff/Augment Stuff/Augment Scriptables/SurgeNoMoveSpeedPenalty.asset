@@ -12,11 +12,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: SurgeNoMoveSpeedPenalty
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Surge Mastery
+  displayName: Surge Master
   description: '<color=#FFFF00>Surging</color> no longer reduces <color=#FFFFFF>Movement
     Speed</color>.
 
-    <color=#FFFF00>+10 Energy Regen</color>
+    <color=#FFFF00>+5 Energy Regen</color>
 
     <color=#FFFF00>+25%
     Energy Regen</color>'
@@ -25,4 +25,6 @@ MonoBehaviour:
   excludedClasses: 
   effectPrefab: {fileID: 4890222564328546812, guid: 2ba6f15d6785a4b4eab15340e61a6a5c, type: 3}
   incompatibleAugments: []
-  requiredAugments: []
+  requiredAugments:
+  - {fileID: 11400000, guid: d9b5811cc7ce07340bd30b2c79d34206, type: 2}
+  requiredOneOfAugments: []

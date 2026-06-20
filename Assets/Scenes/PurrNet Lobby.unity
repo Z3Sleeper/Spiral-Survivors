@@ -7173,7 +7173,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 15156e7f57bff964485891eba8344bbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  lobbyType: 2
+  lobbyType: 1
   maxLobbiesToFind: 10
   handleSteamInit: 1
 --- !u!114 &1097043115
@@ -7195,14 +7195,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - SpinIt
+      - V0.05c
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - SpinIt
+    - V0.05c
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -8988,7 +8988,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SFXManager
   sfxGroup: {fileID: -3687982621319482177, guid: 0f8a092caa0b11148a04e048e5bfd7ad, type: 2}
-  poolSize: 10
+  poolSize: 256
 --- !u!4 &1301597217
 Transform:
   m_ObjectHideFlags: 0
@@ -9960,6 +9960,7 @@ GameObject:
   - component: {fileID: 1457045224}
   - component: {fileID: 1457045223}
   - component: {fileID: 1457045222}
+  - component: {fileID: 1457045225}
   m_Layer: 0
   m_Name: NetworkManager
   m_TagString: Untagged
@@ -10005,7 +10006,7 @@ MonoBehaviour:
   _networkAssets: {fileID: 11400000, guid: a13d30c07b65db1438ea2fdcb5f27d78, type: 2}
   _networkRules: {fileID: 11400000, guid: d8799083b96579a42b8b2d03e4ceae98, type: 2}
   _visibilityRules: {fileID: 11400000, guid: 8f014a5bd8dc68646a2a3c0b18c5bbd8, type: 2}
-  _authenticator: {fileID: 0}
+  _authenticator: {fileID: 1457045225}
   _tickRate: 20
   _patchLingeringProcessBug: 0
 --- !u!4 &1457045224
@@ -10023,6 +10024,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1457045225
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1457045220}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 16782b38344eb104ab822e5ee676d572, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VersionAuthenticator
+  _timeout: 5
 --- !u!1 &1487335973
 GameObject:
   m_ObjectHideFlags: 0

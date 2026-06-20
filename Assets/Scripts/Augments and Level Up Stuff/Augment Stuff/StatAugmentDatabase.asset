@@ -37,7 +37,7 @@ MonoBehaviour:
   - statType: 4
     displayName: Attack Speed
     color: {r: 1, g: 0, b: 0.3137255, a: 1}
-    value: 15
+    value: 10
     prependText: +
     appendText: '%'
     allowedClasses: 

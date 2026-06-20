@@ -5120,11 +5120,9 @@ MonoBehaviour:
   spawnIntervalQ3: 1.5
   spawnIntervalQ4: 0.75
   cycleInterval: 240
-  eliteChanceQ2: 0.03
-  eliteChanceQ3: 0.06
-  eliteChanceQ4: 0.09
-  coopSpawnTimeScalar: 0.2
-  coopBossHealthScalar: 0.2
+  eliteChance: 0.07
+  coopSpawnTimeScalar: 0.25
+  coopBossHealthScalar: 0.25
   maxNormalEnemies: 100
   maxPlebEnemies: 300
   plebSpawnAmount: 3
