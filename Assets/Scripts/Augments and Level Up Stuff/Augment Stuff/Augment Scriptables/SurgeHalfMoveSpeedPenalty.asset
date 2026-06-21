@@ -18,7 +18,7 @@ MonoBehaviour:
 
     <color=#FFFF00>+5 Energy Regen</color>
 
-    <color=#FFFF00>+25%
+    <color=#FFFF00>+15%
     Energy Regen</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 

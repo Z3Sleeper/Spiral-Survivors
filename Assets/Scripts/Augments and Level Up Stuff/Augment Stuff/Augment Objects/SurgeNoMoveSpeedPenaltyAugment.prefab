@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeNoMoveSpeedPenaltyAugment
   _energyRegenFlatBonus: 5
-  _energyRegenPercentBonus: 0.25
+  _energyRegenPercentBonus: 0.15

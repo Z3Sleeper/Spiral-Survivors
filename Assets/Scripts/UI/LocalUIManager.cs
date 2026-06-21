@@ -30,12 +30,21 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI bossTimerText;
 
+    [Header("Boss UI")]
+    [SerializeField] private GameObject bossUIContainer;
+    [SerializeField] private Slider bossHealthBar;
+    [SerializeField] private TextMeshProUGUI bossHealthText;
+    [SerializeField] private TextMeshProUGUI bossNameText;
+
     [Header("Level Up Panel")]
     [SerializeField] private GameObject levelUpScreen;
     [SerializeField] private TextMeshProUGUI levelUpTimerText;
     [SerializeField] private AugmentCardUI cardPrefab;
     [SerializeField] private Transform cardContainer;
     private List<AugmentCardUI> _cardPool = new();
+
+    [Header("Settings")]
+    [SerializeField] private GameObject settingsPanel;
 
     [Header("Pause System")]
     [SerializeField] private TextMeshProUGUI pauseCountdownText;
@@ -60,9 +69,11 @@ public class LocalUIManager : MonoBehaviour
         instance = this;
         levelUpScreen.SetActive(false);
         pauseCountdownText.gameObject.SetActive(false);
+        bossUIContainer.SetActive(false);
         statsUI.SetActive(true);
         statsUIExpanded.SetActive(false);
         pauseScreen.SetActive(false);
+        if (settingsPanel != null) settingsPanel.SetActive(false);
     }
 
     public void SetStatsExpanded(bool expanded)
@@ -179,6 +190,16 @@ public class LocalUIManager : MonoBehaviour
         GameManager.instance.TogglePauseReadyRpc(NetworkManager.main.localPlayer);
     }
 
+    public void OnSettingsClicked()
+    {
+        if (settingsPanel != null) settingsPanel.SetActive(true);
+    }
+
+    public void OnSettingsBackClicked()
+    {
+        if (settingsPanel != null) settingsPanel.SetActive(false);
+    }
+
     public void OnResumeClicked()
     {
         GameManager.instance.RequestPauseRpc();
@@ -213,7 +234,7 @@ public class LocalUIManager : MonoBehaviour
         UpdateSP();
         UpdateXP();
         UpdateRunClock();
-        UpdateBossCountdown();
+        UpdateBossUI();
     }
 
     private void UpdateHealthAndShields()
@@ -299,12 +320,28 @@ public class LocalUIManager : MonoBehaviour
         timerText.text = $"<b>{minutes:00}:{seconds:00}</b>";
     }
 
-    private void UpdateBossCountdown()
+    private void UpdateBossUI()
     {
         if (EnemySpawner.instance == null) return;
-        int bossSeconds = (int)EnemySpawner.instance.CycleTimer;
-        int bossMinutes = bossSeconds / 60;
-        int bossSecondsRemainder = bossSeconds % 60;
-        bossTimerText.text = $"<b>Next Boss: {bossMinutes:00}:{bossSecondsRemainder:00}</b>";
+
+        var boss = BossBase.Current;
+        bool bossAlive = boss != null && !boss._isDead;
+
+        bossUIContainer.SetActive(bossAlive);
+        bossTimerText.gameObject.SetActive(!bossAlive);
+
+        if (bossAlive)
+        {
+            bossHealthBar.value = boss.maxHealth > 0f
+                ? boss.CurrentHealth / boss.maxHealth
+                : 0f;
+            bossHealthText.text = $"<b>{(int)boss.CurrentHealth}/{(int)boss.maxHealth}</b>";
+            bossNameText.text = boss.enemyName;
+        }
+        else
+        {
+            int bossSeconds = (int)EnemySpawner.instance.CycleTimer;
+            bossTimerText.text = $"<b>Next Boss: {bossSeconds / 60:00}:{bossSeconds % 60:00}</b>";
+        }
     }
 }

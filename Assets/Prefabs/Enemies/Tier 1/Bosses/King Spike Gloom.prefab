@@ -248,7 +248,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &6776046117547459293
 Transform:
   m_ObjectHideFlags: 0
@@ -551,7 +551,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 1597157536724350220}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: afc4ae9f9a386f64681b12a90c8da280, type: 3}
+  m_Script: {fileID: 11500000, guid: 9f3e77b90df423a458c30bcc280431d6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DreadKingSpike
   _isSetup: 0
@@ -571,7 +571,7 @@ MonoBehaviour:
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
   damage: 10
-  xpValue: 300
+  xpValue: 500
   contactColliderEnabled: 1
   contactCooldown: 0.5
   _currentHealthSync:
@@ -1045,7 +1045,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &8818289513128965617
 Transform:
   m_ObjectHideFlags: 0

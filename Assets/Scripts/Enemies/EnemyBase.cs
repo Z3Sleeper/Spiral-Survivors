@@ -31,7 +31,6 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     public float contactCooldown = 0.5f;
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
-    [NonSerialized] public bool isFinalBoss = false;
     public EnemyBase Source => this;
     public virtual float GetDamage() => damage;
     public virtual bool CanContactDamage => true;
@@ -274,9 +273,6 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         ActiveCount--;
         if (isPleb) ActivePlebCount--;
         else if (!isUncapped) ActiveNormalCount--;
-
-        if (isFinalBoss)
-            GameManager.instance.TriggerWin();
 
         XPOrbManager.instance.SpawnOrbs(transform.position, xpValue);
 

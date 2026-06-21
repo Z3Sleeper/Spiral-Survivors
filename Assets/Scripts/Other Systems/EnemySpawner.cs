@@ -36,7 +36,7 @@ public class EnemySpawner : NetworkIdentity
     [SerializeField] private float eliteChance = 0.05f;
     public enum WinOnBoss { First = 1, Second = 2, Third = 3, Fourth = 4 }
     [SerializeField] private WinOnBoss winOnBoss = WinOnBoss.Second;
-    private int _bossesSpawned = 0;
+    private int _bossesDefeated = 0;
     public float coopSpawnTimeScalar = 0.5f;
     [SerializeField] private float coopBossHealthScalar = 0.5f;
     [SerializeField] private int maxNormalEnemies = 100;
@@ -138,10 +138,17 @@ public class EnemySpawner : NetworkIdentity
             bool bossAlive = IsBossAlive();
             if (_bossWasAlive && !bossAlive && _activeBoss != null)
             {
+                _bossesDefeated++;
+                if (_bossesDefeated == (int)winOnBoss)
+                {
+                    GameManager.instance.TriggerWin();
+                    yield break;
+                }
                 _currentSpawnInterval = spawnIntervalQ1;
                 _currentPlebSpawnInterval = plebSpawnIntervalQ1;
                 _spawnPhase = 0;
                 _elitePrdChance = 0f;
+                RollNewSet();
             }
             _bossWasAlive = bossAlive;
 
@@ -203,12 +210,7 @@ public class EnemySpawner : NetworkIdentity
 
             var bossTier = GetCurrentTier();
             if (bossTier.boss.Count > 0)
-            {
-                _bossesSpawned++;
-                SpawnThisEnemy(GetRandom(bossTier.boss), true, _bossesSpawned == (int)winOnBoss);
-            }
-
-            RollNewSet();
+                SpawnThisEnemy(GetRandom(bossTier.boss), true);
         }
     }
 
@@ -257,7 +259,7 @@ public class EnemySpawner : NetworkIdentity
         _currentSet = newSet;
     }
 
-    private TierEnemies GetCurrentTier() => _bossesSpawned switch
+    private TierEnemies GetCurrentTier() => _bossesDefeated switch
     {
         0 => tier1,
         1 => tier2,
@@ -273,13 +275,12 @@ public class EnemySpawner : NetworkIdentity
         return _currentSpawnInterval / coopScale;
     }
 
-    private void SpawnThisEnemy(GameObject prefab, bool isBoss, bool isFinalBoss = false, bool noXP = false, bool isPleb = false, bool isUncapped = false)
+    private void SpawnThisEnemy(GameObject prefab, bool isBoss, bool noXP = false, bool isPleb = false, bool isUncapped = false)
     {
-        if (prefab == null) return;
+        if (prefab == null || !isSpawned) return;
         var obj = Instantiate(prefab, GetSpawnPosition(), Quaternion.identity);
         if (obj == null) return;
         var enemy = obj.GetComponent<EnemyBase>();
-        enemy.isFinalBoss = isFinalBoss;
         enemy.isPleb = isPleb;
         enemy.isUncapped = isUncapped || isBoss;
         if (noXP) enemy.xpValue = 0f;

@@ -76,7 +76,7 @@ public class WeaponBlade : WeaponBase
             {
                 strikeable.OnStruck();
                 Vector3 hitPos = strikeable is Component c ? c.transform.position : transform.position;
-                SFXManager.instance?.Play(_stats.hitSound, hitPos);
+                SFXManager.instance?.Play(_stats.hitSound, hitPos, 1f, 0.05f);
             }
 
         (_currentOverlaps, _newOverlaps) = (_newOverlaps, _currentOverlaps);
@@ -91,6 +91,6 @@ public class WeaponBlade : WeaponBase
             damage *= _stats.CritDamage;
         enemy.TakeDamageRpc(damage);
         InvokeOnStrike(enemy);
-        SFXManager.instance?.Play(_stats.hitSound, enemy.transform.position);
+        SFXManager.instance?.Play(_stats.hitSound, enemy.transform.position, 1f, 0.05f);
     }
 }

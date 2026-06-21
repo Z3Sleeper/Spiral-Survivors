@@ -268,7 +268,7 @@ MonoBehaviour:
   bonusCritDamageFlat: 0
   bonusCritDamagePercent: 1
   basePierce: 0
-  bonusPierceFlat: 0
+  bonusPierceFlat: 0.5
   bonusPiercePercent: 1
   baseRicochet: 0
   bonusRicochetFlat: 0

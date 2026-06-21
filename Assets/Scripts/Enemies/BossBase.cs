@@ -2,6 +2,8 @@ using UnityEngine;
 
 public class BossBase : EnemyBase
 {
+    public static BossBase Current { get; private set; }
+
     private const float EnrageDuration = 180f;
     private float _enrageTimer = EnrageDuration;
     private bool _isEnraged = false;
@@ -9,7 +11,14 @@ public class BossBase : EnemyBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        Current = this;
         _enrageTimer = EnrageDuration;
+    }
+
+    protected override void Die()
+    {
+        Current = null;
+        base.Die();
     }
 
     protected override void Update()

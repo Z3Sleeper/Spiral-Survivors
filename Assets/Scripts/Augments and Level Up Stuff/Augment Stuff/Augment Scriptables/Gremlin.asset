@@ -21,7 +21,7 @@ MonoBehaviour:
     <color=#FFFFFF>+10% Movement Speed</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
-  excludedClasses: 
+  excludedClasses: 03000000
   effectPrefab: {fileID: 5407692293608365112, guid: 62649fc437bc4cf4c992b45bf5480be8, type: 3}
   incompatibleAugments:
   - {fileID: 11400000, guid: 9ab11cee8db2d9a468c2754ffb14a313, type: 2}

@@ -26,7 +26,9 @@ public class WeaponArrow : NetworkIdentity
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
     private readonly RaycastHit[] _strikeableResults = new RaycastHit[8];
     private bool _destroyed;
+    private bool _isInitialHit = true;
     private CharacterStats _ownerStats;
+    private Dictionary<EnemyBase, float> _initialHitCooldowns;
 
     protected override void OnSpawned()
     {
@@ -36,7 +38,7 @@ public class WeaponArrow : NetworkIdentity
         enabled = isOwner;
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f, float onHitDropOff = 0f)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f, float onHitDropOff = 0f, Dictionary<EnemyBase, float> initialHitCooldowns = null)
     {
         _ownerStats = ownerStats;
         _damage = damage;
@@ -50,6 +52,7 @@ public class WeaponArrow : NetworkIdentity
         _piercesRemaining = pierce;
         _ricochetsRemaining = ricochet;
         _hitSound = hitSound;
+        _initialHitCooldowns = initialHitCooldowns;
         _prevPosition = transform.position;
     }
 
@@ -100,6 +103,10 @@ public class WeaponArrow : NetworkIdentity
     {
         _hitEnemies.Add(enemy);
 
+        if (_isInitialHit && _initialHitCooldowns != null)
+            _initialHitCooldowns[enemy] = Time.time;
+        _isInitialHit = false;
+
         float damage = _damage;
         if (Random.value < _critChance)
             damage *= _critDamage;
@@ -108,7 +115,7 @@ public class WeaponArrow : NetworkIdentity
         _damage *= 1f - _damageDropoff;
         if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy, _onHitEffectiveness);
         _onHitEffectiveness *= 1f - _onHitDropOff;
-        SFXManager.instance?.Play(_hitSound, transform.position);
+        SFXManager.instance?.Play(_hitSound, transform.position, 1f, 0.05f);
 
         if (_ricochetsRemaining > 0)
         {
@@ -119,6 +126,7 @@ public class WeaponArrow : NetworkIdentity
                 transform.forward = _direction;
                 _distanceTravelled = 0f;
                 _ricochetsRemaining--;
+                _isInitialHit = false;
                 return;
             }
         }
@@ -135,7 +143,7 @@ public class WeaponArrow : NetworkIdentity
 
     private void ProcessStrikeableHit()
     {
-        SFXManager.instance?.Play(_hitSound, transform.position);
+        SFXManager.instance?.Play(_hitSound, transform.position, 1f, 0.05f);
 
         if (_ricochetsRemaining > 0)
         {
@@ -146,6 +154,7 @@ public class WeaponArrow : NetworkIdentity
                 transform.forward = _direction;
                 _distanceTravelled = 0f;
                 _ricochetsRemaining--;
+                _isInitialHit = false;
                 return;
             }
         }

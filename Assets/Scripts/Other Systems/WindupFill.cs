@@ -17,9 +17,11 @@ public class WindupFill : MonoBehaviour
     private float _duration;
     private float _elapsed;
     private bool _filling;
+    private bool _awoken;
 
     private void Awake()
     {
+        _awoken = true;
         _baseLocalScale = transform.localScale;
 
         switch (fillAxis)
@@ -67,6 +69,7 @@ public class WindupFill : MonoBehaviour
 
     private void Apply(float t)
     {
+        if (!_awoken) return;
         if (fillType == FillType.Radial)
         {
             transform.localScale = _baseLocalScale * t;

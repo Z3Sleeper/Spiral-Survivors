@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
 
-public class DreadKingSpike : BossBase
+public class KingSpike : BossBase
 {
     [Header("Damage")]
     [SerializeField] private float chargeDamageMultiplier = 1f;

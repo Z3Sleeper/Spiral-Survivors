@@ -76,14 +76,12 @@ public class LobbySceneController : MonoBehaviour
 
     public void OnSettingsClicked()
     {
-        mainMenuPanel.SetActive(false);
         settingsPanel.SetActive(true);
     }
 
     public void OnSettingsBackClicked()
     {
         settingsPanel.SetActive(false);
-        mainMenuPanel.SetActive(true);
     }
 
     public void OnEncyclopediaClicked()

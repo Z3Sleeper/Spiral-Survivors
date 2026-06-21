@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Audio;
 
@@ -11,6 +12,7 @@ public class SFXManager : MonoBehaviour
     private AudioSource[] _pool;
     private int _index;
     private InputSystem_Actions _input;
+    private readonly Dictionary<AudioClip, float> _lastPlayTimes = new();
 
     private void Awake()
     {
@@ -37,9 +39,15 @@ public class SFXManager : MonoBehaviour
             AudioListener.volume = AudioListener.volume > 0f ? 0f : 1f;
     }
 
-    public void Play(AudioClip clip, Vector3 position, float volume = 1f)
+    public void Play(AudioClip clip, Vector3 position, float volume = 1f, float minInterval = 0f)
     {
         if (clip == null) return;
+        if (minInterval > 0f)
+        {
+            if (_lastPlayTimes.TryGetValue(clip, out float last) && Time.unscaledTime - last < minInterval)
+                return;
+            _lastPlayTimes[clip] = Time.unscaledTime;
+        }
         var source = _pool[_index % poolSize];
         _index++;
         source.transform.position = position;

@@ -97,8 +97,8 @@ public class SpearGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (TargetInRange() && _attackCooldownTimer <= 0f)
-                    EnterWindup();
+                if (_attackCooldownTimer <= 0f)
+                    EnterDashToTarget();
                 break;
 
             case State.Windup:
@@ -118,12 +118,7 @@ public class SpearGloom : EnemyBase
 
             case State.BetweenStabs:
                 if (_stateTimer <= 0f)
-                {
-                    if (!TargetInRange())
-                        EnterDashToTarget();
-                    else
-                        EnterWindup();
-                }
+                    EnterDashToTarget();
                 break;
 
             case State.DashingToTarget:
