@@ -351,7 +351,7 @@ MonoBehaviour:
   preferredRange: 1
   rangeToleranceFar: 0.1
   rangeToleranceClose: 0.03
-  damage: 5
+  damage: 2.5
   xpValue: 5
   contactColliderEnabled: 0
   contactCooldown: 0.5
@@ -403,7 +403,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1597157536724350220}
   serializedVersion: 5
-  m_Mass: 5
+  m_Mass: 15
   m_LinearDamping: 9
   m_AngularDamping: 0
   m_CenterOfMass: {x: 0, y: 0, z: 0}

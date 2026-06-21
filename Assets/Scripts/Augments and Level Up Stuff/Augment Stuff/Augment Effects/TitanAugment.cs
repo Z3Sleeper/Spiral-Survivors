@@ -3,8 +3,8 @@ using UnityEngine;
 public class TitanAugment : MonoBehaviour
 {
     [SerializeField] private float _sizeMultiplier = 1.5f;
-    [SerializeField] private float _healthBonus = 0.3f;
-    [SerializeField] private float _damageBonus = 0.15f;
+    [SerializeField] private float _rangeBonus = 0.5f;
+    [SerializeField] private float _healthBonus = 0.2f;
 
     private static readonly string[] _unscaledChildren = { "ReviveZone", "WorldspaceUI", "Minimap Icon" };
 
@@ -14,7 +14,7 @@ public class TitanAugment : MonoBehaviour
         if (stats == null || !stats.isOwner) { Destroy(gameObject); return; }
 
         stats.transform.localScale *= _sizeMultiplier;
-        stats.bonusWeaponRangePercent *= _sizeMultiplier;
+        stats.bonusWeaponRangePercent += _rangeBonus;
         stats.bonusWeaponRadiusPercent *= _sizeMultiplier;
         stats.bonusWeaponSizePercent *= _sizeMultiplier;
 
@@ -25,8 +25,7 @@ public class TitanAugment : MonoBehaviour
                 child.localScale /= _sizeMultiplier;
         }
 
-        stats.MultiplyMaxHealthRpc(1f + _healthBonus);
-        stats.bonusWeaponDamagePercent += _damageBonus;
+        stats.AddMaxHealthPercentRpc(_healthBonus);
 
         Destroy(gameObject);
     }

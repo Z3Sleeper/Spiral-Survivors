@@ -34,6 +34,9 @@ public class EnemySpawner : NetworkIdentity
     [SerializeField] private float spawnIntervalQ4 = 0.75f;
     [SerializeField] private float cycleInterval = 150f;
     [SerializeField] private float eliteChance = 0.05f;
+    public enum WinOnBoss { First = 1, Second = 2, Third = 3, Fourth = 4 }
+    [SerializeField] private WinOnBoss winOnBoss = WinOnBoss.Second;
+    private int _bossesSpawned = 0;
     public float coopSpawnTimeScalar = 0.5f;
     [SerializeField] private float coopBossHealthScalar = 0.5f;
     [SerializeField] private int maxNormalEnemies = 100;
@@ -100,7 +103,7 @@ public class EnemySpawner : NetworkIdentity
         _bossWasAlive = false;
         StartCoroutine(SpawnLoop());
         StartCoroutine(CycleLoop());
-        if (tier1.pleb.Count > 0)
+        if (tier1.pleb.Count > 0 || tier2.pleb.Count > 0 || tier3.pleb.Count > 0 || tier4.pleb.Count > 0)
             StartCoroutine(PlebSpawnLoop());
     }
 
@@ -115,18 +118,21 @@ public class EnemySpawner : NetworkIdentity
                 _spawnPhase = 1;
                 _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ2);
                 _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ2);
+                RollNewSet();
             }
             if (_spawnPhase < 2 && CycleTimer < cycleInterval * 0.5f)
             {
                 _spawnPhase = 2;
                 _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ3);
                 _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ3);
+                RollNewSet();
             }
             if (_spawnPhase < 3 && CycleTimer < cycleInterval * 0.25f)
             {
                 _spawnPhase = 3;
                 _currentSpawnInterval = Mathf.Min(_currentSpawnInterval, spawnIntervalQ4);
                 _currentPlebSpawnInterval = Mathf.Min(_currentPlebSpawnInterval, plebSpawnIntervalQ4);
+                RollNewSet();
             }
 
             bool bossAlive = IsBossAlive();
@@ -141,12 +147,14 @@ public class EnemySpawner : NetworkIdentity
 
             if (!bossAlive)
             {
-                if (tier1.elite.Count > 0 && _spawnPhase >= 1)
+                bool eliteBlackout = _spawnPhase == 3 && CycleTimer < cycleInterval * 0.125f;
+                var tier = GetCurrentTier();
+                if (tier.elite.Count > 0 && _spawnPhase >= 1 && !eliteBlackout)
                 {
                     _elitePrdChance += eliteChance;
                     if (UnityEngine.Random.value < _elitePrdChance)
                     {
-                        SpawnThisEnemy(GetRandom(tier1.elite), false, isUncapped: true);
+                        SpawnThisEnemy(GetRandom(tier.elite), false, isUncapped: true);
                         _elitePrdChance = 0f;
                     }
                     else if (_currentSet.Count > 0 && EnemyBase.ActiveNormalCount < maxNormalEnemies)
@@ -174,7 +182,7 @@ public class EnemySpawner : NetworkIdentity
             for (int i = 0; i < count; i++)
             {
                 if (EnemyBase.ActivePlebCount < maxPlebEnemies)
-                    SpawnThisEnemy(GetRandom(tier1.pleb), false, noXP: bossAlive, isPleb: true);
+                    SpawnThisEnemy(GetRandom(GetCurrentTier().pleb), false, noXP: bossAlive, isPleb: true);
             }
             yield return new WaitForSeconds(_currentPlebSpawnInterval / coopScale);
         }
@@ -193,8 +201,12 @@ public class EnemySpawner : NetworkIdentity
             CycleTimer = cycleInterval;
             _spawnPhase = 0;
 
-            if (tier1.boss.Count > 0)
-                SpawnThisEnemy(GetRandom(tier1.boss), true, true);
+            var bossTier = GetCurrentTier();
+            if (bossTier.boss.Count > 0)
+            {
+                _bossesSpawned++;
+                SpawnThisEnemy(GetRandom(bossTier.boss), true, _bossesSpawned == (int)winOnBoss);
+            }
 
             RollNewSet();
         }
@@ -202,10 +214,11 @@ public class EnemySpawner : NetworkIdentity
 
     private void RollNewSet()
     {
-        if (tier1.normal.Count == 0) return;
+        var currentTier = GetCurrentTier();
+        if (currentTier.normal.Count == 0) return;
 
         // Step 1: pick up to 3 enemies randomly from the full pool (the fallback set)
-        List<GameObject> pool = new(tier1.normal);
+        List<GameObject> pool = new(currentTier.normal);
         List<GameObject> newSet = new();
 
         int pickCount = Mathf.Min(3, pool.Count);
@@ -220,7 +233,7 @@ public class EnemySpawner : NetworkIdentity
         // This only runs if there was a previous cycle to compare against
         if (_previousSet.Count > 0 && newSet.Count > 0)
         {
-            var availablePool = tier1.normal.Except(_previousSet).ToList();
+            var availablePool = currentTier.normal.Except(_previousSet).ToList();
 
             if (availablePool.Count >= pickCount)
             {
@@ -244,6 +257,14 @@ public class EnemySpawner : NetworkIdentity
         _currentSet = newSet;
     }
 
+    private TierEnemies GetCurrentTier() => _bossesSpawned switch
+    {
+        0 => tier1,
+        1 => tier2,
+        2 => tier3,
+        _ => tier4
+    };
+
     private bool IsBossAlive() => _activeBoss != null && !_activeBoss._isDead;
 
     private float GetSpawnInterval()
@@ -256,6 +277,7 @@ public class EnemySpawner : NetworkIdentity
     {
         if (prefab == null) return;
         var obj = Instantiate(prefab, GetSpawnPosition(), Quaternion.identity);
+        if (obj == null) return;
         var enemy = obj.GetComponent<EnemyBase>();
         enemy.isFinalBoss = isFinalBoss;
         enemy.isPleb = isPleb;

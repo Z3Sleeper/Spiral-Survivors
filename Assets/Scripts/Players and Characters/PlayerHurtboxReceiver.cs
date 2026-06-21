@@ -7,10 +7,12 @@ public class PlayerHurtboxReceiver : MonoBehaviour
     private readonly Dictionary<EnemyBase, float> _multiHitCooldowns = new();
     private readonly Dictionary<EnemyBase, float> _contactCooldowns = new();
     private readonly List<EnemyBase> _cooldownBuffer = new();
+    private readonly float _multiHitCooldown = 0.5f;
 
     private void Awake()
     {
         _stats = GetComponentInParent<CharacterStats>();
+        _contactDamageLayer = LayerMask.NameToLayer("ContactDamage");
     }
 
     private void Update()
@@ -49,13 +51,16 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         {
             _stats.TakeDamageRpc(dmg);
             if (source != null)
-                _multiHitCooldowns[source] = 0.1f;
+                _multiHitCooldowns[source] = _multiHitCooldown;
         }
     }
+
+    private int _contactDamageLayer;
 
     private void OnTriggerStay(Collider other)
     {
         if (_stats == null || !_stats.isOwner || _stats.IsDead || _stats.IsInvincible) return;
+        if (other.gameObject.layer != _contactDamageLayer) return;
 
         var enemy = other.GetComponentInParent<EnemyBase>();
         if (enemy == null || enemy._isDead || !enemy.CanContactDamage) return;

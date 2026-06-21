@@ -249,7 +249,7 @@ MonoBehaviour:
   explosionDuration: 0.1
   rotationSpeed: 45
   reactionCooldown: 5
-  explosionMultiplier: 1
+  explosionMultiplier: 2
   hitbox: {fileID: 3071644559402824046}
   strikeableCollider: {fileID: 1187304013089527040}
   shieldRenderers:
@@ -258,6 +258,7 @@ MonoBehaviour:
   - {fileID: 7565304498323452007}
   windupIndicator: {fileID: 6334586207801002072}
   windupFill: {fileID: 5224979170181036711}
+  windupColor: {r: 1, g: 0, b: 0, a: 1}
   _syncState:
     _value: 0
     _ownerAuth: 0
@@ -1838,7 +1839,7 @@ GameObject:
   - component: {fileID: 3550015954762296180}
   - component: {fileID: 5171810001392874654}
   m_Layer: 15
-  m_Name: ShieldHitbox
+  m_Name: ShieldContactDamageCollider
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

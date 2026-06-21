@@ -212,6 +212,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
 
     protected IEnumerator DashToTarget(float speed, float stopDistance)
     {
+        if (_physicsCollider != null) _physicsCollider.enabled = false;
         while (!_isDead && _target != null && Vector3.Distance(transform.position, _target.position) > stopDistance)
         {
             Vector3 toTarget = _target.position - transform.position;
@@ -223,6 +224,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
             yield return null;
         }
         _rb.linearVelocity = Vector3.zero;
+        if (_physicsCollider != null) _physicsCollider.enabled = true;
     }
 
     public virtual void TakeDamage(float damage)

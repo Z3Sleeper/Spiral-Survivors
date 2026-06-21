@@ -45,5 +45,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GremlinAugment
   _sizeChange: 0.5
-  _attackSpeedPercentBonus: 0.25
-  _moveSpeedPercentBonus: 0.15
+  _attackSpeedPercentBonus: 0.15
+  _moveSpeedPercentBonus: 0.1

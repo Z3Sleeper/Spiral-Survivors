@@ -21,3 +21,4 @@ MonoBehaviour:
   effectPrefab: {fileID: 5858353609751558520, guid: 176be2aba5066f44196460f81379f683, type: 3}
   incompatibleAugments: []
   requiredAugments: []
+  requiredOneOfAugments: []

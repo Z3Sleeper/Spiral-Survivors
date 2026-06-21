@@ -408,10 +408,10 @@ public class CharacterStats : NetworkBehaviour
     }
 
     [ServerRpc(requireOwnership: true)]
-    public void MultiplyMaxHealthRpc(float multiplier)
+    public void AddMaxHealthPercentRpc(float bonus)
     {
         float prevMax = MaxHealth;
-        BonusMaxHealthPercent *= multiplier;
+        BonusMaxHealthPercent += bonus;
         CurrentHealth = Mathf.Min(CurrentHealth + (MaxHealth - prevMax), MaxHealth);
     }
 

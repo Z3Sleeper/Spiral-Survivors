@@ -24,8 +24,8 @@ public class GremlinAugment : MonoBehaviour
                 child.localScale /= _sizeChange;
         }
 
-        stats.bonusWeaponSpeedPercent *= (1f + _attackSpeedPercentBonus);
-        stats.bonusMoveSpeedPercent *= (1f + _moveSpeedPercentBonus);
+        stats.bonusWeaponSpeedPercent += _attackSpeedPercentBonus;
+        stats.bonusMoveSpeedPercent += _moveSpeedPercentBonus;
 
         Destroy(gameObject);
     }

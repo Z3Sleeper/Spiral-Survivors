@@ -15,6 +15,7 @@ public class GloomShield : NetworkIdentity, IStrikeable
     [SerializeField] private Renderer[] shieldRenderers;
     [SerializeField] private GameObject windupIndicator;
     [SerializeField] private WindupFill windupFill;
+    [SerializeField] private Color windupColor = Color.red;
 
     private Color _originalColor;
 
@@ -47,7 +48,7 @@ public class GloomShield : NetworkIdentity, IStrikeable
         }
         if (shieldRenderers != null)
         {
-            Color color = (state == State.Idle || state == State.Windup) ? Color.red : _originalColor;
+            Color color = (state == State.Idle || state == State.Windup) ? windupColor : _originalColor;
             foreach (var r in shieldRenderers)
                 if (r != null) r.material.color = color;
         }

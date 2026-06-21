@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: Another Fine Addition
   description: '+100% Weapons
 
-    <color=#FF5000>-45% Total Damage</color>
+    <color=#FF5000>-45% Damage</color>
 
     <color=#FF0050>-45%
     On-Hit Effectiveness</color>'
@@ -25,3 +25,4 @@ MonoBehaviour:
   effectPrefab: {fileID: 880528047331802497, guid: 4b77a412c5e74074e80fddd487f7bd5d, type: 3}
   incompatibleAugments: []
   requiredAugments: []
+  requiredOneOfAugments: []

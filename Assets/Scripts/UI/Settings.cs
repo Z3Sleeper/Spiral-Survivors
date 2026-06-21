@@ -2,17 +2,33 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
-public class VolumeSettings : MonoBehaviour
+public class Settings : MonoBehaviour
 {
     [SerializeField] private Slider volumeSlider;
     [SerializeField] private TMP_InputField volumeInput;
+    [SerializeField] private TMP_Dropdown framerateDropdown;
 
     private const string VolumeKey = "MasterVolume";
+    private const string FramerateKey = "TargetFramerate";
+    private static readonly int[] FramerateOptions = { 30, 60, 120, 144, -1 };
 
     private void Awake()
     {
         float saved = PlayerPrefs.GetFloat(VolumeKey, 100f);
         SetVolume(saved);
+
+        int savedFps = PlayerPrefs.GetInt(FramerateKey, -1);
+        int index = System.Array.IndexOf(FramerateOptions, savedFps);
+        if (index < 0) index = FramerateOptions.Length - 1;
+        framerateDropdown.SetValueWithoutNotify(index);
+        Application.targetFrameRate = savedFps;
+    }
+
+    public void OnFramerateChanged(int index)
+    {
+        int fps = FramerateOptions[index];
+        Application.targetFrameRate = fps;
+        PlayerPrefs.SetInt(FramerateKey, fps);
     }
 
     public void OnSliderChanged(float value)

@@ -10,14 +10,21 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
-  m_Name: DamageBasedOnMissingEnergy
+  m_Name: KnightiestKnight
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Final Reserves
-  description: Gain <color=#FF5000>+0.5% Damage</color> for each <color=#FFFF00>1%
-    Missing Energy</color>.
+  displayName: Knightiest Knight
+  description: '<color=#3278FF>+2 Range</color>
+
+    <color=#3278FF>+25% Range</color>
+
+    <color=#00FF00>+10
+    Health</color>
+
+    <color=#7DFF00>+1 Health Regen</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
-  restrictedToClasses: 
+  restrictedToClasses: 00000000
   excludedClasses: 
-  effectPrefab: {fileID: 6055292462807039485, guid: 7ca57c12a1d3c52418d351871d00cb74, type: 3}
+  effectPrefab: {fileID: 5077659232205228097, guid: 19877bfd8c31a7e4cbd1f965423df384, type: 3}
   incompatibleAugments: []
   requiredAugments: []
+  requiredOneOfAugments: []

@@ -135,6 +135,14 @@ public class GameManager : NetworkIdentity
 
     private void LevelUp()
     {
+        if (_pauseCountdownCoroutine != null)
+        {
+            StopCoroutine(_pauseCountdownCoroutine);
+            _pauseCountdownCoroutine = null;
+            _isPendingPause = false;
+            UpdatePauseCountdownRpc(0);
+        }
+
         _readyPlayers.Clear();
         OnLevelUp?.Invoke();
 

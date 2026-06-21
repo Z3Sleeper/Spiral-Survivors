@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
+  m_Name: RangeBasedOnCurrentEnergy
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: Energetic Reach
+  description: 'Gain <color=#3278FF>+0.25% Range</color> for each <color=#FFFF00>1
+    Current Energy</color>.
+
+    <color=#FFFF00>+20 Max Energy</color>
+
+    <color=#FFFF00>+5
+    Energy Regen</color>'
+  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  restrictedToClasses: 
+  excludedClasses: 02000000
+  effectPrefab: {fileID: 6055292462807039485, guid: 7ca57c12a1d3c52418d351871d00cb74, type: 3}
+  incompatibleAugments: []
+  requiredAugments: []
+  requiredOneOfAugments: []

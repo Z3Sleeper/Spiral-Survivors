@@ -5097,22 +5097,53 @@ MonoBehaviour:
     normal:
     - {fileID: 536332022644787569, guid: 5c01dcc94c787c8499071403c9d5b958, type: 3}
     - {fileID: 6839534502293854224, guid: 1be34773563bc2044a878f6031398737, type: 3}
+    - {fileID: 947611166608038379, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
     - {fileID: 8752698864854581044, guid: cf5c8507dd0e6de49a30c69d8646758e, type: 3}
     - {fileID: 4647792432446857248, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
-    elite: []
-    boss: []
+    elite:
+    - {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
+    - {fileID: 8365554543068639129, guid: 427f6ece90e93cb47b6e51c56f1e43fd, type: 3}
+    - {fileID: 900298697686924248, guid: 4b1e3fd95ee69c0488f31c542eaee63d, type: 3}
+    - {fileID: 5034490258704942994, guid: e7f88fd3a6c52fa49896ea9ef0b977cf, type: 3}
+    - {fileID: 5352001002389939941, guid: fa41c34b73a3e874884462e56e436dd9, type: 3}
+    boss:
+    - {fileID: 1597157536724350220, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
     pleb:
     - {fileID: 3751541064286269643, guid: 3621198e61737c04ca54548452ca6036, type: 3}
   tier3:
-    normal: []
-    elite: []
-    boss: []
-    pleb: []
+    normal:
+    - {fileID: 536332022644787569, guid: 5c01dcc94c787c8499071403c9d5b958, type: 3}
+    - {fileID: 6839534502293854224, guid: 1be34773563bc2044a878f6031398737, type: 3}
+    - {fileID: 947611166608038379, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+    - {fileID: 8752698864854581044, guid: cf5c8507dd0e6de49a30c69d8646758e, type: 3}
+    - {fileID: 4647792432446857248, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
+    elite:
+    - {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
+    - {fileID: 8365554543068639129, guid: 427f6ece90e93cb47b6e51c56f1e43fd, type: 3}
+    - {fileID: 900298697686924248, guid: 4b1e3fd95ee69c0488f31c542eaee63d, type: 3}
+    - {fileID: 5034490258704942994, guid: e7f88fd3a6c52fa49896ea9ef0b977cf, type: 3}
+    - {fileID: 5352001002389939941, guid: fa41c34b73a3e874884462e56e436dd9, type: 3}
+    boss:
+    - {fileID: 1597157536724350220, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
+    pleb:
+    - {fileID: 3751541064286269643, guid: 3621198e61737c04ca54548452ca6036, type: 3}
   tier4:
-    normal: []
-    elite: []
-    boss: []
-    pleb: []
+    normal:
+    - {fileID: 4647792432446857248, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
+    - {fileID: 8752698864854581044, guid: cf5c8507dd0e6de49a30c69d8646758e, type: 3}
+    - {fileID: 536332022644787569, guid: 5c01dcc94c787c8499071403c9d5b958, type: 3}
+    - {fileID: 6839534502293854224, guid: 1be34773563bc2044a878f6031398737, type: 3}
+    - {fileID: 947611166608038379, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+    elite:
+    - {fileID: 3949690986266919226, guid: 7221651fd3747ad4c94224c6fcad9c95, type: 3}
+    - {fileID: 8365554543068639129, guid: 427f6ece90e93cb47b6e51c56f1e43fd, type: 3}
+    - {fileID: 900298697686924248, guid: 4b1e3fd95ee69c0488f31c542eaee63d, type: 3}
+    - {fileID: 5034490258704942994, guid: e7f88fd3a6c52fa49896ea9ef0b977cf, type: 3}
+    - {fileID: 5352001002389939941, guid: fa41c34b73a3e874884462e56e436dd9, type: 3}
+    boss:
+    - {fileID: 1597157536724350220, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
+    pleb:
+    - {fileID: 3751541064286269643, guid: 3621198e61737c04ca54548452ca6036, type: 3}
   spawnMinDistance: 25
   spawnMaxDistance: 30
   spawnIntervalQ1: 6
@@ -5120,7 +5151,8 @@ MonoBehaviour:
   spawnIntervalQ3: 1.5
   spawnIntervalQ4: 0.75
   cycleInterval: 240
-  eliteChance: 0.07
+  eliteChance: 0.05
+  winOnBoss: 2
   coopSpawnTimeScalar: 0.25
   coopBossHealthScalar: 0.25
   maxNormalEnemies: 100
