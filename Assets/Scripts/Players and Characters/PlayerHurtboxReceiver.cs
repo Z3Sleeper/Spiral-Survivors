@@ -1,8 +1,11 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class PlayerHurtboxReceiver : MonoBehaviour
 {
+    public static event Action<CharacterStats, EnemyBase> OnDamaged;
+
     private CharacterStats _stats;
     private readonly Dictionary<EnemyBase, float> _multiHitCooldowns = new();
     private readonly Dictionary<EnemyBase, float> _contactCooldowns = new();
@@ -51,7 +54,10 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         {
             _stats.TakeDamageRpc(dmg);
             if (source != null)
+            {
                 _multiHitCooldowns[source] = _multiHitCooldown;
+                OnDamaged?.Invoke(_stats, source);
+            }
         }
     }
 
@@ -70,5 +76,6 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         if (dmg <= 0f) return;
         _contactCooldowns[enemy] = enemy.contactCooldown;
         _stats.TakeDamageRpc(dmg);
+        OnDamaged?.Invoke(_stats, enemy);
     }
 }

@@ -16,6 +16,7 @@ public class CritOnHitAugment : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (_stats != null) _stats.bonusCritChanceFlat -= _bonusCritChance;
         WeaponBase.OnCritStrike -= OnCritStrike;
     }
 

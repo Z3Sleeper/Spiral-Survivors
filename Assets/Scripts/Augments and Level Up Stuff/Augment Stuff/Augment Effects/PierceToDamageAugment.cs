@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class PierceToPercentDamageAugment : MonoBehaviour
+public class PierceToDamageAugment : MonoBehaviour
 {
     [SerializeField] private float _damagePerPierce = 3f;
     [SerializeField] private float _pierceFlat = 3f;
