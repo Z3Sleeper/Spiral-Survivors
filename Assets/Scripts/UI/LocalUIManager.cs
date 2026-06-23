@@ -29,6 +29,7 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private TextMeshProUGUI xpText;
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI bossTimerText;
+    [SerializeField] private TextMeshProUGUI sessionPointsText;
 
     [Header("Boss UI")]
     [SerializeField] private GameObject bossUIContainer;
@@ -233,6 +234,7 @@ public class LocalUIManager : MonoBehaviour
         UpdateStatsExpanded();
         UpdateSP();
         UpdateXP();
+        UpdateSessionPoints();
         UpdateRunClock();
         UpdateBossUI();
     }
@@ -278,6 +280,7 @@ public class LocalUIManager : MonoBehaviour
         _statsSB.AppendLine($" {_stats.dashHaste:G4}");
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
+        _statsSB.AppendLine($" {_stats.OnHitEffectiveness * 100f:G4}%");
         statsNumbersText.text = _statsSB.ToString();
     }
 
@@ -310,6 +313,12 @@ public class LocalUIManager : MonoBehaviour
         if (GameManager.instance == null) return;
         xpBar.value = GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
         xpText.text = $"<b>Level {GameManager.instance.Level} | {GameManager.instance.CurrentXP:G4}/{GameManager.instance.XPToNextLevel:G4} XP</b>";
+    }
+
+    private void UpdateSessionPoints()
+    {
+        if (sessionPointsText == null || GameManager.instance == null) return;
+        sessionPointsText.text = $"<b>{GameManager.instance.SessionPoints} pts</b>";
     }
 
     private void UpdateRunClock()

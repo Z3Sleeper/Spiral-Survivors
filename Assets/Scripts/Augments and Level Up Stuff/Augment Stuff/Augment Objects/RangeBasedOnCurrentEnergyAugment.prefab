@@ -44,3 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 713c229632c759f48b56cf238ab44ee3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DamageBasedOnMissingEnergyAugment
+  _rangePerEnergy: 0.5
+  _bonusMaxEnergy: 20
+  _bonusEnergyRegen: 5

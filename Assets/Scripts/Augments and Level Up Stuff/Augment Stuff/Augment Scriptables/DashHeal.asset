@@ -12,15 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: DashHeal
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Dash to Heal
-  description: '<color=#00FFFF>Dashing</color> <color=#7DFF00>heals</color> you and
+  displayName: Swift Mending
+  description: <color=#00FFFF>Dashing</color> <color=#7DFF00>heals</color> you and
     nearby allies for <color=#7DFF00>15%</color> of your <color=#00FF00>Max Health</color>.
-
-    <color=#00FFFF>+30
-    Dash Haste</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 2400852628366864859, guid: 608a1a1c7753c0f4f8f363a15955b060, type: 3}
   incompatibleAugments: []
   requiredAugments: []
+  requiredOneOfAugments: []

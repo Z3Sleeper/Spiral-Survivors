@@ -45,3 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlusOneWeaponAugment
   _damagePenalty: 0.45
+  _onHitPenalty: 0.25

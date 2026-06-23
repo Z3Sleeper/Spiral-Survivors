@@ -16,6 +16,7 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private GameObject characterSelectPanel;
     [SerializeField] private GameObject settingsPanel;
     [SerializeField] private GameObject encyclopediaPanel;
+    [SerializeField] private GameObject upgradePanel;
     [SerializeField] private ViewManager viewManager;
 
     private int _expectedPlayerCount;
@@ -82,6 +83,16 @@ public class LobbySceneController : MonoBehaviour
     public void OnSettingsBackClicked()
     {
         settingsPanel.SetActive(false);
+    }
+
+    public void OnUpgradeClicked()
+    {
+        upgradePanel.SetActive(true);
+    }
+
+    public void OnUpgradeBackClicked()
+    {
+        upgradePanel.SetActive(false);
     }
 
     public void OnEncyclopediaClicked()

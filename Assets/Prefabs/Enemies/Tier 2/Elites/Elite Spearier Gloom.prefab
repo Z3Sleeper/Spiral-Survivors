@@ -26,7 +26,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2139598679681017947, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
       propertyPath: maxHealth
-      value: 3000
+      value: 6000
       objectReference: {fileID: 0}
     - target: {fileID: 2139598679681017947, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
       propertyPath: preferredRange
@@ -34,7 +34,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2139598679681017947, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
       propertyPath: windupDuration
-      value: 0.5
+      value: 0.46875
       objectReference: {fileID: 0}
     - target: {fileID: 2139598679681017947, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
       propertyPath: attacksPerAttack

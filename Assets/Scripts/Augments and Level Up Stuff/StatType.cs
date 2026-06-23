@@ -1,16 +1,13 @@
 public enum StatType
 {
-    MaxHealth,
-    WeaponDamage,
-    MoveSpeed,
-    WeaponRange,
-    AttackSpeed,
-    HealthRegen,
-    MaxShield,
-    EnergyRegen,
-    DashCooldown,
-    CritChance,
-    Pierce,
-    Ricochet,
-    Multishot
+    MaxHealth    = 0,
+    WeaponDamage = 1,
+    MoveSpeed    = 2,
+    WeaponRange  = 3,
+    AttackSpeed  = 4,
+    HealthRegen  = 5,
+    EnergyRegen  = 7,
+    DashCooldown = 8,
+    CritChance   = 9,
+    Pierce       = 10,
 }

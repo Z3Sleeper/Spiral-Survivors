@@ -26,6 +26,8 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
+    [NonSerialized] public float baseXpValue;
+    [NonSerialized] public float pointValue;
     [Header("Contact Damage")]
     public bool contactColliderEnabled = true;
     public float contactCooldown = 0.5f;
@@ -76,6 +78,8 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         baseHealth = maxHealth;
         baseDamage = damage;
         baseMoveSpeed = moveSpeed;
+        baseXpValue = xpValue;
+        pointValue = xpValue;
 
         _findTargetTimer = UnityEngine.Random.Range(0f, FindTargetInterval);
         CacheRenderers();
@@ -196,6 +200,16 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         return dir;
     }
 
+    protected void FaceTargetSmooth()
+    {
+        if (_target == null) return;
+        Vector3 dir = _target.position - transform.position;
+        dir.y = 0;
+        if (dir == Vector3.zero) return;
+        Quaternion targetRotation = Quaternion.LookRotation(dir.normalized);
+        _rb.MoveRotation(Quaternion.Slerp(transform.rotation, targetRotation, 10f * Time.fixedDeltaTime));
+    }
+
     [ObserversRpc]
     private void SnapRotationRpc(Vector3 direction)
     {
@@ -223,7 +237,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
             yield return null;
         }
         _rb.linearVelocity = Vector3.zero;
-        if (_physicsCollider != null) _physicsCollider.enabled = true;
+        if (_physicsCollider != null && !_isDead) _physicsCollider.enabled = true;
     }
 
     public virtual void TakeDamage(float damage)
@@ -275,6 +289,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         else if (!isUncapped) ActiveNormalCount--;
 
         XPOrbManager.instance.SpawnOrbs(transform.position, xpValue);
+        GameManager.instance?.AwardPoints(Mathf.RoundToInt(pointValue));
 
         HideOnDeathRpc();
         Destroy(gameObject, 0.5f);
@@ -283,6 +298,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     [ObserversRpc]
     private void HideOnDeathRpc()
     {
+        _isDead = true;
         foreach (var col in GetComponentsInChildren<Collider>())
             col.enabled = false;
         foreach (var renderer in GetComponentsInChildren<Renderer>())

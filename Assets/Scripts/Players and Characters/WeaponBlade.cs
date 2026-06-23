@@ -86,11 +86,13 @@ public class WeaponBlade : WeaponBase
 
     private void Hit(EnemyBase enemy)
     {
+        if (enemy == null || enemy._isDead) return;
         float damage = _stats.WeaponDamage;
-        if (Random.value < _stats.CritChance)
-            damage *= _stats.CritDamage;
+        bool isCrit = Random.value < _stats.CritChance;
+        if (isCrit) damage *= _stats.CritDamage;
         enemy.TakeDamageRpc(damage);
         InvokeOnStrike(enemy);
+        if (isCrit) WeaponBase.RaiseOnCritStrike(_stats, enemy);
         SFXManager.instance?.Play(_stats.hitSound, enemy.transform.position, 1f, 0.05f);
     }
 }

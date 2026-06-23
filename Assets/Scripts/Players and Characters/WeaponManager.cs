@@ -6,6 +6,7 @@ using UnityEngine.Analytics;
 public class WeaponManager : NetworkBehaviour
 {
     [SerializeField] private GameObject weaponPrefab;
+    public GameObject WeaponPrefab => weaponPrefab;
     public bool IsRanged => !weaponPrefab.GetComponent<WeaponBase>().IsMelee;
     private CharacterStats _stats;
     private List<WeaponBase> _weapons = new List<WeaponBase>();

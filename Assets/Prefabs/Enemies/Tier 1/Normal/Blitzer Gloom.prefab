@@ -351,7 +351,7 @@ MonoBehaviour:
   postBlitzPause: 0.5
   attackCooldown: 3
   blitzDistance: 15
-  blitzSpeed: 30
+  blitzSpeedMultiplier: 25
   blitzesPerAttack: 1
   windupIndicator: {fileID: 1078640085709494109}
   windupFill: {fileID: 6132009066870367723}

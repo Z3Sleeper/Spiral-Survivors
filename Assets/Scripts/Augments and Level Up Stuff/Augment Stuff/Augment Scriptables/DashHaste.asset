@@ -13,10 +13,11 @@ MonoBehaviour:
   m_Name: DashHaste
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Dashy
-  description: <color=#00FFFF>+150 Dash Haste</color>
+  description: <color=#00FFFF>+50 Dash Haste</color>
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 3146615247548314895, guid: f8516127430485c4a86c7e704e70a5c9, type: 3}
   incompatibleAugments: []
   requiredAugments: []
+  requiredOneOfAugments: []

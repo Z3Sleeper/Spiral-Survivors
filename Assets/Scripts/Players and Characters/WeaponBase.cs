@@ -21,6 +21,9 @@ public class WeaponBase : NetworkIdentity
     public static event System.Action<CharacterStats, EnemyBase, float> OnHit;
     public static void RaiseOnHit(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f) => OnHit?.Invoke(stats, enemy, effectiveness);
 
+    public static event System.Action<CharacterStats, EnemyBase> OnCritStrike;
+    public static void RaiseOnCritStrike(CharacterStats stats, EnemyBase enemy) => OnCritStrike?.Invoke(stats, enemy);
+
     public virtual void Init(CharacterStats stats)
     {
         _stats = stats;

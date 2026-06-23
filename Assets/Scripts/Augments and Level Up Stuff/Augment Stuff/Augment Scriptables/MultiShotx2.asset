@@ -15,9 +15,9 @@ MonoBehaviour:
   displayName: I Said MORE Bullets
   description: '<color=#3278FF>x2 Multishot</color>
 
-    <color=#FF5000>-60% Damage</color>
+    <color=#FF5000>-50% Damage</color>
 
-    <color=#FF0050>-60%
+    <color=#FF0050>-25%
     On-Hit Effectiveness</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 02000000
@@ -26,3 +26,4 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredAugments:
   - {fileID: 11400000, guid: 42937f28886713b42946fda41299122b, type: 2}
+  requiredOneOfAugments: []

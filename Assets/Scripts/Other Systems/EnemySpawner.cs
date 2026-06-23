@@ -136,21 +136,6 @@ public class EnemySpawner : NetworkIdentity
             }
 
             bool bossAlive = IsBossAlive();
-            if (_bossWasAlive && !bossAlive && _activeBoss != null)
-            {
-                _bossesDefeated++;
-                if (_bossesDefeated == (int)winOnBoss)
-                {
-                    GameManager.instance.TriggerWin();
-                    yield break;
-                }
-                _currentSpawnInterval = spawnIntervalQ1;
-                _currentPlebSpawnInterval = plebSpawnIntervalQ1;
-                _spawnPhase = 0;
-                _elitePrdChance = 0f;
-                RollNewSet();
-            }
-            _bossWasAlive = bossAlive;
 
             if (!bossAlive)
             {
@@ -201,7 +186,25 @@ public class EnemySpawner : NetworkIdentity
         {
             yield return _waitForSeconds0_1;
 
-            if (!IsBossAlive())
+            bool bossAlive = IsBossAlive();
+
+            if (_bossWasAlive && !bossAlive)
+            {
+                _bossesDefeated++;
+                if (_bossesDefeated == (int)winOnBoss)
+                {
+                    GameManager.instance.TriggerWin();
+                    yield break;
+                }
+                _currentSpawnInterval = spawnIntervalQ1;
+                _currentPlebSpawnInterval = plebSpawnIntervalQ1;
+                _spawnPhase = 0;
+                _elitePrdChance = 0f;
+                RollNewSet();
+            }
+            _bossWasAlive = bossAlive;
+
+            if (!bossAlive)
                 CycleTimer -= 0.1f;
             if (CycleTimer > 0f) continue;
 
@@ -289,6 +292,7 @@ public class EnemySpawner : NetworkIdentity
         {
             enemy.maxHealth *= 1f + (_playerCount - 1) * coopBossHealthScalar;
             enemy.xpValue *= 1f + (_playerCount - 1) * coopSpawnTimeScalar;
+            enemy.pointValue *= 1f + (_playerCount - 1) * coopSpawnTimeScalar;
         }
     }
 

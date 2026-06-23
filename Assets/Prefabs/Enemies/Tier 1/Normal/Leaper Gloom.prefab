@@ -618,8 +618,8 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _renderers:
   - {fileID: 3448404629509916890}
-  windupDuration: 0.4
-  leapDuration: 0.4
+  windupDuration: 0.6
+  leapDuration: 0.6
   postLeapPause: 0.5
   attackCooldown: 3
   model: {fileID: 1223438665833396019}

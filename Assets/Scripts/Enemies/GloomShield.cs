@@ -25,7 +25,7 @@ public class GloomShield : NetworkIdentity, IStrikeable
     [HideInInspector] public SyncVar<Vector3> _syncFacingDir = new(Vector3.forward);
 
     private State _state { get => _syncState.value; set => _syncState.value = value; }
-    private float _stateTimer;
+    private float _stateTimer = float.MaxValue;
     private EnemyBase _ownerEnemy;
 
     protected override void OnSpawned()

@@ -11,11 +11,11 @@ public class ShooterGloom : EnemyBase
     [SerializeField] private GameObject gun;
     [SerializeField] private float attackCooldown = 5f;
     [SerializeField] private float minAttackRange = 3f;
-    [SerializeField] private float dashSpeed = 8f;
+    [SerializeField] private float dashSpeedMultiplier = 33f;
 
     public enum State { Moving, Dashing, Windup, PostShot }
-    private float _stateTimer;
-    private float _attackCooldownTimer;
+    private float _stateTimer = float.MaxValue;
+    private float _attackCooldownTimer = float.MaxValue;
     private Vector3 _dashTarget;
     [SerializeField] private float windupDuration = 0.5f;
     [SerializeField] private float postShotPause = 0.3f;
@@ -106,9 +106,11 @@ public class ShooterGloom : EnemyBase
         {
             Vector3 dir = (_dashTarget - transform.position);
             dir.y = 0;
-            _rb.linearVelocity = new Vector3(dir.normalized.x * dashSpeed, _rb.linearVelocity.y, dir.normalized.z * dashSpeed);
+            float speed = moveSpeed * dashSpeedMultiplier;
+            _rb.linearVelocity = new Vector3(dir.normalized.x * speed, _rb.linearVelocity.y, dir.normalized.z * speed);
         }
         else if (_state == State.Windup)
+        {
             if (_target != null)
             {
                 Vector3 dir = _target.position - transform.position;
@@ -116,6 +118,9 @@ public class ShooterGloom : EnemyBase
                 if (dir != Vector3.zero)
                     transform.rotation = Quaternion.LookRotation(dir);
             }
+        }
+        else if (_state == State.PostShot && isServer)
+            FaceTargetSmooth();
     }
 
     private void EnterDash()

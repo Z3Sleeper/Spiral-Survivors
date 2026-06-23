@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b0b14f78c2dbdc34ebeeafa40a84f6f4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MissingHealthToRegenAugment
-  _healthPercent: 0.1
+  _healthPercent: 0.05

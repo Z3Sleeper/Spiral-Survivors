@@ -23,8 +23,8 @@ public class LeaperGloom : EnemyBase
     [SerializeField] private float leapOffsetRadius = 1f;
 
     public enum State { Moving, Windup, Leaping, Landing, PostLeap }
-    private float _stateTimer;
-    private float _attackCooldownTimer;
+    private float _stateTimer = float.MaxValue;
+    private float _attackCooldownTimer = float.MaxValue;
     private Vector3 _leapStart;
     private Vector3 _leapTarget;
     private int _leapsRemaining;
@@ -149,6 +149,8 @@ public class LeaperGloom : EnemyBase
                 model.localPosition = new Vector3(0f, 0.5f + arcY, 0f);
             }
         }
+        else if ((_state == State.PostLeap || _state == State.Landing) && isServer)
+            FaceTargetSmooth();
     }
 
     private void EnterWindup()

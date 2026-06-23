@@ -14,17 +14,22 @@ public class AugmentCardUI : MonoBehaviour
 
     private int _cardIndex;
     private PlayerID _player;
+    private float _effectiveValueA;
+    private float _effectiveValueB;
 
     public void StatAugmentSetup(StatAugmentPair pair, int cardIndex, PlayerID player)
     {
         _cardIndex = cardIndex;
         _player = player;
-        pickButton.interactable = true; // add this
+        pickButton.interactable = true;
+
+        _effectiveValueA = pair.statA.value * ProgressionManager.GetStatMultiplier(pair.statA.statType);
+        _effectiveValueB = pair.statB.value * ProgressionManager.GetStatMultiplier(pair.statB.statType);
 
         augmentImage.sprite = statAugmentSprite;
         titleText.text = $"{pair.statA.ColoredName} & {pair.statB.ColoredName}";
-        descriptionText.text = $"{pair.statA.Colored($"{pair.statA.prependText}{pair.statA.value}{pair.statA.appendText} {pair.statA.displayName}")}\n{pair.statB.Colored($"{pair.statB.prependText}{pair.statB.value}{pair.statB.appendText} {pair.statB.displayName}")}";
-        
+        descriptionText.text = $"{pair.statA.Colored($"{pair.statA.prependText}{_effectiveValueA}{pair.statA.appendText} {pair.statA.displayName}")}\n{pair.statB.Colored($"{pair.statB.prependText}{_effectiveValueB}{pair.statB.appendText} {pair.statB.displayName}")}";
+
         pickButton.onClick.RemoveAllListeners();
         pickButton.onClick.AddListener(OnPicked);
     }
@@ -33,6 +38,8 @@ public class AugmentCardUI : MonoBehaviour
     {
         _cardIndex = cardIndex;
         _player = player;
+        _effectiveValueA = 1f;
+        _effectiveValueB = 1f;
         pickButton.interactable = true;
         augmentImage.sprite = augment.icon;
         titleText.text = augment.displayName;
@@ -45,6 +52,6 @@ public class AugmentCardUI : MonoBehaviour
     {
         SFXManager.instance?.Play(pickSound, Vector3.zero);
         LocalUIManager.instance.HideAllCards();
-        AugmentManager.instance.PickAugmentRpc(_player, _cardIndex);
+        AugmentManager.instance.PickAugmentRpc(_player, _cardIndex, _effectiveValueA, _effectiveValueB);
     }
 }

@@ -72,7 +72,7 @@ public class CharacterStats : NetworkBehaviour
     public float bonusCritChanceFlat = 0f;
     public float bonusCritChancePercent = 1f;
     public float CritChance => (baseCritChance + bonusCritChanceFlat) * bonusCritChancePercent;
-    [NonSerialized] public float baseCritDamage = 3f;
+    [NonSerialized] public float baseCritDamage = 2f;
     public float bonusCritDamageFlat = 0f;
     public float bonusCritDamagePercent = 1f;
     public float CritDamage => ((baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent) + Mathf.Max(0f, CritChance - 1f) * 0.5f;
@@ -304,6 +304,7 @@ public class CharacterStats : NetworkBehaviour
             _ownerInitialized = true;
             if (LocalUIManager.instance != null)
                 LocalUIManager.instance.SetPlayer(this);
+            ApplyBaseStats();
             CurrentEnergy = MaxEnergy;
             CurrentSP = MaxSP;
         }
@@ -318,10 +319,40 @@ public class CharacterStats : NetworkBehaviour
     {
         if (LocalUIManager.instance != null)
             LocalUIManager.instance.SetPlayer(this);
+        ApplyBaseStats();
         CurrentEnergy = MaxEnergy;
         CurrentSP = MaxSP;
         _controller.InitializeForOwner();
         GetComponent<WeaponManager>().InitializeForOwner();
+    }
+
+    private void ApplyBaseStats()
+    {
+        bonusWeaponDamageFlat += ProgressionManager.GetBaseStatBonus(StatType.WeaponDamage);
+        bonusMoveSpeedFlat    += ProgressionManager.GetBaseStatBonus(StatType.MoveSpeed) * 0.1f;
+        bonusWeaponSpeedFlat  += ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f * baseWeaponSpeed;
+        bonusEnergyRegenFlat  += ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen);
+        dashHaste             += ProgressionManager.GetBaseStatBonus(StatType.DashCooldown);
+        bonusCritChanceFlat   += ProgressionManager.GetBaseStatBonus(StatType.CritChance) * 0.01f;
+
+        bool isRanged = GetComponent<WeaponManager>().IsRanged;
+        if (isRanged)
+            bonusPierceFlat      += ProgressionManager.GetBaseStatBonus(StatType.WeaponRange);
+        else
+            bonusWeaponRangeFlat += ProgressionManager.GetBaseStatBonus(StatType.WeaponRange);
+
+        ApplyBaseStatsServerRpc(
+            ProgressionManager.GetBaseStatBonus(StatType.MaxHealth),
+            ProgressionManager.GetBaseStatBonus(StatType.HealthRegen)
+        );
+    }
+
+    [ServerRpc(requireOwnership: false)]
+    private void ApplyBaseStatsServerRpc(float maxHealthBonus, float healthRegenBonus)
+    {
+        BonusMaxHealthFlat   += maxHealthBonus;
+        BonusHealthRegenFlat += healthRegenBonus;
+        CurrentHealth = MaxHealth;
     }
 
     private void Update()
@@ -413,6 +444,13 @@ public class CharacterStats : NetworkBehaviour
         float prevMax = MaxHealth;
         BonusMaxHealthPercent += bonus;
         CurrentHealth = Mathf.Min(CurrentHealth + (MaxHealth - prevMax), MaxHealth);
+    }
+
+    [ServerRpc(requireOwnership: true)]
+    public void AddMaxHealthFlatRpc(float bonus)
+    {
+        BonusMaxHealthFlat += bonus;
+        CurrentHealth = Mathf.Min(CurrentHealth + bonus, MaxHealth);
     }
 
     public static event Action<CharacterStats, Vector3, float, float, string> OnVFXBroadcast;

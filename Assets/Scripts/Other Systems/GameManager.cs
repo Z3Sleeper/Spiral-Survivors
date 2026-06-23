@@ -43,6 +43,21 @@ public class GameManager : NetworkIdentity
         set => _isPaused.value = value;
     }
 
+    [NonSerialized] public SyncVar<int> _sessionPoints = new(0);
+    public int SessionPoints
+    {
+        get => _sessionPoints.value;
+        set => _sessionPoints.value = value;
+    }
+
+    [SerializeField] private float pointMultiplier = 1f;
+
+    public void AwardPoints(int amount)
+    {
+        if (!isServer) return;
+        SessionPoints += Mathf.RoundToInt(amount * pointMultiplier);
+    }
+
     private Dictionary<PlayerID, float> _playerXPMods = new();
     private float _avgXPMod = 1f;
     private int _levelsToResolve = 0;
@@ -314,6 +329,8 @@ public class GameManager : NetworkIdentity
 
     private void ReturnToLobby()
     {
+        ProgressionManager.CommitPoints(SessionPoints);
+        CommitPointsRpc(SessionPoints);
         Time.timeScale = 1f;
         _playersLoaded = 0;
         PurrLobby.LobbyFlags.IsReturningFromGame = true;
@@ -329,6 +346,13 @@ public class GameManager : NetworkIdentity
     private void SetReturningFromGameRpc()
     {
         PurrLobby.LobbyFlags.IsReturningFromGame = true;
+    }
+
+    [ObserversRpc]
+    private void CommitPointsRpc(int points)
+    {
+        if (isServer) return;
+        ProgressionManager.CommitPoints(points);
     }
 
     [ServerRpc(requireOwnership: false)]

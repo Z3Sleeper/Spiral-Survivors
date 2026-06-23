@@ -49,7 +49,7 @@ public class KingSpike : BossBase
 
     public override float GetDamage() => _state == State.Charging ? damage * chargeDamageMultiplier : damage;
 
-    private float _stateTimer;
+    private float _stateTimer = float.MaxValue;
     private float _attackCooldownTimer = float.MaxValue;
     private Vector3 _chargeDirection;
     private Vector3 _chargeEndPoint;
@@ -283,7 +283,7 @@ public class KingSpike : BossBase
 
     protected override void OnEnrage()
     {
-        attackCooldown = 1f;
-        _attackCooldownTimer = Mathf.Min(_attackCooldownTimer, 1f);
+        attackCooldown /= 2f;
+        _attackCooldownTimer = Mathf.Min(_attackCooldownTimer, attackCooldown);
     }
 }

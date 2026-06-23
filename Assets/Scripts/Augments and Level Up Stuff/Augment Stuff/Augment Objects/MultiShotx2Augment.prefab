@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiShotx2Augment
   _damagePenalty: 0.5
-  _onHitPenalty: 0.5
+  _onHitPenalty: 0.25

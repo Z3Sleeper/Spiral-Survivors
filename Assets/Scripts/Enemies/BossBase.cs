@@ -4,7 +4,7 @@ public class BossBase : EnemyBase
 {
     public static BossBase Current { get; private set; }
 
-    private const float EnrageDuration = 180f;
+    private const float EnrageDuration = 120f;
     private float _enrageTimer = EnrageDuration;
     private bool _isEnraged = false;
 

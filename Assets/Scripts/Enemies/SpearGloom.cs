@@ -22,12 +22,13 @@ public class SpearGloom : EnemyBase
     [SerializeField] private float postStabPause = 0.5f;
     [SerializeField] private float attackCooldown = 5f;
     [SerializeField] private int attacksPerAttack = 1;
+    [SerializeField] private float dashSpeedMultiplier = 20f;
     [SerializeField] private GameObject windupIndicator;
     [SerializeField] private WindupFill windupFill;
 
     public enum State { Moving, Windup, Stabbing, BetweenStabs, PostStab, DashingToTarget }
-    private float _stateTimer;
-    private float _attackCooldownTimer;
+    private float _stateTimer = float.MaxValue;
+    private float _attackCooldownTimer = float.MaxValue;
     private int _attacksRemaining;
     [HideInInspector] public SyncVar<State> _syncState = new SyncVar<State>(State.Moving);
     private State _state
@@ -97,8 +98,17 @@ public class SpearGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (_attackCooldownTimer <= 0f)
-                    EnterDashToTarget();
+                if (_attackCooldownTimer <= 0f && _target != null)
+                {
+                    float dist = Vector3.Distance(transform.position, _target.position);
+                    if (dist <= preferredRange * 2f)
+                    {
+                        if (dist > preferredRange / 2f)
+                            EnterDashToTarget();
+                        else
+                            EnterWindup();
+                    }
+                }
                 break;
 
             case State.Windup:
@@ -118,7 +128,12 @@ public class SpearGloom : EnemyBase
 
             case State.BetweenStabs:
                 if (_stateTimer <= 0f)
-                    EnterDashToTarget();
+                {
+                    if (_target != null && Vector3.Distance(transform.position, _target.position) > preferredRange / 2f)
+                        EnterDashToTarget();
+                    else
+                        EnterWindup();
+                }
                 break;
 
             case State.DashingToTarget:
@@ -134,7 +149,9 @@ public class SpearGloom : EnemyBase
     protected override void FixedUpdate()
     {
         if (_state == State.Moving)
-            base.FixedUpdate(); // only move during Moving state
+            base.FixedUpdate();
+        else if ((_state == State.PostStab || _state == State.BetweenStabs) && isServer)
+            FaceTargetSmooth();
     }
 
     private void EnterWindup()
@@ -165,8 +182,8 @@ public class SpearGloom : EnemyBase
 
     private System.Collections.IEnumerator DashToTargetThenWindup()
     {
-        yield return StartCoroutine(DashToTarget(moveSpeed * 20f, preferredRange / 2f));
-        EnterWindup();
+        yield return StartCoroutine(DashToTarget(moveSpeed * dashSpeedMultiplier, preferredRange / 2f));
+        if (!_isDead) EnterWindup();
     }
 
     private void EnterPostStab()

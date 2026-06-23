@@ -82,7 +82,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3194197359222573748, guid: 1be34773563bc2044a878f6031398737, type: 3}
       propertyPath: maxHealth
-      value: 3000
+      value: 6000
+      objectReference: {fileID: 0}
+    - target: {fileID: 3194197359222573748, guid: 1be34773563bc2044a878f6031398737, type: 3}
+      propertyPath: leapDuration
+      value: 0.5625
+      objectReference: {fileID: 0}
+    - target: {fileID: 3194197359222573748, guid: 1be34773563bc2044a878f6031398737, type: 3}
+      propertyPath: leapsPerAttack
+      value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 3194197359222573748, guid: 1be34773563bc2044a878f6031398737, type: 3}
+      propertyPath: windupDuration
+      value: 0.5625
       objectReference: {fileID: 0}
     - target: {fileID: 3194197359222573748, guid: 1be34773563bc2044a878f6031398737, type: 3}
       propertyPath: leapOffsetRadius

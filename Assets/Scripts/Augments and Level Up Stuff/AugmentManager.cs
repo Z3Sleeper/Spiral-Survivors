@@ -147,7 +147,7 @@ public class AugmentManager : NetworkBehaviour
     }
 
     [ServerRpc(requireOwnership: false)]
-    public void PickAugmentRpc(PlayerID player, int cardIndex)
+    public void PickAugmentRpc(PlayerID player, int cardIndex, float effectiveValueA = 1f, float effectiveValueB = 1f)
     {
         if (!_playerOptions.TryGetValue(player, out var options)) return;
         if (cardIndex < 0 || cardIndex >= options.Count) return;
@@ -167,7 +167,7 @@ public class AugmentManager : NetworkBehaviour
             }
         }
         else
-            ApplyStatAugment(player, option.statPair);
+            ApplyStatAugment(player, option.statPair, effectiveValueA, effectiveValueB);
 
         _playerOptions.Remove(player);
         GameManager.instance.ConfirmReadyRpc(player);
@@ -191,15 +191,15 @@ public class AugmentManager : NetworkBehaviour
         Instantiate(augment.effectPrefab, stats.transform);
     }
 
-    private void ApplyStatAugment(PlayerID player, StatAugmentPair pair)
+    private void ApplyStatAugment(PlayerID player, StatAugmentPair pair, float effectiveValueA = 1f, float effectiveValueB = 1f)
     {
         CharacterStats stats = null;
         foreach (var s in CharacterStats.All)
             if (s.owner == player) { stats = s; break; }
         if (stats != null)
         {
-            ApplyServerStat(stats, pair.statA);
-            ApplyServerStat(stats, pair.statB);
+            ApplyServerStat(stats, pair.statA, effectiveValueA);
+            ApplyServerStat(stats, pair.statB, effectiveValueB);
         }
 
         int idxA = statDatabase.stats.IndexOf(pair.statA);
@@ -207,19 +207,13 @@ public class AugmentManager : NetworkBehaviour
         ApplyAugmentLocalRpc(player, idxA, idxB);
     }
 
-    private void ApplyServerStat(CharacterStats stats, StatAugmentEntry entry)
+    private void ApplyServerStat(CharacterStats stats, StatAugmentEntry entry, float effectiveValue)
     {
         switch (entry.statType)
         {
             case StatType.MaxHealth:
-                stats.BonusMaxHealthFlat += entry.value;
-                stats.CurrentHealth = Mathf.Min(stats.CurrentHealth + entry.value, stats.MaxHealth);
-                break;
-            case StatType.HealthRegen:
-                stats.BonusHealthRegenFlat += entry.value;
-                break;
-            case StatType.MaxShield:
-                stats.BonusMaxShieldFlat += entry.value * 0.01f;
+                stats.BonusMaxHealthFlat += effectiveValue;
+                stats.CurrentHealth = Mathf.Min(stats.CurrentHealth + effectiveValue, stats.MaxHealth);
                 break;
         }
     }
@@ -239,16 +233,15 @@ public class AugmentManager : NetworkBehaviour
     {
         switch (entry.statType)
         {
-            case StatType.WeaponDamage:   stats.bonusWeaponDamageFlat += entry.value; break;
-            case StatType.MoveSpeed:      stats.bonusMoveSpeedFlat += entry.value * 0.1f; break;
-            case StatType.WeaponRange:    stats.bonusWeaponRangeFlat += entry.value * 0.2f * stats.baseWeaponRange; break;
-            case StatType.AttackSpeed:    stats.bonusWeaponSpeedFlat += entry.value * 0.01f * stats.baseWeaponSpeed; break;
-            case StatType.EnergyRegen:    stats.bonusEnergyRegenFlat += entry.value; break;
-            case StatType.DashCooldown:   stats.dashHaste += entry.value; break;
-            case StatType.CritChance:     stats.bonusCritChanceFlat += entry.value * 0.01f; break;
-            case StatType.Pierce:         stats.bonusPierceFlat += entry.value; break;
-            case StatType.Ricochet:       stats.bonusRicochetFlat += entry.value; break;
-            case StatType.Multishot:      stats.bonusMultishotFlat += entry.value; break;
+            case StatType.WeaponDamage:  stats.bonusWeaponDamageFlat += entry.value * ProgressionManager.GetStatMultiplier(StatType.WeaponDamage); break;
+            case StatType.MoveSpeed:     stats.bonusMoveSpeedFlat    += entry.value * 0.1f * ProgressionManager.GetStatMultiplier(StatType.MoveSpeed); break;
+            case StatType.WeaponRange:   stats.bonusWeaponRangeFlat  += entry.value * 0.2f * stats.baseWeaponRange * ProgressionManager.GetStatMultiplier(StatType.WeaponRange); break;
+            case StatType.AttackSpeed:   stats.bonusWeaponSpeedFlat  += entry.value * 0.01f * stats.baseWeaponSpeed * ProgressionManager.GetStatMultiplier(StatType.AttackSpeed); break;
+            case StatType.HealthRegen:   stats.BonusHealthRegenFlat  += entry.value * ProgressionManager.GetStatMultiplier(StatType.HealthRegen); break;
+            case StatType.EnergyRegen:   stats.bonusEnergyRegenFlat  += entry.value * ProgressionManager.GetStatMultiplier(StatType.EnergyRegen); break;
+            case StatType.DashCooldown:  stats.dashHaste             += entry.value * ProgressionManager.GetStatMultiplier(StatType.DashCooldown); break;
+            case StatType.CritChance:    stats.bonusCritChanceFlat   += entry.value * 0.01f * ProgressionManager.GetStatMultiplier(StatType.CritChance); break;
+            case StatType.Pierce:        stats.bonusPierceFlat       += entry.value * ProgressionManager.GetStatMultiplier(StatType.WeaponRange); break;
         }
     }
 
@@ -279,6 +272,7 @@ public class AugmentManager : NetworkBehaviour
             ApplyStatAugment(player, option.statPair);
         _playerOptions.Remove(player);
     }
+
 }
 
 public class StatAugmentPair

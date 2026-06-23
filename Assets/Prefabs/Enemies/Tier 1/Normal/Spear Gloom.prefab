@@ -317,12 +317,13 @@ MonoBehaviour:
   - {fileID: 3448404629509916890}
   spearHitbox: {fileID: 9054564917381773716}
   stabDamageMultiplier: 1
-  windupDuration: 0.4
+  windupDuration: 0.5
   stabDuration: 0.1
   betweenStabPause: 0.3
   postStabPause: 0.6
   attackCooldown: 3
   attacksPerAttack: 1
+  dashSpeedMultiplier: 15
   windupIndicator: {fileID: 3368275256615124461}
   windupFill: {fileID: 2539281391920625006}
   _syncState:

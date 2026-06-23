@@ -12,8 +12,9 @@ public class WeaponBow : WeaponBase
     public override bool IsMelee => false;
 
     private float InitialHitDuration => 90f / _stats.WeaponSpeed;
-    public readonly Dictionary<EnemyBase, float> InitialHitCooldowns = new();
+    private readonly Dictionary<EnemyBase, float> _initialHitCooldowns = new();
     private readonly List<EnemyBase> _cooldownBuffer = new();
+    private EnemyBase _currentTarget;
 
     protected override void OnSpawned()
     {
@@ -35,11 +36,11 @@ public class WeaponBow : WeaponBase
 
         float cooldownDuration = InitialHitDuration;
         _cooldownBuffer.Clear();
-        _cooldownBuffer.AddRange(InitialHitCooldowns.Keys);
+        _cooldownBuffer.AddRange(_initialHitCooldowns.Keys);
         foreach (var e in _cooldownBuffer)
         {
-            if (Time.time - InitialHitCooldowns[e] >= cooldownDuration)
-                InitialHitCooldowns.Remove(e);
+            if (Time.time - _initialHitCooldowns[e] >= cooldownDuration)
+                _initialHitCooldowns.Remove(e);
         }
 
         if (_fireTimer > 0f) return;
@@ -47,6 +48,8 @@ public class WeaponBow : WeaponBase
         Vector3? target = GetTargetPosition();
         if (_stats.continuousFire || target.HasValue)
         {
+            if (_currentTarget != null)
+                _initialHitCooldowns[_currentTarget] = Time.time;
             Fire(target ?? (transform.position + transform.forward));
             _fireTimer = 1f / (_stats.AttackSpeed * bowAttackSpeedScaling);
         }
@@ -56,6 +59,7 @@ public class WeaponBow : WeaponBase
 
     private Vector3? GetTargetPosition()
     {
+        _currentTarget = null;
         var origin = transform.position - transform.forward * 1.0f;
         int count = Physics.RaycastNonAlloc(origin, transform.forward, _targetSweep, _stats.WeaponRange + 1f, enemyHurtboxLayer);
 
@@ -64,8 +68,11 @@ public class WeaponBow : WeaponBase
         for (int i = 0; i < count; i++)
         {
             var enemy = _targetSweep[i].collider.GetComponentInParent<EnemyBase>();
-            if (enemy != null && (!InitialHitCooldowns.TryGetValue(enemy, out float hitTime) || Time.time - hitTime >= InitialHitDuration))
+            if (enemy != null && (!_initialHitCooldowns.TryGetValue(enemy, out float hitTime) || Time.time - hitTime >= InitialHitDuration))
+            {
+                _currentTarget = enemy;
                 return _targetSweep[i].collider.bounds.center;
+            }
         }
         return null;
     }
@@ -94,7 +101,7 @@ public class WeaponBow : WeaponBase
             Vector3 dir = Quaternion.Euler(0, startAngle + i * angleStep, 0) * baseDir;
             var arrow = Instantiate(arrowPrefab, transform.position, Quaternion.LookRotation(dir));
             arrow.transform.localScale *= _stats.WeaponSize;
-            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound, _stats, _stats.ProjectileDamageDropoff, _stats.ProjectileOnHitDropoff, InitialHitCooldowns);
+            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound, _stats, _stats.ProjectileDamageDropoff, _stats.ProjectileOnHitDropoff);
         }
     }
 }

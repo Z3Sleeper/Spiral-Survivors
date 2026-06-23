@@ -37,12 +37,12 @@ MonoBehaviour:
   - statType: 4
     displayName: Attack Speed
     color: {r: 1, g: 0, b: 0.3137255, a: 1}
-    value: 10
+    value: 5
     prependText: +
     appendText: '%'
     allowedClasses: 
   - statType: 5
-    displayName: HP Regen
+    displayName: HealthRegen
     color: {r: 0.49019608, g: 1, b: 0, a: 1}
     value: 0.5
     prependText: +
@@ -58,7 +58,7 @@ MonoBehaviour:
   - statType: 8
     displayName: Dash Haste
     color: {r: 0, g: 1, b: 1, a: 1}
-    value: 15
+    value: 10
     prependText: +
     appendText: 
     allowedClasses: 

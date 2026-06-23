@@ -12,6 +12,13 @@ public class Settings : MonoBehaviour
     private const string FramerateKey = "TargetFramerate";
     private static readonly int[] FramerateOptions = { 30, 60, 120, 144, -1 };
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void ApplyOnLoad()
+    {
+        AudioListener.volume = PlayerPrefs.GetFloat(VolumeKey, 100f) / 100f;
+        Application.targetFrameRate = PlayerPrefs.GetInt(FramerateKey, -1);
+    }
+
     private void Awake()
     {
         float saved = PlayerPrefs.GetFloat(VolumeKey, 100f);

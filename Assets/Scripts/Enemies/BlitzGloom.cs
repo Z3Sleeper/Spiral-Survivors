@@ -8,15 +8,15 @@ public class BlitzGloom : EnemyBase
     [SerializeField] private float windupDuration = 0.7f;
     [SerializeField] private float postBlitzPause = 0.5f;
     [SerializeField] private float attackCooldown = 5f;
-    [SerializeField] private float blitzDistance = 10f;
-    [SerializeField] private float blitzSpeed = 20f;
+    [SerializeField] private float blitzDistance = 15f;
+    [SerializeField] private float blitzSpeedMultiplier = 25f;
     [SerializeField] private int blitzesPerAttack = 1;
     [SerializeField] private GameObject windupIndicator;
     [SerializeField] private WindupFill windupFill;
 
     public enum State { Moving, Windup, Blitzing, PostBlitz }
-    private float _stateTimer;
-    private float _attackCooldownTimer;
+    private float _stateTimer = float.MaxValue;
+    private float _attackCooldownTimer = float.MaxValue;
     private Vector3 _blitzDirection;
     private Vector3 _blitzEndPoint;
     private int _blitzesRemaining = 0;
@@ -102,12 +102,15 @@ public class BlitzGloom : EnemyBase
         if (_state == State.Blitzing)
         {
             Vector3 toEnd = _blitzEndPoint - transform.position;
+            float speed = moveSpeed * blitzSpeedMultiplier;
             _rb.linearVelocity = new Vector3(
-                _blitzDirection.x * blitzSpeed,
+                _blitzDirection.x * speed,
                 _rb.linearVelocity.y,
-                _blitzDirection.z * blitzSpeed
+                _blitzDirection.z * speed
             );
         }
+        else if (_state == State.PostBlitz && isServer)
+            FaceTargetSmooth();
     }
 
     private void EnterWindup()
