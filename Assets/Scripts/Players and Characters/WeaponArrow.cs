@@ -109,7 +109,7 @@ public class WeaponArrow : NetworkIdentity
         enemy.TakeDamageRpc(damage);
         _damage *= 1f - _damageDropoff;
         if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy, _onHitEffectiveness);
-        if (isCrit && _ownerStats != null) WeaponBase.RaiseOnCritStrike(_ownerStats, enemy);
+        if (isCrit && _ownerStats != null) WeaponBase.RaiseOnCritStrike(_ownerStats, enemy, _onHitEffectiveness);
         _onHitEffectiveness *= 1f - _onHitDropOff;
         SFXManager.instance?.Play(_hitSound, transform.position, 1f, 0.05f);
 

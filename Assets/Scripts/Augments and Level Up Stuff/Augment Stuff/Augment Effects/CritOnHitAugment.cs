@@ -19,9 +19,9 @@ public class CritOnHitAugment : MonoBehaviour
         WeaponBase.OnCritStrike -= OnCritStrike;
     }
 
-    private void OnCritStrike(CharacterStats stats, EnemyBase enemy)
+    private void OnCritStrike(CharacterStats stats, EnemyBase enemy, float effectiveness)
     {
         if (stats != _stats) return;
-        WeaponBase.RaiseOnHit(stats, enemy, stats.OnHitEffectiveness);
+        WeaponBase.RaiseOnHit(stats, enemy, effectiveness);
     }
 }
