@@ -152,4 +152,10 @@ public class BlitzGloom : EnemyBase
         _state = State.Moving;
         _blitzesRemaining = blitzesPerAttack;
     }
+
+    protected override void OnHideOnDeath()
+    {
+        if (windupIndicator != null) windupIndicator.SetActive(false);
+        if (windupFill != null) windupFill.ResetFill();
+    }
 }

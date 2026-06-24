@@ -3,6 +3,7 @@ using UnityEngine;
 public class PhantomBladeOnDashAugment : MonoBehaviour
 {
     [SerializeField] private GameObject phantomBladePrefab;
+    [SerializeField] private float damageStatMultiplier = 0.3f;
     [SerializeField] private int targetCount = 5;
     [SerializeField] private float dashHasteBonus = 20f;
     [SerializeField] private float bladeDamageBonus = 0.1f;
@@ -29,7 +30,9 @@ public class PhantomBladeOnDashAugment : MonoBehaviour
 
     private void OnSummon(PhantomBlade blade)
     {
+        if (blade.isSecondary) return;
         blade.damage += blade.baseDamage * bladeDamageBonus;
+        blade.size += 0.5f * bladeDamageBonus;
     }
 
     private void OnDashStarted(PlayerController controller)
@@ -58,7 +61,7 @@ public class PhantomBladeOnDashAugment : MonoBehaviour
 
             var blade = Instantiate(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward)).GetComponent<PhantomBlade>();
             blade.target = enemy;
-            blade.Init(_stats);
+            blade.Init(_stats, damageStatMultiplier);
             spawned++;
         }
     }

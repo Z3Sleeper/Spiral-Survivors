@@ -12,18 +12,18 @@ public class PhantomBladeCarnivalAugment : MonoBehaviour
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
-        PhantomBlade.OnSummon += OnSummon;
+        PhantomBlade.OnLateSummon += OnSummon;
     }
 
     private void OnDestroy()
     {
-        PhantomBlade.OnSummon -= OnSummon;
+        PhantomBlade.OnLateSummon -= OnSummon;
     }
 
     private void OnSummon(PhantomBlade blade)
     {
-        blade.damage -= blade.baseDamage * bladeDamagePenalty;
-
+        blade.damageMultiplier *= bladeDamagePenalty;
+        blade.sizeMultiplier *= bladeDamagePenalty;
         if (blade.isSecondary || blade.target == null || blade.target._isDead) return;
 
         float spawnRadius = phantomBladePrefab.GetComponent<PhantomBlade>().spawnRadius;
@@ -38,6 +38,9 @@ public class PhantomBladeCarnivalAugment : MonoBehaviour
         var secondary = Instantiate(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward)).GetComponent<PhantomBlade>();
         secondary.target = blade.target;
         secondary.isSecondary = true;
-        secondary.Init(_stats);
+        secondary.size = blade.size;
+        secondary.sizeMultiplier = blade.sizeMultiplier;
+        secondary.damageMultiplier = blade.damageMultiplier;
+        secondary.Init(_stats, blade.damage / _stats.WeaponDamage);
     }
 }

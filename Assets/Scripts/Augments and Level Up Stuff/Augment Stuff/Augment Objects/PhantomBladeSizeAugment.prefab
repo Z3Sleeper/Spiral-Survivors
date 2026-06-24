@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeSizeAugment
   sizeBonus: 2
-  bladeDamageBonus: 0.5
+  bladeDamageBonus: 1.5

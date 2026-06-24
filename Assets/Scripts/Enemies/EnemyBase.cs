@@ -303,6 +303,13 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
             col.enabled = false;
         foreach (var renderer in GetComponentsInChildren<Renderer>())
             renderer.enabled = false;
+        OnHideOnDeath();
+    }
+
+    protected virtual void OnHideOnDeath()
+    {
+        var shield = GetComponentInChildren<GloomShield>();
+        if (shield != null) shield.HideOnDeathRpc();
     }
 
 }

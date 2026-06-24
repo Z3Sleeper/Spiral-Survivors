@@ -5,13 +5,21 @@ using UnityEngine;
 
 public class PhantomBlade : NetworkIdentity
 {
-    private const float DamageMultiplier = 0.3f;
-    [NonSerialized] public float speed = 10f;
-    [NonSerialized] public float spawnRadius = 3f;
-    [NonSerialized] public float maxRange = 6f;
-    [NonSerialized] public Vector3 halfExtents = new(0.1f, 0.1f, 0.5f);
+    private const float BaseSpeed      = 10f;
+    private const float BaseMaxRange   = 6f;
+    private const float BaseSpawnRadius = 3f;
+    private static readonly Vector3 BaseHalfExtents = new(0.1f, 0.1f, 0.5f);
+
+    [NonSerialized] public float size = 1f;
+    [NonSerialized] public float sizeMultiplier = 1f;
+    [NonSerialized] public float damageMultiplier = 1f;
+    [NonSerialized] public float speed = BaseSpeed;
+    [NonSerialized] public float spawnRadius = BaseSpawnRadius;
+    [NonSerialized] public float maxRange = BaseMaxRange;
+    [NonSerialized] public Vector3 halfExtents = BaseHalfExtents;
 
     public static event Action<PhantomBlade> OnSummon;
+    public static event Action<PhantomBlade> OnLateSummon;
     public static event Action<CharacterStats, EnemyBase> OnBladeHit;
 
     [NonSerialized] public float baseDamage;
@@ -25,14 +33,28 @@ public class PhantomBlade : NetworkIdentity
     private int _enemyHurtboxMask;
     private Vector3 _prevPosition;
 
-    public void Init(CharacterStats owner, float onHitEffectiveness = 1f)
+    public void Init(CharacterStats owner, float damageMultiplier, float onHitEffectiveness = 1f)
     {
         ownerStats = owner;
-        baseDamage = owner.WeaponDamage * DamageMultiplier * onHitEffectiveness;
+        baseDamage = owner.WeaponDamage * damageMultiplier * onHitEffectiveness;
         damage = baseDamage;
+        if (!isSecondary) size += 0.5f * damageMultiplier;
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
         OnSummon?.Invoke(this);
+        OnLateSummon?.Invoke(this);
+        damage *= damageMultiplier;
+        ApplySize();
         _prevPosition = transform.position;
+    }
+
+    private void ApplySize()
+    {
+        float finalSize = size * sizeMultiplier;
+        transform.localScale = Vector3.one * finalSize;
+        halfExtents = BaseHalfExtents * finalSize;
+        speed = BaseSpeed * finalSize;
+        maxRange = BaseMaxRange * finalSize;
+        transform.position -= transform.forward * ((finalSize - 1f) * spawnRadius);
     }
 
     private void Update()

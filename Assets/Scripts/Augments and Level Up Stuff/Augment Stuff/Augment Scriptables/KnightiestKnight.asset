@@ -20,7 +20,7 @@ MonoBehaviour:
     <color=#00FF00>+10
     Max Health</color>
 
-    <color=#7DFF00>+1 Health Regen</color>'
+    <color=#7DFF00>+0.5 Health Regen</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 00000000
   excludedClasses: 

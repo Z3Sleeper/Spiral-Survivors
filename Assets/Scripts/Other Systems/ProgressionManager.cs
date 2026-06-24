@@ -28,14 +28,14 @@ public static class ProgressionManager
     {
         StatType.WeaponDamage      => 3f,
         StatType.MaxHealth         => 5f,
-        StatType.MoveSpeed         => 0.5f,
+        StatType.MoveSpeed         => 0.25f,
         StatType.AttackSpeed       => 5f,
-        StatType.HealthRegen       => 0.5f,
+        StatType.HealthRegen       => 0.25f,
         StatType.EnergyRegen       => 5f,
         StatType.DashCooldown      => 10f,
         StatType.CritChance        => 5f,
         StatType.WeaponRange       => 0.5f,
-        StatType.CollectionRadius  => 1f,
+        StatType.CollectionRadius  => 0.5f,
         _                          => 0f
     };
 

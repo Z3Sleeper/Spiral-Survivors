@@ -45,7 +45,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 47333f164e432de4f9e9a59a9c3da9fe, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DashHasteAugment
-  _dashHasteBonus: 50
+  _dashHasteBonus: 100
 --- !u!114 &-6235841420156883346
 MonoBehaviour:
   m_ObjectHideFlags: 0

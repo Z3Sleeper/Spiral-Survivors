@@ -30,7 +30,7 @@ MonoBehaviour:
   - statType: 2
     displayName: Movement Speed
     color: {r: 1, g: 1, b: 1, a: 1}
-    value: 0.5
+    value: 0.25
     prependText: +
     appendText: 
     allowedClasses: 
@@ -44,7 +44,7 @@ MonoBehaviour:
   - statType: 5
     displayName: HealthRegen
     color: {r: 0.49019608, g: 1, b: 0, a: 1}
-    value: 0.5
+    value: 0.25
     prependText: +
     appendText: 
     allowedClasses: 

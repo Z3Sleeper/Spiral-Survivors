@@ -3,6 +3,7 @@ using UnityEngine;
 public class PhantomBladePassiveAugment : MonoBehaviour
 {
     [SerializeField] private GameObject phantomBladePrefab;
+    [SerializeField] private float damageStatMultiplier = 0.3f;
     [SerializeField] private int targetCount = 3;
     [SerializeField] private float baseCooldown = 5f;
     [SerializeField] private float bladeDamageBonus = 0.1f;
@@ -28,7 +29,9 @@ public class PhantomBladePassiveAugment : MonoBehaviour
 
     private void OnSummon(PhantomBlade blade)
     {
+        if (blade.isSecondary) return;
         blade.damage += blade.baseDamage * bladeDamageBonus;
+        blade.size += 0.5f * bladeDamageBonus;
     }
 
     private void Update()
@@ -60,7 +63,7 @@ public class PhantomBladePassiveAugment : MonoBehaviour
 
             var blade = Instantiate(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward)).GetComponent<PhantomBlade>();
             blade.target = enemy;
-            blade.Init(_stats);
+            blade.Init(_stats, damageStatMultiplier);
             spawned++;
         }
     }

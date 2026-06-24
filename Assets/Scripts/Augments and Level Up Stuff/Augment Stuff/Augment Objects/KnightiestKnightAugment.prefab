@@ -47,4 +47,4 @@ MonoBehaviour:
   _bonusWeaponRangeFlat: 2
   _bonusWeaponRangePercent: 0.25
   _bonusMaxHealth: 10
-  _bonusHealthRegen: 1
+  _bonusHealthRegen: 0.5

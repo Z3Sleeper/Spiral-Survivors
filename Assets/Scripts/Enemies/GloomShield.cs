@@ -54,6 +54,17 @@ public class GloomShield : NetworkIdentity, IStrikeable
         }
     }
 
+    [ObserversRpc]
+    public void HideOnDeathRpc()
+    {
+        foreach (var col in GetComponentsInChildren<Collider>())
+            col.enabled = false;
+        foreach (var r in GetComponentsInChildren<Renderer>())
+            r.enabled = false;
+        if (windupIndicator != null) windupIndicator.SetActive(false);
+        if (windupFill != null) windupFill.ResetFill();
+    }
+
     private void Update()
     {
         if (_ownerEnemy == null) return;

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Phantom Deluxe
   description: Your <color=#646464>Phantom Blades</color> gain <color=#FF00FF>+100%
-    Size</color> and <color=#FF5000>+50% Damage</color>.
+    Total Size</color> and <color=#FF5000>+50% Total Damage</color>.
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 

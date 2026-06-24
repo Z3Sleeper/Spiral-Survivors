@@ -286,4 +286,10 @@ public class KingSpike : BossBase
         attackCooldown /= 2f;
         _attackCooldownTimer = Mathf.Min(_attackCooldownTimer, attackCooldown);
     }
+
+    protected override void OnHideOnDeath()
+    {
+        if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
+        if (aoeWindupIndicator != null) aoeWindupIndicator.SetActive(false);
+    }
 }

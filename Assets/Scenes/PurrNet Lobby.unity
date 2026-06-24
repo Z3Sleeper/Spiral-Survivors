@@ -6911,7 +6911,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "+2 Range & +25% Total Range \n+10 Health\n+1 Health Regen"
+  m_text: "+2 Range & +25% Total Range \n+10 Health\n+0.5 Health Regen"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -11821,14 +11821,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - V0.06d
+      - V0.06e
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - V0.06d
+    - V0.06e
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -17684,7 +17684,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.06d
+  m_text: Version 0.06e
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

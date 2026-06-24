@@ -393,7 +393,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  baseHealthRegen: 0.5
+  baseHealthRegen: 0.25
   _bonusHealthRegenFlat:
     _value: 0
     _ownerAuth: 1

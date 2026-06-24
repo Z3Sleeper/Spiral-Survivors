@@ -206,4 +206,10 @@ public class SpearGloom : EnemyBase
         _state = State.Moving;
         _attacksRemaining = attacksPerAttack;
     }
+
+    protected override void OnHideOnDeath()
+    {
+        if (windupIndicator != null) windupIndicator.SetActive(false);
+        if (windupFill != null) windupFill.ResetFill();
+    }
 }
