@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: PhantomBladeSize
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Phantom Growth
-  description: Your <color=#FF0050>Phantom Blades</color> gain <color=#FF00FF>+100%
+  displayName: Phantom Deluxe
+  description: Your <color=#646464>Phantom Blades</color> gain <color=#FF00FF>+100%
     Size</color> and <color=#FF5000>+50% Damage</color>.
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
@@ -23,5 +23,6 @@ MonoBehaviour:
   requiredAugments: []
   requiredOneOfAugments:
   - {fileID: 11400000, guid: 2f00c219e3cb1f64884bace426b32836, type: 2}
-  - {fileID: 11400000, guid: a7328fd34deb7db40a0498b211b04ed7, type: 2}
   - {fileID: 11400000, guid: 7758cb2d214ed764e9d949e93d3d6847, type: 2}
+  - {fileID: 11400000, guid: a7328fd34deb7db40a0498b211b04ed7, type: 2}
+  - {fileID: 11400000, guid: 13c6017b9b695c94587a3b1529135ff4, type: 2}

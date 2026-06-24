@@ -57,6 +57,7 @@ public class PhantomBladeOnDashAugment : MonoBehaviour
             Vector3 forward = (enemy.transform.position - spawnPos).normalized;
 
             var blade = Instantiate(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward)).GetComponent<PhantomBlade>();
+            blade.target = enemy;
             blade.Init(_stats);
             spawned++;
         }

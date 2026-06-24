@@ -66,6 +66,7 @@ public class GameManager : NetworkIdentity
     private HashSet<PlayerID> _gameOverReadyPlayers = new();
     private HashSet<PlayerID> _pauseReadyPlayers = new();
     private Coroutine _levelUpTimerCoroutine;
+    private bool _isLevelingUp;
     private int _playersLoaded;
 
     private HashSet<PlayerID> _manualPauseReadyPlayers = new();
@@ -158,6 +159,7 @@ public class GameManager : NetworkIdentity
             UpdatePauseCountdownRpc(0);
         }
 
+        _isLevelingUp = true;
         _readyPlayers.Clear();
         OnLevelUp?.Invoke();
 
@@ -230,6 +232,7 @@ public class GameManager : NetworkIdentity
             return;
         }
 
+        _isLevelingUp = false;
         IsPaused = false;
         HideLevelUpScreenRpc();
     }
@@ -443,6 +446,7 @@ public class GameManager : NetworkIdentity
 
     private void Unpause()
     {
+        if (_isLevelingUp) return;
         if (_pauseFallbackCoroutine != null)
         {
             StopCoroutine(_pauseFallbackCoroutine);

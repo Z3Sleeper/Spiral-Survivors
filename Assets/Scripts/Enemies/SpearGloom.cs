@@ -150,8 +150,16 @@ public class SpearGloom : EnemyBase
     {
         if (_state == State.Moving)
             base.FixedUpdate();
-        else if ((_state == State.PostStab || _state == State.BetweenStabs) && isServer)
-            FaceTargetSmooth();
+        else if (_state == State.PostStab && isServer)
+        {
+            if (_stateTimer <= postStabPause * 0.5f)
+                FaceTargetSmooth();
+        }
+        else if (_state == State.BetweenStabs && isServer)
+        {
+            if (_stateTimer <= betweenStabPause * 0.5f)
+                FaceTargetSmooth();
+        }
     }
 
     private void EnterWindup()

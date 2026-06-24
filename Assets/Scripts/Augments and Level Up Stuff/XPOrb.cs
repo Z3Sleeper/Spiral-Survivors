@@ -46,7 +46,7 @@ public class XPOrb : NetworkIdentity
         _rb.isKinematic = true;
     }
 
-    [ServerRpc(requireOwnership:false)]
+    [ServerRpc(requireOwnership: false)]
     public void StartAttractingRPC(Transform target, PlayerID collectorId)
     {
         if (_attractTarget != null) return;
@@ -54,21 +54,18 @@ public class XPOrb : NetworkIdentity
         _collectorId = collectorId;
     }
 
-    private void Update()
+    private void FixedUpdate()
     {
-        if (!_settled || _collected) return;
+        if (!_settled || _collected || _attractTarget == null) return;
 
-        if (_attractTarget != null)
-        {
-            transform.position = Vector3.MoveTowards(
-                transform.position,
-                _attractTarget.position,
-                attractSpeed * Time.deltaTime
-            );
+        transform.position = Vector3.MoveTowards(
+            transform.position,
+            _attractTarget.position,
+            attractSpeed * Time.deltaTime
+        );
 
-            if (Vector3.Distance(transform.position, _attractTarget.position) < collectRadius)
-                Collect();
-        }
+        if (Vector3.Distance(transform.position, _attractTarget.position) < collectRadius)
+            Collect();
     }
 
     private void OnTriggerStay(Collider other)

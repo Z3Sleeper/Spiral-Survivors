@@ -113,13 +113,17 @@ public class LocalUIManager : MonoBehaviour
         GameManager.instance.ReadyToLevelRpc(playerID);
     }
 
+    public bool IsLevelingUp { get; private set; }
+
     public void ShowLevelUpScreen()
     {
+        IsLevelingUp = true;
         levelUpScreen.SetActive(true);
     }
 
     public void HideLevelUpScreen()
     {
+        IsLevelingUp = false;
         levelUpScreen.SetActive(false);
     }
 

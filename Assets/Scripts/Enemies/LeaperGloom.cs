@@ -84,7 +84,7 @@ public class LeaperGloom : EnemyBase
 
     private void OnLeapTargetChanged(Vector3 target)
     {
-        windupIndicator.transform.position = new Vector3(target.x, 0.05f, target.z);
+        windupIndicator.transform.position = new Vector3(target.x, 0f, target.z);
     }
 
     protected override void Update()

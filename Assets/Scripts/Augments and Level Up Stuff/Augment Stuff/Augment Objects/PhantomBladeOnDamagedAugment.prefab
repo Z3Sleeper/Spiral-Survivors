@@ -26,7 +26,7 @@ Transform:
   m_GameObject: {fileID: 2659778850676277168}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 958.4149, y: 488.51227, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -44,7 +44,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 167446640269a154cbaeb6210fd3b040, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeOnDamagedAugment
-  phantomBladePrefab: {fileID: 0}
-  bladeCount: 3
+  phantomBladePrefab: {fileID: 2942187867930129664, guid: 4c94aad85e38e064283a82cc7a20be4f, type: 3}
+  bladeCount: 5
   bonusHealth: 20
   bladeDamageBonus: 0.1

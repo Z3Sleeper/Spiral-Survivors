@@ -44,5 +44,3 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a07c06d4277717c4f80f8ab875805d30, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RicochetAugment
-  _damagePenalty: 0.4
-  _onHitPenalty: 0.4

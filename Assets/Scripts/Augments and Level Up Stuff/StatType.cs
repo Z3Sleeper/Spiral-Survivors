@@ -8,6 +8,7 @@ public enum StatType
     HealthRegen  = 5,
     EnergyRegen  = 7,
     DashCooldown = 8,
-    CritChance   = 9,
-    Pierce       = 10,
+    CritChance        = 9,
+    Pierce            = 10,
+    CollectionRadius  = 11,
 }

@@ -21,4 +21,5 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredAugments:
   - {fileID: 11400000, guid: c1d3523968468544aa94f614005b1b1b, type: 2}
-  requiredOneOfAugments: []
+  requiredOneOfAugments:
+  - {fileID: 11400000, guid: c1d3523968468544aa94f614005b1b1b, type: 2}

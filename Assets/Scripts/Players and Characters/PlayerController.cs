@@ -84,7 +84,7 @@ public class PlayerController : NetworkIdentity
         }
 
         // Pause input
-        if (_input.Player.Pause.WasPressedThisFrame())
+        if (_input.Player.Pause.WasPressedThisFrame() && !LocalUIManager.instance.IsLevelingUp)
         {
             if (GameManager.instance.IsPaused)
             {

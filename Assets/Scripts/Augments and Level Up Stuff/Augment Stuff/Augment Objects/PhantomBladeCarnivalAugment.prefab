@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &5858353609751558520
+--- !u!1 &4568598527791029772
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,22 +8,22 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 7907190608186139669}
-  - component: {fileID: 8441392249135590371}
+  - component: {fileID: 6186273658316798655}
+  - component: {fileID: 2836138183206927743}
   m_Layer: 0
-  m_Name: RegenerativeStrikesAugment
+  m_Name: PhantomBladeCarnivalAugment
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &7907190608186139669
+--- !u!4 &6186273658316798655
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5858353609751558520}
+  m_GameObject: {fileID: 4568598527791029772}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -32,16 +32,17 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &8441392249135590371
+--- !u!114 &2836138183206927743
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5858353609751558520}
+  m_GameObject: {fileID: 4568598527791029772}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1897ab665cd5bcc4dbfca52c7feb5768, type: 3}
+  m_Script: {fileID: 11500000, guid: 5b5de164e5659f441bfca25c5ff18e2b, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::RegenerativeStrikesAugment
-  _regenMultiplier: 3
+  m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeCarnivalAugment
+  phantomBladePrefab: {fileID: 2942187867930129664, guid: 4c94aad85e38e064283a82cc7a20be4f, type: 3}
+  bladeDamageBonus: 0

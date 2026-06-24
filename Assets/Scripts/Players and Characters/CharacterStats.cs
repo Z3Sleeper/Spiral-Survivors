@@ -334,6 +334,7 @@ public class CharacterStats : NetworkBehaviour
         bonusEnergyRegenFlat  += ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen);
         dashHaste             += ProgressionManager.GetBaseStatBonus(StatType.DashCooldown);
         bonusCritChanceFlat   += ProgressionManager.GetBaseStatBonus(StatType.CritChance) * 0.01f;
+        bonusXPRadiusFlat     += ProgressionManager.GetBaseStatBonus(StatType.CollectionRadius);
 
         bool isRanged = GetComponent<WeaponManager>().IsRanged;
         if (isRanged)
@@ -389,9 +390,9 @@ public class CharacterStats : NetworkBehaviour
     public void Heal(float healAmount)
     {
         if (!isServer) return;
-
-        CurrentHealth += HealthRegen;
-        CurrentHealth = Mathf.Min(CurrentHealth, MaxHealth);
+        float actual = Mathf.Min(healAmount, MaxHealth - CurrentHealth);
+        CurrentHealth += actual;
+        if (actual > 0f) NotifyHealRpc(actual);
     }
 
     private void OnDeathStateChanged(bool dead)
@@ -426,8 +427,19 @@ public class CharacterStats : NetworkBehaviour
         GameManager.instance.UpdateXPModRpc(owner.Value, XPModifier);
     }
 
+    [ObserversRpc]
+    private void NotifyHealRpc(float amount) => OnHeal?.Invoke(this, amount);
+
     [ServerRpc(requireOwnership: true)]
     public void HealRpc(float amount)
+    {
+        float actual = Mathf.Min(amount, MaxHealth - CurrentHealth);
+        CurrentHealth += actual;
+        if (actual > 0f) NotifyHealRpc(actual);
+    }
+
+    [ServerRpc(requireOwnership: true)]
+    public void HealSilentRpc(float amount)
     {
         CurrentHealth = Mathf.Min(CurrentHealth + amount, MaxHealth);
     }
@@ -435,7 +447,9 @@ public class CharacterStats : NetworkBehaviour
     [ServerRpc(requireOwnership: false)]
     public void ReceiveHealRpc(float amount)
     {
-        CurrentHealth = Mathf.Min(CurrentHealth + amount, MaxHealth);
+        float actual = Mathf.Min(amount, MaxHealth - CurrentHealth);
+        CurrentHealth += actual;
+        if (actual > 0f) NotifyHealRpc(actual);
     }
 
     [ServerRpc(requireOwnership: true)]
@@ -452,6 +466,8 @@ public class CharacterStats : NetworkBehaviour
         BonusMaxHealthFlat += bonus;
         CurrentHealth = Mathf.Min(CurrentHealth + bonus, MaxHealth);
     }
+
+    public static event Action<CharacterStats, float> OnHeal;
 
     public static event Action<CharacterStats, Vector3, float, float, string> OnVFXBroadcast;
 

@@ -26,6 +26,7 @@ public class UpgradePanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI dashHasteFlatButtonText;
     [SerializeField] private TextMeshProUGUI critChanceFlatButtonText;
     [SerializeField] private TextMeshProUGUI rangeFlatButtonText;
+    [SerializeField] private TextMeshProUGUI collectionRadiusFlatButtonText;
 
     private void OnEnable() => Refresh();
 
@@ -51,7 +52,8 @@ public class UpgradePanel : MonoBehaviour
         RefreshBaseButtonText(StatType.EnergyRegen,  "Energy Regen", "",  energyRegenFlatButtonText);
         RefreshBaseButtonText(StatType.DashCooldown, "Dash Haste",   "",  dashHasteFlatButtonText);
         RefreshBaseButtonText(StatType.CritChance,   "Crit Chance",  "%", critChanceFlatButtonText);
-        RefreshBaseButtonText(StatType.WeaponRange,  "Range & Pierce", "",  rangeFlatButtonText);
+        RefreshBaseButtonText(StatType.WeaponRange,        "Range & Pierce",    "",  rangeFlatButtonText);
+        RefreshBaseButtonText(StatType.CollectionRadius,   "Collection Radius", "",  collectionRadiusFlatButtonText);
     }
 
     private void RefreshLevelUpButtonText(StatType statType, string label, TextMeshProUGUI buttonLabel)
@@ -95,7 +97,8 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeEnergyRegenFlatClicked()  { ProgressionManager.TryUpgradeBaseStat(StatType.EnergyRegen);  Refresh(); }
     public void OnUpgradeDashHasteFlatClicked()    { ProgressionManager.TryUpgradeBaseStat(StatType.DashCooldown); Refresh(); }
     public void OnUpgradeCritChanceFlatClicked()   { ProgressionManager.TryUpgradeBaseStat(StatType.CritChance);   Refresh(); }
-    public void OnUpgradeRangeFlatClicked()        { ProgressionManager.TryUpgradeBaseStat(StatType.WeaponRange);  Refresh(); }
+    public void OnUpgradeRangeFlatClicked()             { ProgressionManager.TryUpgradeBaseStat(StatType.WeaponRange);        Refresh(); }
+    public void OnUpgradeCollectionRadiusFlatClicked()  { ProgressionManager.TryUpgradeBaseStat(StatType.CollectionRadius);  Refresh(); }
 
     public void OnRefundClicked()         { ProgressionManager.RefundPoints();    Refresh(); }
     public void OnHardResetClicked()      { ProgressionManager.HardReset();       Refresh(); }

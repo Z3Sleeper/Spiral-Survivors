@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class RegenerativeStrikesAugment : MonoBehaviour
+public class HealthRegenOnHitAugment : MonoBehaviour
 {
     [SerializeField] private float _regenMultiplier = 3f;
     [SerializeField] private GameObject _vfxPrefab;

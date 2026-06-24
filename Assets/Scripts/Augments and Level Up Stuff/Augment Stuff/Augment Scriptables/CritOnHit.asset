@@ -13,12 +13,18 @@ MonoBehaviour:
   m_Name: CritOnHit
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: 'Critical Proc '
-  description: Your <color=#FF0000>Critical Hits</color> trigger <color=#FF0050>On-Hit
+  description: 'Your <color=#FF0000>Critical Hits</color> trigger <color=#FF0050>On-Hit
     Effects</color> an additional time.
+
+    Deal <color=#FF5000>10% Damage</color>
+    <color=#FF0050>On-Hit</color>.
+
+    <color=#FF0000>+10% Crit Chance</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 7340346395432844447, guid: e3b176efd0871864b919b679b614c54c, type: 3}
   incompatibleAugments: []
   requiredAugments: []
-  requiredOneOfAugments: []
+  requiredOneOfAugments:
+  - {fileID: 11400000, guid: a3db108fedac35a48b805b2c30966f49, type: 2}

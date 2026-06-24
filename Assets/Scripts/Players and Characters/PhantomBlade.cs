@@ -5,23 +5,29 @@ using UnityEngine;
 
 public class PhantomBlade : NetworkIdentity
 {
-    private const float DamageMultiplier = 0.25f;
+    private const float DamageMultiplier = 0.3f;
     [NonSerialized] public float speed = 10f;
     [NonSerialized] public float spawnRadius = 3f;
     [NonSerialized] public float maxRange = 6f;
     [NonSerialized] public Vector3 halfExtents = new(0.1f, 0.1f, 0.5f);
 
     public static event Action<PhantomBlade> OnSummon;
+    public static event Action<CharacterStats, EnemyBase> OnBladeHit;
 
     [NonSerialized] public float baseDamage;
     [NonSerialized] public float damage;
+    [NonSerialized] public EnemyBase target;
+    [NonSerialized] public bool isSecondary;
+    [NonSerialized] public CharacterStats ownerStats;
     private float _distanceTravelled;
     private readonly HashSet<EnemyBase> _hitEnemies = new();
     private readonly RaycastHit[] _results = new RaycastHit[16];
     private int _enemyHurtboxMask;
     private Vector3 _prevPosition;
+
     public void Init(CharacterStats owner, float onHitEffectiveness = 1f)
     {
+        ownerStats = owner;
         baseDamage = owner.WeaponDamage * DamageMultiplier * onHitEffectiveness;
         damage = baseDamage;
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
@@ -53,6 +59,7 @@ public class PhantomBlade : NetworkIdentity
                 var enemy = _results[i].collider.GetComponentInParent<EnemyBase>();
                 if (enemy == null || enemy._isDead || !_hitEnemies.Add(enemy)) continue;
                 enemy.TakeDamageRpc(damage);
+                OnBladeHit?.Invoke(ownerStats, enemy);
             }
         }
 

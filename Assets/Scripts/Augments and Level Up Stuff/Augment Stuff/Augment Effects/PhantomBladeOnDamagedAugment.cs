@@ -20,7 +20,7 @@ public class PhantomBladeOnDamagedAugment : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (_stats != null) _stats.AddMaxHealthFlatRpc(-bonusHealth);
+        if (_stats != null && _stats.isSpawned) _stats.AddMaxHealthFlatRpc(-bonusHealth);
         PlayerHurtboxReceiver.OnDamaged -= OnDamaged;
         PhantomBlade.OnSummon -= OnSummon;
     }
@@ -46,6 +46,7 @@ public class PhantomBladeOnDamagedAugment : MonoBehaviour
             Vector3 forward = (enemy.transform.position - spawnPos).normalized;
 
             var blade = Instantiate(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward)).GetComponent<PhantomBlade>();
+            blade.target = enemy;
             blade.Init(_stats);
         }
     }

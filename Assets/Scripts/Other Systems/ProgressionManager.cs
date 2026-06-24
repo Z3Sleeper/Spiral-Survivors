@@ -6,11 +6,12 @@ public static class ProgressionManager
     private const string SpentPointsKey    = "SpentPoints";
     private const string BoughtUpgradesKey = "BoughtUpgrades";
 
-    private const int   MaxTier          = 5;
-    private const int   LevelUpStatCost  = 950;
-    private const int   BaseStatCost     = 200;
-    private const int   BaseFee          = 50;
-    private const float FeeMultiplier    = 1.1f;
+    private const int   MaxTier                  = 5;
+    private const int   LevelUpStatCost          = 950;
+    private const int   BaseStatCost             = 200;
+    private const int   CollectionRadiusBaseCost = 450;
+    private const int   BaseFee                  = 50;
+    private const float FeeMultiplier            = 1.1f;
 
     public static int TotalPoints     => PlayerPrefs.GetInt(TotalPointsKey, 0);
     public static int SpentPoints     => PlayerPrefs.GetInt(SpentPointsKey, 0);
@@ -25,16 +26,17 @@ public static class ProgressionManager
 
     public static float GetBaseStatValuePerTier(StatType statType) => statType switch
     {
-        StatType.WeaponDamage => 3f,
-        StatType.MaxHealth    => 5f,
-        StatType.MoveSpeed    => 0.5f,
-        StatType.AttackSpeed  => 5f,
-        StatType.HealthRegen  => 0.5f,
-        StatType.EnergyRegen  => 5f,
-        StatType.DashCooldown => 10f,
-        StatType.CritChance   => 5f,
-        StatType.WeaponRange  => 0.5f,
-        _                     => 0f
+        StatType.WeaponDamage      => 3f,
+        StatType.MaxHealth         => 5f,
+        StatType.MoveSpeed         => 0.5f,
+        StatType.AttackSpeed       => 5f,
+        StatType.HealthRegen       => 0.5f,
+        StatType.EnergyRegen       => 5f,
+        StatType.DashCooldown      => 10f,
+        StatType.CritChance        => 5f,
+        StatType.WeaponRange       => 0.5f,
+        StatType.CollectionRadius  => 1f,
+        _                          => 0f
     };
 
     public static float GetBaseStatBonus(StatType statType) =>
@@ -44,7 +46,8 @@ public static class ProgressionManager
     {
         int currentTier = GetBaseStatTier(statType);
         if (currentTier >= MaxTier) return int.MaxValue;
-        int basePart = BaseStatCost * (1 + currentTier);
+        int cost = statType == StatType.CollectionRadius ? CollectionRadiusBaseCost : BaseStatCost;
+        int basePart = cost * (1 + currentTier);
         int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, BoughtUpgrades));
         return basePart + feePart;
     }
@@ -119,7 +122,7 @@ public static class ProgressionManager
     {
         StatType.WeaponDamage, StatType.MaxHealth, StatType.MoveSpeed, StatType.AttackSpeed,
         StatType.HealthRegen,  StatType.EnergyRegen, StatType.DashCooldown,
-        StatType.CritChance,   StatType.WeaponRange
+        StatType.CritChance,   StatType.WeaponRange, StatType.CollectionRadius
     };
 
     private static void DeleteAllStatTiers()
