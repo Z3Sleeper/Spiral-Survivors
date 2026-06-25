@@ -6,7 +6,7 @@ public static class ProgressionManager
     private const string SpentPointsKey    = "SpentPoints";
     private const string BoughtUpgradesKey = "BoughtUpgrades";
 
-    private const int   MaxTier                  = 5;
+    private const int   MaxTier                  = 4;
     private const int   LevelUpStatCost          = 950;
     private const int   BaseStatCost             = 200;
     private const int   CollectionRadiusBaseCost = 450;
@@ -34,7 +34,7 @@ public static class ProgressionManager
         StatType.EnergyRegen       => 5f,
         StatType.DashCooldown      => 10f,
         StatType.CritChance        => 5f,
-        StatType.WeaponRange       => 0.5f,
+        StatType.WeaponRange       => 0.25f,
         StatType.CollectionRadius  => 0.5f,
         _                          => 0f
     };
@@ -68,16 +68,16 @@ public static class ProgressionManager
 
     public static float GetStatMultiplier(StatType statType) => statType switch
     {
-        StatType.WeaponDamage => 1f + GetStatTier(StatType.WeaponDamage) * 0.2f,
-        StatType.MaxHealth    => 1f + GetStatTier(StatType.MaxHealth)    * 0.2f,
-        StatType.MoveSpeed    => 1f + GetStatTier(StatType.MoveSpeed)    * 0.2f,
-        StatType.AttackSpeed  => 1f + GetStatTier(StatType.AttackSpeed)  * 0.2f,
-        StatType.HealthRegen  => 1f + GetStatTier(StatType.HealthRegen)  * 0.2f,
-        StatType.EnergyRegen  => 1f + GetStatTier(StatType.EnergyRegen)  * 0.2f,
-        StatType.DashCooldown => 1f + GetStatTier(StatType.DashCooldown) * 0.2f,
-        StatType.CritChance   => 1f + GetStatTier(StatType.CritChance)   * 0.2f,
-        StatType.WeaponRange  => 1f + GetStatTier(StatType.WeaponRange)  * 0.2f,
-        StatType.Pierce       => 1f + GetStatTier(StatType.WeaponRange)  * 0.2f,
+        StatType.WeaponDamage => 1f + GetStatTier(StatType.WeaponDamage) * 0.25f,
+        StatType.MaxHealth    => 1f + GetStatTier(StatType.MaxHealth)    * 0.25f,
+        StatType.MoveSpeed    => 1f + GetStatTier(StatType.MoveSpeed)    * 0.25f,
+        StatType.AttackSpeed  => 1f + GetStatTier(StatType.AttackSpeed)  * 0.25f,
+        StatType.HealthRegen  => 1f + GetStatTier(StatType.HealthRegen)  * 0.25f,
+        StatType.EnergyRegen  => 1f + GetStatTier(StatType.EnergyRegen)  * 0.25f,
+        StatType.DashCooldown => 1f + GetStatTier(StatType.DashCooldown) * 0.25f,
+        StatType.CritChance   => 1f + GetStatTier(StatType.CritChance)   * 0.25f,
+        StatType.WeaponRange  => 1f + GetStatTier(StatType.WeaponRange)  * 0.25f,
+        StatType.Pierce       => 1f + GetStatTier(StatType.WeaponRange)  * 0.25f,
         _                     => 1f
     };
 

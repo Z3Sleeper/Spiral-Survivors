@@ -323,7 +323,7 @@ MonoBehaviour:
   postStabPause: 0.6
   attackCooldown: 3
   attacksPerAttack: 1
-  dashSpeedMultiplier: 15
+  dashSpeedMultiplier: 25
   windupIndicator: {fileID: 3368275256615124461}
   windupFill: {fileID: 2539281391920625006}
   _syncState:

@@ -30,15 +30,15 @@ public class PhantomBladeOnHitAugment : MonoBehaviour
         blade.size += 0.5f * bladeDamageBonus;
     }
 
-    private void OnBladeHit(CharacterStats stats, EnemyBase enemy)
+    private void OnBladeHit(CharacterStats stats, EnemyBase enemy, float damageRatio)
     {
         if (stats != _stats) return;
-        WeaponBase.RaiseOnHit(stats, enemy, 0.5f);
+        WeaponBase.RaiseOnHit(stats, enemy, damageRatio * 0.5f);
     }
 
     private void OnHit(CharacterStats stats, EnemyBase enemy, float effectiveness)
     {
         if (stats != _stats) return;
-        enemy.TakeDamageRpc(_stats.WeaponDamage * percentDamageOnHit);
+        enemy.TakeDamageRpc(_stats.WeaponDamage * percentDamageOnHit * _stats.OnHitEffectiveness * effectiveness);
     }
 }

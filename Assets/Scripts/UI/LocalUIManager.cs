@@ -253,7 +253,7 @@ public class LocalUIManager : MonoBehaviour
 
     private void UpdateHealthRegen()
     {
-        healthRegenText.text = $"<b>+{_stats.HealthRegen:F1}/s</b>";
+        healthRegenText.text = $"<b>+{_stats.HealthRegen:G4}/s</b>";
     }
 
     private void UpdateDash()

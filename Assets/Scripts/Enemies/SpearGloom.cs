@@ -190,7 +190,7 @@ public class SpearGloom : EnemyBase
 
     private System.Collections.IEnumerator DashToTargetThenWindup()
     {
-        yield return StartCoroutine(DashToTarget(moveSpeed * dashSpeedMultiplier, preferredRange / 2f));
+        yield return StartCoroutine(DashToTarget(baseMoveSpeed * dashSpeedMultiplier, preferredRange / 2f));
         if (!_isDead) EnterWindup();
     }
 

@@ -717,8 +717,8 @@ MonoBehaviour:
   bonusWeaponCountMultiplier: 1
   baseWeaponRange: 5
   bonusWeaponRangeFlat: 0
-  bonusWeaponRangePercent: 0.4
-  weaponRangePenalty: 1
+  bonusWeaponRangePercent: 1
+  weaponRangePenalty: 0.75
   baseWeaponSize: 1
   bonusWeaponSizePercent: 1
   continuousFire: 0
@@ -932,7 +932,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  weaponPrefab: {fileID: 2942187867930129664, guid: 317019568109ba944ba10aea8fd36fbe, type: 3}
+  weaponPrefab: {fileID: 2942187867930129664, guid: 6723980818ce9bb459fb5c2cebad1194, type: 3}
 --- !u!1 &2550005726435012322
 GameObject:
   m_ObjectHideFlags: 0

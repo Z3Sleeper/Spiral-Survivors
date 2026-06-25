@@ -26,7 +26,7 @@ public class CritOnHitAugment : MonoBehaviour
     private void OnHit(CharacterStats stats, EnemyBase enemy, float effectiveness)
     {
         if (stats != _stats) return;
-        enemy.TakeDamageRpc(_stats.WeaponDamage * _percentDamageOnHit);
+        enemy.TakeDamageRpc(_stats.WeaponDamage * _percentDamageOnHit * _stats.OnHitEffectiveness * effectiveness);
     }
 
     private void OnCritStrike(CharacterStats stats, EnemyBase enemy, float effectiveness)

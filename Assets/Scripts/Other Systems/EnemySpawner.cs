@@ -83,6 +83,12 @@ public class EnemySpawner : NetworkIdentity
             StartCoroutine(DelayedStart());
     }
 
+    protected override void OnDespawned(bool asServer)
+    {
+        base.OnDespawned(asServer);
+        StopAllCoroutines();
+    }
+
     private IEnumerator DelayedStart()
     {
         yield return _waitForSeconds0_5;

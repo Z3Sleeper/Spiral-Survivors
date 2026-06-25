@@ -106,7 +106,7 @@ public class ShooterGloom : EnemyBase
         {
             Vector3 dir = (_dashTarget - transform.position);
             dir.y = 0;
-            float speed = moveSpeed * dashSpeedMultiplier;
+            float speed = baseMoveSpeed * dashSpeedMultiplier;
             _rb.linearVelocity = new Vector3(dir.normalized.x * speed, _rb.linearVelocity.y, dir.normalized.z * speed);
         }
         else if (_state == State.Windup)

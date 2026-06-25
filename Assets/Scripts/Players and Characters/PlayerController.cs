@@ -25,8 +25,9 @@ public class PlayerController : NetworkIdentity
     private const float SurgeTickInterval = 0.1f;
     private float _surgeMoveSpeedBonus;
     private float _surgeWeaponSpeedBonus;
+    private Vector3 _dashVelocity;
     private const float DashDistance = 8f;
-    private const float DashSpeed = 80f;
+    private const float DashSpeed = 40f;
     private float _sweepTimer;
     private const float SweepInterval = 0.2f;
 
@@ -176,7 +177,9 @@ public class PlayerController : NetworkIdentity
         if (moveDir != Vector3.zero)
             _lastMoveDir = moveDir;
 
-        if (!_isDashing)
+        if (_isDashing)
+            _rb.linearVelocity = _dashVelocity;
+        else
             _rb.AddForce(moveDir * _stats.MoveSpeed, ForceMode.VelocityChange);
     }
 
@@ -203,12 +206,14 @@ public class PlayerController : NetworkIdentity
         _currentCharges--;
         if (_chargeRegenTimer <= 0f)
             _chargeRegenTimer = _stats.DashCooldown;
+        float moveSpeedForDash = isSurging ? _stats.MoveSpeed / _surgeMoveSpeedBonus : _stats.MoveSpeed;
+        float scaledDashSpeed = DashSpeed * ((4f + moveSpeedForDash) / 4f);
+        _dashVelocity = _lastMoveDir * scaledDashSpeed;
         _dashTimer = DashDistance / DashSpeed;
         _stats.invincible = true;
         _physicsCollider.enabled = false;
 
         _rb.linearVelocity = Vector3.zero;
-        _rb.AddForce(_lastMoveDir * DashSpeed, ForceMode.VelocityChange);
     }
 
     private void EndDash()

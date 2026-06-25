@@ -569,7 +569,7 @@ MonoBehaviour:
   _directChildren: []
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
-  weaponPrefab: {fileID: 2942187867930129664, guid: 9c02838407d0ec54aaa5c8e6ee20c091, type: 3}
+  weaponPrefab: {fileID: 2942187867930129664, guid: 74d69df57fcd4e249b301468f77c8976, type: 3}
 --- !u!1 &2304047023064556691
 GameObject:
   m_ObjectHideFlags: 0

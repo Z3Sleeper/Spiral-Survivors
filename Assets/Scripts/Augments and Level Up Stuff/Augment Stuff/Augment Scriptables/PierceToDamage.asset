@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: Overpierce
   description: 'Gain <color=#FF5000>+1.5 Damage</color> for each point of <color=#3278FF>Pierce</color>.
 
-    <color=#3278FF>+2
+    <color=#3278FF>+1
     Pierce</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 02000000

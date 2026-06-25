@@ -72,14 +72,14 @@ MonoBehaviour:
   - statType: 3
     displayName: Range
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 0.5
+    value: 0.25
     prependText: +
     appendText: 
     allowedClasses: 000000000100000003000000
   - statType: 10
     displayName: Pierce
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 0.5
+    value: 0.25
     prependText: +
     appendText: 
     allowedClasses: 02000000

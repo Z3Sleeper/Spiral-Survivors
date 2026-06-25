@@ -44,6 +44,7 @@ public class WeaponManager : NetworkBehaviour
             var obj = Instantiate(weaponPrefab, transform.position, Quaternion.identity);
             var weapon = obj.GetComponent<WeaponBase>();
             weapon.Init(_stats);
+            weapon.InitModelVisuals();
             weapon.transform.localScale = _weaponPrefabScale * _currentSize;
             SetWeaponRange(weapon);
             _weapons.Add(weapon);
@@ -63,11 +64,27 @@ public class WeaponManager : NetworkBehaviour
     private void SetWeaponRange(WeaponBase weapon)
     {
         if (!weapon.IsMelee) return;
-        weapon.transform.localScale = new Vector3(
-            weapon.transform.localScale.x,
-            weapon.transform.localScale.y,
-            _stats.WeaponRange
-        );
+        if (weapon.hitboxTarget != null)
+        {
+            float rootZ = weapon.transform.localScale.z;
+            float r     = _stats.WeaponRange;
+            var s = weapon.hitboxTarget.localScale;
+            weapon.hitboxTarget.localScale = new Vector3(s.x, s.y, r / rootZ);
+            if (weapon.rangeScaleTarget != null)
+            {
+                var p = weapon.hitboxTarget.localPosition;
+                weapon.hitboxTarget.localPosition = new Vector3(p.x, p.y, r / (2f * rootZ) - transform.lossyScale.x * 0.5f);
+            }
+        }
+        else
+        {
+            weapon.transform.localScale = new Vector3(
+                weapon.transform.localScale.x,
+                weapon.transform.localScale.y,
+                _stats.WeaponRange
+            );
+        }
+        weapon.ScaleModel(_stats.WeaponRange);
     }
 
     private void Update()
@@ -106,7 +123,9 @@ public class WeaponManager : NetworkBehaviour
             float angleOffset = 360f / _weapons.Count * i;
             float angle = (_currentAngle + angleOffset) * Mathf.Deg2Rad;
 
-            float halfRange = _weapons[i].IsMelee ? _currentRange / 2f : 0.25f;
+            float halfRange = _weapons[i].rangeScaleTarget != null
+                ? _weapons[i].designOrbit * _weapons[i].transform.localScale.z
+                : (_weapons[i].IsMelee ? _currentRange / 2f : 0.25f);
             float totalRadius = _stats.WeaponRadius + transform.lossyScale.x * 0.5f + halfRange;
 
             Vector3 offset = new(

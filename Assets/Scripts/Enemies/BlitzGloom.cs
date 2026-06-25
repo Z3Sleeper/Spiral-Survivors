@@ -44,11 +44,19 @@ public class BlitzGloom : EnemyBase
 
     private void OnStateChanged(State state)
     {
-        if (windupIndicator != null) windupIndicator.SetActive(state == State.Windup);
-        if (windupFill != null)
+        if (state == State.Windup)
         {
-            if (state == State.Windup) windupFill.StartFill(windupDuration);
-            else windupFill.ResetFill();
+            windupIndicator.transform.SetParent(null);
+            windupIndicator.transform.position = new Vector3(transform.position.x, 0.05f, transform.position.z);
+            windupIndicator.transform.rotation = Quaternion.LookRotation(_syncBlitzDirection.value);
+            windupIndicator.SetActive(true);
+            if (windupFill != null) windupFill.StartFill(windupDuration);
+        }
+        else if (state != State.Blitzing)
+        {
+            windupIndicator.SetActive(false);
+            windupIndicator.transform.SetParent(transform);
+            if (windupFill != null) windupFill.ResetFill();
         }
     }
 
@@ -102,7 +110,7 @@ public class BlitzGloom : EnemyBase
         if (_state == State.Blitzing)
         {
             Vector3 toEnd = _blitzEndPoint - transform.position;
-            float speed = moveSpeed * blitzSpeedMultiplier;
+            float speed = baseMoveSpeed * blitzSpeedMultiplier;
             _rb.linearVelocity = new Vector3(
                 _blitzDirection.x * speed,
                 _rb.linearVelocity.y,
@@ -117,7 +125,7 @@ public class BlitzGloom : EnemyBase
     {
         _stateTimer = windupDuration;
         _rb.linearVelocity = Vector3.zero;
-        _physicsCollider.enabled = true;
+        _physicsCollider.enabled = false;
 
         var snapDir = SnapFaceTarget();
         if (snapDir != Vector3.zero)
@@ -155,7 +163,6 @@ public class BlitzGloom : EnemyBase
 
     protected override void OnHideOnDeath()
     {
-        if (windupIndicator != null) windupIndicator.SetActive(false);
-        if (windupFill != null) windupFill.ResetFill();
+        if (windupIndicator != null) Destroy(windupIndicator);
     }
 }

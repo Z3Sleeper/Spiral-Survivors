@@ -20,7 +20,7 @@ public class PhantomBlade : NetworkIdentity
 
     public static event Action<PhantomBlade> OnSummon;
     public static event Action<PhantomBlade> OnLateSummon;
-    public static event Action<CharacterStats, EnemyBase> OnBladeHit;
+    public static event Action<CharacterStats, EnemyBase, float> OnBladeHit;
 
     [NonSerialized] public float baseDamage;
     [NonSerialized] public float damage;
@@ -33,12 +33,12 @@ public class PhantomBlade : NetworkIdentity
     private int _enemyHurtboxMask;
     private Vector3 _prevPosition;
 
-    public void Init(CharacterStats owner, float damageMultiplier, float onHitEffectiveness = 1f)
+    public void Init(CharacterStats owner, float baseDamageMultiplier, float onHitEffectiveness = 1f)
     {
         ownerStats = owner;
-        baseDamage = owner.WeaponDamage * damageMultiplier * onHitEffectiveness;
+        baseDamage = owner.WeaponDamage * baseDamageMultiplier * onHitEffectiveness;
         damage = baseDamage;
-        if (!isSecondary) size += 0.5f * damageMultiplier;
+        if (!isSecondary) size += 0.5f * baseDamageMultiplier;
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
         OnSummon?.Invoke(this);
         OnLateSummon?.Invoke(this);
@@ -81,7 +81,7 @@ public class PhantomBlade : NetworkIdentity
                 var enemy = _results[i].collider.GetComponentInParent<EnemyBase>();
                 if (enemy == null || enemy._isDead || !_hitEnemies.Add(enemy)) continue;
                 enemy.TakeDamageRpc(damage);
-                OnBladeHit?.Invoke(ownerStats, enemy);
+                OnBladeHit?.Invoke(ownerStats, enemy, damage / baseDamage);
             }
         }
 

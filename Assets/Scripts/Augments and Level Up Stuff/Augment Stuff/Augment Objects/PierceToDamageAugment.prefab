@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PierceToPercentDamageAugment
   _damagePerPierce: 1.5
-  _pierceFlat: 2
+  _pierceFlat: 1
