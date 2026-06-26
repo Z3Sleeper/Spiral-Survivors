@@ -68,7 +68,9 @@ public class CharacterStats : NetworkBehaviour
     public float WeaponSize => baseWeaponSize * bonusWeaponSizePercent;
 
     public bool continuousFire = false;
-    [NonSerialized] public float baseCritChance = 0.05f;
+    [NonSerialized] public bool canContactAllies = false;
+    [NonSerialized] public bool canDamageAllies  = false;
+    [NonSerialized] public float baseCritChance = 0f;
     public float bonusCritChanceFlat = 0f;
     public float bonusCritChancePercent = 1f;
     public float CritChance => (baseCritChance + bonusCritChanceFlat) * bonusCritChancePercent;
@@ -266,7 +268,7 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusXPRadiusPercent = 1f;
     public float XPRadius => (baseXPRadius + bonusXPRadiusFlat) * bonusXPRadiusPercent;
 
-    [HideInInspector] public SyncVar<float> _reviveTimeSync = new(3f);
+    [HideInInspector] public SyncVar<float> _reviveTimeSync = new(1f);
     public float reviveTime
     {
         get => _reviveTimeSync.value;

@@ -18,14 +18,15 @@ MonoBehaviour:
 
     <color=#FF5000>-30% Damage</color>
 
-    <color=#FF0050>-25%
+    <color=#FF0050>-15%
     On-Hit Effectiveness</color>
 
-    <color=#3278FF>-40% Range</color>'
+    <color=#3278FF>-25% Range</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 02000000
   effectPrefab: {fileID: 3887587249794003271, guid: 8fcc3e0ffe3ad364ea3ebc26a2a4de38, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments: []
   requiredAugments: []
   requiredOneOfAugments: []

@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: Phantom Crit
   description: 'Every 3 <color=#FF5000>Strike</color> <color=#FF0050>Critical Hits</color>,
     summon a <color=#646464>Phantom Blade</color> piercing the target for <color=#FF5000>100%
-    Damage</color>.
+    Unpenalized Damage</color>.
 
     <color=#FF0050>+10% Crit Chance</color>
 

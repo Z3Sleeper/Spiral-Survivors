@@ -14,13 +14,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Phantom Storm
   description: 'Every 3 seconds, summon a <color=#646464>Phantom Blade</color> piercing
-    the nearest enemy for <color=#FF5000>150% Damage</color>. This cooldown is lowered
-    by <color=#FF0050>Attack Speed</color>.
+    the nearest enemy for <color=#FF5000>150% Unpenalized Damage</color>. This cooldown
+    is lowered by <color=#FF0050>Attack Speed</color>.
 
-    <color=#FF0050>+10% Attack Speed</color>
+    <color=#FF0050>+10% Attack
+    Speed</color>
 
-    <color=#646464>+10%
-    Phantom Blade Damage</color>'
+    <color=#646464>+10% Phantom Blade Damage</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 

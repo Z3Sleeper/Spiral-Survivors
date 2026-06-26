@@ -48,6 +48,7 @@ public class EnemySpawner : NetworkIdentity
     [SerializeField] private float plebSpawnIntervalQ4 = 0.25f;
 
     private List<GameObject> _currentSet = new();
+    private List<GameObject> _currentElitePool = new();
     private List<GameObject> _previousSet = new();
     private EnemyBase _activeBoss;
 
@@ -86,6 +87,12 @@ public class EnemySpawner : NetworkIdentity
     protected override void OnDespawned(bool asServer)
     {
         base.OnDespawned(asServer);
+        StopAllCoroutines();
+    }
+
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
         StopAllCoroutines();
     }
 
@@ -147,12 +154,12 @@ public class EnemySpawner : NetworkIdentity
             {
                 bool eliteBlackout = _spawnPhase == 3 && CycleTimer < cycleInterval * 0.125f;
                 var tier = GetCurrentTier();
-                if (tier.elite.Count > 0 && _spawnPhase >= 1 && !eliteBlackout)
+                if (_currentElitePool.Count > 0 && _spawnPhase >= 1 && !eliteBlackout)
                 {
                     _elitePrdChance += eliteChance;
                     if (UnityEngine.Random.value < _elitePrdChance)
                     {
-                        SpawnThisEnemy(GetRandom(tier.elite), false, isUncapped: true);
+                        SpawnThisEnemy(GetRandom(_currentElitePool), false, isUncapped: true);
                         _elitePrdChance = 0f;
                     }
                     else if (_currentSet.Count > 0 && EnemyBase.ActiveNormalCount < maxNormalEnemies)
@@ -266,6 +273,15 @@ public class EnemySpawner : NetworkIdentity
         // Step 3: slide the window — current becomes previous, new becomes current
         _previousSet = new List<GameObject>(_currentSet);
         _currentSet = newSet;
+
+        // Build matching elite pool by index
+        _currentElitePool.Clear();
+        foreach (var normal in _currentSet)
+        {
+            int idx = currentTier.normal.IndexOf(normal);
+            if (idx >= 0 && idx < currentTier.elite.Count && currentTier.elite[idx] != null)
+                _currentElitePool.Add(currentTier.elite[idx]);
+        }
     }
 
     private TierEnemies GetCurrentTier() => _bossesDefeated switch

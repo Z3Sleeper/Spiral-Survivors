@@ -38,7 +38,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5449707049860242090, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
       propertyPath: xpValue
-      value: 1500
+      value: 2500
+      objectReference: {fileID: 0}
+    - target: {fileID: 5449707049860242090, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
+      propertyPath: bombWaves
+      value: 10
       objectReference: {fileID: 0}
     - target: {fileID: 5449707049860242090, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
       propertyPath: maxHealth
@@ -49,8 +53,16 @@ PrefabInstance:
       value: 0.9
       objectReference: {fileID: 0}
     - target: {fileID: 5449707049860242090, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
+      propertyPath: bombInterval
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 5449707049860242090, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
       propertyPath: attackCooldown
       value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 5449707049860242090, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
+      propertyPath: chargeWindupDuration
+      value: 0.4
       objectReference: {fileID: 0}
     - target: {fileID: 6371288759870050912, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'

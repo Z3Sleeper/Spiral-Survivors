@@ -25,12 +25,16 @@ PrefabInstance:
       value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 2486084485780169169, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
-      propertyPath: rotationSpeed
-      value: 180
-      objectReference: {fileID: 0}
-    - target: {fileID: 2486084485780169169, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
       propertyPath: reactionCooldown
       value: 3
+      objectReference: {fileID: 0}
+    - target: {fileID: 3450885902949319882, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3450885902949319882, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5601217845052689900, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
       propertyPath: damage
@@ -38,7 +42,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5601217845052689900, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
       propertyPath: xpValue
-      value: 90
+      value: 150
       objectReference: {fileID: 0}
     - target: {fileID: 5601217845052689900, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
       propertyPath: enemyName

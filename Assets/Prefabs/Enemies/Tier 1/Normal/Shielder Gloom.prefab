@@ -291,6 +291,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7839943648137112170}
   - component: {fileID: 6248512419650773259}
+  - component: {fileID: -6517404654491541546}
   - component: {fileID: -8394223174193477460}
   - component: {fileID: -6973549993052189348}
   m_Layer: 0
@@ -364,6 +365,18 @@ MonoBehaviour:
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
   _renderers: []
+--- !u!114 &-6517404654491541546
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1597157536724350220}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d3cc0dfa1e2f4ca4b8a94a729f64a60c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ShieldParent
 --- !u!114 &-8394223174193477460
 MonoBehaviour:
   m_ObjectHideFlags: 0

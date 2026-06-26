@@ -36,7 +36,7 @@ public class PhantomBlade : NetworkIdentity
     public void Init(CharacterStats owner, float baseDamageMultiplier, float onHitEffectiveness = 1f)
     {
         ownerStats = owner;
-        baseDamage = owner.WeaponDamage * baseDamageMultiplier * onHitEffectiveness;
+        baseDamage = owner.UnpenalizedWeaponDamage * baseDamageMultiplier * onHitEffectiveness;
         damage = baseDamage;
         if (!isSecondary) size += 0.5f * baseDamageMultiplier;
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");

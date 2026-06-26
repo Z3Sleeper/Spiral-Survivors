@@ -9,6 +9,7 @@ public class AugmentData : ScriptableObject
     public CharacterStats.CharacterClass[] restrictedToClasses;
     public CharacterStats.CharacterClass[] excludedClasses;
     public GameObject effectPrefab;
+    public bool multiplayerOnly = false;
     public AugmentData[] incompatibleAugments;
     public AugmentData[] requiredAugments;
     public AugmentData[] requiredOneOfAugments;

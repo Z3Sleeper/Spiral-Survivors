@@ -14,11 +14,17 @@ public class WeaponBow : WeaponBase
     private float InitialHitDuration => 90f / _stats.WeaponSpeed;
     private readonly Dictionary<EnemyBase, float> _initialHitCooldowns = new();
     private readonly List<EnemyBase> _cooldownBuffer = new();
+    private readonly Dictionary<CharacterStats, float> _initialAllyHitCooldowns = new();
+    private readonly List<CharacterStats> _allyBuffer = new();
     private EnemyBase _currentTarget;
+    private CharacterStats _currentAllyTarget;
+    private int _playerHurtboxMask;
+    private readonly RaycastHit[] _allyTargetSweep = new RaycastHit[8];
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        _playerHurtboxMask = LayerMask.GetMask("PlayerHurtbox");
         enabled = isOwner;
     }
 
@@ -43,6 +49,14 @@ public class WeaponBow : WeaponBase
                 _initialHitCooldowns.Remove(e);
         }
 
+        _allyBuffer.Clear();
+        _allyBuffer.AddRange(_initialAllyHitCooldowns.Keys);
+        foreach (var a in _allyBuffer)
+        {
+            if (Time.time - _initialAllyHitCooldowns[a] >= cooldownDuration)
+                _initialAllyHitCooldowns.Remove(a);
+        }
+
         if (_fireTimer > 0f) return;
 
         Vector3? target = GetTargetPosition();
@@ -50,6 +64,8 @@ public class WeaponBow : WeaponBase
         {
             if (_currentTarget != null)
                 _initialHitCooldowns[_currentTarget] = Time.time;
+            if (_currentAllyTarget != null)
+                _initialAllyHitCooldowns[_currentAllyTarget] = Time.time;
             Fire(target ?? (transform.position + transform.forward));
             _fireTimer = 1f / (_stats.AttackSpeed * bowAttackSpeedScaling);
         }
@@ -60,19 +76,52 @@ public class WeaponBow : WeaponBase
     private Vector3? GetTargetPosition()
     {
         _currentTarget = null;
+        _currentAllyTarget = null;
         var origin = transform.position - transform.forward * 1.0f;
-        int count = Physics.RaycastNonAlloc(origin, transform.forward, _targetSweep, _stats.WeaponRange + 1f, enemyHurtboxLayer);
+        float range = _stats.WeaponRange + 1f;
 
+        int count = Physics.RaycastNonAlloc(origin, transform.forward, _targetSweep, range, enemyHurtboxLayer);
         System.Array.Sort(_targetSweep, 0, count, Comparer<RaycastHit>.Create((a, b) => a.distance.CompareTo(b.distance)));
 
+        EnemyBase foundEnemy = null;
+        Vector3 enemyPos = default;
+        float enemyDist = float.MaxValue;
         for (int i = 0; i < count; i++)
         {
             var enemy = _targetSweep[i].collider.GetComponentInParent<EnemyBase>();
             if (enemy != null && (!_initialHitCooldowns.TryGetValue(enemy, out float hitTime) || Time.time - hitTime >= InitialHitDuration))
             {
-                _currentTarget = enemy;
-                return _targetSweep[i].collider.bounds.center;
+                foundEnemy = enemy;
+                enemyPos = _targetSweep[i].collider.bounds.center;
+                enemyDist = _targetSweep[i].distance;
+                break;
             }
+        }
+
+        if (_stats.canContactAllies)
+        {
+            int aCount = Physics.RaycastNonAlloc(origin, transform.forward, _allyTargetSweep, range, _playerHurtboxMask);
+            System.Array.Sort(_allyTargetSweep, 0, aCount, Comparer<RaycastHit>.Create((a, b) => a.distance.CompareTo(b.distance)));
+
+            for (int i = 0; i < aCount; i++)
+            {
+                var ally = _allyTargetSweep[i].collider.GetComponentInParent<CharacterStats>();
+                if (ally == null || ally.IsDead) continue;
+                if (_initialAllyHitCooldowns.TryGetValue(ally, out float hitTime) && Time.time - hitTime < InitialHitDuration) continue;
+
+                if (_allyTargetSweep[i].distance < enemyDist)
+                {
+                    _currentAllyTarget = ally;
+                    return _allyTargetSweep[i].collider.bounds.center;
+                }
+                break;
+            }
+        }
+
+        if (foundEnemy != null)
+        {
+            _currentTarget = foundEnemy;
+            return enemyPos;
         }
         return null;
     }
@@ -101,7 +150,7 @@ public class WeaponBow : WeaponBase
             Vector3 dir = Quaternion.Euler(0, startAngle + i * angleStep, 0) * baseDir;
             var arrow = Instantiate(arrowPrefab, transform.position, Quaternion.LookRotation(dir));
             arrow.transform.localScale *= _stats.WeaponSize;
-            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound, _stats, _stats.ProjectileDamageDropoff, _stats.ProjectileOnHitDropoff);
+            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound, _stats, _stats.ProjectileDamageDropoff, _stats.ProjectileOnHitDropoff, _stats.canContactAllies, _stats.canDamageAllies);
         }
     }
 }

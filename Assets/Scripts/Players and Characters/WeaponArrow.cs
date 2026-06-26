@@ -18,15 +18,20 @@ public class WeaponArrow : NetworkIdentity
     private int _piercesRemaining;
     private float _damageDropoff;
     private readonly HashSet<EnemyBase> _hitEnemies = new();
+    private readonly HashSet<CharacterStats> _hitAllies = new();
     private readonly HashSet<IStrikeable> _hitStrikeables = new();
     private AudioClip _hitSound;
     private Vector3 _prevPosition;
     private int _enemyHurtboxMask;
     private int _strikeableMask;
+    private int _playerHurtboxMask;
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
     private readonly RaycastHit[] _strikeableResults = new RaycastHit[8];
+    private readonly RaycastHit[] _allyResults = new RaycastHit[8];
     private bool _destroyed;
     private bool _isLocalArrow;
+    private bool _canContactAllies;
+    private bool _canDamageAllies;
     private CharacterStats _ownerStats;
 
     protected override void OnSpawned()
@@ -34,9 +39,10 @@ public class WeaponArrow : NetworkIdentity
         base.OnSpawned();
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
         _strikeableMask = LayerMask.GetMask("Strikeable");
+        _playerHurtboxMask = LayerMask.GetMask("PlayerHurtbox");
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f, float onHitDropOff = 0f)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f, float onHitDropOff = 0f, bool canContactAllies = false, bool canDamageAllies = false)
     {
         _isLocalArrow = true;
         _ownerStats = ownerStats;
@@ -51,6 +57,8 @@ public class WeaponArrow : NetworkIdentity
         _piercesRemaining = pierce;
         _ricochetsRemaining = ricochet;
         _hitSound = hitSound;
+        _canContactAllies = canContactAllies;
+        _canDamageAllies = canDamageAllies;
         _prevPosition = transform.position;
     }
 
@@ -93,6 +101,18 @@ public class WeaponArrow : NetworkIdentity
                     if (_destroyed) break;
                 }
             }
+
+            if (!_destroyed && _canContactAllies)
+            {
+                int aCount = Physics.BoxCastNonAlloc(_prevPosition, scaledHalfExtents, delta / dist, _allyResults, transform.rotation, dist, _playerHurtboxMask);
+                for (int i = 0; i < aCount; i++)
+                {
+                    var ally = _allyResults[i].collider.GetComponentInParent<CharacterStats>();
+                    if (ally == null || ally.IsDead || ally == _ownerStats || _hitAllies.Contains(ally)) continue;
+                    ProcessAllyHit(ally);
+                    if (_destroyed) break;
+                }
+            }
         }
 
         _prevPosition = transform.position;
@@ -115,10 +135,10 @@ public class WeaponArrow : NetworkIdentity
 
         if (_ricochetsRemaining > 0)
         {
-            var target = FindNearestUnhitEnemy();
-            if (target != null)
+            Vector3? ricochetTarget = FindNearestRicochetTarget();
+            if (ricochetTarget.HasValue)
             {
-                _direction = (target.transform.position - transform.position).normalized;
+                _direction = (ricochetTarget.Value - transform.position).normalized;
                 transform.forward = _direction;
                 _distanceTravelled = 0f;
                 _ricochetsRemaining--;
@@ -142,10 +162,10 @@ public class WeaponArrow : NetworkIdentity
 
         if (_ricochetsRemaining > 0)
         {
-            var target = FindNearestUnhitEnemy();
-            if (target != null)
+            Vector3? ricochetTarget = FindNearestRicochetTarget();
+            if (ricochetTarget.HasValue)
             {
-                _direction = (target.transform.position - transform.position).normalized;
+                _direction = (ricochetTarget.Value - transform.position).normalized;
                 transform.forward = _direction;
                 _distanceTravelled = 0f;
                 _ricochetsRemaining--;
@@ -163,20 +183,69 @@ public class WeaponArrow : NetworkIdentity
         _destroyed = true;
     }
 
-    private EnemyBase FindNearestUnhitEnemy()
+    private void ProcessAllyHit(CharacterStats ally)
     {
-        EnemyBase nearest = null;
+        _hitAllies.Add(ally);
+
+        if (_ownerStats != null) WeaponBase.RaiseOnAllyHit(_ownerStats, ally, _onHitEffectiveness);
+
+        if (_canDamageAllies)
+        {
+            float damage = _damage;
+            bool isCrit = Random.value < _critChance;
+            if (isCrit) damage *= _critDamage;
+            ally.TakeDamageRpc(damage);
+            _damage *= 1f - _damageDropoff;
+            _onHitEffectiveness *= 1f - _onHitDropOff;
+        }
+
+        SFXManager.instance?.Play(_hitSound, transform.position, 1f, 0.05f);
+
+        if (_ricochetsRemaining > 0)
+        {
+            Vector3? ricochetTarget = FindNearestRicochetTarget();
+            if (ricochetTarget.HasValue)
+            {
+                _direction = (ricochetTarget.Value - transform.position).normalized;
+                transform.forward = _direction;
+                _distanceTravelled = 0f;
+                _ricochetsRemaining--;
+                return;
+            }
+        }
+
+        if (_piercesRemaining > 0)
+        {
+            _piercesRemaining--;
+            return;
+        }
+
+        Destroy(gameObject);
+        _destroyed = true;
+    }
+
+    private Vector3? FindNearestRicochetTarget()
+    {
         float nearestDist = float.MaxValue;
+        Vector3? nearestPos = null;
+
         foreach (var enemy in FindObjectsByType<EnemyBase>(FindObjectsSortMode.None))
         {
             if (enemy._isDead || _hitEnemies.Contains(enemy)) continue;
             float dist = Vector3.Distance(transform.position, enemy.transform.position);
-            if (dist < nearestDist)
+            if (dist < nearestDist) { nearestDist = dist; nearestPos = enemy.transform.position; }
+        }
+
+        if (_canContactAllies)
+        {
+            foreach (var ally in CharacterStats.All)
             {
-                nearestDist = dist;
-                nearest = enemy;
+                if (ally.IsDead || ally == _ownerStats || _hitAllies.Contains(ally)) continue;
+                float dist = Vector3.Distance(transform.position, ally.transform.position);
+                if (dist < nearestDist) { nearestDist = dist; nearestPos = ally.transform.position; }
             }
         }
-        return nearest;
+
+        return nearestPos;
     }
 }

@@ -5,6 +5,7 @@ public class GloomShield : NetworkIdentity, IStrikeable
 {
     [Header("Shield Settings")]
     [SerializeField] private float shieldOffset = 1.5f;
+    [SerializeField] private float angleOffset = 0f;
     [SerializeField] private float windupDuration = 2f;
     [SerializeField] private float explosionDuration = 0.1f;
     [SerializeField] private float rotationSpeed = 90f;
@@ -27,11 +28,13 @@ public class GloomShield : NetworkIdentity, IStrikeable
     private State _state { get => _syncState.value; set => _syncState.value = value; }
     private float _stateTimer = float.MaxValue;
     private EnemyBase _ownerEnemy;
+    private ShieldParent _shieldParent;
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
         _ownerEnemy = GetComponentInParent<EnemyBase>();
+        _shieldParent = GetComponentInParent<ShieldParent>();
         if (shieldRenderers != null && shieldRenderers.Length > 0) _originalColor = shieldRenderers[0].material.color;
         _syncState.onChanged += OnStateChanged;
         OnStateChanged(_syncState.value);
@@ -71,8 +74,9 @@ public class GloomShield : NetworkIdentity, IStrikeable
 
         if (_syncFacingDir.value != Vector3.zero)
         {
-            transform.position = _ownerEnemy.transform.position + _syncFacingDir.value * shieldOffset;
-            transform.rotation = Quaternion.LookRotation(_syncFacingDir.value);
+            Vector3 offsetDir = Quaternion.Euler(0f, angleOffset, 0f) * _syncFacingDir.value;
+            transform.position = _ownerEnemy.transform.position + offsetDir * shieldOffset;
+            transform.rotation = Quaternion.LookRotation(offsetDir);
         }
 
         if (!isServer || _ownerEnemy._isDead) return;
@@ -121,10 +125,17 @@ public class GloomShield : NetworkIdentity, IStrikeable
         EnterWindup();
     }
 
+    public void TriggerWindup()
+    {
+        if (!isServer || _state != State.Idle) return;
+        EnterWindup();
+    }
+
     private void EnterWindup()
     {
         _stateTimer = windupDuration;
         _state = State.Windup;
+        _shieldParent?.OnShieldTriggered(this);
     }
 
     private void EnterExploding()

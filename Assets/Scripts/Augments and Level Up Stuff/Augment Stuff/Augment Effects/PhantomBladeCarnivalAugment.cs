@@ -3,8 +3,7 @@ using UnityEngine;
 public class PhantomBladeCarnivalAugment : MonoBehaviour
 {
     [SerializeField] private GameObject phantomBladePrefab;
-    [Header("DANGER: Do not set this above 1")]
-    [SerializeField] private float bladeDamagePenalty = 0.2f;
+    [SerializeField] private float bladeDamagePenalty = 0.8f;
 
     private CharacterStats _stats;
 
@@ -22,8 +21,8 @@ public class PhantomBladeCarnivalAugment : MonoBehaviour
 
     private void OnSummon(PhantomBlade blade)
     {
-        blade.damageMultiplier *= bladeDamagePenalty;
-        blade.sizeMultiplier *= bladeDamagePenalty;
+        blade.damageMultiplier *= 1f - bladeDamagePenalty;
+        blade.sizeMultiplier *= 1f - bladeDamagePenalty;
         if (blade.isSecondary || blade.target == null || blade.target._isDead) return;
 
         float spawnRadius = phantomBladePrefab.GetComponent<PhantomBlade>().spawnRadius;
@@ -41,6 +40,6 @@ public class PhantomBladeCarnivalAugment : MonoBehaviour
         secondary.size = blade.size;
         secondary.sizeMultiplier = blade.sizeMultiplier;
         secondary.damageMultiplier = blade.damageMultiplier;
-        secondary.Init(_stats, blade.damage / _stats.WeaponDamage);
+        secondary.Init(_stats, blade.damage / _stats.UnpenalizedWeaponDamage);
     }
 }

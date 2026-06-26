@@ -6,17 +6,40 @@ public static class ProgressionManager
     private const string SpentPointsKey    = "SpentPoints";
     private const string BoughtUpgradesKey = "BoughtUpgrades";
 
-    private const int   MaxTier                  = 4;
+    private const int   LevelUpMaxTier           = 4;
+    private const int   BaseMaxTier              = 4;
+    private const int   DamageMaxTier            = 7;
+    private const int   MoveSpeedMaxTier         = 5;
     private const int   LevelUpStatCost          = 950;
     private const int   BaseStatCost             = 200;
+    private const int   CoreStatBaseCost         = 450;
     private const int   CollectionRadiusBaseCost = 450;
     private const int   BaseFee                  = 50;
     private const float FeeMultiplier            = 1.1f;
+    private const long  PointsCap               = 1_000_000_000_000_000_000L;
 
-    public static int TotalPoints     => PlayerPrefs.GetInt(TotalPointsKey, 0);
-    public static int SpentPoints     => PlayerPrefs.GetInt(SpentPointsKey, 0);
-    public static int AvailablePoints => TotalPoints - SpentPoints;
-    public static int BoughtUpgrades  => PlayerPrefs.GetInt(BoughtUpgradesKey, 0);
+    public static int GetMaxBaseTier(StatType statType) => statType switch
+    {
+        StatType.WeaponDamage     => DamageMaxTier,
+        StatType.MoveSpeed        => MoveSpeedMaxTier,
+        StatType.CollectionRadius => 5,
+        StatType.EnergyRegen      => 3,
+        StatType.WeaponRange      => 2,
+        _                         => BaseMaxTier
+    };
+
+    public static int LevelUpStatMaxTier => LevelUpMaxTier;
+
+    private static long GetLong(string key) =>
+        long.TryParse(PlayerPrefs.GetString(key, "0"), out long v) ? v : 0L;
+
+    private static void SetLong(string key, long value) =>
+        PlayerPrefs.SetString(key, value.ToString());
+
+    public static long TotalPoints     => GetLong(TotalPointsKey);
+    public static long SpentPoints     => GetLong(SpentPointsKey);
+    public static long AvailablePoints => TotalPoints - SpentPoints;
+    public static int  BoughtUpgrades  => PlayerPrefs.GetInt(BoughtUpgradesKey, 0);
 
     public static int GetStatTier(StatType statType) =>
         PlayerPrefs.GetInt($"StatTier_{statType}", 0);
@@ -26,16 +49,16 @@ public static class ProgressionManager
 
     public static float GetBaseStatValuePerTier(StatType statType) => statType switch
     {
-        StatType.WeaponDamage      => 3f,
+        StatType.WeaponDamage      => 5f,
         StatType.MaxHealth         => 5f,
-        StatType.MoveSpeed         => 0.25f,
+        StatType.MoveSpeed         => 1f,
         StatType.AttackSpeed       => 5f,
         StatType.HealthRegen       => 0.25f,
         StatType.EnergyRegen       => 5f,
         StatType.DashCooldown      => 10f,
         StatType.CritChance        => 5f,
-        StatType.WeaponRange       => 0.25f,
-        StatType.CollectionRadius  => 0.5f,
+        StatType.WeaponRange       => 1f,
+        StatType.CollectionRadius  => 1f,
         _                          => 0f
     };
 
@@ -45,15 +68,22 @@ public static class ProgressionManager
     public static int GetBaseStatUpgradeCost(StatType statType)
     {
         int currentTier = GetBaseStatTier(statType);
-        if (currentTier >= MaxTier) return int.MaxValue;
-        int cost = statType == StatType.CollectionRadius ? CollectionRadiusBaseCost : BaseStatCost;
+        if (currentTier >= GetMaxBaseTier(statType)) return int.MaxValue;
+        int cost = statType switch
+        {
+            StatType.WeaponDamage     => CoreStatBaseCost,
+            StatType.MoveSpeed        => CoreStatBaseCost,
+            StatType.WeaponRange      => CoreStatBaseCost,
+            StatType.CollectionRadius => CollectionRadiusBaseCost,
+            _                         => BaseStatCost
+        };
         int basePart = cost * (1 + currentTier);
         int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, BoughtUpgrades));
         return basePart + feePart;
     }
 
     public static bool CanUpgradeBaseStat(StatType statType) =>
-        GetBaseStatTier(statType) < MaxTier && AvailablePoints >= GetBaseStatUpgradeCost(statType);
+        GetBaseStatTier(statType) < GetMaxBaseTier(statType) && AvailablePoints >= GetBaseStatUpgradeCost(statType);
 
     public static bool TryUpgradeBaseStat(StatType statType)
     {
@@ -61,7 +91,7 @@ public static class ProgressionManager
         int cost = GetBaseStatUpgradeCost(statType);
         PlayerPrefs.SetInt($"BaseStatTier_{statType}", GetBaseStatTier(statType) + 1);
         PlayerPrefs.SetInt(BoughtUpgradesKey, BoughtUpgrades + 1);
-        PlayerPrefs.SetInt(SpentPointsKey, SpentPoints + cost);
+        SetLong(SpentPointsKey, SpentPoints + cost);
         PlayerPrefs.Save();
         return true;
     }
@@ -84,37 +114,36 @@ public static class ProgressionManager
     public static int GetUpgradeCost(StatType statType)
     {
         int currentTier = GetStatTier(statType);
-        if (currentTier >= MaxTier) return int.MaxValue;
+        if (currentTier >= LevelUpMaxTier) return int.MaxValue;
         int basePart = LevelUpStatCost * (1 + currentTier);
         int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, BoughtUpgrades));
         return basePart + feePart;
     }
 
     public static bool CanUpgrade(StatType statType) =>
-        GetStatTier(statType) < MaxTier && AvailablePoints >= GetUpgradeCost(statType);
+        GetStatTier(statType) < LevelUpMaxTier && AvailablePoints >= GetUpgradeCost(statType);
 
     public static bool TryUpgrade(StatType statType)
     {
         if (!CanUpgrade(statType)) return false;
-
         int cost = GetUpgradeCost(statType);
         PlayerPrefs.SetInt($"StatTier_{statType}", GetStatTier(statType) + 1);
         PlayerPrefs.SetInt(BoughtUpgradesKey, BoughtUpgrades + 1);
-        PlayerPrefs.SetInt(SpentPointsKey, SpentPoints + cost);
+        SetLong(SpentPointsKey, SpentPoints + cost);
         PlayerPrefs.Save();
         return true;
     }
 
-    public static void CommitPoints(int sessionPoints)
+    public static void CommitPoints(long sessionPoints)
     {
-        PlayerPrefs.SetInt(TotalPointsKey, TotalPoints + sessionPoints);
+        SetLong(TotalPointsKey, System.Math.Min(TotalPoints + sessionPoints, PointsCap));
         PlayerPrefs.Save();
     }
 
     public static void SpendPoints(int amount)
     {
         if (amount > AvailablePoints) return;
-        PlayerPrefs.SetInt(SpentPointsKey, SpentPoints + amount);
+        SetLong(SpentPointsKey, SpentPoints + amount);
         PlayerPrefs.Save();
     }
 
@@ -144,7 +173,7 @@ public static class ProgressionManager
 
     public static void AddDebugPoints()
     {
-        PlayerPrefs.SetInt(TotalPointsKey, TotalPoints + 1000);
+        SetLong(TotalPointsKey, System.Math.Min(TotalPoints + 10_000L, PointsCap));
         PlayerPrefs.Save();
     }
 

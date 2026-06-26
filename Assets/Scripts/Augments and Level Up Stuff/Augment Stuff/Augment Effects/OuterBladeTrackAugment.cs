@@ -4,7 +4,7 @@ public class OuterBladeTrackAugment : MonoBehaviour
 {
     [SerializeField] private float _damagePenalty = 0.45f;
     [SerializeField] private float _onHitEffectivenessPenalty = 0.25f;
-    [SerializeField] private float _rangePenalty = 0.4f;
+    [SerializeField] private float _rangePenalty = 0.25f;
 
     private void Start()
     {

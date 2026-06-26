@@ -65,7 +65,7 @@ public class ReviveZone : NetworkIdentity
         {
             _stats.Revive();
             ChargeTimer = 0f;
-            _stats.reviveTime += 2f;
+            _stats.reviveTime += 0.5f;
         }
     }
 

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Phantom Vengeance
   description: 'On taking damage, summon a <color=#646464>Phantom Blade</color> piercing
-    the enemy that damaged you for <color=#FF5000>150% Damage</color>.
+    the enemy that damaged you for <color=#FF5000>150% Unpenalized Damage</color>.
 
     <color=#00FF00>+20
     Max Health</color>

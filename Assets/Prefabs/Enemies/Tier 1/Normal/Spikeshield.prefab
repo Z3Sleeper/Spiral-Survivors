@@ -247,7 +247,7 @@ MonoBehaviour:
   shieldOffset: 1
   windupDuration: 1
   explosionDuration: 0.1
-  rotationSpeed: 45
+  rotationSpeed: 90
   reactionCooldown: 5
   explosionMultiplier: 2
   hitbox: {fileID: 3071644559402824046}

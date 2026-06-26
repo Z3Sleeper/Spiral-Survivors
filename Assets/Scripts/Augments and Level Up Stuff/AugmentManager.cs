@@ -22,9 +22,10 @@ public class AugmentManager : NetworkBehaviour
 
     public void InitializePlayerPool(PlayerID player, CharacterStats.CharacterClass characterClass)
     {
+        bool isMultiplayer = networkManager.playerCount > 1;
         var pool = new List<AugmentData>();
         foreach (var augment in augmentDatabase.augments)
-            if (augment.IsAvailableForClass(characterClass))
+            if (augment.IsAvailableForClass(characterClass) && (!augment.multiplayerOnly || isMultiplayer))
                 pool.Add(augment);
 
         for (int i = pool.Count - 1; i > 0; i--)

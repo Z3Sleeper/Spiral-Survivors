@@ -64,6 +64,9 @@ public class WeaponBase : NetworkIdentity
     public static event System.Action<CharacterStats, EnemyBase, float> OnCritStrike;
     public static void RaiseOnCritStrike(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f) => OnCritStrike?.Invoke(stats, enemy, effectiveness);
 
+    public static event System.Action<CharacterStats, CharacterStats, float> OnAllyHit;
+    public static void RaiseOnAllyHit(CharacterStats stats, CharacterStats ally, float effectiveness = 1f) => OnAllyHit?.Invoke(stats, ally, effectiveness);
+
     public virtual void Init(CharacterStats stats)
     {
         _stats = stats;

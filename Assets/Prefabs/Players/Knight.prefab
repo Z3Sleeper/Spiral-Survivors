@@ -484,7 +484,7 @@ MonoBehaviour:
   baseProjectileOnHitDropoff: 0.25
   projectileOnHitDropoffReduction: 1
   _baseMaxHealth:
-    _value: 35
+    _value: 30
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
   _bonusMaxHealthFlat:

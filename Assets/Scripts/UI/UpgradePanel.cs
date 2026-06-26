@@ -32,7 +32,7 @@ public class UpgradePanel : MonoBehaviour
 
     public void Refresh()
     {
-        pointsText.text = $"{ProgressionManager.AvailablePoints} pts\n{ProgressionManager.SpentPoints} pts";
+        pointsText.text = $"{FormatPoints(ProgressionManager.AvailablePoints)} pts\n{FormatPoints(ProgressionManager.SpentPoints)} pts";
 
         RefreshLevelUpButtonText(StatType.WeaponDamage, "Damage",       damageButtonText);
         RefreshLevelUpButtonText(StatType.MaxHealth,    "Max Health",   maxHealthButtonText);
@@ -60,21 +60,23 @@ public class UpgradePanel : MonoBehaviour
     {
         if (buttonLabel == null) return;
         int tier = ProgressionManager.GetStatTier(statType);
-        int currentBonus = tier * 20;
-        buttonLabel.text = tier >= 5
-            ? $"{label}\n+20% (+{currentBonus}%) | MAXED"
-            : $"{label}\n+20% (+{currentBonus}%) | {ProgressionManager.GetUpgradeCost(statType)} pts";
+        int maxTier = ProgressionManager.LevelUpStatMaxTier;
+        int currentBonus = tier * 25;
+        buttonLabel.text = tier >= maxTier
+            ? $"({tier}/{maxTier}) {label}\n+25% (+{currentBonus}%)\nMAXED"
+            : $"({tier}/{maxTier}) {label}\n+25% (+{currentBonus}%)\n{FormatPoints(ProgressionManager.GetUpgradeCost(statType))} pts";
     }
 
     private void RefreshBaseButtonText(StatType statType, string label, string unit, TextMeshProUGUI buttonLabel)
     {
         if (buttonLabel == null) return;
         int tier = ProgressionManager.GetBaseStatTier(statType);
+        int maxTier = ProgressionManager.GetMaxBaseTier(statType);
         float perTier = ProgressionManager.GetBaseStatValuePerTier(statType);
         float total = perTier * tier;
-        buttonLabel.text = tier >= 5
-            ? $"{label}\n+{perTier}{unit} (+{total}{unit}) | MAXED"
-            : $"{label}\n+{perTier}{unit} (+{total}{unit}) | {ProgressionManager.GetBaseStatUpgradeCost(statType)} pts";
+        buttonLabel.text = tier >= maxTier
+            ? $"({tier}/{maxTier}) {label}\n+{perTier}{unit} (+{total}{unit})\nMAXED"
+            : $"({tier}/{maxTier}) {label}\n+{perTier}{unit} (+{total}{unit})\n{FormatPoints(ProgressionManager.GetBaseStatUpgradeCost(statType))} pts";
     }
 
     // Level-up stat buttons
@@ -99,6 +101,17 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeCritChanceFlatClicked()   { ProgressionManager.TryUpgradeBaseStat(StatType.CritChance);   Refresh(); }
     public void OnUpgradeRangeFlatClicked()             { ProgressionManager.TryUpgradeBaseStat(StatType.WeaponRange);        Refresh(); }
     public void OnUpgradeCollectionRadiusFlatClicked()  { ProgressionManager.TryUpgradeBaseStat(StatType.CollectionRadius);  Refresh(); }
+
+    private static string FormatPoints(long value) => value switch
+    {
+        >= 1_000_000_000_000_000_000L => $"{value / 1_000_000_000_000_000_000f:F2}quint",
+        >= 1_000_000_000_000_000L     => $"{value / 1_000_000_000_000_000f:F2}quad",
+        >= 1_000_000_000_000L         => $"{value / 1_000_000_000_000f:F2}tril",
+        >= 1_000_000_000L             => $"{value / 1_000_000_000f:F2}bil",
+        >= 1_000_000L                 => $"{value / 1_000_000f:F2}mil",
+        >= 1_000L                     => $"{value / 1_000f:F2}k",
+        _                             => value.ToString()
+    };
 
     public void OnRefundClicked()         { ProgressionManager.RefundPoints();    Refresh(); }
     public void OnHardResetClicked()      { ProgressionManager.HardReset();       Refresh(); }

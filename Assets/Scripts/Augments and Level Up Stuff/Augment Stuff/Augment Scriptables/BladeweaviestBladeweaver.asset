@@ -15,12 +15,10 @@ MonoBehaviour:
   displayName: Bladeweaviest Bladeweaver
   description: '<color=#FF00FF>+3 Weapons</color>
 
-    <color=#3278FF>+4 Range</color>
+    <color=#FF5000>-45% Damage</color>
 
-    <color=#FF5000>-45%
-    Damage</color>
-
-    <color=#FF0050>-25% On-Hit Effectiveness</color>'
+    <color=#FF0050>-25%
+    On-Hit Effectiveness</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 03000000
   excludedClasses: 

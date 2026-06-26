@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::OuterBladeTrackAugment
   _damagePenalty: 0.3
   _onHitEffectivenessPenalty: 0.15
-  _rangePenalty: 0.4
+  _rangePenalty: 0.25
