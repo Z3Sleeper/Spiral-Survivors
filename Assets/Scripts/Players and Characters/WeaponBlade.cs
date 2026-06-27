@@ -36,7 +36,11 @@ public class WeaponBlade : WeaponBase
         if (_stats == null || _stats.IsDead) return;
 
         Transform hb = hitboxTarget != null ? hitboxTarget : transform;
-        Vector3 scaledHalfExtents = Vector3.Scale(bladeHalfExtents, hb.lossyScale);
+        float xRatio = xRangeScaleRatio > 0f
+            ? Mathf.Lerp(1f, hb.lossyScale.z / Mathf.Max(0.001f, designOrbit * transform.localScale.z), xRangeScaleRatio)
+            : 1f;
+        float bladeX = bladeHalfExtents.x * hb.lossyScale.x * xRatio;
+        Vector3 scaledHalfExtents = new(bladeX, bladeHalfExtents.y * hb.lossyScale.y, bladeHalfExtents.z * hb.lossyScale.z);
         _newOverlaps.Clear();
         _newStrikeables.Clear();
         _newAllyOverlaps.Clear();
@@ -115,6 +119,21 @@ public class WeaponBlade : WeaponBase
         (_currentStrikeables, _newStrikeables) = (_newStrikeables, _currentStrikeables);
         (_currentAllyOverlaps, _newAllyOverlaps) = (_newAllyOverlaps, _currentAllyOverlaps);
         _prevPosition = hb.position;
+    }
+
+    private void OnDrawGizmos()
+    {
+        Transform hb = hitboxTarget != null ? hitboxTarget : transform;
+        float xRatio = (xRangeScaleRatio > 0f && designOrbit > 0f)
+            ? Mathf.Lerp(1f, hb.lossyScale.z / Mathf.Max(0.001f, designOrbit * transform.localScale.z), xRangeScaleRatio)
+            : 1f;
+        float bladeX = bladeHalfExtents.x * hb.lossyScale.x * xRatio;
+        Vector3 half = new(bladeX, bladeHalfExtents.y * hb.lossyScale.y, bladeHalfExtents.z * hb.lossyScale.z);
+        Gizmos.color = new Color(1f, 0.5f, 0f, 0.4f);
+        Matrix4x4 prev = Gizmos.matrix;
+        Gizmos.matrix = Matrix4x4.TRS(hb.position, hb.rotation, Vector3.one);
+        Gizmos.DrawWireCube(Vector3.zero, half * 2f);
+        Gizmos.matrix = prev;
     }
 
     private void Hit(EnemyBase enemy)

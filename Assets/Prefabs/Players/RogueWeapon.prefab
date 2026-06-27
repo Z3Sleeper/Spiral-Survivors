@@ -66,7 +66,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: d9d872c18f139884381ae8c99c930aa7, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -102,7 +102,7 @@ GameObject:
   - component: {fileID: 9037193816534817843}
   - component: {fileID: 3231712233815679040}
   m_Layer: 0
-  m_Name: Cube
+  m_Name: Connector
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -191,6 +191,7 @@ GameObject:
   - component: {fileID: 7965949495438917252}
   - component: {fileID: -3199902600759759578}
   - component: {fileID: -8942802009306055094}
+  - component: {fileID: 363066565067786396}
   m_Layer: 0
   m_Name: RogueWeapon
   m_TagString: Untagged
@@ -272,7 +273,36 @@ MonoBehaviour:
   rangeFollowers:
   - {fileID: 1719263058978148157}
   bladeTipOffset: 0.1417
+  xRangeScaleRatio: 0.05
+  yScaleFollowers:
+  - {fileID: 7916714521472660137}
+  xzScaleFollowers:
+  - {fileID: 1719263058978148157}
+  xScaleFollowers:
+  - {fileID: 5658850961026097083}
   bladeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
+--- !u!114 &363066565067786396
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2942187867930129664}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5348e29753ede64aa5bf05e63133010, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerColorApplicator
+  coloredRenderers:
+  - {fileID: 8001060567344131347}
+  - {fileID: 4639130679624453648}
+  materialIndex: 0
+  coloredSprites: []
+  tintedRenderers:
+  - {fileID: 3786925024616806588}
+  - {fileID: 8667004372245903466}
+  - {fileID: 3231712233815679040}
+  tintedMaterialIndex: 0
 --- !u!1 &2965791002601135373
 GameObject:
   m_ObjectHideFlags: 0
@@ -339,7 +369,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: d9d872c18f139884381ae8c99c930aa7, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

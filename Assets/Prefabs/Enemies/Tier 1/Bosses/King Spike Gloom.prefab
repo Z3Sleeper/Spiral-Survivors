@@ -564,7 +564,7 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   enemyName: King Spike Gloom
-  moveSpeed: 0.6
+  moveSpeed: 1
   backpedalSpeedDivisor: 3
   maxHealth: 10000
   preferredRange: 0
@@ -584,9 +584,9 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _renderers:
   - {fileID: 3448404629509916890}
-  chargeDamageMultiplier: 2.5
+  chargeDamageMultiplier: 2
   aoeDamageMultiplier: 4
-  bombDamageMultiplier: 2.5
+  bombDamageMultiplier: 2
   chargeWindupDuration: 0.5
   chargeSpeed: 35
   chargeDistance: 25
@@ -596,7 +596,7 @@ MonoBehaviour:
   betweenChargePause: 0.2
   chargeWindupIndicator: {fileID: 1096041614498844689}
   chargeWindupFill: {fileID: 7567402230751528291}
-  aoeWindupDuration: 3
+  aoeWindupDuration: 2
   aoeRadius: 18
   aoeWindupIndicator: {fileID: 4686410381492106149}
   aoeWindupFill: {fileID: 7235878219214711718}

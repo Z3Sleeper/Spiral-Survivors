@@ -11,7 +11,7 @@ public static class ProgressionManager
     private const int   DamageMaxTier            = 7;
     private const int   MoveSpeedMaxTier         = 5;
     private const int   LevelUpStatCost          = 950;
-    private const int   BaseStatCost             = 200;
+    private const int   BaseStatCost             = 100;
     private const int   CoreStatBaseCost         = 450;
     private const int   CollectionRadiusBaseCost = 450;
     private const int   BaseFee                  = 50;
@@ -22,6 +22,7 @@ public static class ProgressionManager
     {
         StatType.WeaponDamage     => DamageMaxTier,
         StatType.MoveSpeed        => MoveSpeedMaxTier,
+        StatType.AttackSpeed      => 2,
         StatType.CollectionRadius => 5,
         StatType.EnergyRegen      => 3,
         StatType.WeaponRange      => 2,
@@ -52,10 +53,10 @@ public static class ProgressionManager
         StatType.WeaponDamage      => 5f,
         StatType.MaxHealth         => 5f,
         StatType.MoveSpeed         => 1f,
-        StatType.AttackSpeed       => 5f,
-        StatType.HealthRegen       => 0.25f,
+        StatType.AttackSpeed       => 15f,
+        StatType.HealthRegen       => 0.5f,
         StatType.EnergyRegen       => 5f,
-        StatType.DashCooldown      => 10f,
+        StatType.DashHaste         => 10f,
         StatType.CritChance        => 5f,
         StatType.WeaponRange       => 1f,
         StatType.CollectionRadius  => 1f,
@@ -73,7 +74,9 @@ public static class ProgressionManager
         {
             StatType.WeaponDamage     => CoreStatBaseCost,
             StatType.MoveSpeed        => CoreStatBaseCost,
+            StatType.AttackSpeed      => CoreStatBaseCost,
             StatType.WeaponRange      => CoreStatBaseCost,
+            StatType.HealthRegen      => CoreStatBaseCost,
             StatType.CollectionRadius => CollectionRadiusBaseCost,
             _                         => BaseStatCost
         };
@@ -104,10 +107,9 @@ public static class ProgressionManager
         StatType.AttackSpeed  => 1f + GetStatTier(StatType.AttackSpeed)  * 0.25f,
         StatType.HealthRegen  => 1f + GetStatTier(StatType.HealthRegen)  * 0.25f,
         StatType.EnergyRegen  => 1f + GetStatTier(StatType.EnergyRegen)  * 0.25f,
-        StatType.DashCooldown => 1f + GetStatTier(StatType.DashCooldown) * 0.25f,
+        StatType.DashHaste => 1f + GetStatTier(StatType.DashHaste) * 0.25f,
         StatType.CritChance   => 1f + GetStatTier(StatType.CritChance)   * 0.25f,
         StatType.WeaponRange  => 1f + GetStatTier(StatType.WeaponRange)  * 0.25f,
-        StatType.Pierce       => 1f + GetStatTier(StatType.WeaponRange)  * 0.25f,
         _                     => 1f
     };
 
@@ -150,7 +152,7 @@ public static class ProgressionManager
     private static readonly StatType[] _upgradeableStats =
     {
         StatType.WeaponDamage, StatType.MaxHealth, StatType.MoveSpeed, StatType.AttackSpeed,
-        StatType.HealthRegen,  StatType.EnergyRegen, StatType.DashCooldown,
+        StatType.HealthRegen,  StatType.EnergyRegen, StatType.DashHaste,
         StatType.CritChance,   StatType.WeaponRange, StatType.CollectionRadius
     };
 

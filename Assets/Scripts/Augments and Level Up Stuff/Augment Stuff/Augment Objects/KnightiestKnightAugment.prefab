@@ -44,7 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 54830b85f7e526648b7c2ffd93a68b4f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KnightiestKnightAugment
-  _bonusWeaponRangeFlat: 2
-  _bonusWeaponRangePercent: 0.25
-  _bonusMaxHealth: 10
-  _bonusHealthRegen: 0.5
+  _bonusWeaponRangePercent: 0.175
+  _bonusMaxHealthPercent: 0.075

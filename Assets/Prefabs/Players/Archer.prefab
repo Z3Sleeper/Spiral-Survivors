@@ -443,6 +443,7 @@ GameObject:
   - component: {fileID: 8180083080538734954}
   - component: {fileID: 5418513144571543119}
   - component: {fileID: 306019993567676965}
+  - component: {fileID: -7963107455206089190}
   m_Layer: 0
   m_Name: Archer
   m_TagString: Untagged
@@ -496,6 +497,7 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   characterClass: 2
+  outerXScalesWithRange: 0
   _controller: {fileID: 5418513144571543119}
   _hurtbox: {fileID: 1046179636567246685}
   _physicsCollider: {fileID: 7874162270675813079}
@@ -519,9 +521,9 @@ MonoBehaviour:
   baseWeaponCount: 1
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
-  baseWeaponRange: 5
-  bonusWeaponRangeFlat: 45
-  bonusWeaponRangePercent: 1
+  baseWeaponRange: 8
+  bonusWeaponRangeFlat: 3
+  bonusWeaponRangePercent: 2
   weaponRangePenalty: 1
   baseWeaponSize: 1
   bonusWeaponSizePercent: 1
@@ -530,9 +532,6 @@ MonoBehaviour:
   bonusCritChancePercent: 1
   bonusCritDamageFlat: 0
   bonusCritDamagePercent: 1
-  basePierce: 0
-  bonusPierceFlat: 0
-  bonusPiercePercent: 1
   baseRicochet: 0
   bonusRicochetFlat: 0
   bonusRicochetPercent: 1
@@ -540,10 +539,6 @@ MonoBehaviour:
   bonusMultishotFlat: 0
   bonusMultishotPercent: 1
   multishotSpreadAngle: 75
-  baseProjectileDamageDropoff: 0.25
-  projectileDamageDropoffReduction: 1
-  baseProjectileOnHitDropoff: 0.25
-  projectileOnHitDropoffReduction: 1
   _baseMaxHealth:
     _value: 20
     _ownerAuth: 0
@@ -560,7 +555,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  baseHealthRegen: 0.25
+  baseHealthRegen: 0
   _bonusHealthRegenFlat:
     _value: 0
     _ownerAuth: 1
@@ -737,6 +732,26 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   weaponPrefab: {fileID: 2942187867930129664, guid: 90bc93bd71b4b23459f825185248243d, type: 3}
+--- !u!114 &-7963107455206089190
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2272951876664129887}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5348e29753ede64aa5bf05e63133010, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerColorApplicator
+  coloredRenderers:
+  - {fileID: 4797182340578565043}
+  - {fileID: 1345777675899843359}
+  materialIndex: 0
+  coloredSprites:
+  - {fileID: 5306011901438657522}
+  tintedRenderers: []
+  tintedMaterialIndex: 0
 --- !u!1 &2393115176815398264
 GameObject:
   m_ObjectHideFlags: 0
@@ -1399,7 +1414,7 @@ SpriteRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: dde926bf990150f42beb9fd3120f4dd0, type: 3}
-  m_Color: {r: 0.3137255, g: 0.3137255, b: 1, a: 0.5882353}
+  m_Color: {r: 1, g: 1, b: 1, a: 0.5882353}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -2276,7 +2291,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 6762841c78c983542ab0146a24322873, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -2441,7 +2456,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 6762841c78c983542ab0146a24322873, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

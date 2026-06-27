@@ -8,7 +8,7 @@ public class ShooterGloom : EnemyBase
 
     [Header("Shooter Settings")]
     [SerializeField] private GameObject projectilePrefab;
-    [SerializeField] private GameObject gun;
+    [SerializeField] private float spawnOffset = 0.75f;
     [SerializeField] private float attackCooldown = 5f;
     [SerializeField] private float minAttackRange = 3f;
     [SerializeField] private float dashSpeedMultiplier = 33f;
@@ -160,7 +160,8 @@ public class ShooterGloom : EnemyBase
         baseDir.y = 0;
         baseDir.Normalize();
 
-        Vector3 spawnPosition = new(gun.transform.position.x, 0f, gun.transform.position.z);
+        Vector3 spawnPos = transform.position + transform.forward * spawnOffset;
+        Vector3 spawnPosition = new(spawnPos.x, 0f, spawnPos.z);
 
         int totalShots = 1 + multishot;
         float startAngle = totalShots > 1 ? -shotSpreadAngle / 2f : 0f;

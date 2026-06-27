@@ -16,6 +16,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Spearier Gloom
       objectReference: {fileID: 0}
+    - target: {fileID: 2824714540507582303, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
     - target: {fileID: 3812485605274019885, guid: a1ea6ef5ac0a87845b5e576e68c5caec, type: 3}
       propertyPath: m_AnchorMax.x
       value: 0

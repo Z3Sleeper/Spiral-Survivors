@@ -40,9 +40,9 @@ public class UpgradePanel : MonoBehaviour
         RefreshLevelUpButtonText(StatType.AttackSpeed,  "Attack Speed", attackSpeedButtonText);
         RefreshLevelUpButtonText(StatType.HealthRegen,  "Health Regen", healthRegenButtonText);
         RefreshLevelUpButtonText(StatType.EnergyRegen,  "Energy Regen", energyRegenButtonText);
-        RefreshLevelUpButtonText(StatType.DashCooldown, "Dash Haste",   dashHasteButtonText);
+        RefreshLevelUpButtonText(StatType.DashHaste, "Dash Haste",   dashHasteButtonText);
         RefreshLevelUpButtonText(StatType.CritChance,   "Crit Chance",  critChanceButtonText);
-        RefreshLevelUpButtonText(StatType.WeaponRange,  "Range & Pierce", rangeButtonText);
+        RefreshLevelUpButtonText(StatType.WeaponRange,  "Range", rangeButtonText);
 
         RefreshBaseButtonText(StatType.WeaponDamage, "Damage",       "",  damageFlatButtonText);
         RefreshBaseButtonText(StatType.MaxHealth,    "Max Health",   "",  maxHealthFlatButtonText);
@@ -50,9 +50,9 @@ public class UpgradePanel : MonoBehaviour
         RefreshBaseButtonText(StatType.AttackSpeed,  "Attack Speed", "%", attackSpeedFlatButtonText);
         RefreshBaseButtonText(StatType.HealthRegen,  "Health Regen", "",  healthRegenFlatButtonText);
         RefreshBaseButtonText(StatType.EnergyRegen,  "Energy Regen", "",  energyRegenFlatButtonText);
-        RefreshBaseButtonText(StatType.DashCooldown, "Dash Haste",   "",  dashHasteFlatButtonText);
+        RefreshBaseButtonText(StatType.DashHaste, "Dash Haste",   "",  dashHasteFlatButtonText);
         RefreshBaseButtonText(StatType.CritChance,   "Crit Chance",  "%", critChanceFlatButtonText);
-        RefreshBaseButtonText(StatType.WeaponRange,        "Range & Pierce",    "",  rangeFlatButtonText);
+        RefreshBaseButtonText(StatType.WeaponRange,        "Range",    "",  rangeFlatButtonText);
         RefreshBaseButtonText(StatType.CollectionRadius,   "Collection Radius", "",  collectionRadiusFlatButtonText);
     }
 
@@ -86,7 +86,7 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeAttackSpeedClicked()  { ProgressionManager.TryUpgrade(StatType.AttackSpeed);  Refresh(); }
     public void OnUpgradeHealthRegenClicked()  { ProgressionManager.TryUpgrade(StatType.HealthRegen);  Refresh(); }
     public void OnUpgradeEnergyRegenClicked()  { ProgressionManager.TryUpgrade(StatType.EnergyRegen);  Refresh(); }
-    public void OnUpgradeDashHasteClicked()    { ProgressionManager.TryUpgrade(StatType.DashCooldown); Refresh(); }
+    public void OnUpgradeDashHasteClicked()    { ProgressionManager.TryUpgrade(StatType.DashHaste); Refresh(); }
     public void OnUpgradeCritChanceClicked()   { ProgressionManager.TryUpgrade(StatType.CritChance);   Refresh(); }
     public void OnUpgradeRangeClicked()        { ProgressionManager.TryUpgrade(StatType.WeaponRange);  Refresh(); }
 
@@ -97,7 +97,7 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeAttackSpeedFlatClicked()  { ProgressionManager.TryUpgradeBaseStat(StatType.AttackSpeed);  Refresh(); }
     public void OnUpgradeHealthRegenFlatClicked()  { ProgressionManager.TryUpgradeBaseStat(StatType.HealthRegen);  Refresh(); }
     public void OnUpgradeEnergyRegenFlatClicked()  { ProgressionManager.TryUpgradeBaseStat(StatType.EnergyRegen);  Refresh(); }
-    public void OnUpgradeDashHasteFlatClicked()    { ProgressionManager.TryUpgradeBaseStat(StatType.DashCooldown); Refresh(); }
+    public void OnUpgradeDashHasteFlatClicked()    { ProgressionManager.TryUpgradeBaseStat(StatType.DashHaste); Refresh(); }
     public void OnUpgradeCritChanceFlatClicked()   { ProgressionManager.TryUpgradeBaseStat(StatType.CritChance);   Refresh(); }
     public void OnUpgradeRangeFlatClicked()             { ProgressionManager.TryUpgradeBaseStat(StatType.WeaponRange);        Refresh(); }
     public void OnUpgradeCollectionRadiusFlatClicked()  { ProgressionManager.TryUpgradeBaseStat(StatType.CollectionRadius);  Refresh(); }

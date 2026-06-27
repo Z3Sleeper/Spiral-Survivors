@@ -32,6 +32,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 3545024421928828417}
+  - {fileID: 6216656716997512871}
   m_Father: {fileID: 7839943648137112170}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &3197613897533261645
@@ -264,7 +265,6 @@ Transform:
   - {fileID: 1223438665833396019}
   - {fileID: 6025142299291197134}
   - {fileID: 5513950161839650562}
-  - {fileID: 7051570106709316191}
   - {fileID: 3541637886794090097}
   - {fileID: 5147312291958080652}
   - {fileID: 160373389716103170}
@@ -323,7 +323,7 @@ MonoBehaviour:
   postStabPause: 0.6
   attackCooldown: 3
   attacksPerAttack: 1
-  dashSpeedMultiplier: 25
+  dashSpeedMultiplier: 15
   windupIndicator: {fileID: 3368275256615124461}
   windupFill: {fileID: 2539281391920625006}
   _syncState:
@@ -681,7 +681,7 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!1 &3368275256615124461
+--- !u!1 &2818742761349903411
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -689,42 +689,9 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 5147312291958080652}
-  m_Layer: 0
-  m_Name: WindupIndicator
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 0
---- !u!4 &5147312291958080652
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3368275256615124461}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 9102921924414177920}
-  - {fileID: 4953577348782062571}
-  m_Father: {fileID: 7839943648137112170}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &3869802202908258147
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 7051570106709316191}
-  - component: {fileID: 2372078310697899566}
-  - component: {fileID: 6953556298723403302}
+  - component: {fileID: 6216656716997512871}
+  - component: {fileID: 2133090691852663362}
+  - component: {fileID: 2824714540507582303}
   m_Layer: 0
   m_Name: SpearModel
   m_TagString: Untagged
@@ -732,36 +699,36 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &7051570106709316191
+--- !u!4 &6216656716997512871
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3869802202908258147}
+  m_GameObject: {fileID: 2818742761349903411}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0.6, y: 0.5, z: 0.4}
+  m_LocalPosition: {x: 0.6, y: 0, z: 0.4}
   m_LocalScale: {x: 0.2, y: 0.2, z: 2.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 7839943648137112170}
+  m_Father: {fileID: 1223438665833396019}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!33 &2372078310697899566
+--- !u!33 &2133090691852663362
 MeshFilter:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3869802202908258147}
+  m_GameObject: {fileID: 2818742761349903411}
   m_Mesh: {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
---- !u!23 &6953556298723403302
+--- !u!23 &2824714540507582303
 MeshRenderer:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 3869802202908258147}
+  m_GameObject: {fileID: 2818742761349903411}
   m_Enabled: 1
   m_CastShadows: 1
   m_ReceiveShadows: 1
@@ -804,6 +771,39 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &3368275256615124461
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5147312291958080652}
+  m_Layer: 0
+  m_Name: WindupIndicator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!4 &5147312291958080652
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3368275256615124461}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 9102921924414177920}
+  - {fileID: 4953577348782062571}
+  m_Father: {fileID: 7839943648137112170}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &4505715573231893459
 GameObject:
   m_ObjectHideFlags: 0

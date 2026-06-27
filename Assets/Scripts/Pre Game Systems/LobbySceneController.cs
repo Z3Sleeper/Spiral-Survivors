@@ -119,10 +119,18 @@ public class LobbySceneController : MonoBehaviour
 
         GameStartData.LocalUserId = lobbyManager.CurrentProvider.GetLocalUserIdAsync().Result;
         GameStartData.LocalCharacterIndex = 0;
+
+        int assignedColor = CharacterSelectUI.instance?.AssignUniqueColor(lobby) ?? 0;
+        GameStartData.LocalColorIndex = assignedColor;
+
         if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
-            SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "char", "0");
+        {
+            var steamLobby = new CSteamID(lobbyIdRaw);
+            SteamMatchmaking.SetLobbyMemberData(steamLobby, "char", "0");
+            SteamMatchmaking.SetLobbyMemberData(steamLobby, "color", assignedColor.ToString());
+        }
         ShowCharacterSelect();
-        CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0);
+        CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0, assignedColor);
         CharacterSelectUI.instance?.RefreshFromLobby(lobby);
     }
 
@@ -151,6 +159,8 @@ public class LobbySceneController : MonoBehaviour
 
         if (lobby.IsOwner)
         {
+            if (ulong.TryParse(lobby.LobbyId, out ulong lockLobbyId))
+                SteamMatchmaking.SetLobbyJoinable(new CSteamID(lockLobbyId), false);
             lobbyManager.SetLobbyStarted();
             if (!networkManager.isServer)
                 networkManager.StartServer();

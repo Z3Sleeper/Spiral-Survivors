@@ -41,10 +41,6 @@ PrefabInstance:
       value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 2139598679681017947, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
-      propertyPath: betweenStabPause
-      value: 0.15
-      objectReference: {fileID: 0}
-    - target: {fileID: 2139598679681017947, guid: 7ee2eb180ba84504aaad3230eaea772f, type: 3}
       propertyPath: rangeToleranceFar
       value: 2
       objectReference: {fileID: 0}

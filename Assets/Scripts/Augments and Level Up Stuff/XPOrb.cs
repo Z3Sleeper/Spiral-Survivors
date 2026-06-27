@@ -16,6 +16,7 @@ public class XPOrb : NetworkIdentity
 
     private Transform _attractTarget;
     private PlayerID _collectorId;
+    private bool _attractQueued;
 
     private void Awake()
     {
@@ -46,8 +47,15 @@ public class XPOrb : NetworkIdentity
         _rb.isKinematic = true;
     }
 
+    public void TryStartAttracting(Transform target, PlayerID collectorId)
+    {
+        if (_attractQueued || _attractTarget != null) return;
+        _attractQueued = true;
+        StartAttractingRPC(target, collectorId);
+    }
+
     [ServerRpc(requireOwnership: false)]
-    public void StartAttractingRPC(Transform target, PlayerID collectorId)
+    private void StartAttractingRPC(Transform target, PlayerID collectorId)
     {
         if (_attractTarget != null) return;
         _attractTarget = target;

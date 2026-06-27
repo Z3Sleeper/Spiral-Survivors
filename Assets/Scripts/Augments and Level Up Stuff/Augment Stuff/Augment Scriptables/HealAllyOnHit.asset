@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Rejuvinating Bonk
   description: '<color=#FF5000>Striking</color> allies <color=#7DFF00>Heals</color>
-    them for <color=#7DFF00>300% of your Health Regen</color>.
+    them <color=#FF0050>On-Hit</color> for <color=#7DFF00>300% of your Health Regen</color>.
 
     <color=#7DFF00>600%</color>+1
     Health Regen</color>'

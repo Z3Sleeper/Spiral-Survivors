@@ -101,6 +101,7 @@ GameObject:
   - component: {fileID: 7965949495438917252}
   - component: {fileID: -3199902600759759578}
   - component: {fileID: 4036672240503081848}
+  - component: {fileID: 4065948657444989573}
   m_Layer: 0
   m_Name: ArcherWeapon
   m_TagString: Untagged
@@ -181,12 +182,37 @@ MonoBehaviour:
   rangeScaleTarget: {fileID: 0}
   rangeFollowers: []
   bladeTipOffset: 0
+  xRangeScaleRatio: 0
+  yScaleFollowers: []
+  xzScaleFollowers: []
+  xScaleFollowers: []
   arrowPrefab: {fileID: 2942187867930129664, guid: df7c1070cd907454dbeb1ca6089d1643, type: 3}
   enemyHurtboxLayer:
     serializedVersion: 2
     m_Bits: 1024
   projectileSpeed: 20
   bowAttackSpeedScaling: 8
+--- !u!114 &4065948657444989573
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2942187867930129664}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5348e29753ede64aa5bf05e63133010, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerColorApplicator
+  coloredRenderers:
+  - {fileID: 4230927786129755307}
+  - {fileID: 3811083712774203412}
+  - {fileID: 6938014202996967267}
+  materialIndex: 0
+  coloredSprites: []
+  tintedRenderers:
+  - {fileID: 2896685284800185084}
+  tintedMaterialIndex: 0
 --- !u!1 &4318597951351945260
 GameObject:
   m_ObjectHideFlags: 0
@@ -284,7 +310,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 6762841c78c983542ab0146a24322873, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -374,7 +400,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 6762841c78c983542ab0146a24322873, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -499,7 +525,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 6762841c78c983542ab0146a24322873, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

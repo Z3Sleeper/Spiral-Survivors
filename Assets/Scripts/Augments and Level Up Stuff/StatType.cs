@@ -7,7 +7,7 @@ public enum StatType
     AttackSpeed  = 4,
     HealthRegen  = 5,
     EnergyRegen  = 7,
-    DashCooldown = 8,
+    DashHaste = 8,
     CritChance        = 9,
     Pierce            = 10,
     CollectionRadius  = 11,

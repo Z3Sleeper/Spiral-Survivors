@@ -15,7 +15,6 @@ public class WeaponArrow : NetworkIdentity
     private Vector3 _direction;
     private float _distanceTravelled;
     private int _ricochetsRemaining;
-    private int _piercesRemaining;
     private float _damageDropoff;
     private readonly HashSet<EnemyBase> _hitEnemies = new();
     private readonly HashSet<CharacterStats> _hitAllies = new();
@@ -42,7 +41,7 @@ public class WeaponArrow : NetworkIdentity
         _playerHurtboxMask = LayerMask.GetMask("PlayerHurtbox");
     }
 
-    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int pierce, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f, float onHitDropOff = 0f, bool canContactAllies = false, bool canDamageAllies = false)
+    public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f, float onHitDropOff = 0f, bool canContactAllies = false, bool canDamageAllies = false)
     {
         _isLocalArrow = true;
         _ownerStats = ownerStats;
@@ -54,7 +53,6 @@ public class WeaponArrow : NetworkIdentity
         _speed = speed;
         _critChance = critChance;
         _critDamage = critDamage;
-        _piercesRemaining = pierce;
         _ricochetsRemaining = ricochet;
         _hitSound = hitSound;
         _canContactAllies = canContactAllies;
@@ -142,18 +140,8 @@ public class WeaponArrow : NetworkIdentity
                 transform.forward = _direction;
                 _distanceTravelled = 0f;
                 _ricochetsRemaining--;
-                return;
             }
         }
-
-        if (_piercesRemaining > 0)
-        {
-            _piercesRemaining--;
-            return;
-        }
-
-        Destroy(gameObject);
-        _destroyed = true;
     }
 
     private void ProcessStrikeableHit()
@@ -169,18 +157,8 @@ public class WeaponArrow : NetworkIdentity
                 transform.forward = _direction;
                 _distanceTravelled = 0f;
                 _ricochetsRemaining--;
-                return;
             }
         }
-
-        if (_piercesRemaining > 0)
-        {
-            _piercesRemaining--;
-            return;
-        }
-
-        Destroy(gameObject);
-        _destroyed = true;
     }
 
     private void ProcessAllyHit(CharacterStats ally)
@@ -210,18 +188,8 @@ public class WeaponArrow : NetworkIdentity
                 transform.forward = _direction;
                 _distanceTravelled = 0f;
                 _ricochetsRemaining--;
-                return;
             }
         }
-
-        if (_piercesRemaining > 0)
-        {
-            _piercesRemaining--;
-            return;
-        }
-
-        Destroy(gameObject);
-        _destroyed = true;
     }
 
     private Vector3? FindNearestRicochetTarget()

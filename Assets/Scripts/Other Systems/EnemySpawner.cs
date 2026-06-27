@@ -92,8 +92,8 @@ public class EnemySpawner : NetworkIdentity
 
     protected override void OnDestroy()
     {
-        base.OnDestroy();
         StopAllCoroutines();
+        base.OnDestroy();
     }
 
     private IEnumerator DelayedStart()
@@ -303,12 +303,13 @@ public class EnemySpawner : NetworkIdentity
     private void SpawnThisEnemy(GameObject prefab, bool isBoss, bool noXP = false, bool isPleb = false, bool isUncapped = false)
     {
         if (prefab == null || !isSpawned) return;
+        if (networkManager == null || !networkManager.sceneModule.TryGetSceneID(gameObject.scene, out _)) return;
         var obj = Instantiate(prefab, GetSpawnPosition(), Quaternion.identity);
         if (obj == null) return;
         var enemy = obj.GetComponent<EnemyBase>();
         enemy.isPleb = isPleb;
         enemy.isUncapped = isUncapped || isBoss;
-        if (noXP) enemy.xpValue = 0f;
+        if (noXP) { enemy.xpValue = 0f; enemy.pointValue = 0f; }
         if (isBoss) _activeBoss = enemy;
         if (isBoss)
         {

@@ -5,7 +5,6 @@ public class BladeweaviestBladeweaverAugment : MonoBehaviour
     [SerializeField] private int _bonusWeapons = 3;
     [SerializeField] private float _damagePenalty = 0.45f;
     [SerializeField] private float _onHitEffectivenessPenalty = 0.25f;
-    [SerializeField] private float _bonusRangeFlat = 0f;
 
     private void Start()
     {
@@ -15,7 +14,6 @@ public class BladeweaviestBladeweaverAugment : MonoBehaviour
         stats.bonusWeaponCountFlat += _bonusWeapons;
         stats.bonusWeaponDamagePenalty *= 1f - _damagePenalty;
         stats.bonusOnHitEffectivenessPenalty *= 1f - _onHitEffectivenessPenalty;
-        stats.bonusWeaponRangeFlat += _bonusRangeFlat;
 
         Destroy(gameObject);
     }

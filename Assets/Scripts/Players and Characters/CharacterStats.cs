@@ -8,8 +8,10 @@ public class CharacterStats : NetworkBehaviour
 {
     public static readonly List<CharacterStats> All = new();
 
-    public enum CharacterClass {Knight, Rogue, Archer, Bladeweaver}
+    public enum CharacterClass {Knight, Rogue, Archer, Bladeweaver, Executioner}
     public CharacterClass characterClass;
+
+    public bool outerXScalesWithRange = false;
 
     [SerializeField] private PlayerController _controller;
     [SerializeField] private Collider _hurtbox;
@@ -70,6 +72,7 @@ public class CharacterStats : NetworkBehaviour
     public bool continuousFire = false;
     [NonSerialized] public bool canContactAllies = false;
     [NonSerialized] public bool canDamageAllies  = false;
+    [NonSerialized] public Color playerColor = Color.white;
     [NonSerialized] public float baseCritChance = 0f;
     public float bonusCritChanceFlat = 0f;
     public float bonusCritChancePercent = 1f;
@@ -80,10 +83,6 @@ public class CharacterStats : NetworkBehaviour
     public float CritDamage => ((baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent) + Mathf.Max(0f, CritChance - 1f) * 0.5f;
 
     [Header("Ranged Weapons")]
-    public float basePierce = 0f;
-    public float bonusPierceFlat = 0f;
-    public float bonusPiercePercent = 1f;
-    public float Pierce => (basePierce + bonusPierceFlat) * bonusPiercePercent;
     public float baseRicochet = 0f;
     public float bonusRicochetFlat = 0f;
     public float bonusRicochetPercent = 1f;
@@ -95,28 +94,28 @@ public class CharacterStats : NetworkBehaviour
     public float Multishot => (baseMultishot + bonusMultishotFlat) * bonusMultishotPercent;
     public float multishotSpreadAngle = 75f;
 
-    public float baseProjectileDamageDropoff = 0.5f;
-    public float projectileDamageDropoffReduction = 1f;
+    [NonSerialized] public float baseProjectileDamageDropoff = 0.1f;
+    [NonSerialized] public float projectileDamageDropoffReduction = 1f;
     public float ProjectileDamageDropoff => baseProjectileDamageDropoff * projectileDamageDropoffReduction;
 
-    public float baseProjectileOnHitDropoff = 0.5f;
-    public float projectileOnHitDropoffReduction = 1f;
+    [NonSerialized] public float baseProjectileOnHitDropoff = 0.1f;
+    [NonSerialized] public float projectileOnHitDropoffReduction = 1f;
     public float ProjectileOnHitDropoff => baseProjectileOnHitDropoff * projectileOnHitDropoffReduction;
 
     [Header("Health")]
-    public SyncVar<float> _baseMaxHealth = new(50f);
+    public SyncVar<float> _baseMaxHealth = new(20f);
     [HideInInspector] public float BaseMaxHealth
     {
         get => _baseMaxHealth.value;
         set => _baseMaxHealth.value = value;
     }
-    [HideInInspector] public SyncVar<float> _bonusMaxHealthFlat = new(0f);
+    public SyncVar<float> _bonusMaxHealthFlat = new(0f);
     [HideInInspector] public float BonusMaxHealthFlat
     {
         get => _bonusMaxHealthFlat.value;
         set => _bonusMaxHealthFlat.value = value;
     }
-    [HideInInspector] public SyncVar<float> _bonusMaxHealthPercent = new(1f);
+    public SyncVar<float> _bonusMaxHealthPercent = new(1f);
     [HideInInspector] public float BonusMaxHealthPercent
     {
         get => _bonusMaxHealthPercent.value;
@@ -301,7 +300,7 @@ public class CharacterStats : NetworkBehaviour
 
         _isDeadSync.onChanged += OnDeathStateChanged;
 
-        if (isOwner)
+        if (isOwner && !_ownerInitialized)
         {
             _ownerInitialized = true;
             if (LocalUIManager.instance != null)
@@ -334,15 +333,11 @@ public class CharacterStats : NetworkBehaviour
         bonusMoveSpeedFlat    += ProgressionManager.GetBaseStatBonus(StatType.MoveSpeed) * 0.1f;
         bonusWeaponSpeedFlat  += ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f * baseWeaponSpeed;
         bonusEnergyRegenFlat  += ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen);
-        dashHaste             += ProgressionManager.GetBaseStatBonus(StatType.DashCooldown);
+        dashHaste             += ProgressionManager.GetBaseStatBonus(StatType.DashHaste);
         bonusCritChanceFlat   += ProgressionManager.GetBaseStatBonus(StatType.CritChance) * 0.01f;
         bonusXPRadiusFlat     += ProgressionManager.GetBaseStatBonus(StatType.CollectionRadius);
 
-        bool isRanged = GetComponent<WeaponManager>().IsRanged;
-        if (isRanged)
-            bonusPierceFlat      += ProgressionManager.GetBaseStatBonus(StatType.WeaponRange);
-        else
-            bonusWeaponRangeFlat += ProgressionManager.GetBaseStatBonus(StatType.WeaponRange);
+        bonusWeaponRangeFlat += ProgressionManager.GetBaseStatBonus(StatType.WeaponRange);
 
         ApplyBaseStatsServerRpc(
             ProgressionManager.GetBaseStatBonus(StatType.MaxHealth),

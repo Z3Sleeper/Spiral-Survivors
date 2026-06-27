@@ -23,7 +23,7 @@ MonoBehaviour:
   - statType: 1
     displayName: Damage
     color: {r: 1, g: 0.3137255, b: 0, a: 1}
-    value: 3
+    value: 2.5
     prependText: +
     appendText: 
     allowedClasses: 
@@ -51,7 +51,7 @@ MonoBehaviour:
   - statType: 7
     displayName: Energy Regen
     color: {r: 1, g: 1, b: 0, a: 1}
-    value: 5
+    value: 2.5
     prependText: +
     appendText: 
     allowedClasses: 
@@ -65,21 +65,14 @@ MonoBehaviour:
   - statType: 9
     displayName: Crit Chance
     color: {r: 1, g: 0, b: 0, a: 1}
-    value: 5
+    value: 2.5
     prependText: +
     appendText: '%'
     allowedClasses: 
   - statType: 3
     displayName: Range
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 0.25
+    value: 0.5
     prependText: +
     appendText: 
-    allowedClasses: 000000000100000003000000
-  - statType: 10
-    displayName: Pierce
-    color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 0.25
-    prependText: +
-    appendText: 
-    allowedClasses: 02000000
+    allowedClasses: 

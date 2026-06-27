@@ -437,7 +437,7 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   enemyName: Spike Gloom
-  moveSpeed: 0.6
+  moveSpeed: 0.5
   backpedalSpeedDivisor: 3
   maxHealth: 30
   preferredRange: 0

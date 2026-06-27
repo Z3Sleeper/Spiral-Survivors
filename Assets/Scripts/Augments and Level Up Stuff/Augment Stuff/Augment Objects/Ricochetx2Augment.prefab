@@ -44,3 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3bf32d41587fef741b4dd88b0612f0ae, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Ricochetx2Augment
+  _dropoffReduction: 0.25

@@ -89,7 +89,7 @@ public class LocalUIManager : MonoBehaviour
         _controller = stats.GetComponent<PlayerController>();
         _isRanged = stats.GetComponent<WeaponManager>().IsRanged;
         statsWordsTextExpanded.text = _isRanged
-            ? "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nPierce:\nRicochet:\nMultishot:"
+            ? "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nRicochet:\nMultishot:"
             : "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:";
         healthBar.value = 1f;
         shieldBar.value = 1f;
@@ -299,7 +299,6 @@ public class LocalUIManager : MonoBehaviour
         _statsExpandedSB.AppendLine($" {_stats.DashCooldown:F1}s");
         if (_isRanged)
         {
-            _statsExpandedSB.AppendLine($" {_stats.Pierce}");
             _statsExpandedSB.AppendLine($" {_stats.Ricochet}");
             _statsExpandedSB.AppendLine($" {_stats.Multishot}");
         }

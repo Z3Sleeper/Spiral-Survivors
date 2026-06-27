@@ -33,8 +33,16 @@ PrefabInstance:
       value: 600
       objectReference: {fileID: 0}
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+      propertyPath: multishot
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: baseDamage
       value: 20
+      objectReference: {fileID: 0}
+    - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+      propertyPath: spawnOffset
+      value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: shotsToShoot

@@ -33,6 +33,8 @@ public class OuterWeaponTrackManager : MonoBehaviour
             weapon.InitModelVisuals();
             weapon.transform.localScale = _weaponPrefabScale * _currentSize;
             SetWeaponRange(weapon);
+            foreach (var applicator in obj.GetComponentsInChildren<PlayerColorApplicator>(true))
+                applicator.Apply(_stats.playerColor);
             _weapons.Add(weapon);
         }
     }

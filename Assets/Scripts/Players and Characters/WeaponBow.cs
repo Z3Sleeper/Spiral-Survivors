@@ -6,7 +6,7 @@ public class WeaponBow : WeaponBase
     [SerializeField] private GameObject arrowPrefab;
     [SerializeField] private LayerMask enemyHurtboxLayer;
     public float projectileSpeed = 20f;
-    public float bowAttackSpeedScaling = 10f;
+    public float bowAttackSpeedScaling = 12f;
 
     private float _fireTimer;
     public override bool IsMelee => false;
@@ -128,10 +128,6 @@ public class WeaponBow : WeaponBase
 
     private void Fire(Vector3 targetPosition)
     {
-        float rawPierce = _stats.Pierce;
-        int pierce = (int)rawPierce;
-        if (Random.value < rawPierce - pierce) pierce++;
-
         float rawRicochet = _stats.Ricochet;
         int ricochet = (int)rawRicochet;
         if (Random.value < rawRicochet - ricochet) ricochet++;
@@ -150,7 +146,9 @@ public class WeaponBow : WeaponBase
             Vector3 dir = Quaternion.Euler(0, startAngle + i * angleStep, 0) * baseDir;
             var arrow = Instantiate(arrowPrefab, transform.position, Quaternion.LookRotation(dir));
             arrow.transform.localScale *= _stats.WeaponSize;
-            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.5f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, pierce, ricochet, _stats.hitSound, _stats, _stats.ProjectileDamageDropoff, _stats.ProjectileOnHitDropoff, _stats.canContactAllies, _stats.canDamageAllies);
+            foreach (var applicator in arrow.GetComponentsInChildren<PlayerColorApplicator>(true))
+                applicator.Apply(_stats.playerColor);
+            arrow.GetComponent<WeaponArrow>().Init(_stats.WeaponDamage, _stats.WeaponRange * 1.25f, dir, projectileSpeed, _stats.CritChance, _stats.CritDamage, ricochet, _stats.hitSound, _stats, _stats.ProjectileDamageDropoff, _stats.ProjectileOnHitDropoff, _stats.canContactAllies, _stats.canDamageAllies);
         }
     }
 }

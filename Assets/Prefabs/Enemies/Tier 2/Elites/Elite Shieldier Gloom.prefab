@@ -24,10 +24,6 @@ PrefabInstance:
       propertyPath: shieldOffset
       value: 2
       objectReference: {fileID: 0}
-    - target: {fileID: 2486084485780169169, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
-      propertyPath: reactionCooldown
-      value: 3
-      objectReference: {fileID: 0}
     - target: {fileID: 3450885902949319882, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
       propertyPath: m_AnchorMax.x
       value: 0
@@ -63,6 +59,10 @@ PrefabInstance:
     - target: {fileID: 5601217845052689900, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
       propertyPath: rangeToleranceClose
       value: 0.06
+      objectReference: {fileID: 0}
+    - target: {fileID: 8197924095205920957, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: shieldOffset
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 8629383082217932429, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
       propertyPath: m_LocalScale.x

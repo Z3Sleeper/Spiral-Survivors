@@ -85,6 +85,10 @@ PrefabInstance:
       value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 7707904124902346730, guid: cf5c8507dd0e6de49a30c69d8646758e, type: 3}
+      propertyPath: spawnOffset
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 7707904124902346730, guid: cf5c8507dd0e6de49a30c69d8646758e, type: 3}
       propertyPath: projectilePrefab
       value: 
       objectReference: {fileID: 2490075063922572889, guid: eea675ec64b79f94ebd1ce4b819bdce3, type: 3}

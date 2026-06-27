@@ -25,8 +25,11 @@ public class AugmentManager : NetworkBehaviour
         bool isMultiplayer = networkManager.playerCount > 1;
         var pool = new List<AugmentData>();
         foreach (var augment in augmentDatabase.augments)
+        {
+            if (augment == null) continue;
             if (augment.IsAvailableForClass(characterClass) && (!augment.multiplayerOnly || isMultiplayer))
                 pool.Add(augment);
+        }
 
         for (int i = pool.Count - 1; i > 0; i--)
         {
@@ -236,13 +239,12 @@ public class AugmentManager : NetworkBehaviour
         {
             case StatType.WeaponDamage:  stats.bonusWeaponDamageFlat += entry.value * ProgressionManager.GetStatMultiplier(StatType.WeaponDamage); break;
             case StatType.MoveSpeed:     stats.bonusMoveSpeedFlat    += entry.value * 0.1f * ProgressionManager.GetStatMultiplier(StatType.MoveSpeed); break;
-            case StatType.WeaponRange:   stats.bonusWeaponRangeFlat  += entry.value * 0.2f * stats.baseWeaponRange * ProgressionManager.GetStatMultiplier(StatType.WeaponRange); break;
+            case StatType.WeaponRange:   stats.bonusWeaponRangeFlat  += entry.value; break;
             case StatType.AttackSpeed:   stats.bonusWeaponSpeedFlat  += entry.value * 0.01f * stats.baseWeaponSpeed * ProgressionManager.GetStatMultiplier(StatType.AttackSpeed); break;
             case StatType.HealthRegen:   stats.BonusHealthRegenFlat  += entry.value * ProgressionManager.GetStatMultiplier(StatType.HealthRegen); break;
             case StatType.EnergyRegen:   stats.bonusEnergyRegenFlat  += entry.value * ProgressionManager.GetStatMultiplier(StatType.EnergyRegen); break;
-            case StatType.DashCooldown:  stats.dashHaste             += entry.value * ProgressionManager.GetStatMultiplier(StatType.DashCooldown); break;
+            case StatType.DashHaste:     stats.dashHaste             += entry.value * ProgressionManager.GetStatMultiplier(StatType.DashHaste); break;
             case StatType.CritChance:    stats.bonusCritChanceFlat   += entry.value * 0.01f * ProgressionManager.GetStatMultiplier(StatType.CritChance); break;
-            case StatType.Pierce:        stats.bonusPierceFlat       += entry.value * ProgressionManager.GetStatMultiplier(StatType.WeaponRange); break;
         }
     }
 

@@ -98,7 +98,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3194197359222573748, guid: 1be34773563bc2044a878f6031398737, type: 3}
       propertyPath: leapOffsetRadius
-      value: 3
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 6338868219884363840, guid: 1be34773563bc2044a878f6031398737, type: 3}
       propertyPath: m_Mass

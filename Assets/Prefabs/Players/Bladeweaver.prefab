@@ -102,7 +102,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: f75c0e6cacf2f21419839414b9c8474c, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -639,6 +639,7 @@ GameObject:
   - component: {fileID: 8180083080538734954}
   - component: {fileID: 5418513144571543119}
   - component: {fileID: 306019993567676965}
+  - component: {fileID: 4094621822072425898}
   m_Layer: 0
   m_Name: Bladeweaver
   m_TagString: Untagged
@@ -692,6 +693,7 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   characterClass: 3
+  outerXScalesWithRange: 0
   _controller: {fileID: 5418513144571543119}
   _hurtbox: {fileID: 1046179636567246685}
   _physicsCollider: {fileID: 7874162270675813079}
@@ -706,7 +708,7 @@ MonoBehaviour:
   baseWeaponDamage: 15
   bonusWeaponDamageFlat: 0
   bonusWeaponDamagePercent: 1
-  bonusWeaponDamagePenalty: 0.4
+  bonusWeaponDamagePenalty: 0.45
   baseWeaponRadius: 4
   baseWeaponSpeed: 180
   bonusWeaponSpeedFlat: 0
@@ -715,7 +717,7 @@ MonoBehaviour:
   baseWeaponCount: 1
   bonusWeaponCountFlat: 2
   bonusWeaponCountMultiplier: 1
-  baseWeaponRange: 5
+  baseWeaponRange: 8
   bonusWeaponRangeFlat: 0
   bonusWeaponRangePercent: 1
   weaponRangePenalty: 0.75
@@ -726,9 +728,6 @@ MonoBehaviour:
   bonusCritChancePercent: 1
   bonusCritDamageFlat: 0
   bonusCritDamagePercent: 1
-  basePierce: 0
-  bonusPierceFlat: 0
-  bonusPiercePercent: 1
   baseRicochet: 0
   bonusRicochetFlat: 0
   bonusRicochetPercent: 1
@@ -736,10 +735,6 @@ MonoBehaviour:
   bonusMultishotFlat: 0
   bonusMultishotPercent: 1
   multishotSpreadAngle: 75
-  baseProjectileDamageDropoff: 0.25
-  projectileDamageDropoffReduction: 1
-  baseProjectileOnHitDropoff: 0.25
-  projectileOnHitDropoffReduction: 1
   _baseMaxHealth:
     _value: 20
     _ownerAuth: 0
@@ -756,7 +751,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  baseHealthRegen: 0.25
+  baseHealthRegen: 0
   _bonusHealthRegenFlat:
     _value: 0
     _ownerAuth: 1
@@ -794,7 +789,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   baseOnHitEffectiveness: 1
   bonusOnHitEffectivenessMultiplier: 1
-  bonusOnHitEffectivenessPenalty: 0.4
+  bonusOnHitEffectivenessPenalty: 0.45
   _reviveTimeSync:
     _value: 3
     _ownerAuth: 0
@@ -933,6 +928,26 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   weaponPrefab: {fileID: 2942187867930129664, guid: 6723980818ce9bb459fb5c2cebad1194, type: 3}
+--- !u!114 &4094621822072425898
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2272951876664129887}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e5348e29753ede64aa5bf05e63133010, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerColorApplicator
+  coloredRenderers:
+  - {fileID: 4797182340578565043}
+  - {fileID: 4441565427507142313}
+  materialIndex: 0
+  coloredSprites:
+  - {fileID: 4375188366891120330}
+  tintedRenderers: []
+  tintedMaterialIndex: 0
 --- !u!1 &2550005726435012322
 GameObject:
   m_ObjectHideFlags: 0
@@ -1328,7 +1343,7 @@ SpriteRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: dde926bf990150f42beb9fd3120f4dd0, type: 3}
-  m_Color: {r: 0, g: 1, b: 1, a: 0.5882353}
+  m_Color: {r: 1, g: 1, b: 1, a: 0.5882353}
   m_FlipX: 0
   m_FlipY: 0
   m_DrawMode: 0
@@ -2512,7 +2527,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: f75c0e6cacf2f21419839414b9c8474c, type: 2}
+  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1001 &1591945992586183086
+--- !u!1001 &2120970988979900335
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -15,18 +15,18 @@ PrefabInstance:
     - target: {fileID: 1782997850478245787, guid: 7b57a6261e375564093988f6fd01f5fe, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: d9d872c18f139884381ae8c99c930aa7, type: 2}
+      objectReference: {fileID: 2100000, guid: cc69ac516a1640043b9593091e6b5947, type: 2}
     - target: {fileID: 7504822305987201662, guid: 7b57a6261e375564093988f6fd01f5fe, type: 3}
       propertyPath: m_LocalScale.x
-      value: 0.4
+      value: 0.5
       objectReference: {fileID: 0}
     - target: {fileID: 7504822305987201662, guid: 7b57a6261e375564093988f6fd01f5fe, type: 3}
       propertyPath: m_LocalScale.y
-      value: 0.4
+      value: 0.5
       objectReference: {fileID: 0}
     - target: {fileID: 7504822305987201662, guid: 7b57a6261e375564093988f6fd01f5fe, type: 3}
       propertyPath: m_LocalScale.z
-      value: 0.4
+      value: 0.5
       objectReference: {fileID: 0}
     - target: {fileID: 7504822305987201662, guid: 7b57a6261e375564093988f6fd01f5fe, type: 3}
       propertyPath: m_LocalPosition.x
@@ -68,14 +68,10 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
-    - target: {fileID: 7504822305987201662, guid: 7b57a6261e375564093988f6fd01f5fe, type: 3}
-      propertyPath: m_ConstrainProportionsScale
-      value: 1
-      objectReference: {fileID: 0}
     - target: {fileID: 7518403088624511704, guid: 7b57a6261e375564093988f6fd01f5fe, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
-      objectReference: {fileID: 2100000, guid: 970797886892f784caaf3bdb2e0f4bc0, type: 2}
+      objectReference: {fileID: 2100000, guid: fcbb25d971909df47b7f8c1ee81b2db8, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
