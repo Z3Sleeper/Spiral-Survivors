@@ -34,7 +34,15 @@ public class WeaponManager : NetworkBehaviour
         _currentSize = _stats.WeaponSize;
         _weaponPrefabScale = weaponPrefab.transform.localScale;
         SpawnWeapons(_stats.WeaponCount);
+        _stats._isDeadSync.onChanged += OnDeathStateChanged;
         enabled = true;
+    }
+
+    private void OnDeathStateChanged(bool dead)
+    {
+        foreach (var weapon in _weapons)
+            foreach (var rend in weapon.GetComponentsInChildren<Renderer>())
+                rend.enabled = !dead;
     }
 
     private void SpawnWeapons(int count)

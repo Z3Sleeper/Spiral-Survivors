@@ -269,7 +269,7 @@ public class LocalUIManager : MonoBehaviour
         energyImage.fillAmount = _stats.CurrentEnergy < _stats.MaxEnergy
             ? _stats.CurrentEnergy / _stats.MaxEnergy
             : 1f;
-        energyImage.color = _stats.CurrentEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow;
+        energyImage.color = (_controller != null && _controller.isSurging) || _stats.CurrentEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow;
         energyText.text = $"<b>{(int)_stats.CurrentEnergy}</b>";
     }
 
@@ -292,7 +292,7 @@ public class LocalUIManager : MonoBehaviour
     {
         _statsExpandedSB.Clear();
         _statsExpandedSB.AppendLine($" {_stats.bonusWeaponDamagePercent * _stats.bonusWeaponDamagePenalty * 100f - 100f:+0.0;-0.0}%");
-        _statsExpandedSB.AppendLine($" {_stats.bonusWeaponSpeedPercent * _stats.weaponSpeedPenalty * 100f - 100f:+0.0;-0.0}%");
+        _statsExpandedSB.AppendLine($" {_stats.attackSpeedTotalPercent * _stats.attackSpeedPenalty * 100f - 100f:+0.0;-0.0}%");
         _statsExpandedSB.AppendLine($" {_stats.bonusEnergyRegenPercent * _stats.energyRegenPenalty * 100f - 100f:+0.0;-0.0}%");
         _statsExpandedSB.AppendLine($" {_stats.bonusWeaponRangePercent * _stats.weaponRangePenalty * 100f - 100f:+0.0;-0.0}%");
         _statsExpandedSB.AppendLine($" {_stats.bonusMoveSpeedPercent * _stats.moveSpeedPenalty * 100f - 100f:+0.0;-0.0}%");

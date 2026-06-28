@@ -19,12 +19,15 @@ public class PlayerController : NetworkIdentity
 
     public static event System.Action<PlayerController> OnDashStarted;
     public static event System.Action<PlayerController> OnDashEnded;
+    public static event System.Action<PlayerController> OnSurgeStarted;
+    public static event System.Action<PlayerController> OnSurgeEnded;
 
     public bool isSurging { get; private set; }
     private float _surgeTickTimer;
-    private const float SurgeTickInterval = 0.1f;
-    private float _surgeMoveSpeedBonus;
-    private float _surgeWeaponSpeedBonus;
+    private float _surgeMinDurationTimer;
+    private bool _isPaused;
+    private const float SurgeTickInterval   = 0.1f;
+    private const float SurgeMinDuration    = 0.5f;
     private Vector3 _dashVelocity;
     private const float DashDistance = 8f;
     private const float DashSpeed = 40f;
@@ -75,7 +78,7 @@ public class PlayerController : NetworkIdentity
 
     private void Update()
     {
-        if (_input == null) return;
+        if (_input == null || _isPaused) return;
 
         _sweepTimer -= Time.deltaTime;
         if (_sweepTimer <= 0f)
@@ -130,12 +133,14 @@ public class PlayerController : NetworkIdentity
         // Surge input
         if (_input.Player.Surge.IsPressed() && !isSurging && _stats.CurrentEnergy >= _stats.SurgeActivationThreshhold)
             StartSurge();
-        else if (!_input.Player.Surge.IsPressed() && isSurging)
+        else if (!_isPaused && !_input.Player.Surge.IsPressed() && isSurging && _surgeMinDurationTimer <= 0f)
             EndSurge();
 
         // Surge tick
         if (isSurging)
         {
+            if (_surgeMinDurationTimer > 0f)
+                _surgeMinDurationTimer -= Time.deltaTime;
             _surgeTickTimer -= Time.deltaTime;
             if (_surgeTickTimer <= 0f)
             {
@@ -185,17 +190,16 @@ public class PlayerController : NetworkIdentity
 
     private void OnPauseChanged(bool paused)
     {
+        _isPaused = paused;
         if (paused)
         {
             _input.Player.Move.Disable();
             _input.Player.Dash.Disable();
-            _input.Player.Surge.Disable();
         }
         else
         {
             _input.Player.Move.Enable();
             _input.Player.Dash.Enable();
-            _input.Player.Surge.Enable();
         }
     }
 
@@ -206,7 +210,7 @@ public class PlayerController : NetworkIdentity
         _currentCharges--;
         if (_chargeRegenTimer <= 0f)
             _chargeRegenTimer = _stats.DashCooldown;
-        float moveSpeedForDash = isSurging ? _stats.MoveSpeed / _surgeMoveSpeedBonus : _stats.MoveSpeed;
+        float moveSpeedForDash = isSurging ? _stats.MoveSpeed / _stats.SurgeMoveSpeedMulti : _stats.MoveSpeed;
         float scaledDashSpeed = DashSpeed * ((4f + moveSpeedForDash) / 4f);
         _dashVelocity = _lastMoveDir * scaledDashSpeed;
         _dashTimer = DashDistance / DashSpeed;
@@ -228,20 +232,17 @@ public class PlayerController : NetworkIdentity
     private void StartSurge()
     {
         isSurging = true;
+        _stats.isSurging = true;
         _stats.CurrentEnergy -= _stats.SurgeCost;
         _surgeTickTimer = SurgeTickInterval;
-
-        _surgeMoveSpeedBonus = _stats.SurgeMoveSpeedMulti;
-        _surgeWeaponSpeedBonus = _stats.SurgeWeaponSpeedMultiplier;
-
-        _stats.bonusMoveSpeedPercent *= _surgeMoveSpeedBonus;
-        _stats.bonusWeaponSpeedPercent *= _surgeWeaponSpeedBonus;
+        _surgeMinDurationTimer = SurgeMinDuration;
+        OnSurgeStarted?.Invoke(this);
     }
 
     private void EndSurge()
     {
         isSurging = false;
-        _stats.bonusMoveSpeedPercent /= _surgeMoveSpeedBonus;
-        _stats.bonusWeaponSpeedPercent /= _surgeWeaponSpeedBonus;
+        _stats.isSurging = false;
+        OnSurgeEnded?.Invoke(this);
     }
 }

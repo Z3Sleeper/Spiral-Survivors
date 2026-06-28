@@ -21,6 +21,7 @@ public class PhantomBladeCarnivalAugment : MonoBehaviour
 
     private void OnSummon(PhantomBlade blade)
     {
+        if (blade.ownerStats != _stats) return;
         blade.damageMultiplier *= 1f - bladeDamagePenalty;
         blade.sizeMultiplier *= 1f - bladeDamagePenalty;
         if (blade.isSecondary || blade.target == null || blade.target._isDead) return;

@@ -505,6 +505,7 @@ MonoBehaviour:
   damagedSound: {fileID: 8300000, guid: 48b83bb02b5dbe1428951aaa5c764aaa, type: 3}
   _renderers:
   - {fileID: 4797182340578565043}
+  _invincibilityShell: {fileID: 3448578501585795413}
   baseMoveSpeed: 1
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 1
@@ -514,10 +515,10 @@ MonoBehaviour:
   bonusWeaponDamagePercent: 1
   bonusWeaponDamagePenalty: 1
   baseWeaponRadius: 0
-  baseWeaponSpeed: 180
-  bonusWeaponSpeedFlat: 0
-  bonusWeaponSpeedPercent: 1
-  weaponSpeedPenalty: 1
+  baseAttackSpeed: 0.5
+  attackSpeedPercent: 0
+  attackSpeedTotalPercent: 1
+  attackSpeedPenalty: 1
   baseWeaponCount: 1
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
@@ -982,7 +983,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0.5, z: 0}
-  m_LocalScale: {x: 1.2, y: 1.2, z: 1.2}
+  m_LocalScale: {x: 1.5, y: 1.5, z: 1.5}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 4433399181805987514}

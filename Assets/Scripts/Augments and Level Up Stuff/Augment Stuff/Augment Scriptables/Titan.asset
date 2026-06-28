@@ -23,6 +23,7 @@ MonoBehaviour:
   restrictedToClasses: 
   excludedClasses: 0200000003000000
   effectPrefab: {fileID: 7374280020309212871, guid: 305cc40fa1904f949a09fd6d9690aacd, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments:
   - {fileID: 11400000, guid: 7209ddc45c371bf4bbf46fcf3929f257, type: 2}
   requiredAugments: []

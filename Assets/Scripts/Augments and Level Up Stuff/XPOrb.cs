@@ -23,6 +23,8 @@ public class XPOrb : NetworkIdentity
         _rb = GetComponent<Rigidbody>();
     }
 
+    protected override void OnDestroy() { CancelInvoke(); base.OnDestroy(); }
+
     public void Init(int value)
     {
         _value = value;
@@ -101,14 +103,19 @@ public class XPOrb : NetworkIdentity
     {
         if (_collected) return;
         _collected = true;
-        PlayCollectSoundRpc(_collectorId);
         GameManager.instance.AddXPRpc(_value);
-        Destroy(gameObject);
+        HideOnCollectRpc(_collectorId);
+        Destroy(gameObject, 0.5f);
     }
 
-    [TargetRpc]
-    private void PlayCollectSoundRpc(PlayerID target)
+    [ObserversRpc]
+    private void HideOnCollectRpc(PlayerID collectorId)
     {
+        _collected = true;
+        foreach (var col in GetComponentsInChildren<Collider>())
+            col.enabled = false;
+        foreach (var rend in GetComponentsInChildren<Renderer>())
+            rend.enabled = false;
         SFXManager.instance?.Play(collectSound, transform.position);
     }
 }

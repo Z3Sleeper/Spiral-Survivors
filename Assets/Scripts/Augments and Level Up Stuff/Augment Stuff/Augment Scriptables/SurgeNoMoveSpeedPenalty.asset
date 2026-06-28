@@ -16,14 +16,12 @@ MonoBehaviour:
   description: '<color=#FFFF00>Surging</color> no longer reduces <color=#FFFFFF>Movement
     Speed</color>.
 
-    <color=#FFFF00>+5 Energy Regen</color>
-
-    <color=#FFFF00>+15%
-    Energy Regen</color>'
+    <color=#FFFF00>+5 Energy Regen</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 4890222564328546812, guid: 2ba6f15d6785a4b4eab15340e61a6a5c, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments: []
   requiredAugments:
   - {fileID: 11400000, guid: d9b5811cc7ce07340bd30b2c79d34206, type: 2}

@@ -24,13 +24,14 @@ public class CharacterStats : NetworkBehaviour
     [Header("Visual")]
     [SerializeField] private Renderer[] _renderers;
     private Color[] _originalColors;
+    [SerializeField] private GameObject _invincibilityShell;
 
     [Header("Movement")]
     public float baseMoveSpeed = 1f;
     public float bonusMoveSpeedFlat = 0f;
     public float bonusMoveSpeedPercent = 1f;
     public float moveSpeedPenalty = 1f;
-    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent * moveSpeedPenalty;
+    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent * moveSpeedPenalty * (isSurging ? SurgeMoveSpeedMulti : 1f);
 
     [Header("Weapon")]
     public float baseWeaponDamage = 15f;
@@ -45,14 +46,13 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusWeaponRadiusPercent = 1f;
     public float WeaponRadius => (baseWeaponRadius + bonusWeaponRadiusFlat) * bonusWeaponRadiusPercent;
 
-    public float baseWeaponSpeed = 180f;
-    public float bonusWeaponSpeedFlat = 0f;
-    public float bonusWeaponSpeedPercent = 1f;
-    public float weaponSpeedPenalty = 1f;
-    public float WeaponSpeed => (baseWeaponSpeed + bonusWeaponSpeedFlat) * bonusWeaponSpeedPercent * weaponSpeedPenalty;
-
-    public float AttackSpeed => WeaponSpeed / 360f;
-    public float AttackSpeedPercent => bonusWeaponSpeedPercent * weaponSpeedPenalty;
+    public float baseAttackSpeed = 0.5f;
+    public float attackSpeedPercent = 0f;
+    public float attackSpeedTotalPercent = 1f;
+    public float attackSpeedPenalty = 1f;
+    public float AttackSpeed => (baseAttackSpeed + attackSpeedPercent) * attackSpeedTotalPercent * attackSpeedPenalty * (isSurging ? SurgeAttackSpeedMultiplier : 1f);
+    public float WeaponSpeed => AttackSpeed * 360f;
+    public float AttackSpeedPercent => attackSpeedTotalPercent * attackSpeedPenalty;
 
     public int baseWeaponCount = 1;
     public int bonusWeaponCountFlat = 0;
@@ -202,7 +202,7 @@ public class CharacterStats : NetworkBehaviour
     /// <summary>
     /// Value limits the activation of surge to itself. To adjust the energy expended during surge, use surgeCost.
     /// </summary>
-    public float SurgeActivationThreshhold => (baseMaxEnergy + bonusMaxEnergyFlat) * bonusMaxEnergyPercent * 0.2f;
+    public float SurgeActivationThreshhold => SurgeCost * 5f;
     [NonSerialized] public float baseSurgeCost = 2f;
     [NonSerialized] public float bonusSurgeCostFlat = 0f;
     [NonSerialized] public float bonusSurgeCostPercent = 1f;
@@ -213,9 +213,10 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float surgeMoveSpeedMulti = 1f;
     [NonSerialized] public float surgeMoveSpeedPenalty = 0.5f;
     public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty * SurgeEffectiveness;
-    [NonSerialized] public float surgeWeaponSpeedMulti = 3f;
-    [NonSerialized] public float surgeWeaponSpeedPenalty = 1f;
-    public float SurgeWeaponSpeedMultiplier => surgeWeaponSpeedMulti * surgeWeaponSpeedPenalty * SurgeEffectiveness;
+    [NonSerialized] public bool isSurging = false;
+    [NonSerialized] public float surgeAttackSpeedMulti = 3f;
+    [NonSerialized] public float surgeAttackSpeedPenalty = 1f;
+    public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty * SurgeEffectiveness;
 
     [Header("Dash")]
     public int dashCharges = 3;
@@ -240,6 +241,9 @@ public class CharacterStats : NetworkBehaviour
     public float bonusOnHitEffectivenessMultiplier = 1f;
     public float bonusOnHitEffectivenessPenalty = 1f;
     public float OnHitEffectiveness => baseOnHitEffectiveness * bonusOnHitEffectivenessMultiplier * bonusOnHitEffectivenessPenalty;
+    [NonSerialized] public float stackPowerPercent = 1f;
+    [NonSerialized] public float stackPowerPenalty = 1f;
+    public float StackPower => stackPowerPercent * stackPowerPenalty;
     private float _baseXPMod = 1f;
     public float BaseXPMod
     {
@@ -288,6 +292,10 @@ public class CharacterStats : NetworkBehaviour
     [HideInInspector] public SyncVar<bool> _reviveInvincible = new(false);
     public bool IsInvincible => invincible || _reviveInvincible.value;
 
+    [NonSerialized] public float damageReductionPercent = 1f;
+    [NonSerialized] public float damageReductionPenalty = 1f;
+    public float DamageReduction => damageReductionPercent * damageReductionPenalty;
+
     protected override void OnDestroy() { All.Remove(this); base.OnDestroy(); }
 
     protected override void OnSpawned()
@@ -331,7 +339,7 @@ public class CharacterStats : NetworkBehaviour
     {
         bonusWeaponDamageFlat += ProgressionManager.GetBaseStatBonus(StatType.WeaponDamage);
         bonusMoveSpeedFlat    += ProgressionManager.GetBaseStatBonus(StatType.MoveSpeed) * 0.1f;
-        bonusWeaponSpeedFlat  += ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f * baseWeaponSpeed;
+        attackSpeedPercent    += ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f * baseAttackSpeed;
         bonusEnergyRegenFlat  += ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen);
         dashHaste             += ProgressionManager.GetBaseStatBonus(StatType.DashHaste);
         bonusCritChanceFlat   += ProgressionManager.GetBaseStatBonus(StatType.CritChance) * 0.01f;
@@ -360,6 +368,9 @@ public class CharacterStats : NetworkBehaviour
             _ownerInitialized = true;
             LateOwnerInit();
         }
+
+        if (_invincibilityShell != null)
+            _invincibilityShell.SetActive(IsInvincible);
 
         if (!isServer) return;
         if (IsDead) return;
@@ -464,6 +475,12 @@ public class CharacterStats : NetworkBehaviour
         CurrentHealth = Mathf.Min(CurrentHealth + bonus, MaxHealth);
     }
 
+    [ServerRpc(requireOwnership: true)]
+    public void AddMaxShieldPercentRpc(float bonus)
+    {
+        BonusMaxShieldPercent += bonus;
+    }
+
     public static event Action<CharacterStats, float> OnHeal;
 
     public static event Action<CharacterStats, Vector3, float, float, string> OnVFXBroadcast;
@@ -507,6 +524,8 @@ public class CharacterStats : NetworkBehaviour
 
         _shieldRechargeTimer = ShieldRegenTime;
         FlashHitRpc();
+
+        damage *= DamageReduction;
 
         if (CurrentShield > 0)
         {

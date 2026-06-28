@@ -5,9 +5,12 @@ public class PhantomBladeSizeAugment : MonoBehaviour
     [SerializeField] private float sizeBonus = 2f;
     [SerializeField] private float bladeDamageBonus = 1.5f;
 
+    private CharacterStats _stats;
+
     private void Start()
     {
-        if (!GetComponentInParent<CharacterStats>().isOwner) { Destroy(gameObject); return; }
+        _stats = GetComponentInParent<CharacterStats>();
+        if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
         PhantomBlade.OnSummon += OnSummon;
     }
 
@@ -18,6 +21,7 @@ public class PhantomBladeSizeAugment : MonoBehaviour
 
     private void OnSummon(PhantomBlade blade)
     {
+        if (blade.ownerStats != _stats) return;
         if (blade.isSecondary) return;
         blade.sizeMultiplier *= sizeBonus;
         blade.damageMultiplier *= bladeDamageBonus;

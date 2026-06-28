@@ -54,7 +54,7 @@ public class PlayerUIGlobal : NetworkBehaviour
         energyImage.fillAmount = _stats.CurrentEnergy < _stats.MaxEnergy
             ? _stats.CurrentEnergy / _stats.MaxEnergy
             : 1f;
-        energyImage.color = _stats.CurrentEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow;
+        energyImage.color = (_controller != null && _controller.isSurging) || _stats.CurrentEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow;
     }
 
     private void LateUpdate()

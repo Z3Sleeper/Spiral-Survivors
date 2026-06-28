@@ -240,7 +240,7 @@ public class AugmentManager : NetworkBehaviour
             case StatType.WeaponDamage:  stats.bonusWeaponDamageFlat += entry.value * ProgressionManager.GetStatMultiplier(StatType.WeaponDamage); break;
             case StatType.MoveSpeed:     stats.bonusMoveSpeedFlat    += entry.value * 0.1f * ProgressionManager.GetStatMultiplier(StatType.MoveSpeed); break;
             case StatType.WeaponRange:   stats.bonusWeaponRangeFlat  += entry.value; break;
-            case StatType.AttackSpeed:   stats.bonusWeaponSpeedFlat  += entry.value * 0.01f * stats.baseWeaponSpeed * ProgressionManager.GetStatMultiplier(StatType.AttackSpeed); break;
+            case StatType.AttackSpeed:   stats.attackSpeedPercent    += entry.value * 0.01f * stats.baseAttackSpeed * ProgressionManager.GetStatMultiplier(StatType.AttackSpeed); break;
             case StatType.HealthRegen:   stats.BonusHealthRegenFlat  += entry.value * ProgressionManager.GetStatMultiplier(StatType.HealthRegen); break;
             case StatType.EnergyRegen:   stats.bonusEnergyRegenFlat  += entry.value * ProgressionManager.GetStatMultiplier(StatType.EnergyRegen); break;
             case StatType.DashHaste:     stats.dashHaste             += entry.value * ProgressionManager.GetStatMultiplier(StatType.DashHaste); break;

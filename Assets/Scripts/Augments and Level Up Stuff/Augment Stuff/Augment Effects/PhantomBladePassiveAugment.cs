@@ -16,19 +16,20 @@ public class PhantomBladePassiveAugment : MonoBehaviour
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
-        _stats.bonusWeaponSpeedFlat += attackSpeedBonus * _stats.baseWeaponSpeed;
+        _stats.attackSpeedPercent += attackSpeedBonus * _stats.baseAttackSpeed;
         _timer = baseCooldown;
         PhantomBlade.OnSummon += OnSummon;
     }
 
     private void OnDestroy()
     {
-        if (_stats != null) _stats.bonusWeaponSpeedFlat -= attackSpeedBonus * _stats.baseWeaponSpeed;
+        if (_stats != null) _stats.attackSpeedPercent -= attackSpeedBonus * _stats.baseAttackSpeed;
         PhantomBlade.OnSummon -= OnSummon;
     }
 
     private void OnSummon(PhantomBlade blade)
     {
+        if (blade.ownerStats != _stats) return;
         if (blade.isSecondary) return;
         blade.damage += blade.baseDamage * bladeDamageBonus;
         blade.size += 0.5f * bladeDamageBonus;
@@ -36,7 +37,8 @@ public class PhantomBladePassiveAugment : MonoBehaviour
 
     private void Update()
     {
-        _timer -= Time.deltaTime * (_stats.WeaponSpeed / _stats.baseWeaponSpeed);
+        if (_stats.IsDead) return;
+        _timer -= Time.deltaTime * (_stats.AttackSpeed / _stats.baseAttackSpeed);
         if (_timer > 0f) return;
 
         _timer = baseCooldown;

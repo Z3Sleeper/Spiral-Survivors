@@ -29,6 +29,7 @@ public class PhantomBladeOnCritAugment : MonoBehaviour
 
     private void OnSummon(PhantomBlade blade)
     {
+        if (blade.ownerStats != _stats) return;
         if (blade.isSecondary) return;
         blade.damage += blade.baseDamage * bladeDamageBonus;
         blade.size += 0.5f * bladeDamageBonus;

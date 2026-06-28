@@ -5,8 +5,9 @@ public static class ProgressionManager
     private const string TotalPointsKey    = "TotalPoints";
     private const string SpentPointsKey    = "SpentPoints";
     private const string BoughtUpgradesKey = "BoughtUpgrades";
+    private const string LevelUpTierKey    = "LevelUpTier";
 
-    private const int   LevelUpMaxTier           = 4;
+    private const int   LevelUpMaxTier           = 10;
     private const int   BaseMaxTier              = 4;
     private const int   DamageMaxTier            = 7;
     private const int   MoveSpeedMaxTier         = 5;
@@ -42,8 +43,8 @@ public static class ProgressionManager
     public static long AvailablePoints => TotalPoints - SpentPoints;
     public static int  BoughtUpgrades  => PlayerPrefs.GetInt(BoughtUpgradesKey, 0);
 
-    public static int GetStatTier(StatType statType) =>
-        PlayerPrefs.GetInt($"StatTier_{statType}", 0);
+    public static int GetLevelUpTier() =>
+        PlayerPrefs.GetInt(LevelUpTierKey, 0);
 
     public static int GetBaseStatTier(StatType statType) =>
         PlayerPrefs.GetInt($"BaseStatTier_{statType}", 0);
@@ -99,37 +100,26 @@ public static class ProgressionManager
         return true;
     }
 
-    public static float GetStatMultiplier(StatType statType) => statType switch
-    {
-        StatType.WeaponDamage => 1f + GetStatTier(StatType.WeaponDamage) * 0.25f,
-        StatType.MaxHealth    => 1f + GetStatTier(StatType.MaxHealth)    * 0.25f,
-        StatType.MoveSpeed    => 1f + GetStatTier(StatType.MoveSpeed)    * 0.25f,
-        StatType.AttackSpeed  => 1f + GetStatTier(StatType.AttackSpeed)  * 0.25f,
-        StatType.HealthRegen  => 1f + GetStatTier(StatType.HealthRegen)  * 0.25f,
-        StatType.EnergyRegen  => 1f + GetStatTier(StatType.EnergyRegen)  * 0.25f,
-        StatType.DashHaste => 1f + GetStatTier(StatType.DashHaste) * 0.25f,
-        StatType.CritChance   => 1f + GetStatTier(StatType.CritChance)   * 0.25f,
-        StatType.WeaponRange  => 1f + GetStatTier(StatType.WeaponRange)  * 0.25f,
-        _                     => 1f
-    };
+    public static float GetStatMultiplier(StatType statType) =>
+        1f + GetLevelUpTier() * 0.10f;
 
-    public static int GetUpgradeCost(StatType statType)
+    public static int GetUpgradeCost()
     {
-        int currentTier = GetStatTier(statType);
+        int currentTier = GetLevelUpTier();
         if (currentTier >= LevelUpMaxTier) return int.MaxValue;
         int basePart = LevelUpStatCost * (1 + currentTier);
         int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, BoughtUpgrades));
         return basePart + feePart;
     }
 
-    public static bool CanUpgrade(StatType statType) =>
-        GetStatTier(statType) < LevelUpMaxTier && AvailablePoints >= GetUpgradeCost(statType);
+    public static bool CanUpgrade() =>
+        GetLevelUpTier() < LevelUpMaxTier && AvailablePoints >= GetUpgradeCost();
 
-    public static bool TryUpgrade(StatType statType)
+    public static bool TryUpgrade()
     {
-        if (!CanUpgrade(statType)) return false;
-        int cost = GetUpgradeCost(statType);
-        PlayerPrefs.SetInt($"StatTier_{statType}", GetStatTier(statType) + 1);
+        if (!CanUpgrade()) return false;
+        int cost = GetUpgradeCost();
+        PlayerPrefs.SetInt(LevelUpTierKey, GetLevelUpTier() + 1);
         PlayerPrefs.SetInt(BoughtUpgradesKey, BoughtUpgrades + 1);
         SetLong(SpentPointsKey, SpentPoints + cost);
         PlayerPrefs.Save();
@@ -158,11 +148,9 @@ public static class ProgressionManager
 
     private static void DeleteAllStatTiers()
     {
+        PlayerPrefs.DeleteKey(LevelUpTierKey);
         foreach (var s in _upgradeableStats)
-        {
-            PlayerPrefs.DeleteKey($"StatTier_{s}");
             PlayerPrefs.DeleteKey($"BaseStatTier_{s}");
-        }
     }
 
     public static void RefundPoints()
