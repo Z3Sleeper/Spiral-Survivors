@@ -4,7 +4,7 @@ public class SurgeRampingAttackSpeedAugment : MonoBehaviour
 {
     [SerializeField] private float _rampPercent = 0.1f;
     [SerializeField] private float _rampInterval = 0.5f;
-    [SerializeField] private float _bonusEnergyRegenFlat = 4f;
+    [SerializeField] private float _bonusMaxEnergy = 25f;
 
     private CharacterStats _stats;
     private float _timer;
@@ -15,7 +15,7 @@ public class SurgeRampingAttackSpeedAugment : MonoBehaviour
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
-        _stats.bonusEnergyRegenFlat += _bonusEnergyRegenFlat;
+        _stats.bonusMaxEnergyFlat += _bonusMaxEnergy;
         PlayerController.OnSurgeStarted += OnSurgeStarted;
         PlayerController.OnSurgeEnded   += OnSurgeEnded;
     }
@@ -25,7 +25,7 @@ public class SurgeRampingAttackSpeedAugment : MonoBehaviour
         PlayerController.OnSurgeStarted -= OnSurgeStarted;
         PlayerController.OnSurgeEnded   -= OnSurgeEnded;
         if (_stats == null) return;
-        _stats.bonusEnergyRegenFlat -= _bonusEnergyRegenFlat;
+        _stats.bonusMaxEnergyFlat -= _bonusMaxEnergy;
         if (_accumulated > 0f)
             _stats.attackSpeedPercent -= _accumulated;
     }

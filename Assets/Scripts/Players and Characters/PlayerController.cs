@@ -78,7 +78,21 @@ public class PlayerController : NetworkIdentity
 
     private void Update()
     {
-        if (_input == null || _isPaused) return;
+        if (_input == null) return;
+
+        // Stats panel (available during pause)
+        if (_input.Player.Tab.WasPressedThisFrame())
+        {
+            LocalUIManager.instance?.SetStatsExpanded(true);
+            LocalUIManager.instance?.SetAugmentListVisible(true);
+        }
+        else if (_input.Player.Tab.WasReleasedThisFrame())
+        {
+            LocalUIManager.instance?.SetStatsExpanded(false);
+            LocalUIManager.instance?.SetAugmentListVisible(false);
+        }
+
+        if (_isPaused) return;
 
         _sweepTimer -= Time.deltaTime;
         if (_sweepTimer <= 0f)
@@ -100,12 +114,6 @@ public class PlayerController : NetworkIdentity
             else
                 GameManager.instance.RequestPauseRpc();
         }
-
-        // Stats panel
-        if (_input.Player.Tab.WasPressedThisFrame())
-            LocalUIManager.instance?.SetStatsExpanded(true);
-        else if (_input.Player.Tab.WasReleasedThisFrame())
-            LocalUIManager.instance?.SetStatsExpanded(false);
 
         // Dash input
         if (_input.Player.Dash.WasPressedThisFrame() && _currentCharges > 0 && !_isDashing)

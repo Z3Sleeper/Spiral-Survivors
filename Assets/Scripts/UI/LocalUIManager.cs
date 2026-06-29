@@ -14,6 +14,7 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private Slider shieldRegenBar;
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private TextMeshProUGUI healthRegenText;
+    [SerializeField] private TextMeshProUGUI damageReductionText;
     [SerializeField] private Image dashChargeCooldownImage;
     [SerializeField] private TextMeshProUGUI dashChargesText;
     [SerializeField] private Image energyImage;
@@ -43,6 +44,9 @@ public class LocalUIManager : MonoBehaviour
     [SerializeField] private AugmentCardUI cardPrefab;
     [SerializeField] private Transform cardContainer;
     private List<AugmentCardUI> _cardPool = new();
+
+    [Header("Augment List")]
+    [SerializeField] private GameObject augmentListPanel;
 
     [Header("Settings")]
     [SerializeField] private GameObject settingsPanel;
@@ -81,6 +85,12 @@ public class LocalUIManager : MonoBehaviour
     {
         statsUI.SetActive(!expanded);
         statsUIExpanded.SetActive(expanded);
+    }
+
+    public void SetAugmentListVisible(bool visible)
+    {
+        if (augmentListPanel != null)
+            augmentListPanel.SetActive(visible);
     }
 
     public void SetPlayer(CharacterStats stats)
@@ -232,6 +242,7 @@ public class LocalUIManager : MonoBehaviour
         if (_stats == null || _controller == null) return;
         UpdateHealthAndShields();
         UpdateHealthRegen();
+        UpdateDamageReduction();
         UpdateDash();
         UpdateEnergy();
         UpdateStats();
@@ -263,6 +274,13 @@ public class LocalUIManager : MonoBehaviour
     private void UpdateHealthRegen()
     {
         healthRegenText.text = $"<b>+{FormatStat(_stats.HealthRegen)}/s</b>";
+    }
+
+    private void UpdateDamageReduction()
+    {
+        float percent = (1f - _stats.DamageReduction) * 100f;
+        string sign = percent >= 0f ? "+" : "";
+        damageReductionText.text = $"<b>{sign}{percent:F0}% DR</b>";
     }
 
     private void UpdateDash()

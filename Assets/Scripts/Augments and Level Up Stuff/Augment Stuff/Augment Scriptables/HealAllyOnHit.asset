@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: HealAllyOnHit
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Rejuvinating Bonk
+  displayName: <color=#7DFF00>Rejuvinating Bonk</color>
   description: '<color=#FF5000>Striking</color> allies <color=#7DFF00>Heals</color>
     them <color=#FF0050>On-Hit</color> for <color=#7DFF00>300% of your Health Regen</color>.
 

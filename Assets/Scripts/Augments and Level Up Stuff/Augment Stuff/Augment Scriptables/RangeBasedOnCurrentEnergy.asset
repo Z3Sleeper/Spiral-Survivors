@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: RangeBasedOnCurrentEnergy
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Energetic Reach
+  displayName: <color=#FFFF00>Energetic Reach</color>
   description: 'Gain <color=#3278FF>+0.5% Range</color> for each <color=#FFFF00>1
     Current Energy</color>.
 

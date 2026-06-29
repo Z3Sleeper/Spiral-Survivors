@@ -333,7 +333,7 @@ MonoBehaviour:
   preferredRange: 10
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 5
+  damage: 10
   xpValue: 5
   contactColliderEnabled: 1
   contactCooldown: 0.5
@@ -355,14 +355,6 @@ MonoBehaviour:
   blitzesPerAttack: 1
   windupIndicator: {fileID: 1078640085709494109}
   windupFill: {fileID: 6132009066870367723}
-  _syncState:
-    _value: 0
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
-  _syncBlitzDirection:
-    _value: {x: 0, y: 0, z: 1}
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
 --- !u!114 &-8394223174193477460
 MonoBehaviour:
   m_ObjectHideFlags: 0

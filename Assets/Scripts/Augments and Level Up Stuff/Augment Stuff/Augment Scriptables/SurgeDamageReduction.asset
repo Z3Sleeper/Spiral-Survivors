@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: SurgeDamageReduction
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Surge Protection
+  displayName: <color=#FFFF00>Surge Protection</color>
   description: 'You are Invincible for the first 0.2s of <color=#FFFF00>Surging</color>
     and gain <color=#8C8C8C>25% Damage Reduction</color> while <color=#FFFF00>Surging</color>.
 

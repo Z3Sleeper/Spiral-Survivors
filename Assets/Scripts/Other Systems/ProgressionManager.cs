@@ -10,7 +10,7 @@ public static class ProgressionManager
     private const int   LevelUpMaxTier           = 10;
     private const int   BaseMaxTier              = 4;
     private const int   DamageMaxTier            = 7;
-    private const int   MoveSpeedMaxTier         = 5;
+    private const int   MoveSpeedMaxTier         = 2;
     private const int   LevelUpStatCost          = 950;
     private const int   BaseStatCost             = 50;
     private const int   CoreStatBaseCost         = 250;

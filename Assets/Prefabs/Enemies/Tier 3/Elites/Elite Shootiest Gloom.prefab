@@ -69,10 +69,6 @@ PrefabInstance:
       value: Elite Shootiest Gloom
       objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
-      propertyPath: damage
-      value: 40
-      objectReference: {fileID: 0}
-    - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: xpValue
       value: 270
       objectReference: {fileID: 0}

@@ -12,12 +12,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: HealthRegenOnHit
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Regenerative Strikes
-  description: Deal <color=#7DFF00>600% Health Regen</color> <color=#FF0050>On-Hit</color>.
+  displayName: <color=#7DFF00>Regenerative Strikes</color>
+  description: 'Deal <color=#7DFF00>600% Health Regen</color> <color=#FF0050>On-Hit</color>.
+
+    <color=#7DFF00>+0.5
+    Health Regen</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 5858353609751558520, guid: 176be2aba5066f44196460f81379f683, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments: []
   requiredAugments: []
   requiredOneOfAugments: []

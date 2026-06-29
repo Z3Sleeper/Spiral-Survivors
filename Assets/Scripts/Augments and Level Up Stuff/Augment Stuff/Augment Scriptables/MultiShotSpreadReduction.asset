@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: MultiShotSpreadReduction
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Choke
+  displayName: <color=#3278FF>Choke</color>
   description: '<color=#3278FF>-80% Multishot Spread Angle</color>
 
     <color=#3278FF>-50%

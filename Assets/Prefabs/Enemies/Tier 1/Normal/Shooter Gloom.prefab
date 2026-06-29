@@ -299,7 +299,7 @@ MonoBehaviour:
   preferredRange: 10
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 5
+  damage: 10
   xpValue: 5
   contactColliderEnabled: 0
   contactCooldown: 0.5
@@ -325,10 +325,6 @@ MonoBehaviour:
   maxRange: 30
   multishot: 0
   shotSpreadAngle: 90
-  _syncState:
-    _value: 0
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
 --- !u!114 &-8394223174193477460
 MonoBehaviour:
   m_ObjectHideFlags: 0

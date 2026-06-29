@@ -3,6 +3,7 @@ using UnityEngine;
 public class HealthRegenOnHitAugment : MonoBehaviour
 {
     [SerializeField] private float _regenMultiplier = 3f;
+    [SerializeField] private float _flatRegenBonus = 0.5f;
     [SerializeField] private GameObject _vfxPrefab;
     [SerializeField] private float _vfxSize = 1f;
     [SerializeField] private float _vfxDuration = 0.3f;
@@ -18,6 +19,7 @@ public class HealthRegenOnHitAugment : MonoBehaviour
         CharacterStats.OnVFXBroadcast += OnVFX;
 
         if (!_stats.isOwner) return;
+        _stats.BonusHealthRegenFlat += _flatRegenBonus;
         WeaponBase.OnHit += OnHit;
     }
 
@@ -25,6 +27,7 @@ public class HealthRegenOnHitAugment : MonoBehaviour
     {
         CharacterStats.OnVFXBroadcast -= OnVFX;
         WeaponBase.OnHit -= OnHit;
+        if (_stats != null && _stats.isOwner) _stats.BonusHealthRegenFlat -= _flatRegenBonus;
     }
 
     private void OnHit(CharacterStats source, EnemyBase enemy, float effectiveness)

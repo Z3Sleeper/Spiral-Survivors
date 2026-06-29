@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: KnightiestKnight
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Knightiest Knight
+  displayName: <color=#3278FF>Knightiest Knight</color>
   description: '<color=#3278FF>+17.5% Range</color>
 
     <color=#00FF00>+7.5% Max

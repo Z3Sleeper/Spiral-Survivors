@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: MultiShot+2
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: I Need More Bullets
+  displayName: <color=#3278FF>I Need More Bullets</color>
   description: '<color=#3278FF>+2 Multishot</color>
 
     <color=#FF5000>-60% Damage</color>
@@ -23,6 +23,7 @@ MonoBehaviour:
   restrictedToClasses: 02000000
   excludedClasses: 
   effectPrefab: {fileID: 5852996395204602351, guid: cf9bad15af17c164490fd68d45dc1f64, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments: []
   requiredAugments: []
   requiredOneOfAugments: []

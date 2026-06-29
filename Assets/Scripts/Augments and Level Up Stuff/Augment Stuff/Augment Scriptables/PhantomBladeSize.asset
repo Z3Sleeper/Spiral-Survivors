@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: PhantomBladeSize
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Phantom Deluxe
+  displayName: <color=#C8C8C8>Phantom Deluxe</color>
   description: Your <color=#C8C8C8>Phantom Blades</color> gain <color=#FF00FF>+100%
     Total Size</color> and <color=#FF5000>+50% Total Damage</color>.
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}

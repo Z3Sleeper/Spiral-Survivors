@@ -352,7 +352,7 @@ MonoBehaviour:
   preferredRange: 1
   rangeToleranceFar: 0.1
   rangeToleranceClose: 0.03
-  damage: 2.5
+  damage: 5
   xpValue: 5
   contactColliderEnabled: 0
   contactCooldown: 0.5

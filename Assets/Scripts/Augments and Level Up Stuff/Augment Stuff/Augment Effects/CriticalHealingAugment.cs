@@ -3,6 +3,7 @@ using UnityEngine;
 public class CriticalHealingAugment : MonoBehaviour
 {
     [SerializeField] private float bonusCritChance = 0.1f;
+    [SerializeField] private float critHealMultiplier = 0.2f;
 
     private CharacterStats _stats;
     private void Start()
@@ -24,6 +25,6 @@ public class CriticalHealingAugment : MonoBehaviour
         if (stats != _stats) return;
         if (Random.value >= _stats.CritChance) return;
 
-        _stats.HealSilentRpc(amount * (_stats.CritDamage - 1f));
+        _stats.HealSilentRpc(amount * (_stats.CritDamage - 1f) * critHealMultiplier);
     }
 }

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: PhantomBladeCarnival
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Phantom Carnival
+  displayName: <color=#C8C8C8>Phantom Carnival</color>
   description: 'When you summon a <color=#C8C8C8>Phantom Blade</color>, summon another
     one targeting the same enemy.
 

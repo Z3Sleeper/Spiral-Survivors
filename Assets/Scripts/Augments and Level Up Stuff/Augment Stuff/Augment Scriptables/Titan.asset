@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: Titan
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Titan
+  displayName: <color=#FF00FF>Titan</color>
   description: 'Become swole, increasing your <color=#FF00FF>Size</color> by 50%.
 
     <color=#3278FF>+50%

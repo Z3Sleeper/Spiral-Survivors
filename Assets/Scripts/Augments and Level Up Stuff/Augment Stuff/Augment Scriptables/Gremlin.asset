@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: Gremlin
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Gremlin
+  displayName: <color=#FF00FF>Gremlin</color>
   description: 'Become smol, reducing your <color=#FF00FF>Size</color> by <color=#FF00FF>50%</color>.
 
     <color=#FF0050>+15%
@@ -23,6 +23,7 @@ MonoBehaviour:
   restrictedToClasses: 
   excludedClasses: 03000000
   effectPrefab: {fileID: 5407692293608365112, guid: 62649fc437bc4cf4c992b45bf5480be8, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments:
   - {fileID: 11400000, guid: 9ab11cee8db2d9a468c2754ffb14a313, type: 2}
   requiredAugments: []

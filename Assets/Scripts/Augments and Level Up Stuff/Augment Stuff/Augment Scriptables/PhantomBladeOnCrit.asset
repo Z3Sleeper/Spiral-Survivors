@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: PhantomBladeOnCrit
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Phantom Crit
+  displayName: <color=#C8C8C8>Phantom Crit</color>
   description: 'Every 3 <color=#FF5000>Strike</color> <color=#FF0050>Critical Hits</color>,
     summon a <color=#C8C8C8>Phantom Blade</color> piercing the target for <color=#FF5000>100%
     Damage</color>.

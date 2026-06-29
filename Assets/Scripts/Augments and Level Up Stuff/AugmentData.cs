@@ -3,7 +3,7 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "NewAugment", menuName = "Spiral Survivors/Augment")]
 public class AugmentData : ScriptableObject
 {
-    public string displayName;
+    [TextArea] public string displayName;
     [TextArea] public string description;
     public Sprite icon;
     public CharacterStats.CharacterClass[] restrictedToClasses;

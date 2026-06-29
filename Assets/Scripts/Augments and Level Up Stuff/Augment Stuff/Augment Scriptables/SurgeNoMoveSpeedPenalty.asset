@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: SurgeNoMoveSpeedPenalty
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Surge Master
+  displayName: <color=#FFFF00>Surge Master</color>
   description: '<color=#FFFF00>Surging</color> no longer reduces <color=#FFFFFF>Movement
     Speed</color>.
 

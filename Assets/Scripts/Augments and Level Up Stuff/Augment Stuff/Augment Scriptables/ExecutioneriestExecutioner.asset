@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: ExecutioneriestExecutioner
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Executioneriest Executioner
+  displayName: <color=#00FFFF>Executioneriest Executioner</color>
   description: <color=#FF0000>+25% Total Crit Chance</color>
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 04000000

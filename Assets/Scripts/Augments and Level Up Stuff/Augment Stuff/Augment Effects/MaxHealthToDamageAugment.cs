@@ -3,6 +3,7 @@ using UnityEngine;
 public class MaxHealthToDamageAugment : MonoBehaviour
 {
     [SerializeField] private float _healthPercent = 0.2f;
+    [SerializeField] private float _bonusMaxHealth = 10f;
 
     private CharacterStats _stats;
     private float _contribution;
@@ -12,6 +13,7 @@ public class MaxHealthToDamageAugment : MonoBehaviour
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
 
+        _stats.BonusMaxHealthFlat += _bonusMaxHealth;
         _contribution = _stats.MaxHealth * _healthPercent;
         _stats.bonusWeaponDamageFlat += _contribution;
     }
@@ -29,6 +31,9 @@ public class MaxHealthToDamageAugment : MonoBehaviour
     private void OnDestroy()
     {
         if (_stats != null && _stats.isSpawned)
+        {
+            _stats.BonusMaxHealthFlat -= _bonusMaxHealth;
             _stats.bonusWeaponDamageFlat -= _contribution;
+        }
     }
 }

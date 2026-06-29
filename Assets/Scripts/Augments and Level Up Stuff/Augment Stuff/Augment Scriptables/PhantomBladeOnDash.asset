@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: PhantomBladeOnDash
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Phantom Dash
+  displayName: <color=#C8C8C8>Phantom Dash</color>
   description: 'On <color=#00FFFF>Dash</color>, summon a <color=#C8C8C8>Phantom Bladee</color>
     piercing the closest enemy for <color=#FF5000>300% Unpenalized Damage</color>.
 

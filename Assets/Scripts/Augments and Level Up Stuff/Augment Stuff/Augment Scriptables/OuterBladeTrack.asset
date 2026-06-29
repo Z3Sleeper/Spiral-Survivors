@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: OuterBladeTrack
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Bladeweaving
+  displayName: <color=#FF00FF>Bladeweaving</color>
   description: 'Gain a second blade track outside your first''s range that spins
     counterclockwise.
 

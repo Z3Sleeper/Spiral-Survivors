@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: PhantomBladeOnDamaged
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Phantom Vengeance
+  displayName: <color=#C8C8C8>Phantom Vengeance</color>
   description: 'On taking damage, summon a <color=#C8C8C8>Phantom Blade</color> piercing
     the enemy that damaged you for <color=#FF5000>150% Unpenalized Damage</color>.
 

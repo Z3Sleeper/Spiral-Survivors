@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: RogueiestRogue
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Rogueiest Rogue
+  displayName: <color=#FF0050>Rogueiest Rogue</color>
   description: '<color=#FF0050>+17.5% Total Attack Speed</color>
 
     +7.5% Movement

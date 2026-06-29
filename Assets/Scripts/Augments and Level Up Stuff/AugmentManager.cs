@@ -149,6 +149,11 @@ public class AugmentManager : NetworkBehaviour
         return new StatAugmentPair(chosen.Item1, chosen.Item2);
     }
 
+    public IReadOnlyCollection<AugmentData> GetPickedAugmentsForPlayer(PlayerID player)
+    {
+        return _playerPickedAugments.TryGetValue(player, out var picked) ? picked : null;
+    }
+
     public List<LevelUpOption> GetOptionsForPlayer(PlayerID player)
     {
         return _playerOptions.TryGetValue(player, out var options) ? options : null;

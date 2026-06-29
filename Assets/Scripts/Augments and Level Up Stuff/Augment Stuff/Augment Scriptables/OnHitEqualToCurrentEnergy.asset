@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
+  m_Name: OnHitEqualToCurrentEnergy
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#FFFF00>Repurposed Energy</color>
+  description: 'Deal <color=#FFFF00>10% Current Energy</color> <color=#FF0050>On-Hit</color>.
+
+    <color=#FFFF00>+25
+    Max Energy</color>'
+  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  restrictedToClasses: 
+  excludedClasses: 
+  effectPrefab: {fileID: 7401894268389982387, guid: 639932cdcb581c04a802a32d3b8a8944, type: 3}
+  multiplayerOnly: 0
+  incompatibleAugments: []
+  requiredAugments: []
+  requiredOneOfAugments: []

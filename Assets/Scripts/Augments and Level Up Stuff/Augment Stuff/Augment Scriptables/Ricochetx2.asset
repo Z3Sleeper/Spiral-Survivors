@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: Ricochetx2
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Trickier Shot
+  displayName: <color=#3278FF>Trickier Shot</color>
   description: '<color=#3278FF>+100% Ricochet</color>
 
     <color=#3278FF>-25% Pierce/Ricochet

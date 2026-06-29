@@ -2,30 +2,34 @@ using UnityEngine;
 
 public class MissingHealthToRegenAugment : MonoBehaviour
 {
-    [SerializeField] private float _healthPercent = 0.2f;
+    [SerializeField] private float regenPercentBonus = 1f;
+    [SerializeField] private float flatRegenBonus = 1f;
 
     private CharacterStats _stats;
-    private float _contribution;
+    private bool _bonusActive;
 
     private void Start()
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
+        _stats.BonusHealthRegenFlat += flatRegenBonus;
     }
 
     private void Update()
     {
         if (!_stats.isSpawned) return;
-        float newContribution = (_stats.MaxHealth - _stats.CurrentHealth) * _healthPercent;
-        if (newContribution == _contribution) return;
+        bool shouldBeActive = _stats.CurrentHealth < _stats.MaxHealth * 0.5f;
+        if (shouldBeActive == _bonusActive) return;
 
-        _stats.BonusHealthRegenFlat += newContribution - _contribution;
-        _contribution = newContribution;
+        _bonusActive = shouldBeActive;
+        _stats.BonusHealthRegenPercent += shouldBeActive ? regenPercentBonus : -regenPercentBonus;
     }
 
     private void OnDestroy()
     {
-        if (_stats != null && _stats.isSpawned)
-            _stats.BonusHealthRegenFlat -= _contribution;
+        if (_stats == null || !_stats.isSpawned) return;
+        _stats.BonusHealthRegenFlat -= flatRegenBonus;
+        if (_bonusActive)
+            _stats.BonusHealthRegenPercent -= regenPercentBonus;
     }
 }

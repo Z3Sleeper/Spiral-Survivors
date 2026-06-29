@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: PhantomBladeOnHit
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Phantom Proc
+  displayName: <color=#C8C8C8>Phantom Proc</color>
   description: 'Your <color=#C8C8C8>Phantom Blades</color> apply <color=#FF0050>On-Hit
     Effects</color> at <color=#FF0050>50% Effectiveness</color>.
 
