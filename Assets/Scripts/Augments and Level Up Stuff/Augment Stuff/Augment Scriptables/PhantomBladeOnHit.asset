@@ -13,18 +13,19 @@ MonoBehaviour:
   m_Name: PhantomBladeOnHit
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Phantom Proc
-  description: 'Your <color=#646464>Phantom Blades</color> apply <color=#FF0050>On-Hit
+  description: 'Your <color=#C8C8C8>Phantom Blades</color> apply <color=#FF0050>On-Hit
     Effects</color> at <color=#FF0050>50% Effectiveness</color>.
 
     Deal <color=#FF5000>10%
     Damage</color> <color=#FF0050>On-Hit</color>.
 
-    <color=#646464>+30% Phantom
+    <color=#C8C8C8>+30% Phantom
     Blade Damage</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 6285256656109044262, guid: 206778a01ecbdb74eb068b8298ebd345, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments: []
   requiredAugments: []
   requiredOneOfAugments:

@@ -243,17 +243,26 @@ public class LocalUIManager : MonoBehaviour
         UpdateBossUI();
     }
 
+    private static string FormatStat(float value) => value switch
+    {
+        >= 1_000_000_000_000f => $"{value / 1_000_000_000_000f:F2}tril",
+        >= 1_000_000_000f     => $"{value / 1_000_000_000f:F2}bil",
+        >= 1_000_000f         => $"{value / 1_000_000f:F2}mil",
+        >= 1_000f             => $"{value / 1_000f:F2}k",
+        _                     => $"{value:G3}"
+    };
+
     private void UpdateHealthAndShields()
     {
         healthBar.value = _stats.CurrentHealth / _stats.MaxHealth;
         shieldBar.value = _stats.CurrentShield / _stats.MaxShield;
         shieldRegenBar.value = (_stats.ShieldRegenTime - _stats._shieldRechargeTimer) / _stats.ShieldRegenTime;
-        healthText.text = $"<b><color=#FF00FF>{(int)_stats.CurrentShield}/{(int)_stats.MaxShield}</color> {(int)_stats.CurrentHealth}/{(int)_stats.MaxHealth}</b>";
+        healthText.text = $"<b><color=#FF00FF>{FormatStat(_stats.CurrentShield)}/{FormatStat(_stats.MaxShield)}</color> {FormatStat(_stats.CurrentHealth)}/{FormatStat(_stats.MaxHealth)}</b>";
     }
 
     private void UpdateHealthRegen()
     {
-        healthRegenText.text = $"<b>+{_stats.HealthRegen:G4}/s</b>";
+        healthRegenText.text = $"<b>+{FormatStat(_stats.HealthRegen)}/s</b>";
     }
 
     private void UpdateDash()
@@ -315,7 +324,7 @@ public class LocalUIManager : MonoBehaviour
     {
         if (GameManager.instance == null) return;
         xpBar.value = GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
-        xpText.text = $"<b>Level {GameManager.instance.Level} | {GameManager.instance.CurrentXP:G4}/{GameManager.instance.XPToNextLevel:G4} XP</b>";
+        xpText.text = $"<b>Level {GameManager.instance.Level} | {FormatStat(GameManager.instance.CurrentXP)}/{FormatStat(GameManager.instance.XPToNextLevel)} XP</b>";
     }
 
     private void UpdateSessionPoints()
@@ -347,7 +356,7 @@ public class LocalUIManager : MonoBehaviour
             bossHealthBar.value = boss.maxHealth > 0f
                 ? boss.CurrentHealth / boss.maxHealth
                 : 0f;
-            bossHealthText.text = $"<b>{(int)boss.CurrentHealth}/{(int)boss.maxHealth}</b>";
+            bossHealthText.text = $"<b>{FormatStat(boss.CurrentHealth)}/{FormatStat(boss.maxHealth)}</b>";
             bossNameText.text = boss.enemyName;
         }
         else

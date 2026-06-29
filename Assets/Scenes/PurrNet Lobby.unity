@@ -275,7 +275,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &6321156
 RectTransform:
   m_ObjectHideFlags: 0
@@ -4730,7 +4730,7 @@ MonoBehaviour:
     Projectiles
     pierce enemies but lose 10% damage each hit
 
-    +3 Range & +100% Range'
+    +10 Range & +35% Range'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -10998,14 +10998,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - V0.07b
+      - V0.07c
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - V0.07b
+    - V0.07c
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -16190,7 +16190,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.07b
+  m_text: Version 0.07c
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

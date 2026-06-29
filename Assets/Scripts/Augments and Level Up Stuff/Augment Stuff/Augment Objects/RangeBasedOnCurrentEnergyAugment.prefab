@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DamageBasedOnMissingEnergyAugment
   _rangePerEnergy: 0.5
   _bonusMaxEnergy: 20
-  _bonusEnergyRegen: 5
+  _bonusEnergyRegen: 4

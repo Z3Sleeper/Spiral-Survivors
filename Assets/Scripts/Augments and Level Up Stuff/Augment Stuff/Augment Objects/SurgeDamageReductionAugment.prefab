@@ -47,4 +47,4 @@ MonoBehaviour:
   _damageReduction: 0.25
   _invincibilityDuration: 0.2
   _bonusMaxHealthFlat: 10
-  _bonusEnergyRegenFlat: 5
+  _bonusEnergyRegenFlat: 4

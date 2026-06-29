@@ -51,7 +51,7 @@ MonoBehaviour:
   - statType: 7
     displayName: Energy Regen
     color: {r: 1, g: 1, b: 0, a: 1}
-    value: 2.5
+    value: 1
     prependText: +
     appendText: 
     allowedClasses: 

@@ -14,17 +14,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Phantom Crit
   description: 'Every 3 <color=#FF5000>Strike</color> <color=#FF0050>Critical Hits</color>,
-    summon a <color=#646464>Phantom Blade</color> piercing the target for <color=#FF5000>100%
+    summon a <color=#C8C8C8>Phantom Blade</color> piercing the target for <color=#FF5000>100%
     Unpenalized Damage</color>.
 
     <color=#FF0050>+10% Crit Chance</color>
 
-    <color=#646464>+10%
+    <color=#C8C8C8>+10%
     Phantom Blade Damage</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 8586380185315989341, guid: d1a0e5aea57cad3459af3cf6a77645c1, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments: []
   requiredAugments: []
   requiredOneOfAugments: []

@@ -8,7 +8,7 @@ public class ShieldDamageReductionAugment : MonoBehaviour
     [SerializeField] private float _maxShieldBonusPercent = 0.5f;
 
     private CharacterStats _stats;
-    private Coroutine _drCoroutine;
+    private Coroutine _removalCoroutine;
     private bool _active;
     private float _prevShield;
 
@@ -17,6 +17,8 @@ public class ShieldDamageReductionAugment : MonoBehaviour
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
         _stats.AddMaxShieldPercentRpc(_maxShieldBonusPercent);
+        _stats.damageReductionPercent *= (1f - _damageReduction);
+        _active = true;
         _prevShield = _stats.CurrentShield;
         _stats._currentShield.onChanged += OnShieldValueChanged;
     }
@@ -33,22 +35,34 @@ public class ShieldDamageReductionAugment : MonoBehaviour
     {
         float prev = _prevShield;
         _prevShield = current;
-        if (prev <= 0f || current > 0f) return;
-        if (_drCoroutine != null)
-            StopCoroutine(_drCoroutine);
-        else
+
+        if (prev > 0f && current <= 0f)
         {
-            _stats.damageReductionPercent *= (1f - _damageReduction);
-            _active = true;
+            // Shield broke — start removal countdown
+            if (_removalCoroutine != null) StopCoroutine(_removalCoroutine);
+            _removalCoroutine = StartCoroutine(RemovalRoutine());
         }
-        _drCoroutine = StartCoroutine(DRRoutine());
+        else if (current > 0f && prev <= 0f)
+        {
+            // Shield restored — cancel countdown, reapply DR if it was removed
+            if (_removalCoroutine != null)
+            {
+                StopCoroutine(_removalCoroutine);
+                _removalCoroutine = null;
+            }
+            if (!_active)
+            {
+                _stats.damageReductionPercent *= (1f - _damageReduction);
+                _active = true;
+            }
+        }
     }
 
-    private IEnumerator DRRoutine()
+    private IEnumerator RemovalRoutine()
     {
         yield return new WaitForSeconds(_duration);
         _stats.damageReductionPercent /= (1f - _damageReduction);
         _active = false;
-        _drCoroutine = null;
+        _removalCoroutine = null;
     }
 }

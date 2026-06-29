@@ -45,6 +45,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeEndMovespeedAugment
   _bonusMoveSpeedFlat: 0.1
-  _bonusEnergyRegenFlat: 5
+  _bonusEnergyRegenFlat: 4
   _moveSpeedBonus: 0.5
   _duration: 1

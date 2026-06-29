@@ -56,7 +56,7 @@ public static class ProgressionManager
         StatType.MoveSpeed         => 1f,
         StatType.AttackSpeed       => 15f,
         StatType.HealthRegen       => 0.5f,
-        StatType.EnergyRegen       => 5f,
+        StatType.EnergyRegen       => 2f,
         StatType.DashHaste         => 10f,
         StatType.CritChance        => 5f,
         StatType.WeaponRange       => 1f,

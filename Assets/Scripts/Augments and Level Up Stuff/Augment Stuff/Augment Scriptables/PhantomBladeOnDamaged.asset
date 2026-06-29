@@ -13,17 +13,18 @@ MonoBehaviour:
   m_Name: PhantomBladeOnDamaged
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: Phantom Vengeance
-  description: 'On taking damage, summon a <color=#646464>Phantom Blade</color> piercing
+  description: 'On taking damage, summon a <color=#C8C8C8>Phantom Blade</color> piercing
     the enemy that damaged you for <color=#FF5000>150% Unpenalized Damage</color>.
 
     <color=#00FF00>+20
     Max Health</color>
 
-    <color=#646464>+10% Phantom Blade Damage</color>'
+    <color=#C8C8C8>+10% Phantom Blade Damage</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 2659778850676277168, guid: 285c5a24cc2817b4386787f4b3f38b9e, type: 3}
+  multiplayerOnly: 0
   incompatibleAugments: []
   requiredAugments: []
   requiredOneOfAugments: []

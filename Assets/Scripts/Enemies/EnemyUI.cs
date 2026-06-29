@@ -24,8 +24,17 @@ public class EnemyUI : MonoBehaviour
             return;
         }
         healthBar.value = _enemy.CurrentHealth / _enemy.maxHealth;
-        healthText.text = $"<b>{(int)_enemy.CurrentHealth}/{(int)_enemy.maxHealth}</b>";
+        healthText.text = $"<b>{FormatStat(_enemy.CurrentHealth)}/{FormatStat(_enemy.maxHealth)}</b>";
     }
+
+    private static string FormatStat(float value) => value switch
+    {
+        >= 1_000_000_000_000f => $"{value / 1_000_000_000_000f:F2}tril",
+        >= 1_000_000_000f     => $"{value / 1_000_000_000f:F2}bil",
+        >= 1_000_000f         => $"{value / 1_000_000f:F2}mil",
+        >= 1_000f             => $"{value / 1_000f:F2}k",
+        _                     => $"{value:G3}"
+    };
 
     private void LateUpdate()
     {

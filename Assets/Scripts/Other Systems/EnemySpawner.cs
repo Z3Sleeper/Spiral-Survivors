@@ -25,6 +25,7 @@ public class EnemySpawner : NetworkIdentity
     [SerializeField] private TierEnemies tier3;
     [SerializeField] private TierEnemies tier4;
 
+    [SerializeField] private Transform[] _spawnPoints;
     [SerializeField] private float spawnMinDistance = 25f;
     [SerializeField] private float spawnMaxDistance = 40f;
     [Header("Spawn Scaling")]
@@ -326,6 +327,9 @@ public class EnemySpawner : NetworkIdentity
 
     private Vector3 GetSpawnPosition()
     {
+        if (_spawnPoints != null && _spawnPoints.Length > 0)
+            return _spawnPoints[UnityEngine.Random.Range(0, _spawnPoints.Length)].position;
+
         var players = CharacterStats.All.Where(p => !p.IsDead).ToList();
 
         if (players.Count == 0) return Vector3.zero;
