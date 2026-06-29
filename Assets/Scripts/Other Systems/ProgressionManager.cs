@@ -12,9 +12,11 @@ public static class ProgressionManager
     private const int   DamageMaxTier            = 7;
     private const int   MoveSpeedMaxTier         = 5;
     private const int   LevelUpStatCost          = 950;
-    private const int   BaseStatCost             = 100;
-    private const int   CoreStatBaseCost         = 450;
+    private const int   BaseStatCost             = 50;
+    private const int   CoreStatBaseCost         = 250;
     private const int   CollectionRadiusBaseCost = 450;
+    private const int   XPMultiplierBaseCost     = 1450;
+    private const int   LevelUpOptionsBaseCost   = 1450;
     private const int   BaseFee                  = 50;
     private const float FeeMultiplier            = 1.1f;
     private const long  PointsCap               = 1_000_000_000_000_000_000L;
@@ -27,6 +29,12 @@ public static class ProgressionManager
         StatType.CollectionRadius => 5,
         StatType.EnergyRegen      => 3,
         StatType.WeaponRange      => 2,
+        StatType.MaxEnergy        => 5,
+        StatType.DashCharges      => 4,
+        StatType.RevivePower      => 5,
+        StatType.ReviveTimePenalty => 2,
+        StatType.XPMultiplier      => 10,
+        StatType.LevelUpOptions    => 2,
         _                         => BaseMaxTier
     };
 
@@ -52,7 +60,7 @@ public static class ProgressionManager
     public static float GetBaseStatValuePerTier(StatType statType) => statType switch
     {
         StatType.WeaponDamage      => 5f,
-        StatType.MaxHealth         => 5f,
+        StatType.MaxHealth         => 10f,
         StatType.MoveSpeed         => 1f,
         StatType.AttackSpeed       => 15f,
         StatType.HealthRegen       => 0.5f,
@@ -61,6 +69,12 @@ public static class ProgressionManager
         StatType.CritChance        => 5f,
         StatType.WeaponRange       => 1f,
         StatType.CollectionRadius  => 1f,
+        StatType.MaxEnergy         => 10f,
+        StatType.DashCharges       => 1f,
+        StatType.RevivePower       => 0.1f,
+        StatType.ReviveTimePenalty => -25f,
+        StatType.XPMultiplier      => 10f,
+        StatType.LevelUpOptions    => 1f,
         _                          => 0f
     };
 
@@ -79,7 +93,12 @@ public static class ProgressionManager
             StatType.WeaponRange      => CoreStatBaseCost,
             StatType.HealthRegen      => CoreStatBaseCost,
             StatType.CollectionRadius => CollectionRadiusBaseCost,
-            _                         => BaseStatCost
+            StatType.MaxEnergy         => BaseStatCost,
+            StatType.RevivePower       => CoreStatBaseCost,
+            StatType.ReviveTimePenalty => CoreStatBaseCost,
+            StatType.XPMultiplier      => XPMultiplierBaseCost,
+            StatType.LevelUpOptions    => LevelUpOptionsBaseCost,
+            _                          => BaseStatCost
         };
         int basePart = cost * (1 + currentTier);
         int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, BoughtUpgrades));
@@ -143,7 +162,13 @@ public static class ProgressionManager
     {
         StatType.WeaponDamage, StatType.MaxHealth, StatType.MoveSpeed, StatType.AttackSpeed,
         StatType.HealthRegen,  StatType.EnergyRegen, StatType.DashHaste,
-        StatType.CritChance,   StatType.WeaponRange, StatType.CollectionRadius
+        StatType.CritChance,   StatType.WeaponRange, StatType.CollectionRadius,
+        StatType.MaxEnergy,
+        StatType.DashCharges,
+        StatType.RevivePower,
+        StatType.ReviveTimePenalty,
+        StatType.XPMultiplier,
+        StatType.LevelUpOptions
     };
 
     private static void DeleteAllStatTiers()

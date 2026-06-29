@@ -30,21 +30,27 @@ public class LeaperGloom : EnemyBase
     private int _leapsRemaining;
     private float _clientLeapElapsed;
 
-    [HideInInspector] public SyncVar<State> _syncState = new(State.Moving);
-    private State _state
+    private State _state = State.Moving;
+    private void SetState(State state)
     {
-        get => _syncState.value;
-        set => _syncState.value = value;
+        _state = state;
+        OnStateChanged(state);
+        SyncStateRpc(state, _leapTarget);
     }
 
-    [HideInInspector] public SyncVar<Vector3> _syncLeapTarget = new(Vector3.zero);
+    [ObserversRpc]
+    private void SyncStateRpc(State state, Vector3 leapTarget)
+    {
+        if (isServer) return;
+        _leapTarget = leapTarget;
+        _state = state;
+        OnStateChanged(state);
+    }
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        _syncState.onChanged += OnStateChanged;
-        _syncLeapTarget.onChanged += OnLeapTargetChanged;
-        OnStateChanged(_syncState.value);
+        OnStateChanged(State.Moving);
         TryGetComponent(out _animator);
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
@@ -66,13 +72,13 @@ public class LeaperGloom : EnemyBase
         {
             _animator.Play(WindupHash, 0, 0f);
             windupIndicator.transform.SetParent(null);
-            windupIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
+            windupIndicator.transform.position = new Vector3(_leapTarget.x, 0.05f, _leapTarget.z);
             if (windupFill != null) windupFill.StartFill(windupDuration + leapDuration);
         }
         else if (state == State.Leaping)
         {
             _animator.Play(LeapHash, 0, 0f);
-            windupIndicator.transform.position = new Vector3(_syncLeapTarget.value.x, 0.05f, _syncLeapTarget.value.z);
+            windupIndicator.transform.position = new Vector3(_leapTarget.x, 0.05f, _leapTarget.z);
             _clientLeapElapsed = 0f;
         }
         else
@@ -80,11 +86,6 @@ public class LeaperGloom : EnemyBase
             windupIndicator.transform.SetParent(transform);
             if (windupFill != null) windupFill.ResetFill();
         }
-    }
-
-    private void OnLeapTargetChanged(Vector3 target)
-    {
-        windupIndicator.transform.position = new Vector3(target.x, 0f, target.z);
     }
 
     protected override void Update()
@@ -158,17 +159,16 @@ public class LeaperGloom : EnemyBase
         if (_target == null) return;
         Vector2 offset2D = UnityEngine.Random.insideUnitCircle.normalized * leapOffsetRadius;
         _leapTarget = _target.position + new Vector3(offset2D.x, 0f, offset2D.y);
-        _syncLeapTarget.value = _leapTarget;
 
         SnapFaceTarget();
-        _state = State.Windup;
+        SetState(State.Windup);
         _stateTimer = windupDuration;
     }
 
     private void EnterLeap()
     {
         _leapStart = transform.position;
-        _state = State.Leaping;
+        SetState(State.Leaping);
         _stateTimer = leapDuration;
         _rb.linearVelocity = Vector3.zero;
         _rb.isKinematic = true;
@@ -186,7 +186,7 @@ public class LeaperGloom : EnemyBase
         _rb.linearVelocity = Vector3.zero;
         model.localPosition = new Vector3(0f, 0.5f, 0f);
 
-        _state = State.Landing;
+        SetState(State.Landing);
         _stateTimer = landingDuration;
 
         windupIndicator.SetActive(false);
@@ -200,7 +200,7 @@ public class LeaperGloom : EnemyBase
             EnterWindup();
         else
         {
-            _state = State.PostLeap;
+            SetState(State.PostLeap);
             _stateTimer = postLeapPause;
             _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
         }
@@ -208,7 +208,7 @@ public class LeaperGloom : EnemyBase
 
     private void EnterMoving()
     {
-        _state = State.Moving;
+        SetState(State.Moving);
         _leapsRemaining = leapsPerAttack;
     }
 

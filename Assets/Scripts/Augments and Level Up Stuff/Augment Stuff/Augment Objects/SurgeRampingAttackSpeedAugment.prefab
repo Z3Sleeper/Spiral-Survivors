@@ -44,5 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 56aaf791e085afa4e946a8cb622fa851, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeRampingAttackSpeedAugment
-  _rampPercent: 0.0625
+  _rampPercent: 0.0375
   _rampInterval: 0.25
+  _bonusEnergyRegenFlat: 4

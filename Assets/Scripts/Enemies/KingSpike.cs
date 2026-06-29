@@ -38,14 +38,22 @@ public class KingSpike : BossBase
 
     public enum State { Moving, ChargeWindup, Charging, BetweenCharges, AoeWindup }
 
-    [HideInInspector] public SyncVar<State> _syncState = new(State.Moving);
-    private State _state
+    private State _state = State.Moving;
+    private void SetState(State state)
     {
-        get => _syncState.value;
-        set => _syncState.value = value;
+        _state = state;
+        OnStateChanged(state);
+        SyncStateRpc(state, _chargeDirection);
     }
 
-    [HideInInspector] public SyncVar<Vector3> _syncChargeDirection = new(Vector3.forward);
+    [ObserversRpc]
+    private void SyncStateRpc(State state, Vector3 chargeDir)
+    {
+        if (isServer) return;
+        _chargeDirection = chargeDir;
+        _state = state;
+        OnStateChanged(state);
+    }
 
     public override float GetDamage() => _state == State.Charging ? damage * chargeDamageMultiplier : damage;
 
@@ -61,8 +69,7 @@ public class KingSpike : BossBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        _syncState.onChanged += OnStateChanged;
-        OnStateChanged(_syncState.value);
+        OnStateChanged(State.Moving);
         _attackCooldownTimer = attackCooldown * 0.5f;
 
         if (aoeWindupIndicator != null) aoeWindupIndicator.SetActive(false);
@@ -91,7 +98,7 @@ public class KingSpike : BossBase
         base.Update();
 
         if (_state == State.ChargeWindup && chargeWindupIndicator != null && chargeWindupIndicator.activeSelf)
-            chargeWindupIndicator.transform.rotation = Quaternion.LookRotation(_syncChargeDirection.value);
+            chargeWindupIndicator.transform.rotation = Quaternion.LookRotation(_chargeDirection);
 
         if (!isServer || _isDead) return;
 
@@ -165,12 +172,9 @@ public class KingSpike : BossBase
         _rb.linearVelocity = Vector3.zero;
         var snapDir = SnapFaceTarget();
         if (snapDir != Vector3.zero)
-        {
             _chargeDirection = snapDir;
-            _syncChargeDirection.value = snapDir;
-        }
         _stateTimer = chargeWindupDuration;
-        _state = State.ChargeWindup;
+        SetState(State.ChargeWindup);
     }
 
     private void EnterCharging()
@@ -178,7 +182,7 @@ public class KingSpike : BossBase
         _chargeEndPoint = transform.position + _chargeDirection * chargeDistance;
         _physicsCollider.enabled = false;
         _rb.linearVelocity = Vector3.zero;
-        _state = State.Charging;
+        SetState(State.Charging);
     }
 
     private void EnterBetweenCharges()
@@ -186,7 +190,7 @@ public class KingSpike : BossBase
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
         _stateTimer = betweenChargePause;
-        _state = State.BetweenCharges;
+        SetState(State.BetweenCharges);
     }
 
     private void EnterAoeWindup()
@@ -194,7 +198,7 @@ public class KingSpike : BossBase
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
         _stateTimer = aoeWindupDuration;
-        _state = State.AoeWindup;
+        SetState(State.AoeWindup);
     }
 
     private void FireAoe()
@@ -202,7 +206,7 @@ public class KingSpike : BossBase
         TriggerAoeRpc(transform.position, aoeRadius, damage * aoeDamageMultiplier);
 
         _attackCooldownTimer = attackCooldown;
-        _state = State.Moving;
+        SetState(State.Moving);
 
         StartCoroutine(BombCoroutine());
     }

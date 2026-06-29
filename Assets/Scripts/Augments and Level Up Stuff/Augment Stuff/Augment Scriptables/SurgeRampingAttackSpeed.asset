@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: SurgeRampingAttackSpeed
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: Maximum Overdrive
-  description: 'While <color=#FFFF00>Surging</color>, gain <color=#FF0050>+25%</color>
+  displayName: Oversurge
+  description: 'While <color=#FFFF00>Surging</color>, gain <color=#FF0050>+15%</color>
     <color=#952FFF>Stacking</color> <color=#FF0050>Attack Speed</color> each second.
 
     <color=#FFFF00>+4

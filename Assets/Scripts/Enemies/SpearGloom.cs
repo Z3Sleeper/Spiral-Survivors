@@ -30,11 +30,20 @@ public class SpearGloom : EnemyBase
     private float _stateTimer = float.MaxValue;
     private float _attackCooldownTimer = float.MaxValue;
     private int _attacksRemaining;
-    [HideInInspector] public SyncVar<State> _syncState = new SyncVar<State>(State.Moving);
-    private State _state
+    private State _state = State.Moving;
+    private void SetState(State state)
     {
-        get => _syncState.value;
-        set => _syncState.value = value;
+        _state = state;
+        OnStateChanged(state);
+        SyncStateRpc(state);
+    }
+
+    [ObserversRpc]
+    private void SyncStateRpc(State state)
+    {
+        if (isServer) return;
+        _state = state;
+        OnStateChanged(state);
     }
 
     protected override void OnSpawned()
@@ -55,8 +64,7 @@ public class SpearGloom : EnemyBase
         }
         _attacksRemaining = attacksPerAttack;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
-        _syncState.onChanged += OnStateChanged;
-        OnStateChanged(_syncState.value);
+        OnStateChanged(State.Moving);
     }
 
     private void OnStateChanged(State state)
@@ -166,25 +174,25 @@ public class SpearGloom : EnemyBase
     {
         _stateTimer = windupDuration;
         SnapFaceTarget();
-        _state = State.Windup;
+        SetState(State.Windup);
     }
 
     private void EnterStab()
     {
-        _state = State.Stabbing;
+        SetState(State.Stabbing);
         _stateTimer = stabDuration;
         _attacksRemaining--;
     }
 
     private void EnterBetweenStabs()
     {
-        _state = State.BetweenStabs;
+        SetState(State.BetweenStabs);
         _stateTimer = betweenStabPause;
     }
 
     private void EnterDashToTarget()
     {
-        _state = State.DashingToTarget;
+        SetState(State.DashingToTarget);
         StartCoroutine(DashToTargetThenWindup());
     }
 
@@ -196,14 +204,14 @@ public class SpearGloom : EnemyBase
 
     private void EnterPostStab()
     {
-        _state = State.PostStab;
+        SetState(State.PostStab);
         _stateTimer = postStabPause;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
     }
 
     private void EnterMoving()
     {
-        _state = State.Moving;
+        SetState(State.Moving);
         _attacksRemaining = attacksPerAttack;
     }
 

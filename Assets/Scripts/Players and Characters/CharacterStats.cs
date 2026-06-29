@@ -214,12 +214,13 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float surgeMoveSpeedPenalty = 0.5f;
     public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty * SurgeEffectiveness;
     [NonSerialized] public bool isSurging = false;
-    [NonSerialized] public float surgeAttackSpeedMulti = 3f;
+    [NonSerialized] public float surgeAttackSpeedMulti = 2f;
     [NonSerialized] public float surgeAttackSpeedPenalty = 1f;
     public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty * SurgeEffectiveness;
 
     [Header("Dash")]
     public int dashCharges = 3;
+    [NonSerialized] public int levelUpOptions = 3;
     public float baseDashCooldown = 5f;
     public float dashHaste = 0f;
     public float DashCooldown => baseDashCooldown / (1f + dashHaste / 100f);
@@ -244,27 +245,9 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float stackPowerPercent = 1f;
     [NonSerialized] public float stackPowerPenalty = 1f;
     public float StackPower => stackPowerPercent * stackPowerPenalty;
-    private float _baseXPMod = 1f;
-    public float BaseXPMod
-    {
-        get => _baseXPMod;
-        set { _baseXPMod = value; RecalculateXPMod(); }
-    }
-
-    private float _bonusXPModFlat = 0f;
-    public float BonusXPModFlat
-    {
-        get => _bonusXPModFlat;
-        set { _bonusXPModFlat = value; RecalculateXPMod(); }
-    }
-
-    private float _bonusXPModPercent = 1f;
-    public float BonusXPModPercent
-    {
-        get => _bonusXPModPercent;
-        set { _bonusXPModPercent = value; RecalculateXPMod(); }
-    }
-    public float XPModifier => (BaseXPMod + BonusXPModFlat) * BonusXPModPercent;
+    [NonSerialized] public float xpMultiplier = 1f;
+    [NonSerialized] public float xpPenalty    = 1f;
+    public float XPModifier => xpMultiplier * xpPenalty;
 
     [NonSerialized] public float baseXPRadius = 5f;
     [NonSerialized] public float bonusXPRadiusFlat = 0f;
@@ -277,6 +260,9 @@ public class CharacterStats : NetworkBehaviour
         get => _reviveTimeSync.value;
         set => _reviveTimeSync.value = value;
     }
+    [NonSerialized] public float reviveTimePenalty = 1f;
+    [NonSerialized] public float reviveTimePenaltyReduction = 1f;
+    public float ReviveTimePenalty => reviveTimePenalty * reviveTimePenaltyReduction;
     [NonSerialized] public float revivePower = 1f;
 
     private bool _ownerInitialized = false;
@@ -345,7 +331,13 @@ public class CharacterStats : NetworkBehaviour
         bonusCritChanceFlat   += ProgressionManager.GetBaseStatBonus(StatType.CritChance) * 0.01f;
         bonusXPRadiusFlat     += ProgressionManager.GetBaseStatBonus(StatType.CollectionRadius);
 
-        bonusWeaponRangeFlat += ProgressionManager.GetBaseStatBonus(StatType.WeaponRange);
+        bonusWeaponRangeFlat  += ProgressionManager.GetBaseStatBonus(StatType.WeaponRange);
+        bonusMaxEnergyFlat    += ProgressionManager.GetBaseStatBonus(StatType.MaxEnergy);
+        dashCharges           += (int)ProgressionManager.GetBaseStatBonus(StatType.DashCharges);
+        levelUpOptions        += (int)ProgressionManager.GetBaseStatBonus(StatType.LevelUpOptions);
+        revivePower           += ProgressionManager.GetBaseStatBonus(StatType.RevivePower);
+        reviveTimePenaltyReduction *= Mathf.Pow(0.75f, ProgressionManager.GetBaseStatTier(StatType.ReviveTimePenalty));
+        xpMultiplier          += ProgressionManager.GetBaseStatBonus(StatType.XPMultiplier) * 0.01f;
 
         ApplyBaseStatsServerRpc(
             ProgressionManager.GetBaseStatBonus(StatType.MaxHealth),
@@ -430,7 +422,7 @@ public class CharacterStats : NetworkBehaviour
         _reviveInvincible.value = false;
     }
 
-    private void RecalculateXPMod()
+    public void RecalculateXPMod()
     {
         GameManager.instance.UpdateXPModRpc(owner.Value, XPModifier);
     }

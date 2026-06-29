@@ -21,14 +21,22 @@ public class BlitzGloom : EnemyBase
     private Vector3 _blitzEndPoint;
     private int _blitzesRemaining = 0;
 
-    [HideInInspector] public SyncVar<State> _syncState = new(State.Moving);
-    private State _state
+    private State _state = State.Moving;
+    private void SetState(State state)
     {
-        get => _syncState.value;
-        set => _syncState.value = value;
+        _state = state;
+        OnStateChanged(state);
+        SyncStateRpc(state, _blitzDirection);
     }
 
-    [HideInInspector] public SyncVar<Vector3> _syncBlitzDirection = new(Vector3.forward);
+    [ObserversRpc]
+    private void SyncStateRpc(State state, Vector3 blitzDir)
+    {
+        if (isServer) return;
+        _blitzDirection = blitzDir;
+        _state = state;
+        OnStateChanged(state);
+    }
 
     public override bool CanContactDamage => _state == State.Blitzing;
 
@@ -36,8 +44,7 @@ public class BlitzGloom : EnemyBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        _syncState.onChanged += OnStateChanged;
-        OnStateChanged(_syncState.value);
+        OnStateChanged(State.Moving);
         _blitzesRemaining = blitzesPerAttack;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
     }
@@ -48,7 +55,7 @@ public class BlitzGloom : EnemyBase
         {
             windupIndicator.transform.SetParent(null);
             windupIndicator.transform.position = new Vector3(transform.position.x, 0.05f, transform.position.z);
-            windupIndicator.transform.rotation = Quaternion.LookRotation(_syncBlitzDirection.value);
+            windupIndicator.transform.rotation = Quaternion.LookRotation(_blitzDirection);
             windupIndicator.SetActive(true);
             if (windupFill != null) windupFill.StartFill(windupDuration);
         }
@@ -65,7 +72,7 @@ public class BlitzGloom : EnemyBase
         base.Update();
 
         if (_state == State.Windup && windupIndicator != null && windupIndicator.activeSelf)
-            windupIndicator.transform.rotation = Quaternion.LookRotation(_syncBlitzDirection.value);
+            windupIndicator.transform.rotation = Quaternion.LookRotation(_blitzDirection);
 
         if (!isServer) return;
         if (_isDead) return;
@@ -129,17 +136,14 @@ public class BlitzGloom : EnemyBase
 
         var snapDir = SnapFaceTarget();
         if (snapDir != Vector3.zero)
-        {
             _blitzDirection = snapDir;
-            _syncBlitzDirection.value = snapDir;
-        }
 
-        _state = State.Windup;
+        SetState(State.Windup);
     }
 
     private void EnterBlitz()
     {
-        _state = State.Blitzing;
+        SetState(State.Blitzing);
         _blitzEndPoint = transform.position + _blitzDirection * blitzDistance;
         _physicsCollider.enabled = false;
         _rb.linearVelocity = Vector3.zero;
@@ -148,7 +152,7 @@ public class BlitzGloom : EnemyBase
 
     private void EnterPostBlitz()
     {
-        _state = State.PostBlitz;
+        SetState(State.PostBlitz);
         _stateTimer = postBlitzPause;
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
@@ -157,7 +161,7 @@ public class BlitzGloom : EnemyBase
 
     private void EnterMoving()
     {
-        _state = State.Moving;
+        SetState(State.Moving);
         _blitzesRemaining = blitzesPerAttack;
     }
 

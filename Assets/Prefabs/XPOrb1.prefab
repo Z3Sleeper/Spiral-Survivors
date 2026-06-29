@@ -58,7 +58,7 @@ MonoBehaviour:
   _networkRules: {fileID: 0}
   _visitiblityRules: {fileID: 0}
   scatterForce: 3
-  attractSpeed: 10
+  attractSpeed: 20
   collectRadius: 0.5
   collectSound: {fileID: 8300000, guid: f831e9f89c7b67f4c8d9579fb370bdac, type: 3}
 --- !u!54 &-5675643182975690526

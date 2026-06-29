@@ -33,10 +33,10 @@ public class PhantomBlade : NetworkIdentity
     private int _enemyHurtboxMask;
     private Vector3 _prevPosition;
 
-    public void Init(CharacterStats owner, float baseDamageMultiplier, float onHitEffectiveness = 1f)
+    public void Init(CharacterStats owner, float baseDamageMultiplier, float onHitEffectiveness = 1f, bool unpenalized = true)
     {
         ownerStats = owner;
-        baseDamage = owner.UnpenalizedWeaponDamage * baseDamageMultiplier * onHitEffectiveness;
+        baseDamage = (unpenalized ? owner.UnpenalizedWeaponDamage : owner.WeaponDamage) * baseDamageMultiplier * onHitEffectiveness;
         damage = baseDamage;
         if (!isSecondary) size += 0.5f * baseDamageMultiplier;
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");

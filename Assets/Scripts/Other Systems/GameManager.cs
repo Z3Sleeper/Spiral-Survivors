@@ -60,7 +60,7 @@ public class GameManager : NetworkIdentity
 
     private Dictionary<PlayerID, float> _playerXPMods = new();
     private float _avgXPMod = 1f;
-    private int _levelsToResolve = 0;
+    private readonly Queue<int> _levelUpQueue = new Queue<int>();
 
     private HashSet<PlayerID> _readyPlayers = new();
     private HashSet<PlayerID> _gameOverReadyPlayers = new();
@@ -136,14 +136,14 @@ public class GameManager : NetworkIdentity
         float xpGained = value * _avgXPMod / coopXPPenalty;
         CurrentXP += xpGained;
 
-        if (CurrentXP >= XPToNextLevel && !IsPaused && _levelsToResolve == 0)
+        if (CurrentXP >= XPToNextLevel && !IsPaused && _levelUpQueue.Count == 0)
         {
             while (CurrentXP >= XPToNextLevel)
             {
-                _levelsToResolve++;
                 CurrentXP -= XPToNextLevel;
                 XPToNextLevel += xpLevelStep * ((Level / 5) + 1);
                 Level++;
+                _levelUpQueue.Enqueue(Level);
             }
             LevelUp();
         }
@@ -163,8 +163,9 @@ public class GameManager : NetworkIdentity
         _readyPlayers.Clear();
         OnLevelUp?.Invoke();
 
+        int resolvingLevel = _levelUpQueue.Peek();
         foreach (var player in networkManager.players)
-            AugmentManager.instance.GenerateOptions(player);
+            AugmentManager.instance.GenerateOptions(player, resolvingLevel);
 
         bool isMultiplayer = networkManager != null && networkManager.playerCount >= 2;
         if (isMultiplayer)
@@ -213,20 +214,20 @@ public class GameManager : NetworkIdentity
             AugmentManager.instance.ApplyRandomAugment(player);
         }
 
-        _levelsToResolve--;
+        _levelUpQueue.Dequeue();
 
-        if (_levelsToResolve == 0)
+        if (_levelUpQueue.Count == 0)
         {
             while (CurrentXP >= XPToNextLevel)
             {
-                _levelsToResolve++;
-                Level++;
                 CurrentXP -= XPToNextLevel;
                 XPToNextLevel += xpLevelStep * ((Level / 5) + 1);
+                Level++;
+                _levelUpQueue.Enqueue(Level);
             }
         }
 
-        if (_levelsToResolve > 0)
+        if (_levelUpQueue.Count > 0)
         {
             LevelUp();
             return;

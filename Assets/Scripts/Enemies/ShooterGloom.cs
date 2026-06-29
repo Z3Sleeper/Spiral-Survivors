@@ -29,18 +29,26 @@ public class ShooterGloom : EnemyBase
 
     private int _shotsRemaining;
 
-    [HideInInspector] public SyncVar<State> _syncState = new(State.Moving);
-    private State _state
+    private State _state = State.Moving;
+    private void SetState(State state)
     {
-        get => _syncState.value;
-        set => _syncState.value = value;
+        _state = state;
+        OnStateChanged(state);
+        SyncStateRpc(state);
+    }
+
+    [ObserversRpc]
+    private void SyncStateRpc(State state)
+    {
+        if (isServer) return;
+        _state = state;
+        OnStateChanged(state);
     }
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        _syncState.onChanged += OnStateChanged;
-        OnStateChanged(_syncState.value);
+        OnStateChanged(State.Moving);
         TryGetComponent(out _animator);
         _shotsRemaining = shotsPerAttack;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
@@ -133,7 +141,7 @@ public class ShooterGloom : EnemyBase
         _dashTarget = transform.position + awayDir * (minAttackRange - dist + 0.5f);
         _physicsCollider.enabled = false;
         _rb.linearVelocity = Vector3.zero;
-        _state = State.Dashing;
+        SetState(State.Dashing);
     }
 
     private bool TargetTooClose()
@@ -146,12 +154,12 @@ public class ShooterGloom : EnemyBase
     {
         SnapFaceTarget();
         _stateTimer = windupDuration;
-        _state = State.Windup;
+        SetState(State.Windup);
     }
 
     private void Shoot()
     {
-        _state = State.PostShot;
+        SetState(State.PostShot);
         _stateTimer = postShotPause;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
 
@@ -186,7 +194,7 @@ public class ShooterGloom : EnemyBase
 
     private void EnterMoving()
     {
-        _state = State.Moving;
+        SetState(State.Moving);
         _shotsRemaining = shotsPerAttack;
     }
 }

@@ -191,11 +191,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerColorApplicator
   coloredRenderers:
-  - {fileID: 1696888333252749135}
   - {fileID: 5945403178424333308}
   materialIndex: 0
   coloredSprites: []
-  tintedRenderers: []
+  tintedRenderers:
+  - {fileID: 1696888333252749135}
   tintedMaterialIndex: 0
 --- !u!1 &4849697052719355549
 GameObject:
@@ -296,7 +296,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 7ad577cd6ca5b6942a7873113d2e4f6d, type: 2}
+  - {fileID: 2100000, guid: e47299cedbdecf54697ba7588e5ebeff, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

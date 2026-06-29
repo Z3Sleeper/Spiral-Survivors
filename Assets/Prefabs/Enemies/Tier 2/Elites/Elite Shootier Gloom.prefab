@@ -70,7 +70,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7707904124902346730, guid: cf5c8507dd0e6de49a30c69d8646758e, type: 3}
       propertyPath: xpValue
-      value: 150
+      value: 90
       objectReference: {fileID: 0}
     - target: {fileID: 7707904124902346730, guid: cf5c8507dd0e6de49a30c69d8646758e, type: 3}
       propertyPath: enemyName

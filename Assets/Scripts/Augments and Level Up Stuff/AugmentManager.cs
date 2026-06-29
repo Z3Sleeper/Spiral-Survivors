@@ -41,17 +41,20 @@ public class AugmentManager : NetworkBehaviour
         _playerPickedAugments[player] = new HashSet<AugmentData>();
     }
 
-    public void GenerateOptions(PlayerID player)
+    public void GenerateOptions(PlayerID player, int level)
     {
         var options = new List<LevelUpOption>();
-        int level = GameManager.instance.Level;
         bool isAugmentLevel = level % 5 == 0;
+
+        var allStats = FindObjectsByType<CharacterStats>(FindObjectsSortMode.None);
+        var playerStats = System.Array.Find(allStats, s => s.owner.HasValue && s.owner.Value == player);
+        int optionCount = playerStats != null ? playerStats.levelUpOptions : 1;
 
         if (isAugmentLevel && _playerPools.TryGetValue(player, out var pool) && pool.Count > 0)
         {
             _playerPickedAugments.TryGetValue(player, out var picked);
             var available = pool.FindAll(a => IsPrerequisiteMet(a, picked));
-            int drawCount = Mathf.Min(3, available.Count);
+            int drawCount = Mathf.Min(optionCount, available.Count);
             var drawnIndices = new HashSet<int>();
             for (int i = 0; i < drawCount; i++)
             {
@@ -63,14 +66,13 @@ public class AugmentManager : NetworkBehaviour
             }
         }
 
-        var usedStats = new HashSet<StatAugmentEntry>();
-        while (options.Count < 3)
+        var usedPairs = new HashSet<(StatAugmentEntry, StatAugmentEntry)>();
+        while (options.Count < optionCount)
         {
-            var pair = GenerateStatFallback(player, usedStats);
+            var pair = GenerateStatFallback(player, usedPairs);
             if (pair != null)
             {
-                usedStats.Add(pair.statA);
-                usedStats.Add(pair.statB);
+                usedPairs.Add((pair.statA, pair.statB));
                 options.Add(LevelUpOption.FromStatAugment(pair));
             }
             else break;
@@ -122,7 +124,7 @@ public class AugmentManager : NetworkBehaviour
         return true;
     }
 
-    private StatAugmentPair GenerateStatFallback(PlayerID player, HashSet<StatAugmentEntry> usedStats = null)
+    private StatAugmentPair GenerateStatFallback(PlayerID player, HashSet<(StatAugmentEntry, StatAugmentEntry)> usedPairs)
     {
         CharacterStats.CharacterClass playerClass = CharacterStats.CharacterClass.Knight;
         foreach (var s in CharacterStats.All)
@@ -130,19 +132,21 @@ public class AugmentManager : NetworkBehaviour
 
         var validStats = new List<StatAugmentEntry>();
         foreach (var entry in statDatabase.stats)
-            if ((entry.allowedClasses.Length == 0 || Array.IndexOf(entry.allowedClasses, playerClass) >= 0)
-                && (usedStats == null || !usedStats.Contains(entry)))
+            if (entry.allowedClasses.Length == 0 || Array.IndexOf(entry.allowedClasses, playerClass) >= 0)
                 validStats.Add(entry);
 
         if (validStats.Count < 2) return null;
 
-        int idxA = UnityEngine.Random.Range(0, validStats.Count);
-        int idxB;
-        int attempts = 0;
-        do { idxB = UnityEngine.Random.Range(0, validStats.Count); attempts++; }
-        while (idxB == idxA && attempts < 20);
+        var available = new List<(StatAugmentEntry, StatAugmentEntry)>();
+        for (int i = 0; i < validStats.Count; i++)
+            for (int j = i + 1; j < validStats.Count; j++)
+                if (!usedPairs.Contains((validStats[i], validStats[j])))
+                    available.Add((validStats[i], validStats[j]));
 
-        return new StatAugmentPair(validStats[idxA], validStats[idxB]);
+        if (available.Count == 0) return null;
+
+        var chosen = available[UnityEngine.Random.Range(0, available.Count)];
+        return new StatAugmentPair(chosen.Item1, chosen.Item2);
     }
 
     public List<LevelUpOption> GetOptionsForPlayer(PlayerID player)

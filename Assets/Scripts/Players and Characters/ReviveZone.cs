@@ -53,19 +53,19 @@ public class ReviveZone : NetworkIdentity
 
         if (!isServer) return;
 
-        int aliveAllies = 0;
+        float chargeRate = 0f;
         foreach (var ally in _alliesInZone)
-            if (!ally.IsDead) aliveAllies++;
+            if (!ally.IsDead) chargeRate += ally.revivePower;
 
-        if (aliveAllies <= 0) return;
+        if (chargeRate <= 0f) return;
 
-        ChargeTimer += Time.deltaTime * aliveAllies;
+        ChargeTimer += Time.deltaTime * chargeRate * _stats.revivePower;
 
         if (ChargeTimer >= _stats.reviveTime)
         {
             _stats.Revive();
             ChargeTimer = 0f;
-            _stats.reviveTime += 0.5f;
+            _stats.reviveTime += _stats.ReviveTimePenalty;
         }
     }
 

@@ -327,8 +327,12 @@ public class EnemySpawner : NetworkIdentity
 
     private Vector3 GetSpawnPosition()
     {
-        if (_spawnPoints != null && _spawnPoints.Length > 0)
-            return _spawnPoints[UnityEngine.Random.Range(0, _spawnPoints.Length)].position;
+        if (_spawnPoints != null && _spawnPoints.Length >= 2)
+        {
+            int i = UnityEngine.Random.Range(0, _spawnPoints.Length);
+            int j = (i + 1) % _spawnPoints.Length;
+            return Vector3.Lerp(_spawnPoints[i].position, _spawnPoints[j].position, UnityEngine.Random.value);
+        }
 
         var players = CharacterStats.All.Where(p => !p.IsDead).ToList();
 

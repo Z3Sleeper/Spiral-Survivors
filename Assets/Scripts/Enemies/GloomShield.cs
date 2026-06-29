@@ -22,10 +22,22 @@ public class GloomShield : NetworkIdentity, IStrikeable
 
     public enum State { Idle, Windup, Exploding, Cooldown }
 
-    [HideInInspector] public SyncVar<State> _syncState = new(State.Idle);
-    [HideInInspector] public SyncVar<Vector3> _syncFacingDir = new(Vector3.forward);
+    private State _state = State.Idle;
+    private Vector3 _facingDir = Vector3.forward;
+    private void SetState(State state)
+    {
+        _state = state;
+        OnStateChanged(state);
+        SyncStateRpc(state);
+    }
 
-    private State _state { get => _syncState.value; set => _syncState.value = value; }
+    [ObserversRpc]
+    private void SyncStateRpc(State state)
+    {
+        if (isServer) return;
+        _state = state;
+        OnStateChanged(state);
+    }
     private float _stateTimer = float.MaxValue;
     private EnemyBase _ownerEnemy;
     private ShieldParent _shieldParent;
@@ -36,8 +48,7 @@ public class GloomShield : NetworkIdentity, IStrikeable
         _ownerEnemy = GetComponentInParent<EnemyBase>();
         _shieldParent = GetComponentInParent<ShieldParent>();
         if (shieldRenderers != null && shieldRenderers.Length > 0) _originalColor = shieldRenderers[0].material.color;
-        _syncState.onChanged += OnStateChanged;
-        OnStateChanged(_syncState.value);
+        OnStateChanged(State.Idle);
     }
 
     private void OnStateChanged(State state)
@@ -72,9 +83,9 @@ public class GloomShield : NetworkIdentity, IStrikeable
     {
         if (_ownerEnemy == null) return;
 
-        if (_syncFacingDir.value != Vector3.zero)
+        if (_facingDir != Vector3.zero)
         {
-            Vector3 offsetDir = Quaternion.Euler(0f, angleOffset, 0f) * _syncFacingDir.value;
+            Vector3 offsetDir = Quaternion.Euler(0f, angleOffset, 0f) * _facingDir;
             transform.position = _ownerEnemy.transform.position + offsetDir * shieldOffset;
             transform.rotation = Quaternion.LookRotation(offsetDir);
         }
@@ -108,9 +119,17 @@ public class GloomShield : NetworkIdentity, IStrikeable
         Vector3 dir = target.position - _ownerEnemy.transform.position;
         dir.y = 0f;
         if (dir.sqrMagnitude == 0f) return;
-        _syncFacingDir.value = Vector3.RotateTowards(
-            _syncFacingDir.value, dir.normalized,
+        _facingDir = Vector3.RotateTowards(
+            _facingDir, dir.normalized,
             rotationSpeed * Mathf.Deg2Rad * Time.deltaTime, 0f);
+        SyncFacingDirRpc(_facingDir);
+    }
+
+    [ObserversRpc]
+    private void SyncFacingDirRpc(Vector3 dir)
+    {
+        if (isServer) return;
+        _facingDir = dir;
     }
 
     public void OnStruck()
@@ -134,24 +153,24 @@ public class GloomShield : NetworkIdentity, IStrikeable
     private void EnterWindup()
     {
         _stateTimer = windupDuration;
-        _state = State.Windup;
+        SetState(State.Windup);
         _shieldParent?.OnShieldTriggered(this);
     }
 
     private void EnterExploding()
     {
         _stateTimer = explosionDuration;
-        _state = State.Exploding;
+        SetState(State.Exploding);
     }
 
     private void EnterCooldown()
     {
         _stateTimer = reactionCooldown;
-        _state = State.Cooldown;
+        SetState(State.Cooldown);
     }
 
     private void EnterIdle()
     {
-        _state = State.Idle;
+        SetState(State.Idle);
     }
 }

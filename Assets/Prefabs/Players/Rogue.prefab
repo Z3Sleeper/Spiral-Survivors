@@ -374,7 +374,7 @@ MonoBehaviour:
   bonusMultishotPercent: 1
   multishotSpreadAngle: 75
   _baseMaxHealth:
-    _value: 20
+    _value: 40
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
   _bonusMaxHealthFlat:
@@ -411,13 +411,13 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  baseMaxEnergy: 100
+  baseMaxEnergy: 50
   _currentEnergy:
     _value: 0
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseEnergyRegen: 4
-  dashCharges: 3
+  dashCharges: 1
   baseDashCooldown: 5
   dashHaste: 0
   baseMaxSP: 100

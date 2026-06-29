@@ -14,7 +14,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3470414442967365969, guid: 8fa497e307b2c3e43b0d6a5533125a52, type: 3}
       propertyPath: xpValue
-      value: 750
+      value: 270
       objectReference: {fileID: 0}
     - target: {fileID: 3470414442967365969, guid: 8fa497e307b2c3e43b0d6a5533125a52, type: 3}
       propertyPath: enemyName

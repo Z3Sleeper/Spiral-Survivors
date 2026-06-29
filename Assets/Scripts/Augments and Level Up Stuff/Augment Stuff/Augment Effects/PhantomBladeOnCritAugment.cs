@@ -52,6 +52,6 @@ public class PhantomBladeOnCritAugment : MonoBehaviour
 
         var blade = Instantiate(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward)).GetComponent<PhantomBlade>();
         blade.target = enemy;
-        blade.Init(_stats, damageStatMultiplier, effectiveness);
+        blade.Init(_stats, damageStatMultiplier, effectiveness, unpenalized: false);
     }
 }

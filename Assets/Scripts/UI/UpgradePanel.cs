@@ -19,6 +19,12 @@ public class UpgradePanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI critChanceFlatButtonText;
     [SerializeField] private TextMeshProUGUI rangeFlatButtonText;
     [SerializeField] private TextMeshProUGUI collectionRadiusFlatButtonText;
+    [SerializeField] private TextMeshProUGUI maxEnergyFlatButtonText;
+    [SerializeField] private TextMeshProUGUI dashChargesButtonText;
+    [SerializeField] private TextMeshProUGUI revivePowerButtonText;
+    [SerializeField] private TextMeshProUGUI reviveTimePenaltyButtonText;
+    [SerializeField] private TextMeshProUGUI xpMultiplierButtonText;
+    [SerializeField] private TextMeshProUGUI levelUpOptionsButtonText;
 
     private void OnEnable() => Refresh();
 
@@ -38,6 +44,12 @@ public class UpgradePanel : MonoBehaviour
         RefreshBaseButtonText(StatType.CritChance,         "Crit Chance",        "%", critChanceFlatButtonText);
         RefreshBaseButtonText(StatType.WeaponRange,        "Range",              "",  rangeFlatButtonText);
         RefreshBaseButtonText(StatType.CollectionRadius,   "Collection Radius",  "",  collectionRadiusFlatButtonText);
+        RefreshBaseButtonText(StatType.MaxEnergy,          "Max Energy",         "",  maxEnergyFlatButtonText);
+        RefreshBaseButtonText(StatType.DashCharges,        "Dash Charges",       "",   dashChargesButtonText);
+        RefreshBaseButtonText(StatType.RevivePower,        "Revive Power",       "",   revivePowerButtonText);
+        RefreshBaseButtonText(StatType.ReviveTimePenalty,  "Revive Time Penalty", "%",  reviveTimePenaltyButtonText);
+        RefreshBaseButtonText(StatType.XPMultiplier,        "XP",                  "%",  xpMultiplierButtonText);
+        RefreshBaseButtonText(StatType.LevelUpOptions,      "Level Up Options",    "",   levelUpOptionsButtonText);
     }
 
     private void RefreshAllStatsButtonText()
@@ -58,9 +70,10 @@ public class UpgradePanel : MonoBehaviour
         int maxTier   = ProgressionManager.GetMaxBaseTier(statType);
         float perTier = ProgressionManager.GetBaseStatValuePerTier(statType);
         float total   = perTier * tier;
+        string sign   = perTier >= 0f ? "+" : "";
         buttonLabel.text = tier >= maxTier
-            ? $"({tier}/{maxTier}) {label}\n+{perTier}{unit} (+{total}{unit})\nMAXED"
-            : $"({tier}/{maxTier}) {label}\n+{perTier}{unit} (+{total}{unit})\n{FormatPoints(ProgressionManager.GetBaseStatUpgradeCost(statType))} pts";
+            ? $"({tier}/{maxTier}) {label}\n{sign}{perTier}{unit} ({sign}{total}{unit})\nMAXED"
+            : $"({tier}/{maxTier}) {label}\n{sign}{perTier}{unit} ({sign}{total}{unit})\n{FormatPoints(ProgressionManager.GetBaseStatUpgradeCost(statType))} pts";
     }
 
     public void OnLevelUpStatsClicked() { ProgressionManager.TryUpgrade(); Refresh(); }
@@ -76,6 +89,12 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeCritChanceFlatClicked()          { ProgressionManager.TryUpgradeBaseStat(StatType.CritChance);        Refresh(); }
     public void OnUpgradeRangeFlatClicked()               { ProgressionManager.TryUpgradeBaseStat(StatType.WeaponRange);       Refresh(); }
     public void OnUpgradeCollectionRadiusFlatClicked()    { ProgressionManager.TryUpgradeBaseStat(StatType.CollectionRadius);  Refresh(); }
+    public void OnUpgradeMaxEnergyFlatClicked()           { ProgressionManager.TryUpgradeBaseStat(StatType.MaxEnergy);          Refresh(); }
+    public void OnUpgradeDashChargesClicked()             { ProgressionManager.TryUpgradeBaseStat(StatType.DashCharges);        Refresh(); }
+    public void OnUpgradeRevivePowerClicked()             { ProgressionManager.TryUpgradeBaseStat(StatType.RevivePower);        Refresh(); }
+    public void OnUpgradeReviveTimePenaltyClicked()       { ProgressionManager.TryUpgradeBaseStat(StatType.ReviveTimePenalty);  Refresh(); }
+    public void OnUpgradeXPMultiplierClicked()            { ProgressionManager.TryUpgradeBaseStat(StatType.XPMultiplier);        Refresh(); }
+    public void OnUpgradeLevelUpOptionsClicked()          { ProgressionManager.TryUpgradeBaseStat(StatType.LevelUpOptions);      Refresh(); }
 
     private static string FormatPoints(long value) => value switch
     {

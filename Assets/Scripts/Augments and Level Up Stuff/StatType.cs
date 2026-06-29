@@ -11,4 +11,10 @@ public enum StatType
     CritChance        = 9,
     Pierce            = 10,
     CollectionRadius  = 11,
+    MaxEnergy         = 12,
+    DashCharges       = 13,
+    RevivePower       = 14,
+    ReviveTimePenalty = 15,
+    XPMultiplier      = 16,
+    LevelUpOptions    = 17,
 }
