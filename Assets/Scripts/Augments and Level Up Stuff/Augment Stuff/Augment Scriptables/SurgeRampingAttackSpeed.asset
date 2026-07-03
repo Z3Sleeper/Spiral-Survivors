@@ -16,8 +16,8 @@ MonoBehaviour:
   description: 'While <color=#FFFF00>Surging</color>, gain <color=#FF0050>+15%</color>
     <color=#952FFF>Stacking</color> <color=#FF0050>Attack Speed</color> each second.
 
-    <color=#FFFF00>+4
-    Energy Regen</color>'
+    <color=#FFFF00>+25
+    Max Energy</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 

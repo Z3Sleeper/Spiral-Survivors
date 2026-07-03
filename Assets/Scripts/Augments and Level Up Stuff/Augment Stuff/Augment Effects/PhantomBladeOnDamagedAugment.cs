@@ -3,7 +3,8 @@ using UnityEngine;
 public class PhantomBladeOnDamagedAugment : MonoBehaviour
 {
     [SerializeField] private GameObject phantomBladePrefab;
-    [SerializeField] private float damageStatMultiplier = 0.3f;
+    [SerializeField] private float _baseDamageMultiplier = 1.50f;
+    [SerializeField] private float _variancePercent = 0.20f;
     [SerializeField] private int bladeCount = 3;
     [SerializeField] private float bonusHealth = 10f;
     [SerializeField] private float bladeDamageBonus = 0.1f;
@@ -14,14 +15,14 @@ public class PhantomBladeOnDamagedAugment : MonoBehaviour
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
-        _stats.AddMaxHealthFlatRpc(bonusHealth);
+        _stats.AddMaxHealthFlat(bonusHealth);
         PlayerHurtboxReceiver.OnDamaged += OnDamaged;
         PhantomBlade.OnSummon += OnSummon;
     }
 
     private void OnDestroy()
     {
-        if (_stats != null && _stats.isSpawned) _stats.AddMaxHealthFlatRpc(-bonusHealth);
+        if (_stats != null && _stats.isSpawned) _stats.AddMaxHealthFlat(-bonusHealth);
         PlayerHurtboxReceiver.OnDamaged -= OnDamaged;
         PhantomBlade.OnSummon -= OnSummon;
     }
@@ -49,9 +50,11 @@ public class PhantomBladeOnDamagedAugment : MonoBehaviour
                 enemy.transform.position.z + offset.z);
             Vector3 forward = (enemy.transform.position - spawnPos).normalized;
 
+            float max = _baseDamageMultiplier * (1f + _variancePercent);
+            float min = Mathf.Lerp(_baseDamageMultiplier * (1f - _variancePercent), max, _stats.LuckChance);
             var blade = Instantiate(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward)).GetComponent<PhantomBlade>();
             blade.target = enemy;
-            blade.Init(_stats, damageStatMultiplier);
+            blade.Init(_stats, Random.Range(min, max));
         }
     }
 }

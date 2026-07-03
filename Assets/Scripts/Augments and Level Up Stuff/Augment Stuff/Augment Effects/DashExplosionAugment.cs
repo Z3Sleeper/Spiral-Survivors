@@ -3,11 +3,12 @@ using UnityEngine;
 
 public class DashExplosionAugment : MonoBehaviour
 {
-    [SerializeField] private float _damagePercent = 5f;
-    [SerializeField] private float _onHitEffectiveness = 5f;
+    [SerializeField] private float _basePercent = 2.50f;
+    [SerializeField] private float _variancePercent = 0.25f;
     [SerializeField] private float _radius = 5f;
     [SerializeField] private GameObject _vfxPrefab;
     [SerializeField] private float _vfxDuration = 0.3f;
+    [SerializeField] private float _bonusDashHaste = 20f;
 
     private const string VFXTag = "DashExplosion";
     private CharacterStats _stats;
@@ -23,6 +24,7 @@ public class DashExplosionAugment : MonoBehaviour
 
         if (!_stats.isOwner) return;
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
+        _stats.dashHaste += _bonusDashHaste;
         PlayerController.OnDashEnded += OnDashEnded;
     }
 
@@ -30,6 +32,8 @@ public class DashExplosionAugment : MonoBehaviour
     {
         CharacterStats.OnVFXBroadcast -= OnVFX;
         PlayerController.OnDashEnded -= OnDashEnded;
+        if (_stats == null || !_stats.isOwner || !_stats.isSpawned) return;
+        _stats.dashHaste -= _bonusDashHaste;
     }
 
     private void OnDashEnded(PlayerController controller)
@@ -44,8 +48,11 @@ public class DashExplosionAugment : MonoBehaviour
             var enemy = _overlapResults[i].GetComponentInParent<EnemyBase>();
             if (enemy == null || enemy._isDead || hitEnemies.Contains(enemy)) continue;
             hitEnemies.Add(enemy);
-            enemy.TakeDamageRpc(_stats.UnpenalizedWeaponDamage * _damagePercent);
-            WeaponBase.RaiseOnHit(_stats, enemy, _onHitEffectiveness);
+            float max = _basePercent * (1f + _variancePercent);
+            float min = Mathf.Lerp(_basePercent * (1f - _variancePercent), max, _stats.LuckChance);
+            float percent = Random.Range(min, max);
+            enemy.TakeDamageRpc(_stats.UnpenalizedWeaponDamage * percent);
+            WeaponBase.RaiseOnHit(_stats, enemy, percent);
         }
 
         _stats.BroadcastVFXRpc(
@@ -60,6 +67,12 @@ public class DashExplosionAugment : MonoBehaviour
         if (source != _stats || vfxTag != VFXTag || _vfxPrefab == null) return;
         var vfx = Instantiate(_vfxPrefab, position, Quaternion.identity);
         vfx.transform.localScale = new Vector3(size, vfx.transform.localScale.y, size);
-        Destroy(vfx, duration);
+        StartCoroutine(DestroyAfterDelay(vfx, duration));
+    }
+
+    private System.Collections.IEnumerator DestroyAfterDelay(GameObject obj, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (obj != null) Destroy(obj);
     }
 }

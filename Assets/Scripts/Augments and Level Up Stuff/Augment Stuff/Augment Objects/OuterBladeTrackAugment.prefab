@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 63dab232591164f4d9f3f303187c5070, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OuterBladeTrackAugment
-  _damagePenalty: 0.3
+  _damagePenalty: 0.35
   _onHitEffectivenessPenalty: 0.15
   _rangePenalty: 0.25

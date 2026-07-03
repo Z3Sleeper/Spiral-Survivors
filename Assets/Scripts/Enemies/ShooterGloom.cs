@@ -32,6 +32,7 @@ public class ShooterGloom : EnemyBase
     private State _state = State.Moving;
     private void SetState(State state)
     {
+        isStunnable = state == State.Moving ? !stunResistant : false;
         _state = state;
         OnStateChanged(state);
         SyncStateRpc(state);
@@ -63,8 +64,7 @@ public class ShooterGloom : EnemyBase
     protected override void Update()
     {
         base.Update();
-        if (!isServer) return;
-        if (_isDead) return;
+        if (!isServer || _isDead || IsStunned) return;
 
         _stateTimer -= Time.deltaTime;
         _attackCooldownTimer -= Time.deltaTime;
@@ -72,7 +72,7 @@ public class ShooterGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (TargetInRange() && _attackCooldownTimer <= 0f)
+                if (TargetInRange() && _attackCooldownTimer <= 0f && !_specialRoutineActive)
                 {
                     if (TargetTooClose())
                         EnterDash();
@@ -107,7 +107,7 @@ public class ShooterGloom : EnemyBase
 
     protected override void FixedUpdate()
     {
-        if (_isDead) return;
+        if (_isDead || IsStunned) return;
         if (_state == State.Moving)
             base.FixedUpdate();
         else if (_state == State.Dashing)

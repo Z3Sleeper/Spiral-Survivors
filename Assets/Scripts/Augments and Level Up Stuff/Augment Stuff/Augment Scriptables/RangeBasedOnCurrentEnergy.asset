@@ -13,16 +13,14 @@ MonoBehaviour:
   m_Name: RangeBasedOnCurrentEnergy
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energetic Reach</color>
-  description: 'Gain <color=#3278FF>+0.5% Range</color> for each <color=#FFFF00>1
-    Current Energy</color>.
+  description: 'While above <color=#FFFF00>75% Max Energy</color> gain <color=#3278FF>+(5
+    + <color=#FFFF00>5% of your Max Energy</color>)% Range</color>.
 
-    <color=#FFFF00>+20 Max Energy</color>
-
-    <color=#FFFF00>+4
-    Energy Regen</color>'
+    <color=#FFFF00>+25
+    Max Energy</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
-  excludedClasses: 02000000
+  excludedClasses: 
   effectPrefab: {fileID: 6055292462807039485, guid: 7ca57c12a1d3c52418d351871d00cb74, type: 3}
   multiplayerOnly: 0
   incompatibleAugments: []

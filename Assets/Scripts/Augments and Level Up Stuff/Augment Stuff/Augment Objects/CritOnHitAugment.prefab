@@ -45,3 +45,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CritOnHitAugment
   _bonusCritChance: 0.1
+  _baseDamagePercent: 0.1
+  _variancePercent: 0.2
+  _onHitEffectivenessPenalty: 0.35

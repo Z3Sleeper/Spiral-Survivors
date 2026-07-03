@@ -45,5 +45,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TitanAugment
   _sizeMultiplier: 1.5
-  _rangeBonus: 0.5
-  _healthBonus: 0.2
+  _rangeBonus: 0.15
+  _healthBonus: 0.1

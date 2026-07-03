@@ -8,7 +8,7 @@ public class HealthAugment : MonoBehaviour
     {
         var stats = GetComponentInParent<CharacterStats>();
         if (stats == null || !stats.isOwner) { Destroy(gameObject); return; }
-        stats.AddMaxHealthFlatRpc(_healthBonus);
+        stats.AddMaxHealthFlat(_healthBonus);
         Destroy(gameObject);
     }
 }

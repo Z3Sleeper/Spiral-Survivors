@@ -41,6 +41,7 @@ public class KingSpike : BossBase
     private State _state = State.Moving;
     private void SetState(State state)
     {
+        isStunnable = state == State.Moving ? !stunResistant : false;
         _state = state;
         OnStateChanged(state);
         SyncStateRpc(state, _chargeDirection);
@@ -100,7 +101,7 @@ public class KingSpike : BossBase
         if (_state == State.ChargeWindup && chargeWindupIndicator != null && chargeWindupIndicator.activeSelf)
             chargeWindupIndicator.transform.rotation = Quaternion.LookRotation(_chargeDirection);
 
-        if (!isServer || _isDead) return;
+        if (!isServer || _isDead || IsStunned) return;
 
         _stateTimer -= Time.deltaTime;
         _attackCooldownTimer -= Time.deltaTime;
@@ -108,13 +109,13 @@ public class KingSpike : BossBase
         switch (_state)
         {
             case State.Moving:
-                if (_attackCooldownTimer <= 0f && !_isSurging)
+                if (_attackCooldownTimer <= 0f && !_isSurging && !_specialRoutineActive)
                 {
                     _preSurgeMoveSpeed = moveSpeed;
                     moveSpeed = _preSurgeMoveSpeed * 5f;
                     _isSurging = true;
                 }
-                if (_attackCooldownTimer <= 0f && _target != null &&
+                if (_attackCooldownTimer <= 0f && _target != null && !_specialRoutineActive &&
                     Vector3.Distance(transform.position, _target.position) <= attackRange)
                 {
                     _chargesRemaining = chargesPerAttack;
@@ -153,7 +154,7 @@ public class KingSpike : BossBase
 
     protected override void FixedUpdate()
     {
-        if (_isDead) return;
+        if (_isDead || IsStunned) return;
         if (_state == State.Moving)
             base.FixedUpdate();
         else if (_state == State.Charging)
@@ -214,7 +215,7 @@ public class KingSpike : BossBase
     [ObserversRpc]
     private void TriggerAoeRpc(Vector3 position, float radius, float dmg)
     {
-        foreach (var stats in CharacterStats.All)
+        foreach (var stats in CharacterStats.All.Values)
         {
             if (!stats.isOwner || stats.IsDead || stats.IsInvincible) continue;
             if (Vector3.Distance(stats.transform.position, position) <= radius)
@@ -230,7 +231,7 @@ public class KingSpike : BossBase
         {
             if (_isDead) yield break;
 
-            foreach (var player in CharacterStats.All)
+            foreach (var player in CharacterStats.All.Values)
             {
                 if (player.IsDead) continue;
                 Vector2 offset2D = UnityEngine.Random.insideUnitCircle.normalized * bombOffsetRadius;
@@ -250,20 +251,30 @@ public class KingSpike : BossBase
         if (bombIndicatorPrefab != null)
         {
             var indicator = Instantiate(bombIndicatorPrefab, pos, Quaternion.identity);
-            Destroy(indicator, bombWarningDuration + 0.1f);
             _activeBombIndicators.Add(indicator);
             var fill = indicator.GetComponentInChildren<WindupFill>();
             if (fill != null) fill.StartFill(bombWarningDuration);
+            StartCoroutine(DestroyIndicatorAfterDelay(indicator, bombWarningDuration + 0.1f));
         }
 
         StartCoroutine(BombDamageCoroutine(position));
+    }
+
+    private IEnumerator DestroyIndicatorAfterDelay(GameObject indicator, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (indicator != null)
+        {
+            _activeBombIndicators.Remove(indicator);
+            Destroy(indicator);
+        }
     }
 
     private IEnumerator BombDamageCoroutine(Vector3 position)
     {
         yield return new WaitForSeconds(bombWarningDuration);
 
-        foreach (var stats in CharacterStats.All)
+        foreach (var stats in CharacterStats.All.Values)
         {
             if (!stats.isOwner || stats.IsDead || stats.IsInvincible) continue;
             if (Vector3.Distance(stats.transform.position, position) <= bombRadius)
@@ -288,6 +299,7 @@ public class KingSpike : BossBase
     protected override void OnEnrage()
     {
         attackCooldown /= 2f;
+        moveSpeed *= 1.5f;
         _attackCooldownTimer = Mathf.Min(_attackCooldownTimer, attackCooldown);
     }
 

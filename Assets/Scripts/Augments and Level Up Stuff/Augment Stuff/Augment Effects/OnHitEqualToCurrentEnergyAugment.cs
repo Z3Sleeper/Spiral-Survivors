@@ -2,7 +2,8 @@ using UnityEngine;
 
 public class OnHitEqualToCurrentEnergyAugment : MonoBehaviour
 {
-    [SerializeField] private float energyDamagePercent = 0.1f;
+    [SerializeField] private float _baseEnergyDamagePercent = 0.1f;
+    [SerializeField] private float _variancePercent = 0.20f;
     [SerializeField] private float bonusMaxEnergy = 25f;
 
     private CharacterStats _stats;
@@ -21,9 +22,11 @@ public class OnHitEqualToCurrentEnergyAugment : MonoBehaviour
         WeaponBase.OnHit -= OnHit;
     }
 
-    private void OnHit(CharacterStats stats, EnemyBase enemy, float effectiveness)
+    private void OnHit(CharacterStats stats, EnemyBase enemy, float effectiveness, bool isCrit)
     {
         if (stats != _stats) return;
-        enemy.TakeDamageRpc(_stats.CurrentEnergy * energyDamagePercent);
+        float max = _baseEnergyDamagePercent * (1f + _variancePercent);
+        float min = Mathf.Lerp(_baseEnergyDamagePercent * (1f - _variancePercent), max, _stats.LuckChance);
+        enemy.TakeDamageRpc(_stats.CurrentEnergy * Random.Range(min, max));
     }
 }

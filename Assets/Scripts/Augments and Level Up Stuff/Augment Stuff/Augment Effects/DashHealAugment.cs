@@ -2,7 +2,8 @@ using UnityEngine;
 
 public class DashHealAugment : MonoBehaviour
 {
-    [SerializeField] private float _healPercent = 0.2f;
+    [SerializeField] private float _baseHealMultiplier = 10.00f;
+    [SerializeField] private float _variancePercent = 0.25f;
     [SerializeField] private float _healRadius = 10f;
     [SerializeField] private float _bonusDashHaste = 30f;
     [SerializeField] private GameObject _vfxPrefab;
@@ -20,10 +21,6 @@ public class DashHealAugment : MonoBehaviour
 
         if (!_stats.isOwner) return;
         PlayerController.OnDashEnded += OnDash;
-    }
-    
-    private void Start()
-    {
         _stats.dashHaste += _bonusDashHaste;
     }
 
@@ -31,16 +28,21 @@ public class DashHealAugment : MonoBehaviour
     {
         CharacterStats.OnVFXBroadcast -= OnVFX;
         PlayerController.OnDashEnded -= OnDash;
+        if (_stats != null && _stats.isOwner)
+            _stats.dashHaste -= _bonusDashHaste;
     }
 
     private void OnDash(PlayerController controller)
     {
         if (controller.GetComponent<CharacterStats>() != _stats) return;
-        foreach (var ally in CharacterStats.All)
+        foreach (var ally in CharacterStats.All.Values)
         {
             if (ally.IsDead) continue;
             if (Vector3.Distance(_stats.transform.position, ally.transform.position) > _healRadius) continue;
-            ally.ReceiveHealRpc(ally.MaxHealth * _healPercent);
+            float max = _baseHealMultiplier * (1f + _variancePercent);
+            float min = Mathf.Lerp(_baseHealMultiplier * (1f - _variancePercent), max, _stats.LuckChance);
+            float healAmount = _stats.HealthRegen * Random.Range(min, max);
+            ally.ReceiveHealRpc(healAmount);
         }
         _stats.BroadcastVFXRpc(
             new Vector3(_stats.transform.position.x, 0f, _stats.transform.position.z),
@@ -54,6 +56,12 @@ public class DashHealAugment : MonoBehaviour
         if (source != _stats || vfxTag != VFXTag || _vfxPrefab == null) return;
         var vfx = Instantiate(_vfxPrefab, position, Quaternion.identity);
         vfx.transform.localScale = new(size, vfx.transform.localScale.y, size);
-        Destroy(vfx, duration);
+        StartCoroutine(DestroyAfterDelay(vfx, duration));
+    }
+
+    private System.Collections.IEnumerator DestroyAfterDelay(GameObject obj, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        if (obj != null) Destroy(obj);
     }
 }

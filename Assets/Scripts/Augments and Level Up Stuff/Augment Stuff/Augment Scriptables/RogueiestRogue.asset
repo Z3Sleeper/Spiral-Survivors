@@ -13,10 +13,8 @@ MonoBehaviour:
   m_Name: RogueiestRogue
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF0050>Rogueiest Rogue</color>
-  description: '<color=#FF0050>+17.5% Total Attack Speed</color>
-
-    +7.5% Movement
-    Speed'
+  description: Increases Rogue's passive <color=#FF0050>Attack Speed</color> gain
+    from Movement Speed by 50%.
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 01000000
   excludedClasses: 

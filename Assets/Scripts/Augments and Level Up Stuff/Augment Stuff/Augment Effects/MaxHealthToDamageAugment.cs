@@ -13,7 +13,7 @@ public class MaxHealthToDamageAugment : MonoBehaviour
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
 
-        _stats.BonusMaxHealthFlat += _bonusMaxHealth;
+        _stats.AddMaxHealthFlat(_bonusMaxHealth);
         _contribution = _stats.MaxHealth * _healthPercent;
         _stats.bonusWeaponDamageFlat += _contribution;
     }
@@ -30,10 +30,8 @@ public class MaxHealthToDamageAugment : MonoBehaviour
 
     private void OnDestroy()
     {
-        if (_stats != null && _stats.isSpawned)
-        {
-            _stats.BonusMaxHealthFlat -= _bonusMaxHealth;
-            _stats.bonusWeaponDamageFlat -= _contribution;
-        }
+        if (_stats == null || !_stats.isOwner || !_stats.isSpawned) return;
+        _stats.AddMaxHealthFlat(-_bonusMaxHealth);
+        _stats.bonusWeaponDamageFlat -= _contribution;
     }
 }

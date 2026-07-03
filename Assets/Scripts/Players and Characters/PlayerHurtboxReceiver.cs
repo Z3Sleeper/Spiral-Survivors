@@ -52,7 +52,7 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         float dmg = attack.GetDamage();
         if (dmg > 0f)
         {
-            _stats.TakeDamageRpc(dmg);
+            _stats.TakeDamage(dmg);
             if (source != null)
             {
                 _multiHitCooldowns[source] = _multiHitCooldown;
@@ -75,7 +75,7 @@ public class PlayerHurtboxReceiver : MonoBehaviour
         float dmg = enemy.GetDamage();
         if (dmg <= 0f) return;
         _contactCooldowns[enemy] = enemy.contactCooldown;
-        _stats.TakeDamageRpc(dmg);
+        _stats.TakeDamage(dmg);
         OnDamaged?.Invoke(_stats, enemy);
     }
 }

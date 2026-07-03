@@ -45,5 +45,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeOnCritAugment
   phantomBladePrefab: {fileID: 2942187867930129664, guid: 4c94aad85e38e064283a82cc7a20be4f, type: 3}
+  damageStatMultiplier: 0.75
   bonusCritChance: 0.1
   bladeDamageBonus: 0.1
+  critsPerBlade: 3

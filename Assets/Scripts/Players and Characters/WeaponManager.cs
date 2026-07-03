@@ -61,6 +61,13 @@ public class WeaponManager : NetworkBehaviour
         }
     }
 
+    public void ReapplyColor(Color color)
+    {
+        foreach (var weapon in _weapons)
+            foreach (var applicator in weapon.GetComponentsInChildren<PlayerColorApplicator>(true))
+                applicator.Apply(color);
+    }
+
     private void DespawnWeapons(int count)
     {
         for (int i = 0; i < count; i++)

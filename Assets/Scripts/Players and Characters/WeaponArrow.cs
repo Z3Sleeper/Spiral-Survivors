@@ -120,13 +120,13 @@ public class WeaponArrow : NetworkIdentity
     {
         _hitEnemies.Add(enemy);
 
-        float damage = _damage;
+        float damage = WeaponBase.RollDamage(_damage, _ownerStats != null ? _ownerStats.LuckChance : 0f);
         bool isCrit = Random.value < _critChance;
         if (isCrit) damage *= _critDamage;
 
-        enemy.TakeDamageRpc(damage);
+        enemy.TakeDamageRpc(damage, isCrit);
         _damage *= 1f - _damageDropoff;
-        if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy, _onHitEffectiveness);
+        if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy, _onHitEffectiveness, isCrit);
         if (isCrit && _ownerStats != null) WeaponBase.RaiseOnCritStrike(_ownerStats, enemy, _onHitEffectiveness);
         _onHitEffectiveness *= 1f - _onHitDropOff;
         SFXManager.instance?.Play(_hitSound, transform.position, 1f, 0.05f);
@@ -206,7 +206,7 @@ public class WeaponArrow : NetworkIdentity
 
         if (_canContactAllies)
         {
-            foreach (var ally in CharacterStats.All)
+            foreach (var ally in CharacterStats.All.Values)
             {
                 if (ally.IsDead || ally == _ownerStats || _hitAllies.Contains(ally)) continue;
                 float dist = Vector3.Distance(transform.position, ally.transform.position);

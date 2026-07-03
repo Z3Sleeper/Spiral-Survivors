@@ -9,7 +9,6 @@ public enum StatType
     EnergyRegen  = 7,
     DashHaste = 8,
     CritChance        = 9,
-    Pierce            = 10,
     CollectionRadius  = 11,
     MaxEnergy         = 12,
     DashCharges       = 13,
@@ -17,4 +16,8 @@ public enum StatType
     ReviveTimePenalty = 15,
     XPMultiplier      = 16,
     LevelUpOptions    = 17,
+    LevelUpStats      = 18,
+    Luck                = 19,
+    WeaponDamagePercent = 20,
+    DamagePerLevel      = 21,
 }

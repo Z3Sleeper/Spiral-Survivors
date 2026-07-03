@@ -33,6 +33,9 @@ public class WeaponAxe : WeaponBase
     private HashSet<IStrikeable>   _newStrikeables     = new();
     private HashSet<CharacterStats> _currentAllyOverlaps = new();
     private HashSet<CharacterStats> _newAllyOverlaps    = new();
+    private readonly Dictionary<EnemyBase, float> _hitCooldowns = new();
+    private readonly List<EnemyBase> _cooldownBuffer = new();
+    private float HitCooldown => 90f / _stats.WeaponSpeed;
 
     private Vector3 _prevInnerCenter;
     private Vector3 _prevOuterPoint1;
@@ -110,6 +113,11 @@ public class WeaponAxe : WeaponBase
         _newStrikeables.Clear();
         _newAllyOverlaps.Clear();
 
+        _cooldownBuffer.Clear();
+        _cooldownBuffer.AddRange(_hitCooldowns.Keys);
+        foreach (var e in _cooldownBuffer)
+            if (Time.time - _hitCooldowns[e] >= HitCooldown) _hitCooldowns.Remove(e);
+
         Vector3 innerDelta = innerCenter - _prevInnerCenter;
         Vector3 p1Delta    = outerPoint1 - _prevOuterPoint1;
         float   id = innerDelta.magnitude;
@@ -151,7 +159,7 @@ public class WeaponAxe : WeaponBase
         float innerMult = _executioner != null ? _executioner.InnerDamageMultiplier : 0.5f;
         foreach (var enemy in _newOverlaps)
         {
-            if (_currentOverlaps.Contains(enemy)) continue;
+            if (_currentOverlaps.Contains(enemy) || _hitCooldowns.ContainsKey(enemy)) continue;
             bool isOuter = _newOuterHits.Contains(enemy);
             Hit(enemy, isOuter ? outerMult : innerMult, isOuter);
         }
@@ -260,11 +268,12 @@ public class WeaponAxe : WeaponBase
     private void Hit(EnemyBase enemy, float zoneMultiplier, bool canCrit = true)
     {
         if (enemy == null || enemy._isDead) return;
-        float damage = _stats.WeaponDamage * zoneMultiplier;
+        _hitCooldowns[enemy] = Time.time;
+        float damage = RollDamage(_stats.WeaponDamage * zoneMultiplier);
         bool isCrit = canCrit && Random.value < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
-        enemy.TakeDamageRpc(damage);
-        InvokeOnStrike(enemy);
+        enemy.TakeDamageRpc(damage, isCrit);
+        InvokeOnStrike(enemy, isCrit);
         if (isCrit) WeaponBase.RaiseOnCritStrike(_stats, enemy);
         SFXManager.instance?.Play(_stats.hitSound, enemy.transform.position, 1f, 0.05f);
     }

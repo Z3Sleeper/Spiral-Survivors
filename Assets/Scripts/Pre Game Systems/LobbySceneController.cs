@@ -1,4 +1,6 @@
 using System.Collections;
+using System.Collections.Generic;
+using TMPro;
 using PurrLobby;
 using PurrNet;
 using PurrNet.Modules;
@@ -15,18 +17,45 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private GameObject purrLobbyPanel;
     [SerializeField] private GameObject characterSelectPanel;
     [SerializeField] private GameObject settingsPanel;
-    [SerializeField] private GameObject encyclopediaPanel;
     [SerializeField] private GameObject upgradePanel;
+    [SerializeField] private GameObject[] upgradeButtons;
     [SerializeField] private ViewManager viewManager;
+
+    [Header("Unlock Popup")]
+    [SerializeField] private GameObject unlockPopup;
+    [SerializeField] private TextMeshProUGUI unlockPopupText;
+    [SerializeField] private AudioClip unlockSound;
 
     private int _expectedPlayerCount;
     private int _purrNetPlayersJoined;
     private bool _initializedForLobby;
+    private bool _connectingToHost;
+
+    private void OnEnable()  => UnlockManager.OnUnlockQueued += OnUnlockQueuedWhileInLobby;
+    private void OnDisable() => UnlockManager.OnUnlockQueued -= OnUnlockQueuedWhileInLobby;
+
+    private void OnUnlockQueuedWhileInLobby()
+    {
+        if (unlockPopup != null && !unlockPopup.activeSelf)
+            ShowNextUnlock();
+    }
 
     private void Start()
     {
         if (!networkManager)
             networkManager = NetworkManager.main;
+
+        bool shopUnlocked = ProgressionManager.IsShopUnlocked;
+        foreach (var btn in upgradeButtons)
+            if (btn != null) btn.SetActive(shopUnlocked);
+
+        if (unlockPopup != null)
+        {
+            if (UnlockManager.HasPending)
+                ShowNextUnlock();
+            else
+                unlockPopup.SetActive(false);
+        }
 
         lobbyManager.OnRoomJoined.AddListener(OnRoomJoined);
         lobbyManager.OnRoomLeft.AddListener(OnRoomLeft);
@@ -37,6 +66,7 @@ public class LobbySceneController : MonoBehaviour
         {
             LobbyFlags.IsReturningFromGame = false;
             _initializedForLobby = true;
+            _connectingToHost = false;
             ShowCharacterSelect();
             lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
             CharacterSelectUI.instance?.RefreshFromLobby(lobbyManager.CurrentLobby);
@@ -75,8 +105,26 @@ public class LobbySceneController : MonoBehaviour
         mainMenuPanel.SetActive(true);
     }
 
+    private void ShowNextUnlock()
+    {
+        string msg = UnlockManager.Dequeue();
+        if (unlockPopupText != null) unlockPopupText.text = $"{msg} Unlocked!";
+        unlockPopup.SetActive(true);
+        SFXManager.instance?.Play(unlockSound, Vector3.zero);
+    }
+
+    public void OnUnlockPopupContinueClicked()
+    {
+        if (UnlockManager.HasPending)
+            ShowNextUnlock();
+        else
+            unlockPopup.SetActive(false);
+    }
+
     public void OnSettingsClicked()
     {
+        if (characterSelectPanel.activeInHierarchy)
+            lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
         settingsPanel.SetActive(true);
     }
 
@@ -87,6 +135,8 @@ public class LobbySceneController : MonoBehaviour
 
     public void OnUpgradeClicked()
     {
+        if (characterSelectPanel.activeInHierarchy)
+            lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
         upgradePanel.SetActive(true);
     }
 
@@ -95,17 +145,6 @@ public class LobbySceneController : MonoBehaviour
         upgradePanel.SetActive(false);
     }
 
-    public void OnEncyclopediaClicked()
-    {
-        mainMenuPanel.SetActive(false);
-        encyclopediaPanel.SetActive(true);
-    }
-
-    public void OnEncyclopediaBackClicked()
-    {
-        encyclopediaPanel.SetActive(false);
-        mainMenuPanel.SetActive(true);
-    }
 
     public void OnExitClicked()
     {
@@ -122,6 +161,7 @@ public class LobbySceneController : MonoBehaviour
 
         int assignedColor = CharacterSelectUI.instance?.AssignUniqueColor(lobby) ?? 0;
         GameStartData.LocalColorIndex = assignedColor;
+        GameStartData.LocalColor = CharacterSelectUI.instance?.GetColor(assignedColor) ?? UnityEngine.Color.white;
 
         if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
         {
@@ -146,6 +186,19 @@ public class LobbySceneController : MonoBehaviour
     {
         if (characterSelectPanel.activeInHierarchy)
             CharacterSelectUI.instance?.RefreshFromLobby(lobby);
+
+        if (!lobby.IsOwner && !networkManager.isClient && !_connectingToHost)
+        {
+            if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
+            {
+                string started = SteamMatchmaking.GetLobbyData(new CSteamID(lobbyIdRaw), "Started");
+                if (started == "True")
+                {
+                    _connectingToHost = true;
+                    StartCoroutine(ConnectToHostWithRetry());
+                }
+            }
+        }
     }
 
     private void OnAllReady()

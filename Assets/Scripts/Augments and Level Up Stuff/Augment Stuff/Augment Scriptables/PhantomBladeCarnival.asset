@@ -16,7 +16,7 @@ MonoBehaviour:
   description: 'When you summon a <color=#C8C8C8>Phantom Blade</color>, summon another
     one targeting the same enemy.
 
-    <color=#C8C8C8>-20% Total Phantom Blade Damage</color> '
+    <color=#C8C8C8>-35% Total Phantom Blade Damage</color> '
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 

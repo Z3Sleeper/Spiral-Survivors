@@ -2,7 +2,6 @@ using UnityEngine;
 
 public class SurgeEndMovespeedAugment : MonoBehaviour
 {
-    [SerializeField] private float _bonusMoveSpeedFlat = 0.1f;
     [SerializeField] private float _bonusEnergyRegenFlat = 5f;
     [SerializeField] private float _moveSpeedBonus = 0.25f;
     [SerializeField] private float _duration = 1f;
@@ -16,7 +15,6 @@ public class SurgeEndMovespeedAugment : MonoBehaviour
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
 
-        _stats.bonusMoveSpeedFlat  += _bonusMoveSpeedFlat;
         _stats.bonusEnergyRegenFlat += _bonusEnergyRegenFlat;
 
         PlayerController.OnSurgeEnded   += OnSurgeEnded;

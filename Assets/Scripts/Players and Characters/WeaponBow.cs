@@ -6,7 +6,7 @@ public class WeaponBow : WeaponBase
     [SerializeField] private GameObject arrowPrefab;
     [SerializeField] private LayerMask enemyHurtboxLayer;
     public float projectileSpeed = 20f;
-    public float bowAttackSpeedScaling = 12f;
+    public float bowAttackSpeedScaling = 20f;
 
     private float _fireTimer;
     public override bool IsMelee => false;

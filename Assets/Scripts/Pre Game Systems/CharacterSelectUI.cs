@@ -51,6 +51,8 @@ public class CharacterSelectUI : MonoBehaviour
         }
     }
 
+    public UnityEngine.Color GetColor(int index) => colorPalette != null ? colorPalette.Get(index) : UnityEngine.Color.white;
+
     public int AssignUniqueColor(Lobby lobby)
     {
         if (colorPalette == null || colorPalette.Count == 0) return 0;
@@ -145,18 +147,32 @@ public class CharacterSelectUI : MonoBehaviour
 
     private void SelectColor(int index)
     {
+        if (lobbyManager != null)
+        {
+            var lobby = lobbyManager.CurrentLobby;
+            if (lobby.IsValid && ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
+            {
+                var lobbyCSteamID = new CSteamID(lobbyIdRaw);
+                foreach (var member in lobby.Members)
+                {
+                    if (member.Id == GameStartData.LocalUserId) continue;
+                    if (!ulong.TryParse(member.Id, out ulong memberIdRaw)) continue;
+                    string val = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, new CSteamID(memberIdRaw), "color");
+                    if (int.TryParse(val, out int idx) && idx == index) return;
+                }
+                SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "color", index.ToString());
+                GameStartData.LocalColorIndex = index;
+                GameStartData.LocalColor = colorPalette.Get(index);
+                if (!string.IsNullOrEmpty(GameStartData.LocalUserId))
+                    _colorSelections[GameStartData.LocalUserId] = index;
+                RefreshFromLobby(lobby);
+                return;
+            }
+        }
+
         GameStartData.LocalColorIndex = index;
         if (!string.IsNullOrEmpty(GameStartData.LocalUserId))
             _colorSelections[GameStartData.LocalUserId] = index;
-
-        if (lobbyManager == null) return;
-        var lobby = lobbyManager.CurrentLobby;
-        if (!lobby.IsValid) return;
-
-        if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
-            SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "color", index.ToString());
-
-        RefreshFromLobby(lobby);
     }
 
     private void SelectCharacter(int index)

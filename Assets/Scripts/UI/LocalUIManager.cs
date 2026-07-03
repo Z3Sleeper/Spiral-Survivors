@@ -35,6 +35,7 @@ public class LocalUIManager : MonoBehaviour
     [Header("Boss UI")]
     [SerializeField] private GameObject bossUIContainer;
     [SerializeField] private Slider bossHealthBar;
+    [SerializeField] private Slider bossEnrageBar;
     [SerializeField] private TextMeshProUGUI bossHealthText;
     [SerializeField] private TextMeshProUGUI bossNameText;
 
@@ -254,14 +255,14 @@ public class LocalUIManager : MonoBehaviour
         UpdateBossUI();
     }
 
-    private static string FormatStat(float value) => value switch
+    private static string FormatStat(float value, int decimals = 0)
     {
-        >= 1_000_000_000_000f => $"{value / 1_000_000_000_000f:F2}tril",
-        >= 1_000_000_000f     => $"{value / 1_000_000_000f:F2}bil",
-        >= 1_000_000f         => $"{value / 1_000_000f:F2}mil",
-        >= 1_000f             => $"{value / 1_000f:F2}k",
-        _                     => $"{value:G3}"
-    };
+        if (value >= 1_000_000_000_000f) return $"{value / 1_000_000_000_000f:F2}tril";
+        if (value >= 1_000_000_000f)     return $"{value / 1_000_000_000f:F2}bil";
+        if (value >= 1_000_000f)         return $"{value / 1_000_000f:F2}mil";
+        if (value >= 1_000f)             return $"{value / 1_000f:F2}k";
+        return decimals == 0 ? $"{Mathf.RoundToInt(value)}" : value.ToString($"F{decimals}");
+    }
 
     private void UpdateHealthAndShields()
     {
@@ -273,7 +274,7 @@ public class LocalUIManager : MonoBehaviour
 
     private void UpdateHealthRegen()
     {
-        healthRegenText.text = $"<b>+{FormatStat(_stats.HealthRegen)}/s</b>";
+        healthRegenText.text = $"<b>+{FormatStat(_stats.HealthRegen, 2)}/s</b>";
     }
 
     private void UpdateDamageReduction()
@@ -311,6 +312,7 @@ public class LocalUIManager : MonoBehaviour
         _statsSB.AppendLine($" {_stats.dashHaste:G4}");
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
+        _statsSB.AppendLine($" {_stats.Luck:G4}");
         _statsSB.AppendLine($" {_stats.OnHitEffectiveness * 100f:G4}%");
         statsNumbersText.text = _statsSB.ToString();
     }
@@ -371,9 +373,8 @@ public class LocalUIManager : MonoBehaviour
 
         if (bossAlive)
         {
-            bossHealthBar.value = boss.maxHealth > 0f
-                ? boss.CurrentHealth / boss.maxHealth
-                : 0f;
+            bossHealthBar.value = boss.maxHealth > 0f ? boss.CurrentHealth / boss.maxHealth : 0f;
+            if (bossEnrageBar != null) bossEnrageBar.value = boss.EnrageProgress;
             bossHealthText.text = $"<b>{FormatStat(boss.CurrentHealth)}/{FormatStat(boss.maxHealth)}</b>";
             bossNameText.text = boss.enemyName;
         }

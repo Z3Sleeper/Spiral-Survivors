@@ -270,6 +270,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4433399181805987514}
+  - component: {fileID: 1273011100319428958}
   - component: {fileID: 4551660466856338173}
   - component: {fileID: 6361539828381301634}
   - component: {fileID: 1702512242378142372}
@@ -308,6 +309,19 @@ Transform:
   - {fileID: 7656970736979403541}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1273011100319428958
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2272951876664129887}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40da14fbc93e3db4896554229aa91526, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::RogueClassPassive
+  conversionMultiplier: 1
 --- !u!114 &4551660466856338173
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -343,25 +357,30 @@ MonoBehaviour:
   bonusMoveSpeedFlat: 0.1
   bonusMoveSpeedPercent: 1.1
   moveSpeedPenalty: 1
+  damagePerLevel: 2.5
   baseWeaponDamage: 15
   bonusWeaponDamageFlat: 0
   bonusWeaponDamagePercent: 1
   bonusWeaponDamagePenalty: 1
   baseWeaponRadius: 0
   baseAttackSpeed: 0.5
-  attackSpeedPercent: 0.125
+  attackSpeedPercent: 0.15
   attackSpeedTotalPercent: 1
   attackSpeedPenalty: 1
   baseWeaponCount: 1
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
-  baseWeaponRange: 8
-  bonusWeaponRangeFlat: 0
+  baseWeaponRange: 10
+  bonusWeaponRangeFlat: -2
   bonusWeaponRangePercent: 1
   weaponRangePenalty: 1
   baseWeaponSize: 1
   bonusWeaponSizePercent: 1
   continuousFire: 0
+  _playerColorSync:
+    _value: {r: 1, g: 1, b: 1, a: 1}
+    _ownerAuth: 1
+    _sendIntervalInSeconds: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 1
   bonusCritDamageFlat: 0
@@ -375,19 +394,19 @@ MonoBehaviour:
   multishotSpreadAngle: 75
   _baseMaxHealth:
     _value: 40
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _bonusMaxHealthFlat:
     _value: 0
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _bonusMaxHealthPercent:
     _value: 1
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _currentHealth:
     _value: 0
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseHealthRegen: 0
   _bonusHealthRegenFlat:
@@ -409,7 +428,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _currentShield:
     _value: 0
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseMaxEnergy: 50
   _currentEnergy:
@@ -425,19 +444,16 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
+  baseLuck: 0
+  baseKnockback: 10
   baseOnHitEffectiveness: 1
   bonusOnHitEffectivenessMultiplier: 1
   bonusOnHitEffectivenessPenalty: 1
   _reviveTimeSync:
     _value: 3
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _isDeadSync:
-    _value: 0
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
-  invincible: 0
-  _reviveInvincible:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0

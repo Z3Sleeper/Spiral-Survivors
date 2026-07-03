@@ -12,14 +12,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: CritOnHit
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: '<color=#FF0000>Critical Proc</color> '
+  displayName: '<color=#FF0050>Critical Proc</color> '
   description: 'Your <color=#FF0000>Critical Hits</color> trigger <color=#FF0050>On-Hit
     Effects</color> an additional time.
 
-    Deal <color=#FF5000>10% Damage</color>
+    Deal <color=#FF5000>8%-12% Damage</color>
     <color=#FF0050>On-Hit</color>.
 
-    <color=#FF0000>+10% Crit Chance</color>'
+    <color=#FF0000>+10% Crit Chance</color>
+
+    <color=#FF0050>-35%
+    On-Hit Effectiveness</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 

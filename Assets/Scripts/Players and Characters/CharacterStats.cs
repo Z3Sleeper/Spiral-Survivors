@@ -6,7 +6,15 @@ using UnityEngine;
 
 public class CharacterStats : NetworkBehaviour
 {
-    public static readonly List<CharacterStats> All = new();
+    public static readonly Dictionary<PlayerID, CharacterStats> All = new();
+    public static CharacterStats Local
+    {
+        get
+        {
+            var lp = NetworkManager.main?.localPlayer;
+            return lp.HasValue && All.TryGetValue(lp.Value, out var s) ? s : null;
+        }
+    }
 
     public enum CharacterClass {Knight, Rogue, Archer, Bladeweaver, Executioner}
     public CharacterClass characterClass;
@@ -34,6 +42,7 @@ public class CharacterStats : NetworkBehaviour
     public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent * moveSpeedPenalty * (isSurging ? SurgeMoveSpeedMulti : 1f);
 
     [Header("Weapon")]
+    public float damagePerLevel = 2.5f;
     public float baseWeaponDamage = 15f;
     public float bonusWeaponDamageFlat = 0f;
     public float bonusWeaponDamagePercent = 1f;
@@ -72,7 +81,12 @@ public class CharacterStats : NetworkBehaviour
     public bool continuousFire = false;
     [NonSerialized] public bool canContactAllies = false;
     [NonSerialized] public bool canDamageAllies  = false;
-    [NonSerialized] public Color playerColor = Color.white;
+    public SyncVar<Color> _playerColorSync = new SyncVar<Color>(Color.white);
+    public Color playerColor
+    {
+        get => _playerColorSync.value;
+        set => _playerColorSync.value = value;
+    }
     [NonSerialized] public float baseCritChance = 0f;
     public float bonusCritChanceFlat = 0f;
     public float bonusCritChancePercent = 1f;
@@ -109,13 +123,13 @@ public class CharacterStats : NetworkBehaviour
         get => _baseMaxHealth.value;
         set => _baseMaxHealth.value = value;
     }
-    public SyncVar<float> _bonusMaxHealthFlat = new(0f);
+    public SyncVar<float> _bonusMaxHealthFlat = new(0f, ownerAuth: true);
     [HideInInspector] public float BonusMaxHealthFlat
     {
         get => _bonusMaxHealthFlat.value;
         set => _bonusMaxHealthFlat.value = value;
     }
-    public SyncVar<float> _bonusMaxHealthPercent = new(1f);
+    public SyncVar<float> _bonusMaxHealthPercent = new(1f, ownerAuth: true);
     [HideInInspector] public float BonusMaxHealthPercent
     {
         get => _bonusMaxHealthPercent.value;
@@ -123,20 +137,20 @@ public class CharacterStats : NetworkBehaviour
     }
 
     public float MaxHealth => (BaseMaxHealth + BonusMaxHealthFlat) * BonusMaxHealthPercent;
-    [HideInInspector] public SyncVar<float> _currentHealth = new(0);
+    public SyncVar<float> _currentHealth = new(0, ownerAuth: true);
     [HideInInspector] public float CurrentHealth
     {
         get => _currentHealth.value;
         set => _currentHealth.value = value;
     }
     public float baseHealthRegen = 0.5f;
-    [HideInInspector] public SyncVar<float> _bonusHealthRegenFlat = new(0f);
+    public SyncVar<float> _bonusHealthRegenFlat = new(0f, ownerAuth: true);
     public float BonusHealthRegenFlat
     {
         get => _bonusHealthRegenFlat.value;
         set => _bonusHealthRegenFlat.value = value;
     }
-    [HideInInspector] public SyncVar<float> _bonusHealthRegenPercent = new(1f);
+    public SyncVar<float> _bonusHealthRegenPercent = new(1f, ownerAuth: true);
     public float BonusHealthRegenPercent
     {
         get => _bonusHealthRegenPercent.value;
@@ -151,13 +165,13 @@ public class CharacterStats : NetworkBehaviour
     /// </summary>
     [Header("Shield")]
     public float baseMaxShield = 0.1f;
-    [HideInInspector] public SyncVar<float> _bonusMaxShieldFlat = new(0f);
+    public SyncVar<float> _bonusMaxShieldFlat = new(0f, ownerAuth: true);
     public float BonusMaxShieldFlat
     {
         get => _bonusMaxShieldFlat.value;
         set => _bonusMaxShieldFlat.value = value;
     }
-    [HideInInspector] public SyncVar<float> _bonusMaxShieldPercent = new(1f);
+    public SyncVar<float> _bonusMaxShieldPercent = new(1f, ownerAuth: true);
     public float BonusMaxShieldPercent
     {
         get => _bonusMaxShieldPercent.value;
@@ -165,7 +179,7 @@ public class CharacterStats : NetworkBehaviour
     }
     public float MaxShieldPercentOfMaxHealth => (baseMaxShield + BonusMaxShieldFlat) * BonusMaxShieldPercent;
     public float MaxShield => MaxHealth * MaxShieldPercentOfMaxHealth;
-    [HideInInspector] public SyncVar<float> _currentShield = new(0);
+    public SyncVar<float> _currentShield = new(0, ownerAuth: true);
     [HideInInspector] public float CurrentShield
     {
         get => _currentShield.value;
@@ -188,7 +202,7 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusMaxEnergyFlat = 0f;
     [NonSerialized] public float bonusMaxEnergyPercent = 1f;
     public float MaxEnergy => (baseMaxEnergy + bonusMaxEnergyFlat) * bonusMaxEnergyPercent;
-    [HideInInspector] public SyncVar<float> _currentEnergy = new(0, ownerAuth: true);
+    public SyncVar<float> _currentEnergy = new(0, ownerAuth: true);
     public float CurrentEnergy
     {
         get => _currentEnergy.value;
@@ -230,12 +244,26 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusMaxSPFlat = 0f;
     [NonSerialized] public float bonusMaxSPPercent = 1f;
     public float MaxSP => (baseMaxSP + bonusMaxSPFlat) * bonusMaxSPPercent;
-    [HideInInspector] public SyncVar<float> _currentSP = new(0, ownerAuth: true);
+    public SyncVar<float> _currentSP = new(0, ownerAuth: true);
     public float CurrentSP
     {
         get => _currentSP.value;
         set => _currentSP.value = value;
     }
+
+    [Header("Luck")]
+    public float baseLuck = 0f;
+    [NonSerialized] public float bonusLuckFlat = 0f;
+    [NonSerialized] public float bonusLuckPercent = 1f;
+    [NonSerialized] public float luckPenalty = 1f;
+    public float Luck => (baseLuck + bonusLuckFlat) * bonusLuckPercent * luckPenalty;
+    public float LuckChance => Luck / (Luck + 100f);
+
+    [Header("Knockback")]
+    public float baseKnockback = 10f;
+    [NonSerialized] public float knockbackMultiplier = 1f;
+    [NonSerialized] public float knockbackPenalty = 1f;
+    public float Knockback => baseKnockback * knockbackMultiplier * knockbackPenalty;
 
     [Header("Misc")]
     public float baseOnHitEffectiveness = 1f;
@@ -254,7 +282,7 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusXPRadiusPercent = 1f;
     public float XPRadius => (baseXPRadius + bonusXPRadiusFlat) * bonusXPRadiusPercent;
 
-    [HideInInspector] public SyncVar<float> _reviveTimeSync = new(1f);
+    public SyncVar<float> _reviveTimeSync = new(1f);
     public float reviveTime
     {
         get => _reviveTimeSync.value;
@@ -265,56 +293,87 @@ public class CharacterStats : NetworkBehaviour
     public float ReviveTimePenalty => reviveTimePenalty * reviveTimePenaltyReduction;
     [NonSerialized] public float revivePower = 1f;
 
-    private bool _ownerInitialized = false;
 
-    [HideInInspector] public SyncVar<bool> _isDeadSync = new(false);
+    public SyncVar<bool> _isDeadSync = new(false, ownerAuth: true);
     public bool IsDead
     {
         get => _isDeadSync.value;
         set => _isDeadSync.value = value;
     }
 
-    public bool invincible = false;
-    [HideInInspector] public SyncVar<bool> _reviveInvincible = new(false);
-    public bool IsInvincible => invincible || _reviveInvincible.value;
+    [NonSerialized] public bool invincible = false;
+    private Coroutine _invincibleCoroutine;
+    public bool IsInvincible => invincible;
+
+    public void SetInvincible(float duration)
+    {
+        if (_invincibleCoroutine != null) StopCoroutine(_invincibleCoroutine);
+        if (duration <= 0f) { invincible = false; _invincibleCoroutine = null; return; }
+        _invincibleCoroutine = StartCoroutine(InvincibleCoroutine(duration));
+    }
+
+    private IEnumerator InvincibleCoroutine(float duration)
+    {
+        invincible = true;
+        yield return new WaitForSeconds(duration);
+        invincible = false;
+        _invincibleCoroutine = null;
+    }
 
     [NonSerialized] public float damageReductionPercent = 1f;
     [NonSerialized] public float damageReductionPenalty = 1f;
     public float DamageReduction => damageReductionPercent * damageReductionPenalty;
 
-    protected override void OnDestroy() { All.Remove(this); base.OnDestroy(); }
+    private void ApplyPlayerColor(Color color)
+    {
+        foreach (var applicator in GetComponentsInChildren<PlayerColorApplicator>(true))
+            applicator.Apply(color);
+        GetComponent<WeaponManager>()?.ReapplyColor(color);
+        if (_originalColors != null)
+            for (int i = 0; i < _renderers.Length; i++)
+                _originalColors[i] = _renderers[i].material.color;
+    }
+
+    protected override void OnDestroy()
+    {
+        GameManager.OnLevelUp -= OnLevelUp;
+        if (owner.HasValue) All.Remove(owner.Value);
+        base.OnDestroy();
+    }
+
+    private void OnLevelUp() => bonusWeaponDamageFlat += damagePerLevel;
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        All.Add(this);
+        if (owner.HasValue)
+            All[owner.Value] = this;
+
+        _isDeadSync.onChanged += OnDeathStateChanged;
+        _playerColorSync.onChanged += ApplyPlayerColor;
+        ApplyPlayerColor(_playerColorSync.value);
+
         _originalColors = new Color[_renderers.Length];
         for (int i = 0; i < _renderers.Length; i++)
             _originalColors[i] = _renderers[i].material.color;
 
-        _isDeadSync.onChanged += OnDeathStateChanged;
-
-        if (isOwner && !_ownerInitialized)
-        {
-            _ownerInitialized = true;
-            if (LocalUIManager.instance != null)
-                LocalUIManager.instance.SetPlayer(this);
-            ApplyBaseStats();
-            CurrentEnergy = MaxEnergy;
-            CurrentSP = MaxSP;
-        }
+        if (isOwner)
+            LateOwnerInit();
 
         if (!isServer) return;
-        CurrentHealth = MaxHealth;
-        CurrentShield = MaxShield;
         RecalculateXPMod();
     }
 
     private void LateOwnerInit()
     {
+        Debug.Log($"[LateOwnerInit] isSpawned={isSpawned} isOwner={isOwner}");
+        GameManager.OnLevelUp += OnLevelUp;
+        playerColor = GameStartData.LocalColor;
         if (LocalUIManager.instance != null)
             LocalUIManager.instance.SetPlayer(this);
         ApplyBaseStats();
+        CurrentHealth = MaxHealth;
+        CurrentShield = MaxShield;
         CurrentEnergy = MaxEnergy;
         CurrentSP = MaxSP;
         _controller.InitializeForOwner();
@@ -339,32 +398,19 @@ public class CharacterStats : NetworkBehaviour
         reviveTimePenaltyReduction *= Mathf.Pow(0.75f, ProgressionManager.GetBaseStatTier(StatType.ReviveTimePenalty));
         xpMultiplier          += ProgressionManager.GetBaseStatBonus(StatType.XPMultiplier) * 0.01f;
 
-        ApplyBaseStatsServerRpc(
-            ProgressionManager.GetBaseStatBonus(StatType.MaxHealth),
-            ProgressionManager.GetBaseStatBonus(StatType.HealthRegen)
-        );
-    }
-
-    [ServerRpc(requireOwnership: false)]
-    private void ApplyBaseStatsServerRpc(float maxHealthBonus, float healthRegenBonus)
-    {
-        BonusMaxHealthFlat   += maxHealthBonus;
-        BonusHealthRegenFlat += healthRegenBonus;
-        CurrentHealth = MaxHealth;
+        BonusMaxHealthFlat   += ProgressionManager.GetBaseStatBonus(StatType.MaxHealth);
+        BonusHealthRegenFlat += ProgressionManager.GetBaseStatBonus(StatType.HealthRegen);
+        bonusWeaponDamagePercent += ProgressionManager.GetBaseStatBonus(StatType.WeaponDamagePercent);
+        bonusLuckFlat            += ProgressionManager.GetBaseStatBonus(StatType.Luck);
+        damagePerLevel           += ProgressionManager.GetBaseStatBonus(StatType.DamagePerLevel);
     }
 
     private void Update()
     {
-        if (!_ownerInitialized && isOwner)
-        {
-            _ownerInitialized = true;
-            LateOwnerInit();
-        }
-
         if (_invincibilityShell != null)
             _invincibilityShell.SetActive(IsInvincible);
 
-        if (!isServer) return;
+        if (!isOwner) return;
         if (IsDead) return;
 
         // Health regen | RegenTimer and HealthRegen x3 is what we need
@@ -389,11 +435,20 @@ public class CharacterStats : NetworkBehaviour
 
     public void Heal(float healAmount)
     {
-        if (!isServer) return;
+        if (!isOwner) return;
         float actual = Mathf.Min(healAmount, MaxHealth - CurrentHealth);
         CurrentHealth += actual;
-        if (actual > 0f) NotifyHealRpc(actual);
+        if (actual > 0f) BroadcastHealNotifyRpc(actual);
     }
+
+    public void HealSilent(float healAmount)
+    {
+        if (!isOwner) return;
+        CurrentHealth = Mathf.Min(CurrentHealth + healAmount, MaxHealth);
+    }
+
+    [ServerRpc(requireOwnership: true)]
+    private void BroadcastHealNotifyRpc(float amount) => NotifyHealRpc(amount);
 
     private void OnDeathStateChanged(bool dead)
     {
@@ -407,19 +462,16 @@ public class CharacterStats : NetworkBehaviour
     public void Revive(float healthPercent = 0.5f)
     {
         if (!isServer) return;
+        ReviveOwnerRpc(owner.Value, healthPercent);
+    }
+
+    [TargetRpc]
+    private void ReviveOwnerRpc(PlayerID target, float healthPercent)
+    {
         IsDead = false;
         CurrentHealth = MaxHealth * healthPercent;
         CurrentShield = MaxShield;
-        _reviveInvincible.value = true;
-        StartCoroutine(ReviveInvincibilityCoroutine());
-    }
-
-    private static readonly WaitForSeconds ReviveInvincibilityWait = new(2f);
-
-    private IEnumerator ReviveInvincibilityCoroutine()
-    {
-        yield return ReviveInvincibilityWait;
-        _reviveInvincible.value = false;
+        SetInvincible(2f);
     }
 
     public void RecalculateXPMod()
@@ -430,47 +482,48 @@ public class CharacterStats : NetworkBehaviour
     [ObserversRpc]
     private void NotifyHealRpc(float amount) => OnHeal?.Invoke(this, amount);
 
-    [ServerRpc(requireOwnership: true)]
-    public void HealRpc(float amount)
-    {
-        float actual = Mathf.Min(amount, MaxHealth - CurrentHealth);
-        CurrentHealth += actual;
-        if (actual > 0f) NotifyHealRpc(actual);
-    }
-
-    [ServerRpc(requireOwnership: true)]
-    public void HealSilentRpc(float amount)
-    {
-        CurrentHealth = Mathf.Min(CurrentHealth + amount, MaxHealth);
-    }
-
     [ServerRpc(requireOwnership: false)]
-    public void ReceiveHealRpc(float amount)
+    public void ReceiveHealRpc(float amount) => HealTargetRpc(owner.Value, amount);
+
+    [TargetRpc]
+    private void HealTargetRpc(PlayerID target, float amount)
     {
         float actual = Mathf.Min(amount, MaxHealth - CurrentHealth);
         CurrentHealth += actual;
-        if (actual > 0f) NotifyHealRpc(actual);
+        if (actual > 0f) BroadcastHealNotifyRpc(actual);
     }
 
-    [ServerRpc(requireOwnership: true)]
-    public void AddMaxHealthPercentRpc(float bonus)
+    public void AddMaxHealthPercent(float bonus)
     {
+        if (!isOwner) return;
         float prevMax = MaxHealth;
         BonusMaxHealthPercent += bonus;
         CurrentHealth = Mathf.Min(CurrentHealth + (MaxHealth - prevMax), MaxHealth);
     }
 
-    [ServerRpc(requireOwnership: true)]
-    public void AddMaxHealthFlatRpc(float bonus)
+    public void AddMaxHealthFlat(float bonus)
     {
+        if (!isOwner) return;
         BonusMaxHealthFlat += bonus;
         CurrentHealth = Mathf.Min(CurrentHealth + bonus, MaxHealth);
     }
 
-    [ServerRpc(requireOwnership: true)]
-    public void AddMaxShieldPercentRpc(float bonus)
+    public void AddMaxShieldPercent(float bonus)
     {
+        if (!isOwner) return;
         BonusMaxShieldPercent += bonus;
+    }
+
+    public void AddHealthRegenFlat(float bonus)
+    {
+        if (!isOwner) return;
+        BonusHealthRegenFlat += bonus;
+    }
+
+    public void AddHealthRegenPercent(float bonus)
+    {
+        if (!isOwner) return;
+        BonusHealthRegenPercent += bonus;
     }
 
     public static event Action<CharacterStats, float> OnHeal;
@@ -486,10 +539,7 @@ public class CharacterStats : NetworkBehaviour
         => OnVFXBroadcast?.Invoke(this, position, size, duration, vfxTag);
 
     [ServerRpc(requireOwnership: false)]
-    public void TakeDamageRpc(float damage)
-    {
-        TakeDamage(damage);
-    }
+    public void TakeDamageRpc(float damage) => TakeDamage(damage);
 
     [ObserversRpc]
     private void FlashHitRpc()
@@ -498,6 +548,9 @@ public class CharacterStats : NetworkBehaviour
             SFXManager.instance?.Play(damagedSound, transform.position);
         StartCoroutine(FlashCoroutine());
     }
+
+    [ServerRpc(requireOwnership: true)]
+    private void BroadcastHitFlashRpc() => FlashHitRpc();
 
     private IEnumerator FlashCoroutine()
     {
@@ -508,14 +561,14 @@ public class CharacterStats : NetworkBehaviour
             _renderers[i].material.color = _originalColors[i];
     }
 
-    private void TakeDamage(float damage)
+    public void TakeDamage(float damage)
     {
-        if (!isServer) return;
+        if (!isOwner) return;
         if (IsDead) return;
         if (IsInvincible) return;
 
         _shieldRechargeTimer = ShieldRegenTime;
-        FlashHitRpc();
+        BroadcastHitFlashRpc();
 
         damage *= DamageReduction;
 

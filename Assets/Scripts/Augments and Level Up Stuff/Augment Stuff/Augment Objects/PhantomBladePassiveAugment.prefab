@@ -45,7 +45,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladePassiveAugment
   phantomBladePrefab: {fileID: 2942187867930129664, guid: 4c94aad85e38e064283a82cc7a20be4f, type: 3}
-  damageStatMultiplier: 1.5
+  damageStatMultiplier: 0.5
   targetCount: 1
   baseCooldown: 3
   bladeDamageBonus: 0.1

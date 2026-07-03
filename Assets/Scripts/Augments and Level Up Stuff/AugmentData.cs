@@ -4,7 +4,7 @@ using UnityEngine;
 public class AugmentData : ScriptableObject
 {
     [TextArea] public string displayName;
-    [TextArea] public string description;
+    [TextArea(4, 8)] public string description;
     public Sprite icon;
     public CharacterStats.CharacterClass[] restrictedToClasses;
     public CharacterStats.CharacterClass[] excludedClasses;

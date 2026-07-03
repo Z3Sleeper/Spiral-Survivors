@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cbea41b68afec1442a6d095e039866f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlusOneWeaponAugment
-  _damagePenalty: 0.45
+  _damagePenalty: 0.35
   _onHitPenalty: 0.25

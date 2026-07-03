@@ -45,6 +45,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeDamageReductionAugment
   _damageReduction: 0.25
-  _invincibilityDuration: 0.2
-  _bonusMaxHealthFlat: 10
-  _bonusEnergyRegenFlat: 4
+  _invincibilityDuration: 0.25
+  _bonusEnergyRegenFlat: 2

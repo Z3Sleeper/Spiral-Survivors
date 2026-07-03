@@ -20,13 +20,6 @@ MonoBehaviour:
     prependText: +
     appendText: 
     allowedClasses: 
-  - statType: 1
-    displayName: Damage
-    color: {r: 1, g: 0.3137255, b: 0, a: 1}
-    value: 2.5
-    prependText: +
-    appendText: 
-    allowedClasses: 
   - statType: 2
     displayName: Movement Speed
     color: {r: 1, g: 1, b: 1, a: 1}
@@ -73,6 +66,13 @@ MonoBehaviour:
     displayName: Range
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
     value: 0.5
+    prependText: +
+    appendText: 
+    allowedClasses: 
+  - statType: 19
+    displayName: Luck
+    color: {r: 0, g: 1, b: 0.5294118, a: 1}
+    value: 5
     prependText: +
     appendText: 
     allowedClasses: 

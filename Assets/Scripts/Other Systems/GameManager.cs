@@ -241,6 +241,7 @@ public class GameManager : NetworkIdentity
     [ObserversRpc]
     private void ShowLevelUpScreenRpc()
     {
+        Debug.Log($"[ShowLevelUpScreenRpc] isServer={isServer}");
         LocalUIManager.instance.ShowLevelUpScreen();
         SFXManager.instance?.Play(levelUpSound, Vector3.zero);
     }

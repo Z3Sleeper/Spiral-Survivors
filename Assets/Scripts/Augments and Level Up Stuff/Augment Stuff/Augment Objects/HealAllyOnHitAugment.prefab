@@ -44,4 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b4d331e818a83a2458f33826c88c83bf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealAllyOnHitAugment
-  _healMultiplier: 3
+  _baseHealMultiplier: 5
+  _variancePercent: 0.2
+  _bonusHealthRegen: 0.5

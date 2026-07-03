@@ -16,7 +16,7 @@ public class ShieldDamageReductionAugment : MonoBehaviour
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
-        _stats.AddMaxShieldPercentRpc(_maxShieldBonusPercent);
+        _stats.AddMaxShieldPercent(_maxShieldBonusPercent);
         _stats.damageReductionPercent *= (1f - _damageReduction);
         _active = true;
         _prevShield = _stats.CurrentShield;
@@ -28,7 +28,10 @@ public class ShieldDamageReductionAugment : MonoBehaviour
         if (_stats != null)
             _stats._currentShield.onChanged -= OnShieldValueChanged;
         if (_active && _stats != null)
+        {
             _stats.damageReductionPercent /= (1f - _damageReduction);
+            _stats.AddMaxShieldPercent(-_maxShieldBonusPercent);
+        }
     }
 
     private void OnShieldValueChanged(float current)

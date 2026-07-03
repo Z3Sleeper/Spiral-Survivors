@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: MissingHealthToRegen
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Persistence</color>
-  description: 'Gain <color=#7DFF00>+100% Health Regen</color> while below <color=#00FF00>50%
+  description: 'Gain <color=#7DFF00>+50% Health Regen</color> while below <color=#00FF00>50%
     Health</color>.
 
     <color=#7DFF00>+0.5 Health Regen</color>'

@@ -33,6 +33,7 @@ public class SpearGloom : EnemyBase
     private State _state = State.Moving;
     private void SetState(State state)
     {
+        isStunnable = state == State.Moving ? !stunResistant : false;
         _state = state;
         OnStateChanged(state);
         SyncStateRpc(state);
@@ -97,8 +98,7 @@ public class SpearGloom : EnemyBase
     {
         if (_state == State.Moving)
             base.Update(); // only find targets while moving
-        if (!isServer) return;
-        if (_isDead) return;
+        if (!isServer || _isDead || IsStunned) return;
 
         _stateTimer -= Time.deltaTime;
         _attackCooldownTimer -= Time.deltaTime;
@@ -106,7 +106,7 @@ public class SpearGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (_attackCooldownTimer <= 0f && _target != null)
+                if (_attackCooldownTimer <= 0f && _target != null && !_specialRoutineActive)
                 {
                     float dist = Vector3.Distance(transform.position, _target.position);
                     if (dist <= preferredRange * 2f)

@@ -44,5 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 942fd4f2188dabc46822a177ad3f1dca, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeHalfMoveSpeedPenaltyAugment
-  _energyRegenFlatBonus: 4
-  _energyRegenPercentBonus: 0
+  _energyRegenFlatBonus: 2

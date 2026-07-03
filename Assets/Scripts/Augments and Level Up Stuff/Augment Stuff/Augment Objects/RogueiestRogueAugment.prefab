@@ -44,5 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9cc97c945c8b14e449377a43c817119e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RogueiestRogueAugment
-  _bonusWeaponSpeedPercent: 0.175
-  _bonusMoveSpeedPercent: 0.075
+  _conversionBonus: 0.5

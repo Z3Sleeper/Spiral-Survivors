@@ -127,8 +127,8 @@ public class AugmentManager : NetworkBehaviour
     private StatAugmentPair GenerateStatFallback(PlayerID player, HashSet<(StatAugmentEntry, StatAugmentEntry)> usedPairs)
     {
         CharacterStats.CharacterClass playerClass = CharacterStats.CharacterClass.Knight;
-        foreach (var s in CharacterStats.All)
-            if (s.owner == player) { playerClass = s.characterClass; break; }
+        if (CharacterStats.All.TryGetValue(player, out var ps))
+            playerClass = ps.characterClass;
 
         var validStats = new List<StatAugmentEntry>();
         foreach (var entry in statDatabase.stats)
@@ -196,56 +196,35 @@ public class AugmentManager : NetworkBehaviour
     private void ApplyAugmentEffectRpc(PlayerID player, int augmentIndex)
     {
         var augment = augmentDatabase.augments[augmentIndex];
-        if (augment.effectPrefab == null) return;
-        CharacterStats stats = null;
-        foreach (var s in CharacterStats.All)
-            if (s.owner == player) { stats = s; break; }
-        if (stats == null) return;
-        Instantiate(augment.effectPrefab, stats.transform);
+        if (!CharacterStats.All.TryGetValue(player, out var stats)) return;
+        if (augment.effectPrefab != null)
+            Instantiate(augment.effectPrefab, stats.transform);
+        if (!_playerPickedAugments.ContainsKey(player))
+            _playerPickedAugments[player] = new HashSet<AugmentData>();
+        _playerPickedAugments[player].Add(augment);
     }
 
     private void ApplyStatAugment(PlayerID player, StatAugmentPair pair, float effectiveValueA = 1f, float effectiveValueB = 1f)
     {
-        CharacterStats stats = null;
-        foreach (var s in CharacterStats.All)
-            if (s.owner == player) { stats = s; break; }
-        if (stats != null)
-        {
-            ApplyServerStat(stats, pair.statA, effectiveValueA);
-            ApplyServerStat(stats, pair.statB, effectiveValueB);
-        }
-
         int idxA = statDatabase.stats.IndexOf(pair.statA);
         int idxB = statDatabase.stats.IndexOf(pair.statB);
-        ApplyAugmentLocalRpc(player, idxA, idxB);
+        ApplyAugmentLocalRpc(player, idxA, idxB, effectiveValueA, effectiveValueB);
     }
 
-    private void ApplyServerStat(CharacterStats stats, StatAugmentEntry entry, float effectiveValue)
-    {
-        switch (entry.statType)
-        {
-            case StatType.MaxHealth:
-                stats.BonusMaxHealthFlat += effectiveValue;
-                stats.CurrentHealth = Mathf.Min(stats.CurrentHealth + effectiveValue, stats.MaxHealth);
-                break;
-        }
-    }
 
     [TargetRpc]
-    private void ApplyAugmentLocalRpc(PlayerID target, int idxA, int idxB)
+    private void ApplyAugmentLocalRpc(PlayerID target, int idxA, int idxB, float effectiveValueA = 1f, float effectiveValueB = 1f)
     {
-        CharacterStats stats = null;
-        foreach (var s in CharacterStats.All)
-            if (s.isOwner) { stats = s; break; }
-        if (stats == null) return;
-        ApplyStatLocal(stats, statDatabase.stats[idxA]);
-        ApplyStatLocal(stats, statDatabase.stats[idxB]);
+        if (!CharacterStats.All.TryGetValue(target, out var stats)) return;
+        ApplyStatLocal(stats, statDatabase.stats[idxA], effectiveValueA);
+        ApplyStatLocal(stats, statDatabase.stats[idxB], effectiveValueB);
     }
 
-    private void ApplyStatLocal(CharacterStats stats, StatAugmentEntry entry)
+    private void ApplyStatLocal(CharacterStats stats, StatAugmentEntry entry, float effectiveValue = 1f)
     {
         switch (entry.statType)
         {
+            case StatType.MaxHealth:     stats.BonusMaxHealthFlat    += effectiveValue; stats.CurrentHealth = Mathf.Min(stats.CurrentHealth + effectiveValue, stats.MaxHealth); break;
             case StatType.WeaponDamage:  stats.bonusWeaponDamageFlat += entry.value * ProgressionManager.GetStatMultiplier(StatType.WeaponDamage); break;
             case StatType.MoveSpeed:     stats.bonusMoveSpeedFlat    += entry.value * 0.1f * ProgressionManager.GetStatMultiplier(StatType.MoveSpeed); break;
             case StatType.WeaponRange:   stats.bonusWeaponRangeFlat  += entry.value; break;
@@ -254,12 +233,14 @@ public class AugmentManager : NetworkBehaviour
             case StatType.EnergyRegen:   stats.bonusEnergyRegenFlat  += entry.value * ProgressionManager.GetStatMultiplier(StatType.EnergyRegen); break;
             case StatType.DashHaste:     stats.dashHaste             += entry.value * ProgressionManager.GetStatMultiplier(StatType.DashHaste); break;
             case StatType.CritChance:    stats.bonusCritChanceFlat   += entry.value * 0.01f * ProgressionManager.GetStatMultiplier(StatType.CritChance); break;
+            case StatType.Luck:          stats.bonusLuckFlat         += entry.value * ProgressionManager.GetStatMultiplier(StatType.Luck); break;
         }
     }
 
     [TargetRpc]
     private void SendOptionsToPlayerRpc(PlayerID target, int[] types, int[] primaryIndices, int[] secondaryIndices)
     {
+        Debug.Log($"[SendOptionsToPlayerRpc] isServer={isServer} isOwner={isOwner} optionCount={types.Length}");
         var options = new List<LevelUpOption>();
         for (int i = 0; i < types.Length; i++)
         {

@@ -13,8 +13,12 @@ MonoBehaviour:
   m_Name: DashExplosion
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Dash Explosion</color>
-  description: '<color=#FF0050>250% On-Hit Trigger</color>: On <color=#00FFFF>Dash</color>
-    end, deal <color=#FF5000>250% Unpenalized Damage</color> to all nearby enemies.'
+  description: 'On <color=#00FFFF>Dash</color> end, deal <color=#FF5000>200%-300%
+    Unpenalized Damage</color> to all nearby enemies and trigger <color=#FF0050>On-Hits</color>
+    at <color=#FF0050>200%-300% of your effectiveness</color>.
+
+    <color=#00FFFF>+10
+    Dash Haste</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 

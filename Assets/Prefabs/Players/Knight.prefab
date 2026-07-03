@@ -337,6 +337,7 @@ MonoBehaviour:
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 1
   moveSpeedPenalty: 1
+  damagePerLevel: 2.5
   baseWeaponDamage: 15
   bonusWeaponDamageFlat: 0
   bonusWeaponDamagePercent: 1
@@ -349,13 +350,17 @@ MonoBehaviour:
   baseWeaponCount: 1
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
-  baseWeaponRange: 8
+  baseWeaponRange: 10
   bonusWeaponRangeFlat: 2
-  bonusWeaponRangePercent: 1.25
+  bonusWeaponRangePercent: 1
   weaponRangePenalty: 1
   baseWeaponSize: 1
   bonusWeaponSizePercent: 1
   continuousFire: 0
+  _playerColorSync:
+    _value: {r: 1, g: 1, b: 1, a: 1}
+    _ownerAuth: 1
+    _sendIntervalInSeconds: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 1
   bonusCritDamageFlat: 0
@@ -369,19 +374,19 @@ MonoBehaviour:
   multishotSpreadAngle: 75
   _baseMaxHealth:
     _value: 40
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _bonusMaxHealthFlat:
-    _value: 10
-    _ownerAuth: 0
+    _value: 30
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _bonusMaxHealthPercent:
-    _value: 1.1
-    _ownerAuth: 0
+    _value: 1.5
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _currentHealth:
     _value: 0
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseHealthRegen: 0
   _bonusHealthRegenFlat:
@@ -389,7 +394,7 @@ MonoBehaviour:
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _bonusHealthRegenPercent:
-    _value: 1
+    _value: 1.1
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseMaxShield: 0.1
@@ -403,7 +408,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _currentShield:
     _value: 0
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseMaxEnergy: 50
   _currentEnergy:
@@ -419,21 +424,18 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
+  baseLuck: 0
+  baseKnockback: 10
   baseOnHitEffectiveness: 1
   bonusOnHitEffectivenessMultiplier: 1
   bonusOnHitEffectivenessPenalty: 1
   _reviveTimeSync:
     _value: 3
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _isDeadSync:
     _value: 0
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
-  invincible: 0
-  _reviveInvincible:
-    _value: 0
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
 --- !u!114 &6361539828381301634
 MonoBehaviour:

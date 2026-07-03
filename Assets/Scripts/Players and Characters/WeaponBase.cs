@@ -108,26 +108,54 @@ public class WeaponBase : NetworkIdentity
             }
     }
 
-    public static event System.Action<CharacterStats, EnemyBase, float> OnStrike;
-    protected void InvokeOnStrike(EnemyBase enemy)
+    private const float DamageVariance = 0.20f;
+    public static float RollDamage(float damage, float luckChance)
     {
-        OnStrike?.Invoke(_stats, enemy, 1f);
-        RaiseOnHit(_stats, enemy);
+        float max = damage * (1f + DamageVariance);
+        float min = Mathf.Lerp(damage * (1f - DamageVariance), max, luckChance);
+        return Random.Range(min, max);
     }
-    public static void RaiseOnStrike(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f)
+    protected float RollDamage(float damage) => RollDamage(damage, _stats.LuckChance);
+
+    public static event System.Action<CharacterStats, EnemyBase, float, bool> OnStrike;
+    protected void InvokeOnStrike(EnemyBase enemy, bool isCrit = false)
     {
-        OnStrike?.Invoke(stats, enemy, effectiveness);
-        RaiseOnHit(stats, enemy, effectiveness);
+        OnStrike?.Invoke(_stats, enemy, 1f, isCrit);
+        RaiseOnHit(_stats, enemy, 1f, isCrit);
+        Vector3 dir = enemy.transform.position - _stats.transform.position;
+        dir.y = 0f;
+        if (dir != Vector3.zero) enemy.ApplyKnockbackRpc(dir.normalized, _stats.Knockback);
+    }
+    public static void RaiseOnStrike(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f, bool isCrit = false)
+    {
+        OnStrike?.Invoke(stats, enemy, effectiveness, isCrit);
+        RaiseOnHit(stats, enemy, effectiveness, isCrit);
+        Vector3 dir = enemy.transform.position - stats.transform.position;
+        dir.y = 0f;
+        if (dir != Vector3.zero) enemy.ApplyKnockbackRpc(dir.normalized, stats.Knockback);
     }
 
-    public static event System.Action<CharacterStats, EnemyBase, float> OnHit;
-    public static void RaiseOnHit(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f) => OnHit?.Invoke(stats, enemy, effectiveness);
+    public static event System.Action<CharacterStats, EnemyBase, float, bool> OnHit;
+    public static void RaiseOnHit(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f, bool isCrit = false)
+    {
+        OnHit?.Invoke(stats, enemy, effectiveness, isCrit);
+    }
 
     public static event System.Action<CharacterStats, EnemyBase, float> OnCritStrike;
     public static void RaiseOnCritStrike(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f) => OnCritStrike?.Invoke(stats, enemy, effectiveness);
 
     public static event System.Action<CharacterStats, CharacterStats, float> OnAllyHit;
     public static void RaiseOnAllyHit(CharacterStats stats, CharacterStats ally, float effectiveness = 1f) => OnAllyHit?.Invoke(stats, ally, effectiveness);
+
+    protected override void OnSpawned()
+    {
+        base.OnSpawned();
+        if (_stats != null) return; // Already initialized by WeaponManager on the owner
+        if (!owner.HasValue) return;
+        if (CharacterStats.All.TryGetValue(owner.Value, out var stats))
+            foreach (var a in GetComponentsInChildren<PlayerColorApplicator>(true))
+                a.Apply(stats.playerColor);
+    }
 
     public virtual void Init(CharacterStats stats)
     {

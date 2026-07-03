@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#C8C8C8>Phantom Crit</color>
   description: 'Every 3 <color=#FF5000>Strike</color> <color=#FF0050>Critical Hits</color>,
-    summon a <color=#C8C8C8>Phantom Blade</color> piercing the target for <color=#FF5000>100%
+    summon a <color=#C8C8C8>Phantom Blade</color> piercing the target for <color=#FF5000>60%-90%
     Damage</color>.
 
     <color=#FF0050>+10% Crit Chance</color>

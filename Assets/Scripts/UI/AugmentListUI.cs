@@ -15,10 +15,7 @@ public class AugmentListUI : MonoBehaviour
         foreach (var entry in _pool)
             entry.gameObject.SetActive(false);
 
-        CharacterStats localStats = null;
-        foreach (var s in CharacterStats.All)
-            if (s.isOwner) { localStats = s; break; }
-
+        var localStats = CharacterStats.Local;
         if (localStats == null || !localStats.owner.HasValue) return;
 
         var picked = AugmentManager.instance.GetPickedAugmentsForPlayer(localStats.owner.Value);

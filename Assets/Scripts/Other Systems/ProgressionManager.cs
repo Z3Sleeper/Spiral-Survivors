@@ -1,61 +1,198 @@
+using System.Collections.Generic;
+using System.IO;
+using Newtonsoft.Json;
 using UnityEngine;
 
 public static class ProgressionManager
 {
-    private const string TotalPointsKey    = "TotalPoints";
-    private const string SpentPointsKey    = "SpentPoints";
-    private const string BoughtUpgradesKey = "BoughtUpgrades";
-    private const string LevelUpTierKey    = "LevelUpTier";
+    private const int    CurrentSaveVersion = 1;
+    private const string SaveFileName       = "progression.json";
 
-    private const int   LevelUpMaxTier           = 10;
-    private const int   BaseMaxTier              = 4;
-    private const int   DamageMaxTier            = 7;
-    private const int   MoveSpeedMaxTier         = 2;
-    private const int   LevelUpStatCost          = 950;
-    private const int   BaseStatCost             = 50;
-    private const int   CoreStatBaseCost         = 250;
-    private const int   CollectionRadiusBaseCost = 450;
-    private const int   XPMultiplierBaseCost     = 1450;
-    private const int   LevelUpOptionsBaseCost   = 1450;
-    private const int   BaseFee                  = 50;
-    private const float FeeMultiplier            = 1.1f;
-    private const long  PointsCap               = 1_000_000_000_000_000_000L;
+    private const int   BaseFee       = 5;
+    private const float FeeMultiplier = 1.1f;
+    private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
-    public static int GetMaxBaseTier(StatType statType) => statType switch
+    private static readonly int[] MaxHealthCosts =
+        { 0, 250, 500, 750 };
+    private static readonly int[] WeaponDamageCosts =
+        { 0, 250, 500 };
+    private static readonly int[] DashChargesCosts =
+        { 0, 500, 1000, 1500 };
+    private static readonly int[] LuckCosts =
+        { 0, 1000, 2000, 3000, 4000 };
+    private static readonly int[] EnergyRegenCosts =
+        { 0, 1000, 2000 };
+    private static readonly int[] RevivePowerCosts =
+        { 0, 250, 500, 750, 1000 };
+    private static readonly int[] HealthRegenCosts =
+        { 250, 500, 750, 1000 };
+    private static readonly int[] CritChanceCosts =
+        { 250, 500, 750, 1000 };
+    private static readonly int[] DashHasteCosts =
+        { 500, 1000, 1500, 2000 };
+    private static readonly int[] ReviveTimePenaltyCosts =
+        { 500, 1000 };
+    private static readonly int[] LevelUpStatsCosts =
+        { 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000 };
+    private static readonly int[] WeaponRangeCosts =
+        { 1000, 2000 };
+    private static readonly int[] XPMultiplierCosts =
+        { 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000 };
+    private static readonly int[] AttackSpeedCosts =
+        { 1500, 3000 };
+    private static readonly int[] MoveSpeedCosts =
+        { 1500, 3000 };
+    private static readonly int[] CollectionRadiusCosts =
+        { 1500, 3000, 4500, 6000, 7500 };
+    private static readonly int[] MaxEnergyCosts =
+        { 1500, 3000, 4500, 6000, 7500 };
+    private static readonly int[] DamagePerLevelCosts =
+        { 2000, 4000, 6000, 8000, 10000 };
+    private static readonly int[] WeaponDamagePercentCosts =
+        { 3000, 6000, 9000, 12000, 15000 };
+    private static readonly int[] LevelUpOptionsCosts =
+        { 5000, 10000 };
+
+    private static string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
+
+    private class SaveData
     {
-        StatType.WeaponDamage     => DamageMaxTier,
-        StatType.MoveSpeed        => MoveSpeedMaxTier,
-        StatType.AttackSpeed      => 2,
-        StatType.CollectionRadius => 5,
-        StatType.EnergyRegen      => 3,
-        StatType.WeaponRange      => 2,
-        StatType.MaxEnergy        => 5,
-        StatType.DashCharges      => 4,
-        StatType.RevivePower      => 5,
-        StatType.ReviveTimePenalty => 2,
-        StatType.XPMultiplier      => 10,
-        StatType.LevelUpOptions    => 2,
-        _                         => BaseMaxTier
+        public int                     saveVersion    = CurrentSaveVersion;
+        public long                    totalPoints    = 0;
+        public long                    spentPoints    = 0;
+        public int                     boughtUpgrades = 0;
+        public Dictionary<string, int> statTiers      = new();
+    }
+
+    private static SaveData _data;
+
+    private static SaveData Data
+    {
+        get
+        {
+            if (_data == null) Load();
+            return _data;
+        }
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void Initialize()
+    {
+        CleanLegacyPlayerPrefs();
+        Load();
+        if (_data.saveVersion != CurrentSaveVersion)
+        {
+            long savedPoints = _data.totalPoints;
+            var savedTiers  = _data.statTiers;
+            _data = new SaveData { totalPoints = savedPoints };
+
+            foreach (StatType stat in System.Enum.GetValues(typeof(StatType)))
+            {
+                string key = stat.ToString();
+                if (!savedTiers.TryGetValue(key, out int savedTier) || savedTier <= 0) continue;
+
+                int[] costs      = GetStatCosts(stat);
+                int   targetTier = Mathf.Min(savedTier, costs.Length);
+
+                for (int t = 0; t < targetTier; t++)
+                {
+                    int  feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, _data.boughtUpgrades));
+                    long cost    = costs[t] + feePart;
+                    if (_data.totalPoints - _data.spentPoints < cost) break;
+                    _data.statTiers[key] = t + 1;
+                    _data.boughtUpgrades++;
+                    _data.spentPoints   += cost;
+                }
+            }
+
+            Save();
+        }
+    }
+
+    private static void CleanLegacyPlayerPrefs()
+    {
+        string[] legacyKeys =
+        {
+            "TotalPoints", "SpentPoints", "BoughtUpgrades", "SaveVersion", "LevelUpTier",
+            "BaseStatTier_WeaponDamage", "BaseStatTier_MaxHealth",    "BaseStatTier_MoveSpeed",
+            "BaseStatTier_AttackSpeed",  "BaseStatTier_HealthRegen",  "BaseStatTier_EnergyRegen",
+            "BaseStatTier_DashHaste",    "BaseStatTier_CritChance",   "BaseStatTier_WeaponRange",
+            "BaseStatTier_CollectionRadius", "BaseStatTier_MaxEnergy", "BaseStatTier_DashCharges",
+            "BaseStatTier_RevivePower",  "BaseStatTier_ReviveTimePenalty", "BaseStatTier_XPMultiplier",
+            "BaseStatTier_LevelUpOptions", "BaseStatTier_LevelUpStats", "BaseStatTier_Pierce"
+        };
+        bool anyFound = false;
+        foreach (var key in legacyKeys)
+            if (PlayerPrefs.HasKey(key)) { anyFound = true; break; }
+        if (!anyFound) return;
+        foreach (var key in legacyKeys)
+            PlayerPrefs.DeleteKey(key);
+        PlayerPrefs.Save();
+    }
+
+    private static void Load()
+    {
+        try
+        {
+            if (File.Exists(SavePath))
+            {
+                _data = JsonConvert.DeserializeObject<SaveData>(File.ReadAllText(SavePath));
+                if (_data != null) return;
+            }
+        }
+        catch { }
+        _data = new SaveData();
+    }
+
+    private static void Save()
+    {
+        try { File.WriteAllText(SavePath, JsonConvert.SerializeObject(_data, Formatting.Indented)); }
+        catch (System.Exception e) { Debug.LogError($"[ProgressionManager] Failed to save: {e.Message}"); }
+    }
+
+    private static int[] GetStatCosts(StatType statType) => statType switch
+    {
+        StatType.MaxHealth         => MaxHealthCosts,
+        StatType.WeaponDamage      => WeaponDamageCosts,
+        StatType.MoveSpeed         => MoveSpeedCosts,
+        StatType.AttackSpeed       => AttackSpeedCosts,
+        StatType.HealthRegen       => HealthRegenCosts,
+        StatType.EnergyRegen       => EnergyRegenCosts,
+        StatType.DashHaste         => DashHasteCosts,
+        StatType.CritChance        => CritChanceCosts,
+        StatType.WeaponRange       => WeaponRangeCosts,
+        StatType.CollectionRadius  => CollectionRadiusCosts,
+        StatType.MaxEnergy         => MaxEnergyCosts,
+        StatType.DashCharges       => DashChargesCosts,
+        StatType.RevivePower       => RevivePowerCosts,
+        StatType.ReviveTimePenalty => ReviveTimePenaltyCosts,
+        StatType.XPMultiplier      => XPMultiplierCosts,
+        StatType.LevelUpOptions    => LevelUpOptionsCosts,
+        StatType.LevelUpStats       => LevelUpStatsCosts,
+        StatType.WeaponDamagePercent => WeaponDamagePercentCosts,
+        StatType.Luck                => LuckCosts,
+        StatType.DamagePerLevel      => DamagePerLevelCosts,
+        _                           => System.Array.Empty<int>()
     };
 
-    public static int LevelUpStatMaxTier => LevelUpMaxTier;
+    public static int GetMaxBaseTier(StatType statType) => GetStatCosts(statType).Length;
 
-    private static long GetLong(string key) =>
-        long.TryParse(PlayerPrefs.GetString(key, "0"), out long v) ? v : 0L;
+    public static long TotalPoints     => Data.totalPoints;
+    public static long SpentPoints     => Data.spentPoints;
+    public static long AvailablePoints => Data.totalPoints - Data.spentPoints;
+    public static int  BoughtUpgrades  => Data.boughtUpgrades;
 
-    private static void SetLong(string key, long value) =>
-        PlayerPrefs.SetString(key, value.ToString());
+    public static bool IsShopUnlocked => TotalPoints >= 5;
 
-    public static long TotalPoints     => GetLong(TotalPointsKey);
-    public static long SpentPoints     => GetLong(SpentPointsKey);
-    public static long AvailablePoints => TotalPoints - SpentPoints;
-    public static int  BoughtUpgrades  => PlayerPrefs.GetInt(BoughtUpgradesKey, 0);
-
-    public static int GetLevelUpTier() =>
-        PlayerPrefs.GetInt(LevelUpTierKey, 0);
+    public static bool IsStatUnlocked(StatType statType)
+    {
+        if (statType == StatType.WeaponDamage) return true;
+        int[] costs = GetStatCosts(statType);
+        return costs.Length > 0 && TotalPoints >= costs[0] * 5 + BaseFee;
+    }
 
     public static int GetBaseStatTier(StatType statType) =>
-        PlayerPrefs.GetInt($"BaseStatTier_{statType}", 0);
+        Data.statTiers.TryGetValue(statType.ToString(), out int tier) ? tier : 0;
 
     public static float GetBaseStatValuePerTier(StatType statType) => statType switch
     {
@@ -63,7 +200,7 @@ public static class ProgressionManager
         StatType.MaxHealth         => 10f,
         StatType.MoveSpeed         => 1f,
         StatType.AttackSpeed       => 15f,
-        StatType.HealthRegen       => 0.5f,
+        StatType.HealthRegen       => 0.25f,
         StatType.EnergyRegen       => 2f,
         StatType.DashHaste         => 10f,
         StatType.CritChance        => 5f,
@@ -75,34 +212,23 @@ public static class ProgressionManager
         StatType.ReviveTimePenalty => -25f,
         StatType.XPMultiplier      => 10f,
         StatType.LevelUpOptions    => 1f,
-        _                          => 0f
+        StatType.LevelUpStats       => 10f,
+        StatType.WeaponDamagePercent => 0.1f,
+        StatType.Luck                => 10f,
+        StatType.DamagePerLevel      => 0.5f,
+        _                           => 0f
     };
 
     public static float GetBaseStatBonus(StatType statType) =>
-        GetBaseStatTier(statType) * GetBaseStatValuePerTier(statType);
+        Mathf.Min(GetBaseStatTier(statType), GetMaxBaseTier(statType)) * GetBaseStatValuePerTier(statType);
 
     public static int GetBaseStatUpgradeCost(StatType statType)
     {
-        int currentTier = GetBaseStatTier(statType);
-        if (currentTier >= GetMaxBaseTier(statType)) return int.MaxValue;
-        int cost = statType switch
-        {
-            StatType.WeaponDamage     => CoreStatBaseCost,
-            StatType.MoveSpeed        => CoreStatBaseCost,
-            StatType.AttackSpeed      => CoreStatBaseCost,
-            StatType.WeaponRange      => CoreStatBaseCost,
-            StatType.HealthRegen      => CoreStatBaseCost,
-            StatType.CollectionRadius => CollectionRadiusBaseCost,
-            StatType.MaxEnergy         => BaseStatCost,
-            StatType.RevivePower       => CoreStatBaseCost,
-            StatType.ReviveTimePenalty => CoreStatBaseCost,
-            StatType.XPMultiplier      => XPMultiplierBaseCost,
-            StatType.LevelUpOptions    => LevelUpOptionsBaseCost,
-            _                          => BaseStatCost
-        };
-        int basePart = cost * (1 + currentTier);
+        int[] costs = GetStatCosts(statType);
+        int   tier  = GetBaseStatTier(statType);
+        if (tier >= costs.Length) return int.MaxValue;
         int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, BoughtUpgrades));
-        return basePart + feePart;
+        return costs[tier] + feePart;
     }
 
     public static bool CanUpgradeBaseStat(StatType statType) =>
@@ -112,92 +238,133 @@ public static class ProgressionManager
     {
         if (!CanUpgradeBaseStat(statType)) return false;
         int cost = GetBaseStatUpgradeCost(statType);
-        PlayerPrefs.SetInt($"BaseStatTier_{statType}", GetBaseStatTier(statType) + 1);
-        PlayerPrefs.SetInt(BoughtUpgradesKey, BoughtUpgrades + 1);
-        SetLong(SpentPointsKey, SpentPoints + cost);
-        PlayerPrefs.Save();
+        Data.statTiers[statType.ToString()] = GetBaseStatTier(statType) + 1;
+        Data.boughtUpgrades++;
+        Data.spentPoints += cost;
+        Save();
         return true;
     }
 
     public static float GetStatMultiplier(StatType statType) =>
-        1f + GetLevelUpTier() * 0.10f;
+        1f + GetBaseStatTier(StatType.LevelUpStats) * 0.10f;
 
-    public static int GetUpgradeCost()
+    public static long GetBuyAllCost(StatType statType)
     {
-        int currentTier = GetLevelUpTier();
-        if (currentTier >= LevelUpMaxTier) return int.MaxValue;
-        int basePart = LevelUpStatCost * (1 + currentTier);
-        int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, BoughtUpgrades));
-        return basePart + feePart;
+        int[] costs     = GetStatCosts(statType);
+        int   tier      = GetBaseStatTier(statType);
+        long  total     = 0;
+        int   simBought = BoughtUpgrades;
+        for (int t = tier; t < costs.Length; t++)
+        {
+            int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, simBought));
+            total += costs[t] + feePart;
+            simBought++;
+        }
+        return total;
     }
 
-    public static bool CanUpgrade() =>
-        GetLevelUpTier() < LevelUpMaxTier && AvailablePoints >= GetUpgradeCost();
-
-    public static bool TryUpgrade()
+    public static long GetRefundAmount(StatType statType)
     {
-        if (!CanUpgrade()) return false;
-        int cost = GetUpgradeCost();
-        PlayerPrefs.SetInt(LevelUpTierKey, GetLevelUpTier() + 1);
-        PlayerPrefs.SetInt(BoughtUpgradesKey, BoughtUpgrades + 1);
-        SetLong(SpentPointsKey, SpentPoints + cost);
-        PlayerPrefs.Save();
-        return true;
+        int tier = GetBaseStatTier(statType);
+        if (tier == 0) return 0;
+        int[] costs = GetStatCosts(statType);
+        long refund = 0;
+        int bought = BoughtUpgrades;
+        for (int t = tier - 1; t >= 0; t--)
+        {
+            int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, Mathf.Max(0, bought - 1)));
+            refund += costs[t] + feePart;
+            bought--;
+        }
+        return refund;
+    }
+
+    public static void ResetBaseStat(StatType statType)
+    {
+        int tier = GetBaseStatTier(statType);
+        if (tier == 0) return;
+        int[] costs  = GetStatCosts(statType);
+        long  refund = 0;
+        int   bought = BoughtUpgrades;
+        for (int t = tier - 1; t >= 0; t--)
+        {
+            int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, Mathf.Max(0, bought - 1)));
+            refund += costs[t] + feePart;
+            bought--;
+        }
+        Data.statTiers.Remove(statType.ToString());
+        Data.boughtUpgrades = Mathf.Max(0, Data.boughtUpgrades - tier);
+        Data.spentPoints    = System.Math.Max(0L, Data.spentPoints - refund);
+        Save();
     }
 
     public static void CommitPoints(long sessionPoints)
     {
-        SetLong(TotalPointsKey, System.Math.Min(TotalPoints + sessionPoints, PointsCap));
-        PlayerPrefs.Save();
+        bool shopWasUnlocked = IsShopUnlocked;
+        var prevUnlocked = new HashSet<StatType>();
+        foreach (StatType stat in System.Enum.GetValues(typeof(StatType)))
+            if (IsStatUnlocked(stat)) prevUnlocked.Add(stat);
+
+        Data.totalPoints = System.Math.Min(Data.totalPoints + sessionPoints, PointsCap);
+        Save();
+
+        if (!shopWasUnlocked && IsShopUnlocked)
+            UnlockManager.Queue("Upgrade Shop");
+
+        foreach (StatType stat in System.Enum.GetValues(typeof(StatType)))
+            if (!prevUnlocked.Contains(stat) && IsStatUnlocked(stat))
+                UnlockManager.Queue(GetStatDisplayName(stat) + " Upgrade Shop Item");
     }
+
+    private static string GetStatDisplayName(StatType stat) => stat switch
+    {
+        StatType.MaxHealth         => "Max Health",
+        StatType.WeaponDamage      => "Damage",
+        StatType.MoveSpeed         => "Move Speed",
+        StatType.AttackSpeed       => "Attack Speed",
+        StatType.HealthRegen       => "Health Regen",
+        StatType.EnergyRegen       => "Energy Regen",
+        StatType.DashHaste         => "Dash Haste",
+        StatType.CritChance        => "Crit Chance",
+        StatType.WeaponRange       => "Range",
+        StatType.CollectionRadius  => "Collection Radius",
+        StatType.MaxEnergy         => "Max Energy",
+        StatType.DashCharges       => "Dash Charges",
+        StatType.RevivePower       => "Revive Power",
+        StatType.ReviveTimePenalty => "Revive Time Penalty",
+        StatType.XPMultiplier      => "XP Multiplier",
+        StatType.LevelUpOptions    => "Level Up Options",
+        StatType.LevelUpStats       => "Level Up Stats",
+        StatType.WeaponDamagePercent => "% Damage",
+        StatType.Luck                => "Luck",
+        StatType.DamagePerLevel      => "Damage Per Level",
+        _                           => stat.ToString()
+    };
 
     public static void SpendPoints(int amount)
     {
         if (amount > AvailablePoints) return;
-        SetLong(SpentPointsKey, SpentPoints + amount);
-        PlayerPrefs.Save();
-    }
-
-    private static readonly StatType[] _upgradeableStats =
-    {
-        StatType.WeaponDamage, StatType.MaxHealth, StatType.MoveSpeed, StatType.AttackSpeed,
-        StatType.HealthRegen,  StatType.EnergyRegen, StatType.DashHaste,
-        StatType.CritChance,   StatType.WeaponRange, StatType.CollectionRadius,
-        StatType.MaxEnergy,
-        StatType.DashCharges,
-        StatType.RevivePower,
-        StatType.ReviveTimePenalty,
-        StatType.XPMultiplier,
-        StatType.LevelUpOptions
-    };
-
-    private static void DeleteAllStatTiers()
-    {
-        PlayerPrefs.DeleteKey(LevelUpTierKey);
-        foreach (var s in _upgradeableStats)
-            PlayerPrefs.DeleteKey($"BaseStatTier_{s}");
+        Data.spentPoints += amount;
+        Save();
     }
 
     public static void RefundPoints()
     {
-        PlayerPrefs.DeleteKey(SpentPointsKey);
-        PlayerPrefs.DeleteKey(BoughtUpgradesKey);
-        DeleteAllStatTiers();
-        PlayerPrefs.Save();
+        Data.spentPoints    = 0;
+        Data.boughtUpgrades = 0;
+        Data.statTiers.Clear();
+        Save();
     }
 
     public static void AddDebugPoints()
     {
-        SetLong(TotalPointsKey, System.Math.Min(TotalPoints + 10_000L, PointsCap));
-        PlayerPrefs.Save();
+        Data.totalPoints = System.Math.Min(Data.totalPoints + 10_000L, PointsCap);
+        Save();
     }
 
     public static void HardReset()
     {
-        PlayerPrefs.DeleteKey(TotalPointsKey);
-        PlayerPrefs.DeleteKey(SpentPointsKey);
-        PlayerPrefs.DeleteKey(BoughtUpgradesKey);
-        DeleteAllStatTiers();
-        PlayerPrefs.Save();
+        _data = new SaveData();
+        Save();
     }
 }

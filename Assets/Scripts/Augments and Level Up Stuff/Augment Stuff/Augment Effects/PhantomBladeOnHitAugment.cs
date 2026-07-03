@@ -3,7 +3,8 @@ using UnityEngine;
 public class PhantomBladeOnHitAugment : MonoBehaviour
 {
     [SerializeField] private float bladeDamageBonus = 0.3f;
-    [SerializeField] private float percentDamageOnHit = 0.1f;
+    [SerializeField] private float _baseDamagePercent = 0.10f;
+    [SerializeField] private float _variancePercent = 0.25f;
 
     private CharacterStats _stats;
 
@@ -37,9 +38,11 @@ public class PhantomBladeOnHitAugment : MonoBehaviour
         WeaponBase.RaiseOnHit(stats, enemy, damageRatio * 0.5f);
     }
 
-    private void OnHit(CharacterStats stats, EnemyBase enemy, float effectiveness)
+    private void OnHit(CharacterStats stats, EnemyBase enemy, float effectiveness, bool isCrit)
     {
         if (stats != _stats) return;
-        enemy.TakeDamageRpc(_stats.WeaponDamage * percentDamageOnHit * _stats.OnHitEffectiveness * effectiveness);
+        float max = _baseDamagePercent * (1f + _variancePercent);
+        float min = Mathf.Lerp(_baseDamagePercent * (1f - _variancePercent), max, _stats.LuckChance);
+        enemy.TakeDamageRpc(_stats.WeaponDamage * Random.Range(min, max) * _stats.OnHitEffectiveness * effectiveness);
     }
 }

@@ -10,7 +10,7 @@ public class PlayerData : NetworkIdentity
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        Debug.Log($"[PlayerData.OnSpawned] isOwner={isOwner}, LocalCharacterIndex={GameStartData.LocalCharacterIndex}, LocalUserId={GameStartData.LocalUserId}");
+        Debug.Log($"[PlayerData.OnSpawned] isOwner={isOwner}, isServer={isServer} LocalCharacterIndex={GameStartData.LocalCharacterIndex}, LocalUserId={GameStartData.LocalUserId}");
         if (isOwner)
             ReportCharacterRpc(GameStartData.LocalCharacterIndex, GameStartData.LocalColorIndex);
     }
@@ -21,7 +21,7 @@ public class PlayerData : NetworkIdentity
         Debug.Log($"[ReportCharacterRpc] Received on server, index={index}, GameManager.instance={GameManager.instance != null}, spawner={GameManager.instance?.characterSpawner != null}");
         characterIndex.value = index;
         colorIndex.value = color;
-        GameManager.instance.characterSpawner.SpawnCharacter(index, color, this);
+        GameManager.instance.characterSpawner.SpawnCharacter(index, this);
         StartCoroutine(NotifyLoaded());
     }
 

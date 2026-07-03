@@ -16,7 +16,7 @@ MonoBehaviour:
   description: 'Gain a second blade track outside your first''s range that spins
     counterclockwise.
 
-    <color=#FF5000>-30% Damage</color>
+    <color=#FF5000>-35% Damage</color>
 
     <color=#FF0050>-15%
     On-Hit Effectiveness</color>

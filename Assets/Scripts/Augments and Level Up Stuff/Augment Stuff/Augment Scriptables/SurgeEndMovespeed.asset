@@ -13,15 +13,13 @@ MonoBehaviour:
   m_Name: SurgeEndMovespeed
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energized Escape</color>
-  description: '<color=#FFFF00>On Surge End</color>, gain +50% Movement Speed for
+  description: '<color=#FFFF00>On Surge End</color>, gain +60% Movement Speed for
     1 second.
 
     Bonus is lost early if a new <color=#FFFF00>Surge</color> is started.
 
-    <color=#FFFF00>+4
-    Energy Regen</color>
-
-    +1 Movement Speed'
+    <color=#FFFF00>+2
+    Energy Regen</color>'
   icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   restrictedToClasses: 
   excludedClasses: 

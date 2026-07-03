@@ -33,6 +33,27 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     public float contactCooldown = 0.5f;
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
+    public bool stunResistant = false;
+    public bool showDamageNumbers = true;
+    protected bool _specialRoutineActive = false;
+    private bool _isStunnable;
+    public bool isStunnable
+    {
+        get => _isStunnable;
+        set
+        {
+            _isStunnable = value;
+            if (value && _deferredStunEndTime > Time.time)
+            {
+                float remaining = _deferredStunEndTime - Time.time;
+                _deferredStunEndTime = -1f;
+                Stun(remaining);
+            }
+        }
+    }
+    public bool IsStunned { get; private set; }
+    private Coroutine _stunCoroutine;
+    private float _deferredStunEndTime = -1f;
     public EnemyBase Source => this;
     public virtual float GetDamage() => damage;
     public virtual bool CanContactDamage => true;
@@ -80,6 +101,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         baseMoveSpeed = moveSpeed;
         baseXpValue = xpValue;
         pointValue = xpValue;
+        isStunnable = !stunResistant;
 
         _findTargetTimer = UnityEngine.Random.Range(0f, FindTargetInterval);
         CacheRenderers();
@@ -99,10 +121,36 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         else if (!isUncapped) ActiveNormalCount++;
     }
 
+    public void Stun(float duration)
+    {
+        if (!isServer || _isDead) return;
+        if (stunResistant) return;
+        if (!isStunnable)
+        {
+            _deferredStunEndTime = Mathf.Max(_deferredStunEndTime, Time.time + duration);
+            return;
+        }
+        if (_stunCoroutine != null) StopCoroutine(_stunCoroutine);
+        _stunCoroutine = StartCoroutine(StunCoroutine(duration));
+    }
+
+    private IEnumerator StunCoroutine(float duration)
+    {
+        IsStunned = true;
+        _rb.linearVelocity = Vector3.zero;
+        bool hadContactDamage = _contactDamageCollider != null && _contactDamageCollider.enabled;
+        if (_contactDamageCollider != null) _contactDamageCollider.enabled = false;
+        yield return new WaitForSeconds(duration);
+        if (_contactDamageCollider != null) _contactDamageCollider.enabled = hadContactDamage;
+        IsStunned = false;
+        _stunCoroutine = null;
+    }
+
     protected virtual void Update()
     {
         if (_isDead) return;
         if (!isServer) return;
+        if (IsStunned) return;
         _findTargetTimer -= Time.deltaTime;
         if (_findTargetTimer <= 0f)
         {
@@ -116,6 +164,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     {
         if (_isDead) return;
         if (!isServer) return;
+        if (IsStunned) { _rb.linearVelocity = Vector3.zero; return; }
         if (_target == null)
         {
             FindTarget();
@@ -127,7 +176,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     protected virtual void FindTarget()
     {
         float nearest = float.MaxValue;
-        foreach (var p in CharacterStats.All)
+        foreach (var p in CharacterStats.All.Values)
         {
             if (p.IsDead) continue;
             float dist = Vector3.Distance(transform.position, p.transform.position);
@@ -240,12 +289,13 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         if (_physicsCollider != null && !_isDead) _physicsCollider.enabled = true;
     }
 
-    public virtual void TakeDamage(float damage)
+    public virtual void TakeDamage(float damage, bool isCrit = false, PlayerID attackerOwner = default)
     {
         if (!isServer) return;
         if (CurrentHealth <= 0) return;
         CurrentHealth -= damage;
         FlashHitRpc();
+        if (showDamageNumbers) ShowDamageNumberRpc(damage, transform.position, isCrit, attackerOwner);
         if (CurrentHealth <= 0)
             Die();
     }
@@ -258,6 +308,12 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         _originalColors = new Color[_renderers.Length];
         for (int i = 0; i < _renderers.Length; i++)
             _originalColors[i] = _renderers[i].material.color;
+    }
+
+    [ObserversRpc]
+    private void ShowDamageNumberRpc(float amount, Vector3 position, bool isCrit, PlayerID attackerOwner)
+    {
+        DamageNumberManager.instance?.Spawn(amount, position, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), isCrit, attackerOwner);
     }
 
     [ObserversRpc]
@@ -276,9 +332,16 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     }
 
     [ServerRpc(requireOwnership: false)]
-    public void TakeDamageRpc(float damage)
+    public void TakeDamageRpc(float damage, bool isCrit = false, RPCInfo info = default)
     {
-        TakeDamage(damage);
+        TakeDamage(damage, isCrit, info.sender);
+    }
+
+    [ServerRpc(requireOwnership: false)]
+    public void ApplyKnockbackRpc(Vector3 direction, float force)
+    {
+        if (!isStunnable || _isDead) return;
+        _rb.AddForce(direction * force, ForceMode.VelocityChange);
     }
 
     protected virtual void Die()

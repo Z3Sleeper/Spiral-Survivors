@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#C8C8C8>Phantom Dash</color>
   description: 'On <color=#00FFFF>Dash</color>, summon a <color=#C8C8C8>Phantom Bladee</color>
-    piercing the closest enemy for <color=#FF5000>300% Unpenalized Damage</color>.
+    piercing the closest enemy for <color=#FF5000>240%-360% Unpenalized Damage</color>.
 
     <color=#00FFFF>+20
     Dash Haste</color>

@@ -566,7 +566,7 @@ MonoBehaviour:
   enemyName: King Spike Gloom
   moveSpeed: 1
   backpedalSpeedDivisor: 3
-  maxHealth: 10000
+  maxHealth: 5000
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
@@ -574,6 +574,7 @@ MonoBehaviour:
   xpValue: 500
   contactColliderEnabled: 1
   contactCooldown: 0.5
+  stunResistant: 1
   _currentHealthSync:
     _value: 0
     _ownerAuth: 0
@@ -584,6 +585,10 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _renderers:
   - {fileID: 3448404629509916890}
+  _enrageTimer:
+    _value: 120
+    _ownerAuth: 0
+    _sendIntervalInSeconds: 0
   chargeDamageMultiplier: 2
   aoeDamageMultiplier: 4
   bombDamageMultiplier: 2
@@ -607,14 +612,6 @@ MonoBehaviour:
   bombWaves: 5
   bombInterval: 1
   bombInitialDelay: 1
-  _syncState:
-    _value: 0
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
-  _syncChargeDirection:
-    _value: {x: 0, y: 0, z: 1}
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
 --- !u!114 &-8394223174193477460
 MonoBehaviour:
   m_ObjectHideFlags: 0

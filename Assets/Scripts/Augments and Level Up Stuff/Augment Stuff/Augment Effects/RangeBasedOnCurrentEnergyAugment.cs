@@ -2,39 +2,40 @@ using UnityEngine;
 
 public class RangeBasedOnCurrentEnergyAugment : MonoBehaviour
 {
-    [SerializeField] private float _rangePerEnergy = 0.25f;
-    [SerializeField] private float _bonusMaxEnergy = 20f;
-    [SerializeField] private float _bonusEnergyRegen = 5f;
+    [SerializeField] private float _bonusMaxEnergy    = 20f;
+    [SerializeField] private float _energyThreshold   = 0.75f;
+    [SerializeField] private float _flatRangeBonus    = 10f;
+    [SerializeField] private float _maxEnergyPercent  = 0.05f;
+
     private CharacterStats _stats;
-    private float _currentBonus = 0f;
+    private float _currentBonus;
 
     private void Start()
     {
         _stats = GetComponentInParent<CharacterStats>();
-        if (_stats == null || !_stats.isOwner)
-        {
-            Destroy(gameObject);
-            return;
-        }
+        if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
         _stats.bonusMaxEnergyFlat += _bonusMaxEnergy;
-        _stats.bonusEnergyRegenFlat += _bonusEnergyRegen;
     }
 
     private void Update()
     {
         if (_stats == null || !_stats.isSpawned) return;
 
-        float currentEnergyPercent = Mathf.Clamp01(_stats.CurrentEnergy / _stats.MaxEnergy);
-        float newBonus = currentEnergyPercent * _rangePerEnergy;
+        float targetBonus = _stats.CurrentEnergy >= _stats.MaxEnergy * _energyThreshold
+            ? (_flatRangeBonus + _maxEnergyPercent * _stats.MaxEnergy) * 0.01f
+            : 0f;
 
-        _stats.bonusWeaponRangePercent -= _currentBonus;
-        _stats.bonusWeaponRangePercent += newBonus;
-        _currentBonus = newBonus;
+        if (Mathf.Abs(targetBonus - _currentBonus) > 0.0001f)
+        {
+            _stats.bonusWeaponRangePercent += targetBonus - _currentBonus;
+            _currentBonus = targetBonus;
+        }
     }
 
     private void OnDestroy()
     {
-        if (_stats != null && _stats.isSpawned)
-            _stats.bonusWeaponRangePercent -= _currentBonus;
+        if (_stats == null || !_stats.isOwner || !_stats.isSpawned) return;
+        _stats.bonusMaxEnergyFlat      -= _bonusMaxEnergy;
+        _stats.bonusWeaponRangePercent -= _currentBonus;
     }
 }

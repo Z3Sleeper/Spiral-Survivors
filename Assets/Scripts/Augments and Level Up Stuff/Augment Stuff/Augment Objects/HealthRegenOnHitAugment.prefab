@@ -44,7 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1897ab665cd5bcc4dbfca52c7feb5768, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RegenerativeStrikesAugment
-  _regenMultiplier: 6
-  _vfxPrefab: {fileID: 0}
-  _vfxSize: 1
-  _vfxDuration: 0.3
+  _baseRegenMultiplier: 5
+  _variancePercent: 0.2
+  _flatRegenBonus: 0.5

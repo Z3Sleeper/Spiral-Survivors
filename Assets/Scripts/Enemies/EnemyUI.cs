@@ -27,17 +27,18 @@ public class EnemyUI : MonoBehaviour
         healthText.text = $"<b>{FormatStat(_enemy.CurrentHealth)}/{FormatStat(_enemy.maxHealth)}</b>";
     }
 
-    private static string FormatStat(float value) => value switch
+    private static string FormatStat(float value)
     {
-        >= 1_000_000_000_000f => $"{value / 1_000_000_000_000f:F2}tril",
-        >= 1_000_000_000f     => $"{value / 1_000_000_000f:F2}bil",
-        >= 1_000_000f         => $"{value / 1_000_000f:F2}mil",
-        >= 1_000f             => $"{value / 1_000f:F2}k",
-        _                     => $"{value:G3}"
-    };
+        if (value >= 1_000_000_000_000f) return $"{value / 1_000_000_000_000f:F2}tril";
+        if (value >= 1_000_000_000f)     return $"{value / 1_000_000_000f:F2}bil";
+        if (value >= 1_000_000f)         return $"{value / 1_000_000f:F2}mil";
+        if (value >= 1_000f)             return $"{value / 1_000f:F2}k";
+        return $"{Mathf.RoundToInt(value)}";
+    }
 
     private void LateUpdate()
     {
-        transform.rotation = _camera.transform.rotation;
+        if (_camera == null) _camera = Camera.main;
+        if (_camera != null) transform.rotation = _camera.transform.rotation;
     }
 }

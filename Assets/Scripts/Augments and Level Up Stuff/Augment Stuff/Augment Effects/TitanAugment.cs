@@ -25,7 +25,7 @@ public class TitanAugment : MonoBehaviour
                 child.localScale /= _sizeMultiplier;
         }
 
-        stats.AddMaxHealthPercentRpc(_healthBonus);
+        stats.AddMaxHealthPercent(_healthBonus);
 
         Destroy(gameObject);
     }

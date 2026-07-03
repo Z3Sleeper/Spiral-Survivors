@@ -1,3 +1,4 @@
+using PurrNet;
 using UnityEngine;
 
 public class BossBase : EnemyBase
@@ -5,14 +6,14 @@ public class BossBase : EnemyBase
     public static BossBase Current { get; private set; }
 
     private const float EnrageDuration = 120f;
-    private float _enrageTimer = EnrageDuration;
+    public SyncVar<float> _enrageTimer = new(EnrageDuration);
     private bool _isEnraged = false;
 
     protected override void OnSpawned()
     {
         base.OnSpawned();
         Current = this;
-        _enrageTimer = EnrageDuration;
+        _enrageTimer.value = EnrageDuration;
     }
 
     protected override void Die()
@@ -24,15 +25,17 @@ public class BossBase : EnemyBase
     protected override void Update()
     {
         base.Update();
-        if (!isServer || _isDead || _isEnraged) return;
+        if (!isServer || _isDead || _isEnraged || IsStunned) return;
 
-        _enrageTimer -= Time.deltaTime;
-        if (_enrageTimer <= 0f)
+        _enrageTimer.value -= Time.deltaTime;
+        if (_enrageTimer.value <= 0f)
         {
             _isEnraged = true;
             OnEnrage();
         }
     }
+
+    public float EnrageProgress => _isEnraged ? 0f : Mathf.Clamp01(_enrageTimer.value / EnrageDuration);
 
     protected virtual void OnEnrage() { }
 }

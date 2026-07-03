@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#3278FF>I Need More Bullets</color>
   description: '<color=#3278FF>+2 Multishot</color>
 
-    <color=#FF5000>-60% Damage</color>
+    <color=#FF5000>-55% Damage</color>
 
     <color=#FF0050>-30%
     On-Hit Effectiveness</color>'

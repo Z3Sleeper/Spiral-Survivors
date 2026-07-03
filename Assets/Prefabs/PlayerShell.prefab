@@ -89,3 +89,7 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
+  colorIndex:
+    _value: 0
+    _ownerAuth: 0
+    _sendIntervalInSeconds: 0

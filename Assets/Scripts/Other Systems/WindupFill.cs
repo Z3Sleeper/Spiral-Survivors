@@ -18,6 +18,20 @@ public class WindupFill : MonoBehaviour
     private float _elapsed;
     private bool _filling;
     private bool _awoken;
+    private bool _paused;
+
+    private void OnEnable()
+    {
+        GameManager.OnPauseChanged += OnPauseChanged;
+        if (GameManager.instance != null) _paused = GameManager.instance.IsPaused;
+    }
+
+    private void OnDisable()
+    {
+        GameManager.OnPauseChanged -= OnPauseChanged;
+    }
+
+    private void OnPauseChanged(bool paused) => _paused = paused;
 
     private void Awake()
     {
@@ -61,7 +75,7 @@ public class WindupFill : MonoBehaviour
 
     private void Update()
     {
-        if (!_filling) return;
+        if (!_filling || _paused) return;
         _elapsed += Time.deltaTime;
         Apply(Mathf.Clamp01(_elapsed / _duration));
         if (_elapsed >= _duration) _filling = false;

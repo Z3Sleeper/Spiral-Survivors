@@ -150,12 +150,12 @@ public class EnemySpawner : NetworkIdentity
             }
 
             bool bossAlive = IsBossAlive();
+            bool spawnBlackout = _spawnPhase == 3 && CycleTimer < cycleInterval * 0.125f;
 
-            if (!bossAlive)
+            if (!bossAlive && !spawnBlackout)
             {
-                bool eliteBlackout = _spawnPhase == 3 && CycleTimer < cycleInterval * 0.125f;
                 var tier = GetCurrentTier();
-                if (_currentElitePool.Count > 0 && _spawnPhase >= 1 && !eliteBlackout)
+                if (_currentElitePool.Count > 0 && _spawnPhase >= 1)
                 {
                     _elitePrdChance += eliteChance;
                     if (UnityEngine.Random.value < _elitePrdChance)
@@ -184,11 +184,15 @@ public class EnemySpawner : NetworkIdentity
         while (true)
         {
             bool bossAlive = IsBossAlive();
-            int count = plebSpawnAmount;
-            for (int i = 0; i < count; i++)
+            bool spawnBlackout = _spawnPhase == 3 && CycleTimer < cycleInterval * 0.125f;
+            if (!spawnBlackout)
             {
-                if (EnemyBase.ActivePlebCount < maxPlebEnemies)
-                    SpawnThisEnemy(GetRandom(GetCurrentTier().pleb), false, noXP: bossAlive, isPleb: true);
+                int count = plebSpawnAmount;
+                for (int i = 0; i < count; i++)
+                {
+                    if (EnemyBase.ActivePlebCount < maxPlebEnemies)
+                        SpawnThisEnemy(GetRandom(GetCurrentTier().pleb), false, noXP: bossAlive, isPleb: true);
+                }
             }
             yield return new WaitForSeconds(_currentPlebSpawnInterval / coopScale);
         }
@@ -334,7 +338,7 @@ public class EnemySpawner : NetworkIdentity
             return Vector3.Lerp(_spawnPoints[i].position, _spawnPoints[j].position, UnityEngine.Random.value);
         }
 
-        var players = CharacterStats.All.Where(p => !p.IsDead).ToList();
+        var players = CharacterStats.All.Values.Where(p => !p.IsDead).ToList();
 
         if (players.Count == 0) return Vector3.zero;
 

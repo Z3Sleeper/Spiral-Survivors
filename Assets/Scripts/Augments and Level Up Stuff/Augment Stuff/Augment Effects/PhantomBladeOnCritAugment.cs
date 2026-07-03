@@ -3,7 +3,8 @@ using UnityEngine;
 public class PhantomBladeOnCritAugment : MonoBehaviour
 {
     [SerializeField] private GameObject phantomBladePrefab;
-    [SerializeField] private float damageStatMultiplier = 1f;
+    [SerializeField] private float _baseDamageMultiplier = 0.75f;
+    [SerializeField] private float _variancePercent = 0.20f;
     [SerializeField] private float bonusCritChance = 0.1f;
     [SerializeField] private float bladeDamageBonus = 0.1f;
     [SerializeField] private int critsPerBlade = 3;
@@ -50,8 +51,10 @@ public class PhantomBladeOnCritAugment : MonoBehaviour
             enemy.transform.position.z + offset.z);
         Vector3 forward = (enemy.transform.position - spawnPos).normalized;
 
+        float max = _baseDamageMultiplier * (1f + _variancePercent);
+        float min = Mathf.Lerp(_baseDamageMultiplier * (1f - _variancePercent), max, _stats.LuckChance);
         var blade = Instantiate(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward)).GetComponent<PhantomBlade>();
         blade.target = enemy;
-        blade.Init(_stats, damageStatMultiplier, effectiveness, unpenalized: false);
+        blade.Init(_stats, Random.Range(min, max), effectiveness, unpenalized: false);
     }
 }

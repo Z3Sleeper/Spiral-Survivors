@@ -12,7 +12,7 @@ public class MissingHealthToRegenAugment : MonoBehaviour
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
-        _stats.BonusHealthRegenFlat += flatRegenBonus;
+        _stats.AddHealthRegenFlat(flatRegenBonus);
     }
 
     private void Update()
@@ -22,14 +22,14 @@ public class MissingHealthToRegenAugment : MonoBehaviour
         if (shouldBeActive == _bonusActive) return;
 
         _bonusActive = shouldBeActive;
-        _stats.BonusHealthRegenPercent += shouldBeActive ? regenPercentBonus : -regenPercentBonus;
+        _stats.AddHealthRegenPercent(shouldBeActive ? regenPercentBonus : -regenPercentBonus);
     }
 
     private void OnDestroy()
     {
-        if (_stats == null || !_stats.isSpawned) return;
-        _stats.BonusHealthRegenFlat -= flatRegenBonus;
+        if (_stats == null || !_stats.isOwner || !_stats.isSpawned) return;
+        _stats.AddHealthRegenFlat(-flatRegenBonus);
         if (_bonusActive)
-            _stats.BonusHealthRegenPercent -= regenPercentBonus;
+            _stats.AddHealthRegenPercent(-regenPercentBonus);
     }
 }

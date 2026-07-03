@@ -92,15 +92,6 @@ public class PlayerController : NetworkIdentity
             LocalUIManager.instance?.SetAugmentListVisible(false);
         }
 
-        if (_isPaused) return;
-
-        _sweepTimer -= Time.deltaTime;
-        if (_sweepTimer <= 0f)
-        {
-            _sweepTimer = SweepInterval;
-            SweepForOrbs();
-        }
-
         // Pause input
         if (_input.Player.Pause.WasPressedThisFrame() && !LocalUIManager.instance.IsLevelingUp)
         {
@@ -113,6 +104,15 @@ public class PlayerController : NetworkIdentity
             }
             else
                 GameManager.instance.RequestPauseRpc();
+        }
+
+        if (_isPaused) return;
+
+        _sweepTimer -= Time.deltaTime;
+        if (_sweepTimer <= 0f)
+        {
+            _sweepTimer = SweepInterval;
+            SweepForOrbs();
         }
 
         // Dash input
@@ -182,7 +182,7 @@ public class PlayerController : NetworkIdentity
 
     private void FixedUpdate()
     {
-        if (_input == null) return;
+        if (_input == null || _isPaused) return;
 
         Vector2 move = _input.Player.Move.ReadValue<Vector2>();
         Vector3 moveDir = new Vector3(move.x, 0, move.y).normalized;
@@ -222,7 +222,7 @@ public class PlayerController : NetworkIdentity
         float scaledDashSpeed = DashSpeed * ((4f + moveSpeedForDash) / 4f);
         _dashVelocity = _lastMoveDir * scaledDashSpeed;
         _dashTimer = DashDistance / DashSpeed;
-        _stats.invincible = true;
+        _stats.SetInvincible(_dashTimer);
         _physicsCollider.enabled = false;
 
         _rb.linearVelocity = Vector3.zero;
@@ -231,7 +231,7 @@ public class PlayerController : NetworkIdentity
     private void EndDash()
     {
         _isDashing = false;
-        _stats.invincible = false;
+        _stats.SetInvincible(0f);
         _physicsCollider.enabled = true;
         _rb.linearVelocity = Vector3.zero;
         OnDashEnded?.Invoke(this);

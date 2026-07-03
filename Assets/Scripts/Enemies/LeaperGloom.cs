@@ -33,6 +33,7 @@ public class LeaperGloom : EnemyBase
     private State _state = State.Moving;
     private void SetState(State state)
     {
+        isStunnable = state == State.Moving ? !stunResistant : false;
         _state = state;
         OnStateChanged(state);
         SyncStateRpc(state, _leapTarget);
@@ -91,8 +92,7 @@ public class LeaperGloom : EnemyBase
     protected override void Update()
     {
         base.Update();
-        if (!isServer) return;
-        if (_isDead) return;
+        if (!isServer || _isDead || IsStunned) return;
 
         _stateTimer -= Time.deltaTime;
         _attackCooldownTimer -= Time.deltaTime;
@@ -100,7 +100,7 @@ public class LeaperGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (TargetInRange() && _attackCooldownTimer <= 0f)
+                if (TargetInRange() && _attackCooldownTimer <= 0f && !_specialRoutineActive)
                     EnterWindup();
                 break;
 
@@ -128,7 +128,7 @@ public class LeaperGloom : EnemyBase
 
     protected override void FixedUpdate()
     {
-        if (_isDead) return;
+        if (_isDead || IsStunned) return;
         if (_state == State.Moving)
             base.FixedUpdate();
 
@@ -174,7 +174,6 @@ public class LeaperGloom : EnemyBase
         _rb.isKinematic = true;
         _physicsCollider.enabled = false;
         _hurtbox.enabled = false;
-
     }
 
     private void Land()

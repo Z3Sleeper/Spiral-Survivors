@@ -10,7 +10,6 @@ GameObject:
   m_Component:
   - component: {fileID: 717778398016304640}
   - component: {fileID: 4450387176007255108}
-  - component: {fileID: 5623654910172031841}
   m_Layer: 0
   m_Name: DashExplosionAugment
   m_TagString: Untagged
@@ -45,20 +44,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9ba4d0f7a6ceb874f91dd8419f7e5e70, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DashExplosionAugment
-  _damagePercent: 2.5
-  _onHitEffectiveness: 2.5
+  _basePercent: 2.5
+  _variancePercent: 0.2
   _radius: 5
   _vfxPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
   _vfxDuration: 0.2
---- !u!114 &5623654910172031841
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 665322196475195602}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: ec6f4b6b1dd9ca749be334f67c916013, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PauseAwareVFX
+  _bonusDashHaste: 20
