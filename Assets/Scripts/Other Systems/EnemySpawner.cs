@@ -33,7 +33,7 @@ public class EnemySpawner : NetworkIdentity
     [SerializeField] private float spawnIntervalQ2 = 3f;
     [SerializeField] private float spawnIntervalQ3 = 1.5f;
     [SerializeField] private float spawnIntervalQ4 = 0.75f;
-    [SerializeField] private float cycleInterval = 150f;
+    [SerializeField] private float cycleInterval = 240f;
     [SerializeField] private float eliteChance = 0.05f;
     public enum WinOnBoss { First = 1, Second = 2, Third = 3, Fourth = 4 }
     [SerializeField] private WinOnBoss winOnBoss = WinOnBoss.Second;
@@ -150,7 +150,7 @@ public class EnemySpawner : NetworkIdentity
             }
 
             bool bossAlive = IsBossAlive();
-            bool spawnBlackout = _spawnPhase == 3 && CycleTimer < cycleInterval * 0.125f;
+            bool spawnBlackout = _spawnPhase == 3 && CycleTimer < 15f;
 
             if (!bossAlive && !spawnBlackout)
             {
@@ -184,7 +184,7 @@ public class EnemySpawner : NetworkIdentity
         while (true)
         {
             bool bossAlive = IsBossAlive();
-            bool spawnBlackout = _spawnPhase == 3 && CycleTimer < cycleInterval * 0.125f;
+            bool spawnBlackout = _spawnPhase == 3 && CycleTimer < 15f;
             if (!spawnBlackout)
             {
                 int count = plebSpawnAmount;
