@@ -8,25 +8,43 @@ public class GremlinAugment : MonoBehaviour
 
     private static readonly string[] _unscaledChildren = { "ReviveZone", "WorldspaceUI", "Minimap Icon" };
 
+    private CharacterStats _stats;
+
     private void Start()
     {
-        var stats = GetComponentInParent<CharacterStats>();
-        if (stats == null || !stats.isOwner) { Destroy(gameObject); return; }
+        _stats = GetComponentInParent<CharacterStats>();
+        if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
 
-        stats.transform.localScale *= _sizeChange;
-        stats.bonusWeaponRadiusPercent *= _sizeChange;
-        stats.bonusWeaponSizePercent *= _sizeChange;
+        _stats.transform.localScale *= _sizeChange;
+        _stats.bonusWeaponRadiusPercent *= _sizeChange;
+        _stats.bonusWeaponSizePercent *= _sizeChange;
 
         foreach (var childName in _unscaledChildren)
         {
-            var child = stats.transform.Find(childName);
+            var child = _stats.transform.Find(childName);
             if (child != null)
                 child.localScale /= _sizeChange;
         }
 
-        stats.attackSpeedTotalPercent += _attackSpeedPercentBonus;
-        stats.bonusMoveSpeedPercent += _moveSpeedPercentBonus;
+        _stats.attackSpeedTotalPercent += _attackSpeedPercentBonus;
+        _stats.bonusMoveSpeedPercent += _moveSpeedPercentBonus;
+    }
 
-        Destroy(gameObject);
+    private void OnDestroy()
+    {
+        if (_stats == null) return;
+        _stats.transform.localScale /= _sizeChange;
+        _stats.bonusWeaponRadiusPercent /= _sizeChange;
+        _stats.bonusWeaponSizePercent /= _sizeChange;
+
+        foreach (var childName in _unscaledChildren)
+        {
+            var child = _stats.transform.Find(childName);
+            if (child != null)
+                child.localScale *= _sizeChange;
+        }
+
+        _stats.attackSpeedTotalPercent -= _attackSpeedPercentBonus;
+        _stats.bonusMoveSpeedPercent -= _moveSpeedPercentBonus;
     }
 }

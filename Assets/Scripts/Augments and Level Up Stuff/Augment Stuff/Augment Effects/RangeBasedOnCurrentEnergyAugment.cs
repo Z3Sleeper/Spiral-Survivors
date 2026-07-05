@@ -2,10 +2,9 @@ using UnityEngine;
 
 public class RangeBasedOnCurrentEnergyAugment : MonoBehaviour
 {
-    [SerializeField] private float _bonusMaxEnergy    = 20f;
-    [SerializeField] private float _energyThreshold   = 0.75f;
-    [SerializeField] private float _flatRangeBonus    = 10f;
-    [SerializeField] private float _maxEnergyPercent  = 0.05f;
+    [SerializeField] private float _bonusMaxEnergy   = 25f;
+    [SerializeField] private float _energyThreshold  = 0.75f;
+    [SerializeField] private float _maxEnergyPercent = 0.05f;
 
     private CharacterStats _stats;
     private float _currentBonus;
@@ -22,12 +21,12 @@ public class RangeBasedOnCurrentEnergyAugment : MonoBehaviour
         if (_stats == null || !_stats.isSpawned) return;
 
         float targetBonus = _stats.CurrentEnergy >= _stats.MaxEnergy * _energyThreshold
-            ? (_flatRangeBonus + _maxEnergyPercent * _stats.MaxEnergy) * 0.01f
+            ? _maxEnergyPercent * _stats.MaxEnergy
             : 0f;
 
         if (Mathf.Abs(targetBonus - _currentBonus) > 0.0001f)
         {
-            _stats.bonusWeaponRangePercent += targetBonus - _currentBonus;
+            _stats.bonusWeaponRangeFlat += targetBonus - _currentBonus;
             _currentBonus = targetBonus;
         }
     }
@@ -35,7 +34,7 @@ public class RangeBasedOnCurrentEnergyAugment : MonoBehaviour
     private void OnDestroy()
     {
         if (_stats == null || !_stats.isOwner || !_stats.isSpawned) return;
-        _stats.bonusMaxEnergyFlat      -= _bonusMaxEnergy;
-        _stats.bonusWeaponRangePercent -= _currentBonus;
+        _stats.bonusMaxEnergyFlat   -= _bonusMaxEnergy;
+        _stats.bonusWeaponRangeFlat -= _currentBonus;
     }
 }

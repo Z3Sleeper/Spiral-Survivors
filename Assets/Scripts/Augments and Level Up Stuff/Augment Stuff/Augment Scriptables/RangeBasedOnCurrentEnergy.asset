@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: RangeBasedOnCurrentEnergy
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energetic Reach</color>
-  description: 'While above <color=#FFFF00>75% Max Energy</color> gain <color=#3278FF>+(5
-    + <color=#FFFF00>5% of your Max Energy</color>)% Range</color>.
+  description: 'While above <color=#FFFF00>75% Max Energy</color> gain +<color=#FFFF00>5%
+    of your Max Energy</color> as <color=#3278FF>Range</color>.
 
     <color=#FFFF00>+25
     Max Energy</color>'

@@ -337,6 +337,9 @@ MonoBehaviour:
   xpValue: 5
   contactColliderEnabled: 1
   contactCooldown: 0.5
+  stunResistant: 0
+  showDamageNumbers: 1
+  _damageNumberPlayerOffset: 0.625
   _currentHealthSync:
     _value: 0
     _ownerAuth: 0
@@ -1504,8 +1507,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WindupFill
   fillType: 0
-  fillAxis: 2
-  fillMode: 1
+  fillAxis: 0
+  fillMode: 0
 --- !u!1 &8433830180272769361
 GameObject:
   m_ObjectHideFlags: 0

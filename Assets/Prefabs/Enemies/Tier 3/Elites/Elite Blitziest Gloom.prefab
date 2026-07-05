@@ -10,7 +10,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 3470414442967365969, guid: 8fa497e307b2c3e43b0d6a5533125a52, type: 3}
       propertyPath: xpValue
-      value: 270
+      value: 750
       objectReference: {fileID: 0}
     - target: {fileID: 3470414442967365969, guid: 8fa497e307b2c3e43b0d6a5533125a52, type: 3}
       propertyPath: enemyName
@@ -22,7 +22,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3470414442967365969, guid: 8fa497e307b2c3e43b0d6a5533125a52, type: 3}
       propertyPath: blitzesPerAttack
-      value: 4
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3470414442967365969, guid: 8fa497e307b2c3e43b0d6a5533125a52, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
       objectReference: {fileID: 0}
     - target: {fileID: 4262531963501680081, guid: 8fa497e307b2c3e43b0d6a5533125a52, type: 3}
       propertyPath: m_LocalScale.x

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: x2Weapons
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF00FF>Another Fine Addition</color>
-  description: '<color=#FF00FF>+100% Weapons</color>
+  description: '<color=#FF00FF>x2 Weapons</color>
 
     <color=#FF5000>-35% Damage</color>
 

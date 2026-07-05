@@ -70,7 +70,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: xpValue
-      value: 270
+      value: 750
       objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: enemyName
@@ -82,16 +82,24 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: multishot
-      value: 2
+      value: 6
       objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: spawnOffset
       value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
+      propertyPath: minAttackRange
+      value: 9
+      objectReference: {fileID: 0}
+    - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: projectilePrefab
       value: 
       objectReference: {fileID: 2576828191180572647, guid: b38d9c94da1e6644ea023ce2d4f7c306, type: 3}
+    - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

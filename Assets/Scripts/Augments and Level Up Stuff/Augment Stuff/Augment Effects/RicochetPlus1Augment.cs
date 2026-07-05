@@ -4,14 +4,20 @@ public class RicochetPlus1Augment : MonoBehaviour
 {
     [SerializeField] private float _dropoffReduction = 0.5f;
 
+    private CharacterStats _stats;
+
     private void Start()
     {
-        var stats = GetComponentInParent<CharacterStats>();
-        if (stats != null && stats.isOwner)
-        {
-            stats.bonusRicochetFlat += 1f;
-            stats.projectileDamageDropoffReduction *= 1f - _dropoffReduction;
-        }
-        Destroy(gameObject);
+        _stats = GetComponentInParent<CharacterStats>();
+        if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
+        _stats.bonusRicochetFlat += 1f;
+        _stats.projectileDamageDropoffReduction *= 1f - _dropoffReduction;
+    }
+
+    private void OnDestroy()
+    {
+        if (_stats == null) return;
+        _stats.bonusRicochetFlat -= 1f;
+        _stats.projectileDamageDropoffReduction /= 1f - _dropoffReduction;
     }
 }

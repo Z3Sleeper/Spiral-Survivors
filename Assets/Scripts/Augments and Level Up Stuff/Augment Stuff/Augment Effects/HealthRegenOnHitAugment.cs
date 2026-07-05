@@ -29,7 +29,7 @@ public class HealthRegenOnHitAugment : MonoBehaviour
         if (source != _stats) return;
         float max = _baseRegenMultiplier * (1f + _variancePercent);
         float min = Mathf.Lerp(_baseRegenMultiplier * (1f - _variancePercent), max, _stats.LuckChance);
-        float bonus = Random.Range(min, max) * _stats.HealthRegen * _stats.OnHitEffectiveness * effectiveness;
+        float bonus = Random.Range(min, max) * _stats.HealthRegen * _stats.OnHitPower * effectiveness;
         enemy.TakeDamageRpc(bonus);
     }
 }

@@ -3,16 +3,22 @@ using UnityEngine;
 public class MultiShotSpreadAugment : MonoBehaviour
 {
     [SerializeField] private float _spreadReduction = 0.8f;
-    [SerializeField] private float _dropoffReduction = 0.5f;
+    [SerializeField] private float _knockbackMulti = 1f;
+
+    private CharacterStats _stats;
 
     private void Start()
     {
-        var stats = GetComponentInParent<CharacterStats>();
-        if (stats != null && stats.isOwner)
-        {
-            stats.multishotSpreadAngle *= 1f - _spreadReduction;
-            stats.projectileDamageDropoffReduction *= 1f - _dropoffReduction;
-        }
-        Destroy(gameObject);
+        _stats = GetComponentInParent<CharacterStats>();
+        if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
+        _stats.multishotSpreadAngle *= 1f - _spreadReduction;
+        _stats.knockbackMultiplier += _knockbackMulti;
+    }
+
+    private void OnDestroy()
+    {
+        if (_stats == null) return;
+        _stats.multishotSpreadAngle /= 1f - _spreadReduction;
+        _stats.knockbackMultiplier -= _knockbackMulti;
     }
 }

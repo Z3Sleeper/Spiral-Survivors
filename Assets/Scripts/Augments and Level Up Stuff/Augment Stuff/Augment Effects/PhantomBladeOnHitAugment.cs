@@ -43,6 +43,6 @@ public class PhantomBladeOnHitAugment : MonoBehaviour
         if (stats != _stats) return;
         float max = _baseDamagePercent * (1f + _variancePercent);
         float min = Mathf.Lerp(_baseDamagePercent * (1f - _variancePercent), max, _stats.LuckChance);
-        enemy.TakeDamageRpc(_stats.WeaponDamage * Random.Range(min, max) * _stats.OnHitEffectiveness * effectiveness);
+        enemy.TakeDamageRpc(_stats.WeaponDamage * Random.Range(min, max) * _stats.OnHitPower * effectiveness);
     }
 }

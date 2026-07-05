@@ -6,7 +6,7 @@ public class WeaponArrow : NetworkIdentity
 {
     [SerializeField] private Vector3 arrowHalfExtents = new(0.1f, 0.1f, 0.25f);
     private float _speed;
-    private float _onHitEffectiveness = 1f;
+    private float _onHitPower = 1f;
     private float _onHitDropOff;
     private float _damage;
     private float _maxRange;
@@ -126,9 +126,9 @@ public class WeaponArrow : NetworkIdentity
 
         enemy.TakeDamageRpc(damage, isCrit);
         _damage *= 1f - _damageDropoff;
-        if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy, _onHitEffectiveness, isCrit);
-        if (isCrit && _ownerStats != null) WeaponBase.RaiseOnCritStrike(_ownerStats, enemy, _onHitEffectiveness);
-        _onHitEffectiveness *= 1f - _onHitDropOff;
+        if (_ownerStats != null) WeaponBase.RaiseOnStrike(_ownerStats, enemy, _onHitPower, isCrit);
+        if (isCrit && _ownerStats != null) WeaponBase.RaiseOnCritStrike(_ownerStats, enemy, _onHitPower);
+        _onHitPower *= 1f - _onHitDropOff;
         SFXManager.instance?.Play(_hitSound, transform.position, 1f, 0.05f);
 
         if (_ricochetsRemaining > 0)
@@ -165,7 +165,7 @@ public class WeaponArrow : NetworkIdentity
     {
         _hitAllies.Add(ally);
 
-        if (_ownerStats != null) WeaponBase.RaiseOnAllyHit(_ownerStats, ally, _onHitEffectiveness);
+        if (_ownerStats != null) WeaponBase.RaiseOnAllyHit(_ownerStats, ally, _onHitPower);
 
         if (_canDamageAllies)
         {
@@ -174,7 +174,7 @@ public class WeaponArrow : NetworkIdentity
             if (isCrit) damage *= _critDamage;
             ally.TakeDamageRpc(damage);
             _damage *= 1f - _damageDropoff;
-            _onHitEffectiveness *= 1f - _onHitDropOff;
+            _onHitPower *= 1f - _onHitDropOff;
         }
 
         SFXManager.instance?.Play(_hitSound, transform.position, 1f, 0.05f);

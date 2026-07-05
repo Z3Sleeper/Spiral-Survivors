@@ -53,8 +53,16 @@ PrefabInstance:
       value: 0.2
       objectReference: {fileID: 0}
     - target: {fileID: 6248512419650773259, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: _damageNumberHeight
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6248512419650773259, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
       propertyPath: rangeToleranceClose
       value: 0.06
+      objectReference: {fileID: 0}
+    - target: {fileID: 6248512419650773259, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
       objectReference: {fileID: 0}
     - target: {fileID: 6743522506145694241, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
       propertyPath: m_ConstrainProportionsScale

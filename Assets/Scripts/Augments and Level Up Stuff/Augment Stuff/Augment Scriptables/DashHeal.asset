@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Swift Mending</color>
   description: '<color=#00FFFF>Dashing</color> <color=#7DFF00>Heals</color> you and
-    nearby allies for <color=#7DFF00>800%-1200% Health Regen</color>.
+    nearby allies for <color=#7DFF00>1200%-1800% Health Regen</color>.
 
     <color=#00FFFF>+20
     Dash Haste</color>'

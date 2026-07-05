@@ -45,5 +45,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShieldDamageReductionAugment
   _damageReduction: 0.25
-  _duration: 2
+  _duration: 5
   _maxShieldBonusPercent: 0.5

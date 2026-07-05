@@ -48,6 +48,14 @@ PrefabInstance:
       propertyPath: blitzesPerAttack
       value: 2
       objectReference: {fileID: 0}
+    - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
+      propertyPath: _damageNumberHeight
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
+      objectReference: {fileID: 0}
     - target: {fileID: 7839943648137112170, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: m_LocalScale.x
       value: 2

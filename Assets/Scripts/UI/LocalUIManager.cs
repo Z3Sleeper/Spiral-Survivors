@@ -313,7 +313,7 @@ public class LocalUIManager : MonoBehaviour
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
         _statsSB.AppendLine($" {_stats.Luck:G4}");
-        _statsSB.AppendLine($" {_stats.OnHitEffectiveness * 100f:G4}%");
+        _statsSB.AppendLine($" {_stats.OnHitPower * 100f:G4}%");
         statsNumbersText.text = _statsSB.ToString();
     }
 
@@ -344,7 +344,7 @@ public class LocalUIManager : MonoBehaviour
     {
         if (GameManager.instance == null) return;
         xpBar.value = GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
-        xpText.text = $"<b>Level {GameManager.instance.Level} | {FormatStat(GameManager.instance.CurrentXP)}/{FormatStat(GameManager.instance.XPToNextLevel)} XP</b>";
+        xpText.text = $"<b>Level {GameManager.instance.Level} | {FormatStat(GameManager.instance.CurrentXP, 1)}/{FormatStat(GameManager.instance.XPToNextLevel, 1)} XP</b>";
     }
 
     private void UpdateSessionPoints()

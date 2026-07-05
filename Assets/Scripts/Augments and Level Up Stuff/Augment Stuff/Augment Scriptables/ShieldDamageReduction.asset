@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: ShieldDamageReduction
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF00FF>Reinforced Shielding</color>
-  description: 'Gain <color=#8C8C8C>25% Damage Reduction</color>. Bonus is lost 2
+  description: 'Gain <color=#8C8C8C>25% Damage Reduction</color>. Bonus is lost 5
     seconds after your <color=#FF00FF>Shield</color> breaks.
 
     <color=#FF00FF>+50%

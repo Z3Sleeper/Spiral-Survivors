@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: MaxHealthToDamage
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FF00>Bulk Blade</color>
-  description: 'Gain <color=#FF5000>Damage</color> equal to <color=#00FF00>5% Max
+  description: 'Gain <color=#FF5000>Damage</color> equal to <color=#00FF00>10% Max
     Health</color>.
 
     <color=#00FF00>+10 Max Health</color>'

@@ -449,6 +449,7 @@ MonoBehaviour:
   contactCooldown: 0.5
   stunResistant: 0
   showDamageNumbers: 1
+  _damageNumberPlayerOffset: 0.625
   _currentHealthSync:
     _value: 0
     _ownerAuth: 0

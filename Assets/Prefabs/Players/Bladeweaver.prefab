@@ -766,7 +766,7 @@ MonoBehaviour:
     _value: 1
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
-  baseMaxShield: 0.1
+  baseMaxShield: 0.05
   _bonusMaxShieldFlat:
     _value: 0
     _ownerAuth: 1
@@ -794,13 +794,13 @@ MonoBehaviour:
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseLuck: 0
-  baseKnockback: 10
-  baseOnHitEffectiveness: 1
-  bonusOnHitEffectivenessMultiplier: 1
-  bonusOnHitEffectivenessPenalty: 0.5
+  baseKnockback: 3
+  baseOnHitPower: 1
+  bonusOnHitPowerMultiplier: 1
+  bonusOnHitPowerPenalty: 0.5
   _reviveTimeSync:
     _value: 3
-    _ownerAuth: 1
+    _ownerAuth: 0
     _sendIntervalInSeconds: 0
   _isDeadSync:
     _value: 0

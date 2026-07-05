@@ -14,7 +14,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4914970661950025587, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
       propertyPath: xpValue
-      value: 270
+      value: 750
       objectReference: {fileID: 0}
     - target: {fileID: 4914970661950025587, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
       propertyPath: enemyName
@@ -30,7 +30,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4914970661950025587, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
       propertyPath: leapsPerAttack
-      value: 4
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 4914970661950025587, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
       propertyPath: windupDuration
@@ -39,6 +39,10 @@ PrefabInstance:
     - target: {fileID: 4914970661950025587, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
       propertyPath: leapOffsetRadius
       value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 4914970661950025587, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
       objectReference: {fileID: 0}
     - target: {fileID: 5506969224692392625, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
       propertyPath: m_LocalScale.x

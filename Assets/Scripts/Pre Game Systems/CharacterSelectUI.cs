@@ -18,6 +18,8 @@ public class CharacterSelectUI : MonoBehaviour
 
     private readonly Dictionary<string, int> _charSelections = new();
     private readonly Dictionary<string, int> _colorSelections = new();
+    private readonly Dictionary<string, long> _powerLevels = new();
+    private bool _isRandom;
 
     private void Awake()
     {
@@ -97,6 +99,10 @@ public class CharacterSelectUI : MonoBehaviour
                 string colorVal = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, memberSteamID, "color");
                 if (int.TryParse(colorVal, out int colorIdx))
                     _colorSelections[member.Id] = colorIdx;
+
+                string powerVal = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, memberSteamID, "power");
+                if (long.TryParse(powerVal, out long power))
+                    _powerLevels[member.Id] = power;
             }
         }
 
@@ -108,13 +114,13 @@ public class CharacterSelectUI : MonoBehaviour
 
             if (member.Id == GameStartData.LocalUserId)
             {
-                charName = CharacterRegistry.instance.GetPrefab(GameStartData.LocalCharacterIndex).name;
+                charName = _isRandom ? "Random" : CharacterRegistry.instance.GetPrefab(GameStartData.LocalCharacterIndex).name;
                 colorIndex = GameStartData.LocalColorIndex;
             }
             else
             {
                 if (_charSelections.TryGetValue(member.Id, out int charIdx))
-                    charName = CharacterRegistry.instance.GetPrefab(charIdx).name;
+                    charName = charIdx == -1 ? "Random" : CharacterRegistry.instance.GetPrefab(charIdx).name;
                 if (_colorSelections.TryGetValue(member.Id, out int cIdx))
                     colorIndex = cIdx;
             }
@@ -124,7 +130,11 @@ public class CharacterSelectUI : MonoBehaviour
                 : "FFFFFF";
 
             string readyState = member.IsReady ? "Ready" : "Not Ready";
-            sb.AppendLine($"<color=#{colorHex}>■</color> {readyState} - {member.DisplayName} - {charName}");
+            long power = member.Id == GameStartData.LocalUserId
+                ? ProgressionManager.SpentPoints
+                : (_powerLevels.TryGetValue(member.Id, out long p) ? p : 0L);
+            string powerStr = ProgressionManager.FormatPoints(power);
+            sb.AppendLine($"<color=#{colorHex}>■</color> {readyState} - {member.DisplayName} - {charName} - Spent Points: {powerStr}");
         }
         playerListText.text = sb.ToString();
     }
@@ -137,7 +147,17 @@ public class CharacterSelectUI : MonoBehaviour
 
     public void OnRandomClicked()
     {
-        SelectCharacter(UnityEngine.Random.Range(0, CharacterRegistry.instance.PrefabCount()));
+        _isRandom = true;
+        GameStartData.LocalCharacterIndex = UnityEngine.Random.Range(0, CharacterRegistry.instance.PrefabCount());
+        _charSelections[GameStartData.LocalUserId] = -1;
+
+        if (lobbyManager != null)
+        {
+            var lobby = lobbyManager.CurrentLobby;
+            if (lobby.IsValid && ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
+                SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "char", "-1");
+            RefreshFromLobby(lobby);
+        }
     }
 
     public void OnReadyClicked()
@@ -177,6 +197,7 @@ public class CharacterSelectUI : MonoBehaviour
 
     private void SelectCharacter(int index)
     {
+        _isRandom = false;
         GameStartData.LocalCharacterIndex = index;
         _charSelections[GameStartData.LocalUserId] = index;
 

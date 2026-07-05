@@ -35,6 +35,8 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     [NonSerialized] public bool _isDead = false;
     public bool stunResistant = false;
     public bool showDamageNumbers = true;
+    [SerializeField] private float _damageNumberPlayerOffset = 0f;
+    private PlayerID _killerOwner;
     protected bool _specialRoutineActive = false;
     private bool _isStunnable;
     public bool isStunnable
@@ -295,9 +297,12 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         if (CurrentHealth <= 0) return;
         CurrentHealth -= damage;
         FlashHitRpc();
-        if (showDamageNumbers) ShowDamageNumberRpc(damage, transform.position, isCrit, attackerOwner);
+        if (showDamageNumbers) ShowDamageNumberRpc(damage, transform.position, isCrit, attackerOwner, _damageNumberPlayerOffset);
         if (CurrentHealth <= 0)
+        {
+            _killerOwner = attackerOwner;
             Die();
+        }
     }
 
     [SerializeField] private Renderer[] _renderers;
@@ -311,8 +316,21 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     }
 
     [ObserversRpc]
-    private void ShowDamageNumberRpc(float amount, Vector3 position, bool isCrit, PlayerID attackerOwner)
+    private void ShowDamageNumberRpc(float amount, Vector3 position, bool isCrit, PlayerID attackerOwner, float playerOffset)
     {
+        if (playerOffset != 0f)
+        {
+            CharacterStats localPlayer = null;
+            foreach (var kv in CharacterStats.All)
+                if (kv.Value.isOwner) { localPlayer = kv.Value; break; }
+            if (localPlayer != null)
+            {
+                Vector3 toPlayer = localPlayer.transform.position - position;
+                toPlayer.y = 0f;
+                if (toPlayer.sqrMagnitude > 0.001f)
+                    position += toPlayer.normalized * playerOffset;
+            }
+        }
         DamageNumberManager.instance?.Spawn(amount, position, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), isCrit, attackerOwner);
     }
 
@@ -354,12 +372,12 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         XPOrbManager.instance.SpawnOrbs(transform.position, xpValue);
         GameManager.instance?.AwardPoints(Mathf.RoundToInt(pointValue));
 
-        HideOnDeathRpc();
+        HideOnDeathRpc(_killerOwner);
         Destroy(gameObject, 0.5f);
     }
 
     [ObserversRpc]
-    private void HideOnDeathRpc()
+    private void HideOnDeathRpc(PlayerID killerOwner)
     {
         _isDead = true;
         foreach (var col in GetComponentsInChildren<Collider>())
@@ -367,6 +385,11 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         foreach (var renderer in GetComponentsInChildren<Renderer>())
             renderer.enabled = false;
         OnHideOnDeath();
+
+        CharacterStats.All.TryGetValue(killerOwner, out var killer);
+        CharacterStats.RaiseOnEnemyDeath(killer, this);
+        if (killer != null && killer.isOwner)
+            CharacterStats.RaiseOnEnemyKill(killer, this);
     }
 
     protected virtual void OnHideOnDeath()

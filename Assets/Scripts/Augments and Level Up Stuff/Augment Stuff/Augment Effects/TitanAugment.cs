@@ -8,25 +8,43 @@ public class TitanAugment : MonoBehaviour
 
     private static readonly string[] _unscaledChildren = { "ReviveZone", "WorldspaceUI", "Minimap Icon" };
 
+    private CharacterStats _stats;
+
     private void Start()
     {
-        var stats = GetComponentInParent<CharacterStats>();
-        if (stats == null || !stats.isOwner) { Destroy(gameObject); return; }
+        _stats = GetComponentInParent<CharacterStats>();
+        if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
 
-        stats.transform.localScale *= _sizeMultiplier;
-        stats.bonusWeaponRangePercent += _rangeBonus;
-        stats.bonusWeaponRadiusPercent *= _sizeMultiplier;
-        stats.bonusWeaponSizePercent *= _sizeMultiplier;
+        _stats.transform.localScale *= _sizeMultiplier;
+        _stats.bonusWeaponRangePercent += _rangeBonus;
+        _stats.bonusWeaponRadiusPercent *= _sizeMultiplier;
+        _stats.bonusWeaponSizePercent *= _sizeMultiplier;
 
         foreach (var childName in _unscaledChildren)
         {
-            var child = stats.transform.Find(childName);
+            var child = _stats.transform.Find(childName);
             if (child != null)
                 child.localScale /= _sizeMultiplier;
         }
 
-        stats.AddMaxHealthPercent(_healthBonus);
+        _stats.AddMaxHealthPercent(_healthBonus);
+    }
 
-        Destroy(gameObject);
+    private void OnDestroy()
+    {
+        if (_stats == null) return;
+        _stats.transform.localScale /= _sizeMultiplier;
+        _stats.bonusWeaponRangePercent -= _rangeBonus;
+        _stats.bonusWeaponRadiusPercent /= _sizeMultiplier;
+        _stats.bonusWeaponSizePercent /= _sizeMultiplier;
+
+        foreach (var childName in _unscaledChildren)
+        {
+            var child = _stats.transform.Find(childName);
+            if (child != null)
+                child.localScale *= _sizeMultiplier;
+        }
+
+        if (_stats.isSpawned) _stats.AddMaxHealthPercent(-_healthBonus);
     }
 }

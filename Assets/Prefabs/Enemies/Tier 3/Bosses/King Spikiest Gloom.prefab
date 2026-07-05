@@ -38,7 +38,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5449707049860242090, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
       propertyPath: xpValue
-      value: 4500
+      value: 12500
       objectReference: {fileID: 0}
     - target: {fileID: 5449707049860242090, guid: 30e18fb9c372e1a47a8c144712c618da, type: 3}
       propertyPath: bombWaves

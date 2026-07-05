@@ -16,7 +16,7 @@ MonoBehaviour:
   description: 'On taking damage, summon a <color=#C8C8C8>Phantom Blade</color> piercing
     the enemy that damaged you for <color=#FF5000>120%-180% Unpenalized Damage</color>.
 
-    <color=#00FF00>+20
+    <color=#00FF00>+10
     Max Health</color>
 
     <color=#C8C8C8>+10% Phantom Blade Damage</color>'

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: HealthRegenOnHit
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Regenerative Strikes</color>
-  description: 'Deal <color=#7DFF00>400-600% Health Regen</color> <color=#FF0050>On-Hit</color>.
+  description: 'Deal <color=#7DFF00>600%-900% Health Regen</color> <color=#FF0050>On-Hit</color>.
 
     <color=#7DFF00>+0.5
     Health Regen</color>'

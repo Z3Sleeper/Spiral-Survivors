@@ -260,14 +260,6 @@ MonoBehaviour:
   windupIndicator: {fileID: 6334586207801002072}
   windupFill: {fileID: 5224979170181036711}
   windupColor: {r: 1, g: 0, b: 0, a: 1}
-  _syncState:
-    _value: 0
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
-  _syncFacingDir:
-    _value: {x: 0, y: 0, z: 1}
-    _ownerAuth: 0
-    _sendIntervalInSeconds: 0
 --- !u!54 &406130325739584143
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -7971,8 +7963,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WindupFill
   fillType: 0
-  fillAxis: 2
-  fillMode: 1
+  fillAxis: 0
+  fillMode: 0
 --- !u!1 &8081573942544852081
 GameObject:
   m_ObjectHideFlags: 0

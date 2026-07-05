@@ -66,7 +66,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4207998217105120328, guid: 46ca9ac89e6d8bc45b98c822bdb7e849, type: 3}
       propertyPath: xpValue
-      value: 270
+      value: 750
       objectReference: {fileID: 0}
     - target: {fileID: 4207998217105120328, guid: 46ca9ac89e6d8bc45b98c822bdb7e849, type: 3}
       propertyPath: enemyName
@@ -86,7 +86,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4207998217105120328, guid: 46ca9ac89e6d8bc45b98c822bdb7e849, type: 3}
       propertyPath: attacksPerAttack
-      value: 4
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 4207998217105120328, guid: 46ca9ac89e6d8bc45b98c822bdb7e849, type: 3}
       propertyPath: rangeToleranceFar
@@ -95,6 +95,10 @@ PrefabInstance:
     - target: {fileID: 4207998217105120328, guid: 46ca9ac89e6d8bc45b98c822bdb7e849, type: 3}
       propertyPath: rangeToleranceClose
       value: 0.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 4207998217105120328, guid: 46ca9ac89e6d8bc45b98c822bdb7e849, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
       objectReference: {fileID: 0}
     - target: {fileID: 7445847849078707251, guid: 46ca9ac89e6d8bc45b98c822bdb7e849, type: 3}
       propertyPath: m_Name

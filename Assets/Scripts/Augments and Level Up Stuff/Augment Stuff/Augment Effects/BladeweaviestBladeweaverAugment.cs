@@ -4,17 +4,24 @@ public class BladeweaviestBladeweaverAugment : MonoBehaviour
 {
     [SerializeField] private int _bonusWeapons = 3;
     [SerializeField] private float _damagePenalty = 0.45f;
-    [SerializeField] private float _onHitEffectivenessPenalty = 0.25f;
+    [SerializeField] private float _onHitPowerPenalty = 0.25f;
+
+    private CharacterStats _stats;
 
     private void Start()
     {
-        var stats = GetComponentInParent<CharacterStats>();
-        if (stats == null || !stats.isOwner) { Destroy(gameObject); return; }
+        _stats = GetComponentInParent<CharacterStats>();
+        if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
+        _stats.bonusWeaponCountFlat += _bonusWeapons;
+        _stats.bonusWeaponDamagePenalty *= 1f - _damagePenalty;
+        _stats.bonusOnHitPowerPenalty *= 1f - _onHitPowerPenalty;
+    }
 
-        stats.bonusWeaponCountFlat += _bonusWeapons;
-        stats.bonusWeaponDamagePenalty *= 1f - _damagePenalty;
-        stats.bonusOnHitEffectivenessPenalty *= 1f - _onHitEffectivenessPenalty;
-
-        Destroy(gameObject);
+    private void OnDestroy()
+    {
+        if (_stats == null) return;
+        _stats.bonusWeaponCountFlat -= _bonusWeapons;
+        _stats.bonusWeaponDamagePenalty /= 1f - _damagePenalty;
+        _stats.bonusOnHitPowerPenalty /= 1f - _onHitPowerPenalty;
     }
 }

@@ -14,7 +14,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
       propertyPath: xpValue
-      value: 45
+      value: 125
       objectReference: {fileID: 0}
     - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
       propertyPath: enemyName
@@ -31,10 +31,6 @@ PrefabInstance:
     - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
       propertyPath: leapDuration
       value: 0.3
-      objectReference: {fileID: 0}
-    - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
-      propertyPath: leapsPerAttack
-      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: -1975734820084783192, guid: 137edbfce88108b40ba35e42e45d3a33, type: 3}
       propertyPath: windupDuration

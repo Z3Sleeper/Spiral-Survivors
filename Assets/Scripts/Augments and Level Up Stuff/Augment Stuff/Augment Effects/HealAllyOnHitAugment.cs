@@ -29,7 +29,7 @@ public class HealAllyOnHitAugment : MonoBehaviour
         if (stats != _stats) return;
         float max = _baseHealMultiplier * (1f + _variancePercent);
         float min = Mathf.Lerp(_baseHealMultiplier * (1f - _variancePercent), max, _stats.LuckChance);
-        float amount = _stats.HealthRegen * Random.Range(min, max) * _stats.OnHitEffectiveness * effectiveness;
+        float amount = _stats.HealthRegen * Random.Range(min, max) * _stats.OnHitPower * effectiveness;
         ally.ReceiveHealRpc(amount);
         _stats.ReceiveHealRpc(amount);
     }

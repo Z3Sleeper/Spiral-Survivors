@@ -14,7 +14,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: xpValue
-      value: 45
+      value: 125
       objectReference: {fileID: 0}
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: enemyName
@@ -27,10 +27,6 @@ PrefabInstance:
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: moveSpeed
       value: 2.4
-      objectReference: {fileID: 0}
-    - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
-      propertyPath: shotsPerAttack
-      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: projectilePrefab

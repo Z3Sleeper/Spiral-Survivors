@@ -224,7 +224,7 @@ public class AugmentManager : NetworkBehaviour
     {
         switch (entry.statType)
         {
-            case StatType.MaxHealth:     stats.BonusMaxHealthFlat    += effectiveValue; stats.CurrentHealth = Mathf.Min(stats.CurrentHealth + effectiveValue, stats.MaxHealth); break;
+            case StatType.MaxHealth:     stats.BonusMaxHealthFlat    += effectiveValue; if (!stats.IsDead) stats.CurrentHealth = Mathf.Min(stats.CurrentHealth + effectiveValue, stats.MaxHealth); break;
             case StatType.WeaponDamage:  stats.bonusWeaponDamageFlat += entry.value * ProgressionManager.GetStatMultiplier(StatType.WeaponDamage); break;
             case StatType.MoveSpeed:     stats.bonusMoveSpeedFlat    += entry.value * 0.1f * ProgressionManager.GetStatMultiplier(StatType.MoveSpeed); break;
             case StatType.WeaponRange:   stats.bonusWeaponRangeFlat  += entry.value; break;

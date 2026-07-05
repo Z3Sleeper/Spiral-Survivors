@@ -38,7 +38,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: xpValue
-      value: 15
+      value: 25
       objectReference: {fileID: 0}
     - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: enemyName
@@ -55,10 +55,6 @@ PrefabInstance:
     - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: windupDuration
       value: 0.375
-      objectReference: {fileID: 0}
-    - target: {fileID: 7477099657416050410, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
-      propertyPath: blitzesPerAttack
-      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 7839943648137112170, guid: 6c71ad4778b07984e97ba837063d6662, type: 3}
       propertyPath: m_LocalPosition.x

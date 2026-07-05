@@ -49,13 +49,17 @@ PrefabInstance:
       value: 11
       objectReference: {fileID: 0}
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
-      propertyPath: shotsPerAttack
-      value: 2
-      objectReference: {fileID: 0}
-    - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: projectilePrefab
       value: 
       objectReference: {fileID: 6693738423672895835, guid: 7a1b2ebf28e811542beac1c334c46c9a, type: 3}
+    - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+      propertyPath: _damageNumberHeight
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
+      objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: m_Name
       value: Elite Shooter Gloom

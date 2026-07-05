@@ -45,3 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiShotSpreadAugment
   _spreadReduction: 0.8
+  _knockbackMulti: 1

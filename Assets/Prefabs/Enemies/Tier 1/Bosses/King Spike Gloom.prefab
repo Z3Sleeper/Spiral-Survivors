@@ -575,6 +575,8 @@ MonoBehaviour:
   contactColliderEnabled: 1
   contactCooldown: 0.5
   stunResistant: 1
+  showDamageNumbers: 1
+  _damageNumberPlayerOffset: 4.5
   _currentHealthSync:
     _value: 0
     _ownerAuth: 0

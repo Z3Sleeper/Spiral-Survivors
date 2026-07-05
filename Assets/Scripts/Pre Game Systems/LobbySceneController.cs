@@ -18,6 +18,7 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private GameObject characterSelectPanel;
     [SerializeField] private GameObject settingsPanel;
     [SerializeField] private GameObject upgradePanel;
+    [SerializeField] private GameObject creditsPanel;
     [SerializeField] private GameObject[] upgradeButtons;
     [SerializeField] private ViewManager viewManager;
 
@@ -143,8 +144,22 @@ public class LobbySceneController : MonoBehaviour
     public void OnUpgradeBackClicked()
     {
         upgradePanel.SetActive(false);
+        if (ulong.TryParse(lobbyManager.CurrentLobby.LobbyId, out ulong lobbyIdRaw))
+            SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "power", ProgressionManager.SpentPoints.ToString());
     }
 
+
+    public void OnCreditsClicked()
+    {
+        mainMenuPanel.SetActive(false);
+        creditsPanel.SetActive(true);
+    }
+
+    public void OnCreditsBackClicked()
+    {
+        creditsPanel.SetActive(false);
+        mainMenuPanel.SetActive(true);
+    }
 
     public void OnExitClicked()
     {
@@ -168,6 +183,7 @@ public class LobbySceneController : MonoBehaviour
             var steamLobby = new CSteamID(lobbyIdRaw);
             SteamMatchmaking.SetLobbyMemberData(steamLobby, "char", "0");
             SteamMatchmaking.SetLobbyMemberData(steamLobby, "color", assignedColor.ToString());
+            SteamMatchmaking.SetLobbyMemberData(steamLobby, "power", ProgressionManager.SpentPoints.ToString());
         }
         ShowCharacterSelect();
         CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0, assignedColor);

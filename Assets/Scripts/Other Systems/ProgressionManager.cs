@@ -8,14 +8,14 @@ public static class ProgressionManager
     private const int    CurrentSaveVersion = 1;
     private const string SaveFileName       = "progression.json";
 
-    private const int   BaseFee       = 5;
+    private const int   BaseFee       = 50;
     private const float FeeMultiplier = 1.1f;
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
     private static readonly int[] MaxHealthCosts =
-        { 0, 250, 500, 750 };
+        { 0, 500, 750, 1000 };
     private static readonly int[] WeaponDamageCosts =
-        { 0, 250, 500 };
+        { 0, 500, 1000 };
     private static readonly int[] DashChargesCosts =
         { 0, 500, 1000, 1500 };
     private static readonly int[] LuckCosts =
@@ -23,35 +23,39 @@ public static class ProgressionManager
     private static readonly int[] EnergyRegenCosts =
         { 0, 1000, 2000 };
     private static readonly int[] RevivePowerCosts =
-        { 0, 250, 500, 750, 1000 };
-    private static readonly int[] HealthRegenCosts =
-        { 250, 500, 750, 1000 };
-    private static readonly int[] CritChanceCosts =
-        { 250, 500, 750, 1000 };
+        { 0, 500, 1000, 1500, 2000 };
     private static readonly int[] DashHasteCosts =
+        { 0, 1000, 2000, 3000 };
+    private static readonly int[] HealthRegenCosts =
+        { 0, 1000, 2000, 3000 };
+    private static readonly int[] MaxShieldCosts =
+        { 0, 5000, 10000 };
+    private static readonly int[] CritChanceCosts =
         { 500, 1000, 1500, 2000 };
     private static readonly int[] ReviveTimePenaltyCosts =
-        { 500, 1000 };
-    private static readonly int[] LevelUpStatsCosts =
-        { 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000 };
-    private static readonly int[] WeaponRangeCosts =
         { 1000, 2000 };
-    private static readonly int[] XPMultiplierCosts =
-        { 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000 };
-    private static readonly int[] AttackSpeedCosts =
-        { 1500, 3000 };
-    private static readonly int[] MoveSpeedCosts =
-        { 1500, 3000 };
     private static readonly int[] CollectionRadiusCosts =
-        { 1500, 3000, 4500, 6000, 7500 };
+        { 1000, 2000, 3000, 4000, 5000 };
     private static readonly int[] MaxEnergyCosts =
-        { 1500, 3000, 4500, 6000, 7500 };
+        { 1000, 2000, 3000, 4000, 5000 };
+    private static readonly int[] LevelUpStatsCosts =
+        { 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000 };
+    private static readonly int[] WeaponRangeCosts =
+        { 2000, 4000 };
+    private static readonly int[] XPMultiplierCosts =
+        { 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000 };
+    private static readonly int[] AttackSpeedCosts =
+        { 3000, 6000 };
+    private static readonly int[] MoveSpeedCosts =
+        { 3000, 6000 };
     private static readonly int[] DamagePerLevelCosts =
-        { 2000, 4000, 6000, 8000, 10000 };
+        { 4000, 8000, 12000, 16000, 20000 };
+    private static readonly int[] ShieldRechargeTimeCosts =
+        { 5000, 10000, 15000, 20000 };
     private static readonly int[] WeaponDamagePercentCosts =
-        { 3000, 6000, 9000, 12000, 15000 };
+        { 6000, 12000, 18000, 24000, 30000 };
     private static readonly int[] LevelUpOptionsCosts =
-        { 5000, 10000 };
+        { 10000, 20000 };
 
     private static string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
 
@@ -172,6 +176,8 @@ public static class ProgressionManager
         StatType.WeaponDamagePercent => WeaponDamagePercentCosts,
         StatType.Luck                => LuckCosts,
         StatType.DamagePerLevel      => DamagePerLevelCosts,
+        StatType.MaxShield           => MaxShieldCosts,
+        StatType.ShieldRechargeTime  => ShieldRechargeTimeCosts,
         _                           => System.Array.Empty<int>()
     };
 
@@ -182,7 +188,7 @@ public static class ProgressionManager
     public static long AvailablePoints => Data.totalPoints - Data.spentPoints;
     public static int  BoughtUpgrades  => Data.boughtUpgrades;
 
-    public static bool IsShopUnlocked => TotalPoints >= 5;
+    public static bool IsShopUnlocked => TotalPoints >= 50;
 
     public static bool IsStatUnlocked(StatType statType)
     {
@@ -216,6 +222,8 @@ public static class ProgressionManager
         StatType.WeaponDamagePercent => 0.1f,
         StatType.Luck                => 10f,
         StatType.DamagePerLevel      => 0.5f,
+        StatType.MaxShield           => 0.05f,
+        StatType.ShieldRechargeTime  => -0.5f,
         _                           => 0f
     };
 
@@ -338,7 +346,20 @@ public static class ProgressionManager
         StatType.WeaponDamagePercent => "% Damage",
         StatType.Luck                => "Luck",
         StatType.DamagePerLevel      => "Damage Per Level",
+        StatType.MaxShield           => "Max Shield",
+        StatType.ShieldRechargeTime  => "Shield Recharge Time",
         _                           => stat.ToString()
+    };
+
+    public static string FormatPoints(long value) => value switch
+    {
+        >= 1_000_000_000_000_000_000L => $"{value / 1_000_000_000_000_000_000f:F2}quint",
+        >= 1_000_000_000_000_000L     => $"{value / 1_000_000_000_000_000f:F2}quad",
+        >= 1_000_000_000_000L         => $"{value / 1_000_000_000_000f:F2}tril",
+        >= 1_000_000_000L             => $"{value / 1_000_000_000f:F2}bil",
+        >= 1_000_000L                 => $"{value / 1_000_000f:F2}mil",
+        >= 1_000L                     => $"{value / 1_000f:F2}k",
+        _                             => value.ToString()
     };
 
     public static void SpendPoints(int amount)

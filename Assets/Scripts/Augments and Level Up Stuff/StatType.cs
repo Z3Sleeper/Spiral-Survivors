@@ -20,4 +20,6 @@ public enum StatType
     Luck                = 19,
     WeaponDamagePercent = 20,
     DamagePerLevel      = 21,
+    MaxShield           = 22,
+    ShieldRechargeTime  = 23,
 }

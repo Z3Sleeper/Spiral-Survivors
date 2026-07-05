@@ -189,8 +189,8 @@ public class CharacterStats : NetworkBehaviour
     /// <summary>
     /// This is a percentage multiplier to baseShieldRechargeTime.
     /// </summary>
-    [NonSerialized] public float shieldRechargeTimeMultiplier = 1f;
-    public float ShieldRegenTime => shieldRechargeTime * shieldRechargeTimeMultiplier;
+    [NonSerialized] public float shieldRechargeTimeReduction = 1f;
+    public float ShieldRegenTime => shieldRechargeTime * shieldRechargeTimeReduction;
     /// <summary>
     /// This is for tracking the time until shield recharge. Do not alter this value. 
     /// For adjusting shield recharge time, use shieldRechargeTime.
@@ -266,10 +266,10 @@ public class CharacterStats : NetworkBehaviour
     public float Knockback => baseKnockback * knockbackMultiplier * knockbackPenalty;
 
     [Header("Misc")]
-    public float baseOnHitEffectiveness = 1f;
-    public float bonusOnHitEffectivenessMultiplier = 1f;
-    public float bonusOnHitEffectivenessPenalty = 1f;
-    public float OnHitEffectiveness => baseOnHitEffectiveness * bonusOnHitEffectivenessMultiplier * bonusOnHitEffectivenessPenalty;
+    public float baseOnHitPower = 1f;
+    public float bonusOnHitPowerMultiplier = 1f;
+    public float bonusOnHitPowerPenalty = 1f;
+    public float OnHitPower => baseOnHitPower * bonusOnHitPowerMultiplier * bonusOnHitPowerPenalty;
     [NonSerialized] public float stackPowerPercent = 1f;
     [NonSerialized] public float stackPowerPenalty = 1f;
     public float StackPower => stackPowerPercent * stackPowerPenalty;
@@ -282,7 +282,7 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float bonusXPRadiusPercent = 1f;
     public float XPRadius => (baseXPRadius + bonusXPRadiusFlat) * bonusXPRadiusPercent;
 
-    public SyncVar<float> _reviveTimeSync = new(1f);
+    public SyncVar<float> _reviveTimeSync = new(3f);
     public float reviveTime
     {
         get => _reviveTimeSync.value;
@@ -343,9 +343,13 @@ public class CharacterStats : NetworkBehaviour
 
     private void OnLevelUp() => bonusWeaponDamageFlat += damagePerLevel;
 
+    private bool _lateOwnerInitDone;
+    private bool _onSpawnedFired;
+
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        _onSpawnedFired = true;
         if (owner.HasValue)
             All[owner.Value] = this;
 
@@ -364,11 +368,30 @@ public class CharacterStats : NetworkBehaviour
         RecalculateXPMod();
     }
 
+    protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, bool asServer)
+    {
+        base.OnOwnerChanged(oldOwner, newOwner, asServer);
+        Debug.Log($"[CharacterStats.OnOwnerChanged] asServer={asServer}, isOwner={isOwner}, newOwner={newOwner}");
+        if (newOwner.HasValue)
+            All[newOwner.Value] = this;
+        if (!asServer && isOwner)
+            StartCoroutine(LateOwnerInitDeferred());
+    }
+
+    private IEnumerator LateOwnerInitDeferred()
+    {
+        yield return new WaitUntil(() => _onSpawnedFired);
+        if (isOwner)
+            LateOwnerInit();
+    }
+
     private void LateOwnerInit()
     {
+        if (_lateOwnerInitDone) return;
+        _lateOwnerInitDone = true;
         Debug.Log($"[LateOwnerInit] isSpawned={isSpawned} isOwner={isOwner}");
         GameManager.OnLevelUp += OnLevelUp;
-        playerColor = GameStartData.LocalColor;
+        StartCoroutine(ApplyColorNextFrame());
         if (LocalUIManager.instance != null)
             LocalUIManager.instance.SetPlayer(this);
         ApplyBaseStats();
@@ -378,6 +401,12 @@ public class CharacterStats : NetworkBehaviour
         CurrentSP = MaxSP;
         _controller.InitializeForOwner();
         GetComponent<WeaponManager>().InitializeForOwner();
+    }
+
+    private IEnumerator ApplyColorNextFrame()
+    {
+        yield return null;
+        playerColor = GameStartData.LocalColor;
     }
 
     private void ApplyBaseStats()
@@ -403,6 +432,8 @@ public class CharacterStats : NetworkBehaviour
         bonusWeaponDamagePercent += ProgressionManager.GetBaseStatBonus(StatType.WeaponDamagePercent);
         bonusLuckFlat            += ProgressionManager.GetBaseStatBonus(StatType.Luck);
         damagePerLevel           += ProgressionManager.GetBaseStatBonus(StatType.DamagePerLevel);
+        BonusMaxShieldFlat       += ProgressionManager.GetBaseStatBonus(StatType.MaxShield);
+        shieldRechargeTime       += ProgressionManager.GetBaseStatBonus(StatType.ShieldRechargeTime);
     }
 
     private void Update()
@@ -471,6 +502,7 @@ public class CharacterStats : NetworkBehaviour
         IsDead = false;
         CurrentHealth = MaxHealth * healthPercent;
         CurrentShield = MaxShield;
+        CurrentEnergy = MaxEnergy;
         SetInvincible(2f);
     }
 
@@ -498,14 +530,16 @@ public class CharacterStats : NetworkBehaviour
         if (!isOwner) return;
         float prevMax = MaxHealth;
         BonusMaxHealthPercent += bonus;
-        CurrentHealth = Mathf.Min(CurrentHealth + (MaxHealth - prevMax), MaxHealth);
+        if (!IsDead)
+            CurrentHealth = Mathf.Min(CurrentHealth + (MaxHealth - prevMax), MaxHealth);
     }
 
     public void AddMaxHealthFlat(float bonus)
     {
         if (!isOwner) return;
         BonusMaxHealthFlat += bonus;
-        CurrentHealth = Mathf.Min(CurrentHealth + bonus, MaxHealth);
+        if (!IsDead)
+            CurrentHealth = Mathf.Min(CurrentHealth + bonus, MaxHealth);
     }
 
     public void AddMaxShieldPercent(float bonus)
@@ -527,6 +561,12 @@ public class CharacterStats : NetworkBehaviour
     }
 
     public static event Action<CharacterStats, float> OnHeal;
+
+    public static event Action<CharacterStats, EnemyBase> OnEnemyKill;
+    public static event Action<CharacterStats, EnemyBase> OnEnemyDeath;
+
+    public static void RaiseOnEnemyKill(CharacterStats killer, EnemyBase enemy) => OnEnemyKill?.Invoke(killer, enemy);
+    public static void RaiseOnEnemyDeath(CharacterStats killer, EnemyBase enemy) => OnEnemyDeath?.Invoke(killer, enemy);
 
     public static event Action<CharacterStats, Vector3, float, float, string> OnVFXBroadcast;
 
