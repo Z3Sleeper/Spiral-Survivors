@@ -17,7 +17,7 @@ MonoBehaviour:
     one targeting the same enemy.
 
     <color=#C8C8C8>-35% Total Phantom Blade Damage</color> '
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 4568598527791029772, guid: 42ef276d5c3548c429c422301e274ebb, type: 3}

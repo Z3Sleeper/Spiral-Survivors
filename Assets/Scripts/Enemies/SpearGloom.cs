@@ -18,11 +18,11 @@ public class SpearGloom : EnemyBase
     public float stabDamageMultiplier = 1f;
     [SerializeField] private float windupDuration = 0.5f;
     [SerializeField] private float stabDuration = 0.1f;
-    [SerializeField] private float betweenStabPause = 0.2f;
-    [SerializeField] private float postStabPause = 0.5f;
-    [SerializeField] private float attackCooldown = 5f;
+    [SerializeField] private float betweenStabPause = 0.3f;
+    [SerializeField] private float postStabPause = 0.6f;
+    [SerializeField] private float attackCooldown = 3f;
     [SerializeField] private int attacksPerAttack = 1;
-    [SerializeField] private float dashSpeedMultiplier = 20f;
+    [SerializeField] private float dashSpeedMultiplier = 15f;
     [SerializeField] private GameObject windupIndicator;
     [SerializeField] private WindupFill windupFill;
 

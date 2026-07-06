@@ -21,7 +21,7 @@ MonoBehaviour:
     Attack Speed</color>
 
     <color=#C8C8C8>+10% Phantom Blade Damage</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 6635523797227770052, guid: 8d56dff38fa01564fb9f7497d3f4920d, type: 3}

@@ -19,7 +19,7 @@ MonoBehaviour:
 
     <color=#FF0050>-25%
     On-Hit Effectiveness</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: f2c8a7fb8497a4746b04f47c4f7d2a9a, type: 3}
   restrictedToClasses: 02000000
   excludedClasses: 
   effectPrefab: {fileID: 5974715987542056492, guid: f2d0a15233c7c464d94e2130fb90d6fe, type: 3}

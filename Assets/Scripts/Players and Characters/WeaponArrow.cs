@@ -165,7 +165,7 @@ public class WeaponArrow : NetworkIdentity
     {
         _hitAllies.Add(ally);
 
-        if (_ownerStats != null) WeaponBase.RaiseOnAllyHit(_ownerStats, ally, _onHitPower);
+        if (_ownerStats != null) WeaponBase.RaiseOnAllyStrike(_ownerStats, ally, _onHitPower);
 
         if (_canDamageAllies)
         {

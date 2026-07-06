@@ -17,7 +17,7 @@ MonoBehaviour:
 
     <color=#C88200>+100%
     Knockback</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: f2c8a7fb8497a4746b04f47c4f7d2a9a, type: 3}
   restrictedToClasses: 02000000
   excludedClasses: 
   effectPrefab: {fileID: 8708617300636037298, guid: 8b7821fa38b83d34bab8119ed885ac44, type: 3}

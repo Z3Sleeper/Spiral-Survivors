@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#FF0050>Rogueiest Rogue</color>
   description: Increases Rogue's passive <color=#FF0050>Attack Speed</color> gain
     from Movement Speed by 50%.
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}
   restrictedToClasses: 01000000
   excludedClasses: 
   effectPrefab: {fileID: 2392557584783777794, guid: a2060641924134c42be642a8ad0ce0c7, type: 3}

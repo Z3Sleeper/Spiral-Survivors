@@ -15,11 +15,11 @@ MonoBehaviour:
   displayName: <color=#00FFFF>Dash Explosion</color>
   description: 'On <color=#00FFFF>Dash</color> end, deal <color=#FF5000>200%-300%
     Unpenalized Damage</color> to all nearby enemies and trigger <color=#FF0050>On-Hits</color>
-    at <color=#FF0050>200%-300% of your effectiveness</color>.
+    at <color=#FF0050>200%-300% of your On-Hit Power</color>.
 
     <color=#00FFFF>+10
     Dash Haste</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 665322196475195602, guid: a6f2b8790a9fdc0459a00805e92228f8, type: 3}

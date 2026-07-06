@@ -393,7 +393,7 @@ MonoBehaviour:
   bonusMultishotPercent: 1
   multishotSpreadAngle: 75
   _baseMaxHealth:
-    _value: 40
+    _value: 50
     _ownerAuth: 1
     _sendIntervalInSeconds: 0
   _bonusMaxHealthFlat:

@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#952FFF>Stacker</color>
   description: Gain <color=#952FFF>+50% Stack Power</color>, increasing the power
     of all your <color=#952FFF>Stacking</color> effects by 50%.
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 4d9e26cd8401d64458c1b85fece693e5, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 3874222478918168077, guid: 71982c36aa95dab4dbc561b1e36aa5e0, type: 3}

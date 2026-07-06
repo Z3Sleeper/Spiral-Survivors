@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 7619587994082740135}
   - component: {fileID: 34040583793791542}
   m_Layer: 0
-  m_Name: HealAllyOnHitAugment
+  m_Name: HealAllyOnStrikeAugment
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

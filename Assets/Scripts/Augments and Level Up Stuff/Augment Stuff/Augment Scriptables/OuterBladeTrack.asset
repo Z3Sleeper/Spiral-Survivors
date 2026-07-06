@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
   m_Name: OuterBladeTrack
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FF00FF>Bladeweaving</color>
+  displayName: <color=#FF5000>Bladeweaving</color>
   description: 'Gain a second blade track outside your first''s range that spins
     counterclockwise.
 
@@ -22,7 +22,7 @@ MonoBehaviour:
     On-Hit Effectiveness</color>
 
     <color=#3278FF>-25% Range</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   restrictedToClasses: 
   excludedClasses: 02000000
   effectPrefab: {fileID: 3887587249794003271, guid: 8fcc3e0ffe3ad364ea3ebc26a2a4de38, type: 3}

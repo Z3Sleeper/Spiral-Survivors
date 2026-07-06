@@ -12,25 +12,25 @@ public static class ProgressionManager
     private const float FeeMultiplier = 1.1f;
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
-    private static readonly int[] MaxHealthCosts =
-        { 0, 500, 750, 1000 };
     private static readonly int[] WeaponDamageCosts =
-        { 0, 500, 1000 };
+        { 0, 1000, 2000 };
     private static readonly int[] DashChargesCosts =
         { 0, 500, 1000, 1500 };
     private static readonly int[] LuckCosts =
-        { 0, 1000, 2000, 3000, 4000 };
+        { 0, 500, 1000, 2000, 2500 };
     private static readonly int[] EnergyRegenCosts =
         { 0, 1000, 2000 };
     private static readonly int[] RevivePowerCosts =
         { 0, 500, 1000, 1500, 2000 };
+    private static readonly int[] MaxHealthCosts =
+        { 0, 1000, 2000, 3000, 4000 };
     private static readonly int[] DashHasteCosts =
-        { 0, 1000, 2000, 3000 };
-    private static readonly int[] HealthRegenCosts =
-        { 0, 1000, 2000, 3000 };
+        { 0, 500, 1000, 1500 };
+    private static readonly int[] CritChanceCosts =
+        { 0, 500, 1000, 1500 };
     private static readonly int[] MaxShieldCosts =
         { 0, 5000, 10000 };
-    private static readonly int[] CritChanceCosts =
+    private static readonly int[] HealthRegenCosts =
         { 500, 1000, 1500, 2000 };
     private static readonly int[] ReviveTimePenaltyCosts =
         { 1000, 2000 };
@@ -38,16 +38,16 @@ public static class ProgressionManager
         { 1000, 2000, 3000, 4000, 5000 };
     private static readonly int[] MaxEnergyCosts =
         { 1000, 2000, 3000, 4000, 5000 };
+    private static readonly int[] AttackSpeedCosts =
+        { 1500, 3000 };
     private static readonly int[] LevelUpStatsCosts =
         { 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000 };
     private static readonly int[] WeaponRangeCosts =
         { 2000, 4000 };
     private static readonly int[] XPMultiplierCosts =
         { 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000 };
-    private static readonly int[] AttackSpeedCosts =
-        { 3000, 6000 };
     private static readonly int[] MoveSpeedCosts =
-        { 3000, 6000 };
+        { 2000, 4000 };
     private static readonly int[] DamagePerLevelCosts =
         { 4000, 8000, 12000, 16000, 20000 };
     private static readonly int[] ShieldRechargeTimeCosts =
@@ -206,7 +206,7 @@ public static class ProgressionManager
         StatType.MaxHealth         => 10f,
         StatType.MoveSpeed         => 1f,
         StatType.AttackSpeed       => 15f,
-        StatType.HealthRegen       => 0.25f,
+        StatType.HealthRegen       => 0.5f,
         StatType.EnergyRegen       => 2f,
         StatType.DashHaste         => 10f,
         StatType.CritChance        => 5f,

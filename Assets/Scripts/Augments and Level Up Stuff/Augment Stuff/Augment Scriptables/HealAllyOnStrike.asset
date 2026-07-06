@@ -10,7 +10,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ddf86d9553278284690a9d426f2a9f0e, type: 3}
-  m_Name: HealAllyOnHit
+  m_Name: HealAllyOnStrike
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Rejuvenating Bonk</color>
   description: '<color=#FF5000>Striking</color> allies <color=#7DFF00>Heals</color>
@@ -18,7 +18,7 @@ MonoBehaviour:
 
     <color=#7DFF00>+0.5
     Health Regen</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 6006448824613868710, guid: 7d71063e9ace64c418f53c5aaebbe766, type: 3}

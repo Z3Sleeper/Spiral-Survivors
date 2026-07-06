@@ -1507,8 +1507,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WindupFill
   fillType: 0
-  fillAxis: 0
-  fillMode: 0
+  fillAxis: 2
+  fillMode: 1
 --- !u!1 &8433830180272769361
 GameObject:
   m_ObjectHideFlags: 0

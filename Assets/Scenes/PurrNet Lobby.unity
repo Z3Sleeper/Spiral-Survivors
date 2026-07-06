@@ -13905,14 +13905,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - v0.1b
+      - v0.1c
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - v0.1b
+    - v0.1c
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -19914,7 +19914,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.1b
+  m_text: Version 0.1c
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -20028,8 +20028,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 430, y: -20}
-  m_SizeDelta: {x: 400, y: 500}
+  m_AnchoredPosition: {x: 415, y: -20}
+  m_SizeDelta: {x: 430, y: 500}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1508706582
 MonoBehaviour:
@@ -20060,7 +20060,13 @@ MonoBehaviour:
     Esc - Pause
 
     M
-    - Mute'
+    - Mute
+
+    Tab - Switch stat screen + show Augment Panel
+
+
+    You can hover
+    Augments on the Augment Panel to see what they do.'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -25233,49 +25239,49 @@ MonoBehaviour:
   buyAllPriceText: {fileID: 664864962}
   upgradeVisuals:
   - statType: 0
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}
   - statType: 1
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   - statType: 2
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}
   - statType: 3
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: f2c8a7fb8497a4746b04f47c4f7d2a9a, type: 3}
   - statType: 4
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}
   - statType: 5
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   - statType: 7
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   - statType: 8
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   - statType: 9
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
   - statType: 11
     icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 12
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   - statType: 13
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   - statType: 14
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   - statType: 15
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   - statType: 16
     icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 17
     icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 20
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   - statType: 19
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: 54bfb18c2afc7fa47a776cef5702eb37, type: 3}
   - statType: 18
     icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 21
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   - statType: 22
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: d0919956ea66f20499f1891e9ceb4a75, type: 3}
   - statType: 23
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+    icon: {fileID: 21300000, guid: d0919956ea66f20499f1891e9ceb4a75, type: 3}
   upgradeButtons:
   - statType: 0
     buttonObject: {fileID: 88758057}

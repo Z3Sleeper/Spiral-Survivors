@@ -17,7 +17,7 @@ MonoBehaviour:
     Health</color>.
 
     <color=#00FF00>+10 Max Health</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 1161038664259184081, guid: 00183d3b0a30303499417eb1d73a0645, type: 3}

@@ -17,7 +17,7 @@ MonoBehaviour:
 
     <color=#7DFF00>+0.5
     Health Regen</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 5858353609751558520, guid: 176be2aba5066f44196460f81379f683, type: 3}

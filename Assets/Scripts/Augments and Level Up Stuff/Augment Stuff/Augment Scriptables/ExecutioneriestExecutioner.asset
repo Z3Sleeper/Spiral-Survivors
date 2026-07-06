@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF0000>Executioneriest Executioner</color>
   description: <color=#FF0000>+25% Total Crit Chance</color>
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
   restrictedToClasses: 04000000
   excludedClasses: 
   effectPrefab: {fileID: 3842075984148808317, guid: e25e35b0d338aaf47aa479086e2fa84c, type: 3}

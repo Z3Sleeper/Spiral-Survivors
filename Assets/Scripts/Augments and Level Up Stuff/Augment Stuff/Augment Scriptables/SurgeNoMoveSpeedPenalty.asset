@@ -17,7 +17,7 @@ MonoBehaviour:
     Speed</color>.
 
     <color=#FFFF00>+2 Energy Regen</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 4890222564328546812, guid: 2ba6f15d6785a4b4eab15340e61a6a5c, type: 3}

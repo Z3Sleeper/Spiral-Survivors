@@ -1,6 +1,6 @@
 using UnityEngine;
 
-public class HealAllyOnHitAugment : MonoBehaviour
+public class HealAllyOnStrikeAugment : MonoBehaviour
 {
     [SerializeField] private float _baseHealMultiplier = 6f;
     [SerializeField] private float _variancePercent = 0.20f;
@@ -14,17 +14,17 @@ public class HealAllyOnHitAugment : MonoBehaviour
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
         _stats.canContactAllies = true;
         _stats.AddHealthRegenFlat(_bonusHealthRegen);
-        WeaponBase.OnAllyHit += OnAllyHit;
+        WeaponBase.OnAllyStrike += OnAllyStrike;
     }
 
     private void OnDestroy()
     {
-        WeaponBase.OnAllyHit -= OnAllyHit;
+        WeaponBase.OnAllyStrike -= OnAllyStrike;
         if (_stats == null || !_stats.isOwner || !_stats.isSpawned) return;
         _stats.AddHealthRegenFlat(-_bonusHealthRegen);
     }
 
-    private void OnAllyHit(CharacterStats stats, CharacterStats ally, float effectiveness)
+    private void OnAllyStrike(CharacterStats stats, CharacterStats ally, float effectiveness)
     {
         if (stats != _stats) return;
         float max = _baseHealMultiplier * (1f + _variancePercent);

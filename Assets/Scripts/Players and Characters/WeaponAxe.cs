@@ -281,7 +281,7 @@ public class WeaponAxe : WeaponBase
     private void HitAlly(CharacterStats ally)
     {
         if (ally == null || ally.IsDead) return;
-        WeaponBase.RaiseOnAllyHit(_stats, ally);
+        WeaponBase.RaiseOnAllyStrike(_stats, ally);
         if (!_stats.canDamageAllies) return;
         float damage = _stats.WeaponDamage;
         bool isCrit = Random.value < _stats.CritChance;

@@ -291,6 +291,46 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         if (_physicsCollider != null && !_isDead) _physicsCollider.enabled = true;
     }
 
+    protected IEnumerator DashToPoint(float speed, Vector3 destination)
+    {
+        if (_physicsCollider != null) _physicsCollider.enabled = false;
+        Vector3 initialDir = destination - transform.position;
+        initialDir.y = 0f;
+        initialDir.Normalize();
+        while (!_isDead)
+        {
+            Vector3 toDestination = destination - transform.position;
+            toDestination.y = 0f;
+            if (Vector3.Dot(toDestination, initialDir) <= 0f) break;
+            _rb.linearVelocity = initialDir * speed;
+            _rb.MoveRotation(Quaternion.LookRotation(initialDir));
+            yield return null;
+        }
+        _rb.linearVelocity = Vector3.zero;
+        if (_physicsCollider != null && !_isDead) _physicsCollider.enabled = true;
+    }
+
+    protected IEnumerator DashBehindTarget(float speed, float distance)
+    {
+        if (_target == null) yield break;
+        if (_physicsCollider != null) _physicsCollider.enabled = false;
+        Vector3 approachDir = (_target.position - transform.position);
+        approachDir.y = 0f;
+        approachDir.Normalize();
+        while (!_isDead && _target != null)
+        {
+            Vector3 behindPoint = _target.position + approachDir * distance;
+            Vector3 toPoint = behindPoint - transform.position;
+            toPoint.y = 0f;
+            if (Vector3.Dot(toPoint, approachDir) <= 0f) break;
+            _rb.linearVelocity = approachDir * speed;
+            _rb.MoveRotation(Quaternion.LookRotation(approachDir));
+            yield return null;
+        }
+        _rb.linearVelocity = Vector3.zero;
+        if (_physicsCollider != null && !_isDead) _physicsCollider.enabled = true;
+    }
+
     public virtual void TakeDamage(float damage, bool isCrit = false, PlayerID attackerOwner = default)
     {
         if (!isServer) return;

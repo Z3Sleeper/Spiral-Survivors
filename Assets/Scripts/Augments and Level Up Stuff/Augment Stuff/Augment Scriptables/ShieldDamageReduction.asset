@@ -18,7 +18,7 @@ MonoBehaviour:
 
     <color=#FF00FF>+50%
     Max Shield</color>'
-  icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
+  icon: {fileID: 21300000, guid: d0919956ea66f20499f1891e9ceb4a75, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 7531731885202670819, guid: ec614b706e5c1494f86d50803dc8c147, type: 3}

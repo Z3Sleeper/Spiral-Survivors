@@ -22,19 +22,23 @@ public class BlitzGloom : EnemyBase
     private int _blitzesRemaining = 0;
 
     private State _state = State.Moving;
+    private Vector3 _windupPosition;
+
     private void SetState(State state)
     {
         isStunnable = state == State.Moving ? !stunResistant : false;
+        _windupPosition = transform.position;
         _state = state;
         OnStateChanged(state);
-        SyncStateRpc(state, _blitzDirection);
+        SyncStateRpc(state, _blitzDirection, transform.position);
     }
 
     [ObserversRpc]
-    private void SyncStateRpc(State state, Vector3 blitzDir)
+    private void SyncStateRpc(State state, Vector3 blitzDir, Vector3 windupPos)
     {
         if (isServer) return;
         _blitzDirection = blitzDir;
+        _windupPosition = windupPos;
         _state = state;
         OnStateChanged(state);
     }
@@ -55,7 +59,7 @@ public class BlitzGloom : EnemyBase
         if (state == State.Windup)
         {
             windupIndicator.transform.SetParent(null);
-            windupIndicator.transform.position = new Vector3(transform.position.x, 0.05f, transform.position.z);
+            windupIndicator.transform.position = new Vector3(_windupPosition.x, 0.05f, _windupPosition.z);
             windupIndicator.transform.rotation = Quaternion.LookRotation(_blitzDirection);
             windupIndicator.SetActive(true);
             if (windupFill != null) windupFill.StartFill(windupDuration);

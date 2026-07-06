@@ -512,7 +512,7 @@ GameObject:
   - component: {fileID: 2283789123194444325}
   - component: {fileID: 2539281391920625006}
   m_Layer: 0
-  m_Name: WindupIndicator
+  m_Name: WindupFill
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -603,8 +603,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WindupFill
   fillType: 0
-  fillAxis: 0
-  fillMode: 0
+  fillAxis: 2
+  fillMode: 1
 --- !u!1 &2813405752874533975
 GameObject:
   m_ObjectHideFlags: 0
