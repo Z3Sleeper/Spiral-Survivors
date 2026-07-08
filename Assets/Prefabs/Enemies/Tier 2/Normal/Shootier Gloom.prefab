@@ -29,6 +29,10 @@ PrefabInstance:
       value: 1.8
       objectReference: {fileID: 0}
     - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
+      propertyPath: shotsPerAttack
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 408159167736923602, guid: 106ef2bd36028a44995af5fad3d58b32, type: 3}
       propertyPath: projectilePrefab
       value: 
       objectReference: {fileID: 2490075063922572889, guid: 95aa2e8dd02b37c48a85a9f91fea84e7, type: 3}

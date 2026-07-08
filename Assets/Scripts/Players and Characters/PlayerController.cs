@@ -2,7 +2,7 @@ using PurrNet;
 using UnityEngine;
 
 [RequireComponent(typeof(Rigidbody))]
-public class PlayerController : NetworkIdentity
+public class PlayerController : NetworkBehaviour
 {
     private readonly Collider[] _orbHits = new Collider[50];
     private static int _orbLayer;
@@ -45,6 +45,7 @@ public class PlayerController : NetworkIdentity
     {
         _input?.Disable();
         GameManager.OnPauseChanged -= OnPauseChanged;
+        base.OnDespawned(asServer);
     }
 
     private void OnEnable()
@@ -57,28 +58,24 @@ public class PlayerController : NetworkIdentity
         _input?.Disable();
     }
 
-    protected override void OnSpawned()
+    protected override void OnSpawned(bool asServer)
     {
-        base.OnSpawned();
-        enabled = isOwner;
-        if (!isOwner) return;
-        InitializeForOwner();
-    }
-
-    public void InitializeForOwner()
-    {
-        if (_input != null) return;
+        base.OnSpawned(asServer);
+        if (asServer || !isOwner) return;
         _input = new InputSystem_Actions();
         _input.Enable();
-        _stats = GetComponent<CharacterStats>();
-        _currentCharges = _stats.dashCharges;
         GameManager.OnPauseChanged += OnPauseChanged;
-        enabled = true;
+    }
+
+    public void Init(CharacterStats stats)
+    {
+        _stats = stats;
+        _currentCharges = stats.dashCharges;
     }
 
     private void Update()
     {
-        if (_input == null) return;
+        if (_input == null || _stats == null) return;
 
         // Stats panel (available during pause)
         if (_input.Player.Tab.WasPressedThisFrame())
@@ -182,7 +179,7 @@ public class PlayerController : NetworkIdentity
 
     private void FixedUpdate()
     {
-        if (_input == null || _isPaused) return;
+        if (_input == null || _stats == null || _isPaused) return;
 
         Vector2 move = _input.Player.Move.ReadValue<Vector2>();
         Vector3 moveDir = new Vector3(move.x, 0, move.y).normalized;

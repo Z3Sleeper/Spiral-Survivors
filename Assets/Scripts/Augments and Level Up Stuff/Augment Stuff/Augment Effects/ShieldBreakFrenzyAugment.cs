@@ -3,10 +3,10 @@ using UnityEngine;
 
 public class ShieldBreakFrenzyAugment : MonoBehaviour
 {
-    [SerializeField] private float _attackSpeedBonus = 0.5f;
+    [SerializeField] private float _totalAttackSpeedBonus = 0.5f;
     [SerializeField] private float _moveSpeedBonus = 0.5f;
     [SerializeField] private float _duration = 2f;
-    [SerializeField] private float _maxShieldBonusPercent = 0.5f;
+    [SerializeField] private float _maxShieldBonusFlat = 0.05f;
 
     private CharacterStats _stats;
     private Coroutine _buffCoroutine;
@@ -17,7 +17,7 @@ public class ShieldBreakFrenzyAugment : MonoBehaviour
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
-        _stats.AddMaxShieldPercent(_maxShieldBonusPercent);
+        _stats.BonusMaxShieldFlat += _maxShieldBonusFlat;
         _prevShield = _stats.CurrentShield;
         _stats._currentShield.onChanged += OnShieldValueChanged;
     }
@@ -27,7 +27,7 @@ public class ShieldBreakFrenzyAugment : MonoBehaviour
         if (_stats == null) return;
         _stats._currentShield.onChanged -= OnShieldValueChanged;
         if (_buffActive) RemoveBuff();
-        if (_stats.isSpawned) _stats.AddMaxShieldPercent(-_maxShieldBonusPercent);
+        if (_stats.isSpawned) _stats.BonusMaxShieldFlat -= _maxShieldBonusFlat;
     }
 
     private void OnShieldValueChanged(float current)
@@ -45,14 +45,14 @@ public class ShieldBreakFrenzyAugment : MonoBehaviour
 
     private void ApplyBuff()
     {
-        _stats.attackSpeedTotalPercent += _attackSpeedBonus;
+        _stats.attackSpeedTotalPercent += _totalAttackSpeedBonus;
         _stats.bonusMoveSpeedPercent += _moveSpeedBonus;
         _buffActive = true;
     }
 
     private void RemoveBuff()
     {
-        _stats.attackSpeedTotalPercent -= _attackSpeedBonus;
+        _stats.attackSpeedTotalPercent -= _totalAttackSpeedBonus;
         _stats.bonusMoveSpeedPercent -= _moveSpeedBonus;
         _buffActive = false;
     }

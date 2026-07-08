@@ -81,7 +81,7 @@ public class CharacterStats : NetworkBehaviour
     public bool continuousFire = false;
     [NonSerialized] public bool canContactAllies = false;
     [NonSerialized] public bool canDamageAllies  = false;
-    public SyncVar<Color> _playerColorSync = new SyncVar<Color>(Color.white);
+    public SyncVar<Color> _playerColorSync = new SyncVar<Color>(Color.white, ownerAuth: true);
     public Color playerColor
     {
         get => _playerColorSync.value;
@@ -187,12 +187,7 @@ public class CharacterStats : NetworkBehaviour
     }
     [NonSerialized] public float shieldRechargeTime = 5f;
     /// <summary>
-    /// This is a percentage multiplier to baseShieldRechargeTime.
-    /// </summary>
-    [NonSerialized] public float shieldRechargeTimeReduction = 1f;
-    public float ShieldRegenTime => shieldRechargeTime * shieldRechargeTimeReduction;
-    /// <summary>
-    /// This is for tracking the time until shield recharge. Do not alter this value. 
+    /// This is for tracking the time until shield recharge. Do not alter this value.
     /// For adjusting shield recharge time, use shieldRechargeTime.
     /// </summary>
     [NonSerialized] public float _shieldRechargeTimer = 0f;
@@ -328,7 +323,6 @@ public class CharacterStats : NetworkBehaviour
     {
         foreach (var applicator in GetComponentsInChildren<PlayerColorApplicator>(true))
             applicator.Apply(color);
-        GetComponent<WeaponManager>()?.ReapplyColor(color);
         if (_originalColors != null)
             for (int i = 0; i < _renderers.Length; i++)
                 _originalColors[i] = _renderers[i].material.color;
@@ -343,15 +337,21 @@ public class CharacterStats : NetworkBehaviour
 
     private void OnLevelUp() => bonusWeaponDamageFlat += damagePerLevel;
 
-    private bool _lateOwnerInitDone;
-    private bool _onSpawnedFired;
-
-    protected override void OnSpawned()
+    protected override void OnSpawned(bool asServer)
     {
-        base.OnSpawned();
-        _onSpawnedFired = true;
-        if (owner.HasValue)
-            All[owner.Value] = this;
+        base.OnSpawned(asServer);
+        All[owner.Value] = this;
+
+        if (asServer)
+        {
+            if (AugmentManager.instance != null)
+                AugmentManager.instance.InitializePlayerPool(owner.Value, characterClass);
+            RecalculateXPMod();
+            return;
+        }
+
+        if (isOwner)
+            playerColor = GameStartData.LocalColor;
 
         _isDeadSync.onChanged += OnDeathStateChanged;
         _playerColorSync.onChanged += ApplyPlayerColor;
@@ -361,37 +361,9 @@ public class CharacterStats : NetworkBehaviour
         for (int i = 0; i < _renderers.Length; i++)
             _originalColors[i] = _renderers[i].material.color;
 
-        if (isOwner)
-            LateOwnerInit();
+        if (!isOwner) return;
 
-        if (!isServer) return;
-        RecalculateXPMod();
-    }
-
-    protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, bool asServer)
-    {
-        base.OnOwnerChanged(oldOwner, newOwner, asServer);
-        Debug.Log($"[CharacterStats.OnOwnerChanged] asServer={asServer}, isOwner={isOwner}, newOwner={newOwner}");
-        if (newOwner.HasValue)
-            All[newOwner.Value] = this;
-        if (!asServer && isOwner)
-            StartCoroutine(LateOwnerInitDeferred());
-    }
-
-    private IEnumerator LateOwnerInitDeferred()
-    {
-        yield return new WaitUntil(() => _onSpawnedFired);
-        if (isOwner)
-            LateOwnerInit();
-    }
-
-    private void LateOwnerInit()
-    {
-        if (_lateOwnerInitDone) return;
-        _lateOwnerInitDone = true;
-        Debug.Log($"[LateOwnerInit] isSpawned={isSpawned} isOwner={isOwner}");
         GameManager.OnLevelUp += OnLevelUp;
-        StartCoroutine(ApplyColorNextFrame());
         if (LocalUIManager.instance != null)
             LocalUIManager.instance.SetPlayer(this);
         ApplyBaseStats();
@@ -399,14 +371,10 @@ public class CharacterStats : NetworkBehaviour
         CurrentShield = MaxShield;
         CurrentEnergy = MaxEnergy;
         CurrentSP = MaxSP;
-        _controller.InitializeForOwner();
-        GetComponent<WeaponManager>().InitializeForOwner();
-    }
-
-    private IEnumerator ApplyColorNextFrame()
-    {
-        yield return null;
-        playerColor = GameStartData.LocalColor;
+        GetComponent<PlayerController>()?.Init(this);
+        GetComponent<WeaponManager>()?.Init(this);
+        GetComponent<RogueClassPassive>()?.Init(this);
+        GameManager.instance.PlayerReadyRpc();
     }
 
     private void ApplyBaseStats()
@@ -607,7 +575,7 @@ public class CharacterStats : NetworkBehaviour
         if (IsDead) return;
         if (IsInvincible) return;
 
-        _shieldRechargeTimer = ShieldRegenTime;
+        _shieldRechargeTimer = shieldRechargeTime;
         BroadcastHitFlashRpc();
 
         damage *= DamageReduction;

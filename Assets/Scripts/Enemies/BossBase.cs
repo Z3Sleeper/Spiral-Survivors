@@ -13,7 +13,7 @@ public class BossBase : EnemyBase
     {
         base.OnSpawned();
         Current = this;
-        _enrageTimer.value = EnrageDuration;
+        if (isServer) _enrageTimer.value = EnrageDuration;
     }
 
     protected override void Die()

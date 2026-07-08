@@ -10,7 +10,6 @@ public class SpearGloom : EnemyBase
     private static readonly int WindupSpeedHash = Animator.StringToHash("WindupSpeed");
     private static readonly int StabSpeedHash = Animator.StringToHash("StabSpeed");
     private static readonly int PostStabSpeedHash = Animator.StringToHash("PostStabSpeed");
-    private Animator _animator;
     private float _postStabClipLength;
 
     [Header("Spear Settings")]
@@ -50,7 +49,6 @@ public class SpearGloom : EnemyBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        TryGetComponent(out _animator);
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
             if (clip.name == "Spear Gloom Windup")
@@ -217,6 +215,16 @@ public class SpearGloom : EnemyBase
 
     protected override void OnHideOnDeath()
     {
+        if (windupIndicator != null) windupIndicator.SetActive(false);
+        if (windupFill != null) windupFill.ResetFill();
+    }
+
+    protected override void OnPoolReset()
+    {
+        base.OnPoolReset();
+        _state = State.Moving;
+        _attacksRemaining = attacksPerAttack;
+        if (spearHitbox != null) spearHitbox.enabled = false;
         if (windupIndicator != null) windupIndicator.SetActive(false);
         if (windupFill != null) windupFill.ResetFill();
     }

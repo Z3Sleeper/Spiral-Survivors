@@ -88,6 +88,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Elite Blitziest Gloom
       objectReference: {fileID: 0}
+    - target: {fileID: 5247366690185720551, guid: 8fa497e307b2c3e43b0d6a5533125a52, type: 3}
+      propertyPath: m_Mass
+      value: 50
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

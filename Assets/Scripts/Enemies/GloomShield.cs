@@ -173,4 +173,26 @@ public class GloomShield : NetworkIdentity, IStrikeable
     {
         SetState(State.Idle);
     }
+
+    protected override void OnPoolReset()
+    {
+        base.OnPoolReset();
+        ResetState();
+    }
+
+    public void ResetState()
+    {
+        _state = State.Idle;
+        _stateTimer = float.MaxValue;
+        _facingDir = Vector3.forward;
+        if (hitbox != null) hitbox.enabled = false;
+        if (strikeableCollider != null) strikeableCollider.enabled = true;
+        if (windupIndicator != null) windupIndicator.SetActive(false);
+        if (windupFill != null) windupFill.ResetFill();
+        foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
+        foreach (var col in GetComponentsInChildren<Collider>()) col.enabled = true;
+        if (shieldRenderers != null)
+            foreach (var r in shieldRenderers)
+                if (r != null) r.material.color = windupColor;
+    }
 }

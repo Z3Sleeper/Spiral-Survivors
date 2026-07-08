@@ -304,6 +304,7 @@ MonoBehaviour:
   contactColliderEnabled: 0
   contactCooldown: 0.5
   stunResistant: 0
+  knockbackResistance: 0
   showDamageNumbers: 1
   _damageNumberPlayerOffset: 0.625
   _currentHealthSync:
@@ -394,7 +395,7 @@ Animator:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1597157536724350220}
-  m_Enabled: 1
+  m_Enabled: 0
   m_Avatar: {fileID: 0}
   m_Controller: {fileID: 9100000, guid: e4076daa31db6294c850a6205aa40b10, type: 2}
   m_CullingMode: 0

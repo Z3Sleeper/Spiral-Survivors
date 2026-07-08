@@ -11,7 +11,6 @@ using UnityEngine.SceneManagement;
 public class GameManager : NetworkIdentity
 {
     public static GameManager instance;
-    public CharacterSpawner characterSpawner;
     [SerializeField] private float xpLevelStep = 5f;
     [SerializeField] private AudioClip levelUpSound;
 
@@ -241,7 +240,6 @@ public class GameManager : NetworkIdentity
     [ObserversRpc]
     private void ShowLevelUpScreenRpc()
     {
-        Debug.Log($"[ShowLevelUpScreenRpc] isServer={isServer}");
         LocalUIManager.instance.ShowLevelUpScreen();
         SFXManager.instance?.Play(levelUpSound, Vector3.zero);
     }
@@ -312,11 +310,16 @@ public class GameManager : NetworkIdentity
         NetworkedUIManager.instance.UpdateReadyText(ready, total);
     }
 
+    [ServerRpc(requireOwnership: false)]
+    public void PlayerReadyRpc()
+    {
+        PlayerLoaded();
+    }
+
     public void PlayerLoaded()
     {
         if (!isServer) return;
         _playersLoaded++;
-        Debug.Log($"[PlayerLoaded] _playersLoaded={_playersLoaded}, playerCount={networkManager.playerCount}");
         if (_playersLoaded >= networkManager.playerCount)
         {
             _playersLoaded = 0;

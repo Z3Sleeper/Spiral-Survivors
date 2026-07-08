@@ -12,6 +12,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Elite Leapiest Gloom
       objectReference: {fileID: 0}
+    - target: {fileID: 4582770350625179015, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
+      propertyPath: m_Mass
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 4914970661950025587, guid: 0a39cc1a97b011f49bc7c7cd2add0b82, type: 3}
       propertyPath: xpValue
       value: 750

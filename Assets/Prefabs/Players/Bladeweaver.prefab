@@ -755,7 +755,7 @@ MonoBehaviour:
     _sendIntervalInSeconds: 0
   _currentHealth:
     _value: 0
-    _ownerAuth: 0
+    _ownerAuth: 1
     _sendIntervalInSeconds: 0
   baseHealthRegen: 0
   _bonusHealthRegenFlat:

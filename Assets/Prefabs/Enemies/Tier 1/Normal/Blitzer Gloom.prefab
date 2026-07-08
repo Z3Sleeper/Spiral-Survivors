@@ -338,6 +338,7 @@ MonoBehaviour:
   contactColliderEnabled: 1
   contactCooldown: 0.5
   stunResistant: 0
+  knockbackResistance: 0
   showDamageNumbers: 1
   _damageNumberPlayerOffset: 0.625
   _currentHealthSync:

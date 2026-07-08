@@ -8,6 +8,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: -6973549993052189348, guid: eec346d9a69a42f4086ba2ef25788dba, type: 3}
+      propertyPath: m_Mass
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: eec346d9a69a42f4086ba2ef25788dba, type: 3}
       propertyPath: m_Name
       value: Elite Dagger Gloom
@@ -55,10 +59,6 @@ PrefabInstance:
     - target: {fileID: 5697856341733162393, guid: eec346d9a69a42f4086ba2ef25788dba, type: 3}
       propertyPath: _damageNumberPlayerOffset
       value: 1.25
-      objectReference: {fileID: 0}
-    - target: {fileID: 6342366828183147542, guid: eec346d9a69a42f4086ba2ef25788dba, type: 3}
-      propertyPath: m_IsActive
-      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7839943648137112170, guid: eec346d9a69a42f4086ba2ef25788dba, type: 3}
       propertyPath: m_LocalScale.x

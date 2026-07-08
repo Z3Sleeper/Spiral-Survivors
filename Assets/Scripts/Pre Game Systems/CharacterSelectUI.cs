@@ -20,6 +20,7 @@ public class CharacterSelectUI : MonoBehaviour
     private readonly Dictionary<string, int> _colorSelections = new();
     private readonly Dictionary<string, long> _powerLevels = new();
     private bool _isRandom;
+    private bool _localIsReady;
 
     private void Awake()
     {
@@ -129,7 +130,8 @@ public class CharacterSelectUI : MonoBehaviour
                 ? ColorUtility.ToHtmlStringRGB(colorPalette.Get(colorIndex))
                 : "FFFFFF";
 
-            string readyState = member.IsReady ? "Ready" : "Not Ready";
+            bool isReady = member.Id == GameStartData.LocalUserId ? _localIsReady : member.IsReady;
+            string readyState = isReady ? "Ready" : "Not Ready";
             long power = member.Id == GameStartData.LocalUserId
                 ? ProgressionManager.SpentPoints
                 : (_powerLevels.TryGetValue(member.Id, out long p) ? p : 0L);
@@ -162,7 +164,28 @@ public class CharacterSelectUI : MonoBehaviour
 
     public void OnReadyClicked()
     {
-        lobbyManager?.ToggleLocalReady();
+        if (lobbyManager == null) return;
+        _localIsReady = !_localIsReady;
+        lobbyManager.ToggleLocalReady();
+        RefreshFromLobby(lobbyManager.CurrentLobby);
+
+        if (_localIsReady)
+        {
+            var lobby = lobbyManager.CurrentLobby;
+            bool allOthersReady = true;
+            foreach (var m in lobby.Members)
+            {
+                if (m.Id == GameStartData.LocalUserId) continue;
+                if (!m.IsReady) { allOthersReady = false; break; }
+            }
+            if (allOthersReady && LoadingScreen.instance != null)
+                LoadingScreen.instance.Show();
+        }
+    }
+
+    public void ResetReadyState()
+    {
+        _localIsReady = false;
     }
 
     private void SelectColor(int index)

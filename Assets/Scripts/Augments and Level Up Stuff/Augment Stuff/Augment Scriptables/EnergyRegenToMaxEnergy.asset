@@ -24,4 +24,7 @@ MonoBehaviour:
   multiplayerOnly: 0
   incompatibleAugments: []
   requiredAugments: []
-  requiredOneOfAugments: []
+  requiredOneOfAugments:
+  - {fileID: 11400000, guid: d2398754de0ea364a8f30ef911e91b35, type: 2}
+  - {fileID: 11400000, guid: 02e758731d7c7a94eacea983d508f640, type: 2}
+  - {fileID: 11400000, guid: 70dcb9d55d1fe354ca9d91abb1f97553, type: 2}

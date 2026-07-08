@@ -351,7 +351,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.02, z: 0}
-  m_LocalScale: {x: 3.5, y: 0.01, z: 3.5}
+  m_LocalScale: {x: 4, y: 0.01, z: 4}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7519932879049902376}
@@ -456,7 +456,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0.01, z: 0}
-  m_LocalScale: {x: 3.5, y: 0.01, z: 3.5}
+  m_LocalScale: {x: 4, y: 0.01, z: 4}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7519932879049902376}
@@ -648,6 +648,7 @@ MonoBehaviour:
   contactColliderEnabled: 0
   contactCooldown: 0.5
   stunResistant: 0
+  knockbackResistance: 0
   showDamageNumbers: 1
   _damageNumberPlayerOffset: 0.625
   _currentHealthSync:
@@ -697,8 +698,8 @@ MonoBehaviour:
   _syncScale: 0
   _syncParent: 0
   _interpolateSettings: 7
-  _minBufferSize: 1
-  _maxBufferSize: 2
+  _minBufferSize: 2
+  _maxBufferSize: 4
   _characterControllerPatch: 0
   _ownerAuth: 1
   _interpolationTiming: 0
@@ -710,7 +711,7 @@ Rigidbody:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1597157536724350220}
   serializedVersion: 5
-  m_Mass: 5
+  m_Mass: 10
   m_LinearDamping: 9
   m_AngularDamping: 0
   m_CenterOfMass: {x: 0, y: 0, z: 0}
@@ -737,7 +738,7 @@ Animator:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1597157536724350220}
-  m_Enabled: 1
+  m_Enabled: 0
   m_Avatar: {fileID: 0}
   m_Controller: {fileID: 9100000, guid: 8fb2c0000a53d354582695ae055ef98c, type: 2}
   m_CullingMode: 0
@@ -2251,7 +2252,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 0
   serializedVersion: 3
-  m_Radius: 1.75
+  m_Radius: 2
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &8365657585732576175
 MonoBehaviour:

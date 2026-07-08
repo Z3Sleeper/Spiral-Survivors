@@ -10,7 +10,6 @@ public class DaggerGloom : EnemyBase
     private static readonly int WindupSpeedHash = Animator.StringToHash("WindupSpeed");
     private static readonly int SpinSpeedHash = Animator.StringToHash("SpinSpeed");
     private static readonly int PostSpinSpeedHash = Animator.StringToHash("PostSpinSpeed");
-    private Animator _animator;
     private float _postSpinClipLength;
 
     [Header("Dagger Settings")]
@@ -51,7 +50,6 @@ public class DaggerGloom : EnemyBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        TryGetComponent(out _animator);
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
             if (clip.name == "Dagger Gloom Windup")
@@ -219,6 +217,16 @@ public class DaggerGloom : EnemyBase
 
     protected override void OnHideOnDeath()
     {
+        if (windupIndicator != null) windupIndicator.SetActive(false);
+        if (windupFill != null) windupFill.ResetFill();
+    }
+
+    protected override void OnPoolReset()
+    {
+        base.OnPoolReset();
+        _state = State.Moving;
+        _attacksRemaining = attacksPerAttack;
+        if (spinHitbox != null) spinHitbox.enabled = false;
         if (windupIndicator != null) windupIndicator.SetActive(false);
         if (windupFill != null) windupFill.ResetFill();
     }

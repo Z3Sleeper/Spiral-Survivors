@@ -12,6 +12,14 @@ PrefabInstance:
       propertyPath: m_Name
       value: Elite Daggiest Gloom
       objectReference: {fileID: 0}
+    - target: {fileID: 700357838477440066, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
+      propertyPath: m_Mass
+      value: 50
+      objectReference: {fileID: 0}
+    - target: {fileID: 3458306737600803679, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 5
+      objectReference: {fileID: 0}
     - target: {fileID: 6454230715312620679, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
       propertyPath: xpValue
       value: 750
@@ -47,6 +55,18 @@ PrefabInstance:
     - target: {fileID: 6454230715312620679, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
       propertyPath: _damageNumberPlayerOffset
       value: 1.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 8812913012003509108, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8812913012003509108, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 8812913012003509108, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 8812913012003509108, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
       propertyPath: m_LocalPosition.x
@@ -87,6 +107,10 @@ PrefabInstance:
     - target: {fileID: 8812913012003509108, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8812913012003509108, guid: c79b56ad69880194392bbed96b95ed0c, type: 3}
+      propertyPath: m_ConstrainProportionsScale
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

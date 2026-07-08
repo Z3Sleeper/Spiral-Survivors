@@ -8,10 +8,9 @@ public class RogueClassPassive : MonoBehaviour
     private CharacterStats _stats;
     private float _lastBonus;
 
-    private void Start()
+    public void Init(CharacterStats stats)
     {
-        _stats = GetComponentInParent<CharacterStats>();
-        if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
+        _stats = stats;
         _lastBonus = ComputeBonus();
         _stats.attackSpeedPercent += _lastBonus;
     }

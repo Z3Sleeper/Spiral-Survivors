@@ -194,8 +194,8 @@ public class UpgradePanel : MonoBehaviour
 
         if (refundText != null)
             refundText.text = tier == 0
-                ? "Refund:\n0 pts"
-                : $"Refund:\n{FormatPoints(ProgressionManager.GetRefundAmount(stat))} pts";
+                ? "0\npts"
+                : $"{FormatPoints(ProgressionManager.GetRefundAmount(stat))}\npts";
 
         if (currentPriceText != null)
             currentPriceText.text = maxed

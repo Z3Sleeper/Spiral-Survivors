@@ -51,10 +51,16 @@ public class WeaponAxe : WeaponBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        if (isOwner) InitOwner();
+        else InitNonOwner();
+        enabled = isOwner;
+    }
+
+    private void InitOwner()
+    {
         _enemyHurtboxMask  = LayerMask.GetMask("EnemyHurtbox");
         _strikeableMask    = LayerMask.GetMask("Strikeable");
         _playerHurtboxMask = LayerMask.GetMask("PlayerHurtbox");
-        enabled = isOwner;
         Transform hb = hitboxTarget != null ? hitboxTarget : transform;
         float fullRange0 = hb.lossyScale.z;
         float handleHZ0  = fullRange0 * handleRatio * 0.5f;
@@ -66,6 +72,16 @@ public class WeaponAxe : WeaponBase
         _prevInnerCenter  = hb.position - hb.forward * bladeHZ0;
         _prevOuterPoint1  = outerCenter0 + hb.right * capsuleHalfHeight0;
         _prevOuterPoint2  = outerCenter0 - hb.right * capsuleHalfHeight0;
+    }
+
+    private void InitNonOwner()
+    {
+        if (outerBladeVisual == null || !owner.HasValue) return;
+        if (!CharacterStats.All.TryGetValue(owner.Value, out var cs) || !cs.outerXScalesWithRange) return;
+        _rangeSync.onChanged     += _ => UpdateOuterBladeVisual();
+        _rootScaleSync.onChanged += _ => UpdateOuterBladeVisual();
+        if (_rangeSync.value > 0f)
+            UpdateOuterBladeVisual();
     }
 
     private void Update()
@@ -94,19 +110,7 @@ public class WeaponAxe : WeaponBase
         Vector3 innerExt = new(innerX, yExtent * sy, handleHZ);
 
         if (outerBladeVisual != null && _stats.outerXScalesWithRange)
-        {
-            if (_baseOuterBladeLocalScaleX < 0f)
-                _baseOuterBladeLocalScaleX = outerBladeVisual.localScale.x;
-            float baseOuter = outerXExtent * sx;
-            float hitboxRatio = baseOuter > 0f ? outerX / baseOuter : 1f;
-            // rangeScaleTarget's X is already multiplied by parentXRatio via ScaleModel — divide it out
-            float parentXRatio = xRangeScaleRatio > 0f
-                ? Mathf.Lerp(1f, fullRange / Mathf.Max(0.001f, designOrbit * transform.localScale.z), xRangeScaleRatio)
-                : 1f;
-            float localRatio = parentXRatio > 0.001f ? hitboxRatio / parentXRatio : hitboxRatio;
-            var vs = outerBladeVisual.localScale;
-            outerBladeVisual.localScale = new Vector3(_baseOuterBladeLocalScaleX * localRatio, vs.y, vs.z);
-        }
+            UpdateOuterBladeVisual();
 
         _newOverlaps.Clear();
         _newOuterHits.Clear();
@@ -224,6 +228,25 @@ public class WeaponAxe : WeaponBase
         _prevInnerCenter = innerCenter;
         _prevOuterPoint1 = outerPoint1;
         _prevOuterPoint2 = outerPoint2;
+    }
+
+    private void UpdateOuterBladeVisual()
+    {
+        if (_baseOuterBladeLocalScaleX < 0f)
+            _baseOuterBladeLocalScaleX = outerBladeVisual.localScale.x;
+        Transform hb = hitboxTarget != null ? hitboxTarget : transform;
+        float fullRange = _rangeSync.value;
+        float sx = hb.lossyScale.x;
+        float outerX = outerXExtent * Mathf.Lerp(sx, fullRange, outerXRangeScaleRatio);
+        float baseOuter = outerXExtent * sx;
+        float hitboxRatio = baseOuter > 0f ? outerX / baseOuter : 1f;
+        // rangeScaleTarget's X is already multiplied by parentXRatio via ScaleModel — divide it out
+        float parentXRatio = xRangeScaleRatio > 0f
+            ? Mathf.Lerp(1f, fullRange / Mathf.Max(0.001f, designOrbit * transform.localScale.z), xRangeScaleRatio)
+            : 1f;
+        float localRatio = parentXRatio > 0.001f ? hitboxRatio / parentXRatio : hitboxRatio;
+        var vs = outerBladeVisual.localScale;
+        outerBladeVisual.localScale = new Vector3(_baseOuterBladeLocalScaleX * localRatio, vs.y, vs.z);
     }
 
     private void OnDrawGizmos()

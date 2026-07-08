@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: ShieldDamageReduction
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF00FF>Reinforced Shielding</color>
-  description: 'Gain <color=#8C8C8C>25% Damage Reduction</color>. Bonus is lost 5
+  description: 'Gain <color=#8C8C8C>50% Damage Reduction</color>. Bonus is lost 2
     seconds after your <color=#FF00FF>Shield</color> breaks.
 
-    <color=#FF00FF>+50%
-    Max Shield</color>'
-  icon: {fileID: 21300000, guid: d0919956ea66f20499f1891e9ceb4a75, type: 3}
+    <color=#FF00FF>+5%
+    Max Health Shield</color>'
+  icon: {fileID: 21300000, guid: 37a9507e367a9dc4e964a6b2fa3a1d43, type: 3}
   restrictedToClasses: 
   excludedClasses: 
   effectPrefab: {fileID: 7531731885202670819, guid: ec614b706e5c1494f86d50803dc8c147, type: 3}

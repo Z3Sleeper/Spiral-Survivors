@@ -27,11 +27,16 @@ public class WeaponBlade : WeaponBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        if (isOwner) InitOwner();
+        enabled = isOwner;
+    }
+
+    private void InitOwner()
+    {
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
         _strikeableMask = LayerMask.GetMask("Strikeable");
         _playerHurtboxMask = LayerMask.GetMask("PlayerHurtbox");
         _prevPosition = hitboxTarget != null ? hitboxTarget.position : transform.position;
-        enabled = isOwner;
     }
 
     private void Update()

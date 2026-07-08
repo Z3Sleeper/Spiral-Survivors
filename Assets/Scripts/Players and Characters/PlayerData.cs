@@ -1,53 +1,31 @@
-using System.Collections;
 using PurrNet;
 using UnityEngine;
 
 public class PlayerData : NetworkIdentity
 {
-    public SyncVar<int> characterIndex = new SyncVar<int>(0);
-    public SyncVar<int> colorIndex = new SyncVar<int>(0);
+    private bool _hasSpawned;
 
-    private bool _hasReported;
-
-    protected override void OnSpawned()
+    protected override void OnSpawned(bool asServer)
     {
-        base.OnSpawned();
-        Debug.Log($"[PlayerData.OnSpawned] isOwner={isOwner}, isServer={isServer}");
-
-        if (isOwner)
-            TryReport();
-    }
-
-    protected override void OnOwnerChanged(PlayerID? oldOwner, PlayerID? newOwner, bool asServer)
-    {
-        base.OnOwnerChanged(oldOwner, newOwner, asServer);
-        Debug.Log($"[PlayerData.OnOwnerChanged] asServer={asServer}, isOwner={isOwner}, newOwner={newOwner}");
+        base.OnSpawned(asServer);
         if (!asServer && isOwner)
-            TryReport();
+            SpawnCharacterRpc(GameStartData.LocalCharacterIndex);
     }
 
-    private void TryReport()
+    [ServerRpc(requireOwnership: true)]
+    private void SpawnCharacterRpc(int charIndex)
     {
-        if (_hasReported) { Debug.Log("[PlayerData.TryReport] Already reported, skipping."); return; }
-        _hasReported = true;
-        Debug.Log($"[PlayerData.TryReport] index={GameStartData.LocalCharacterIndex}, color={GameStartData.LocalColorIndex}");
-        ReportCharacterRpc(GameStartData.LocalCharacterIndex, GameStartData.LocalColorIndex);
-    }
+        if (_hasSpawned) return;
+        _hasSpawned = true;
 
-    [ServerRpc(requireOwnership: false)]
-    private void ReportCharacterRpc(int index, int color)
-    {
-        Debug.Log($"[ReportCharacterRpc] Received on server, index={index}, GameManager.instance={GameManager.instance != null}, spawner={GameManager.instance?.characterSpawner != null}");
-        characterIndex.value = index;
-        colorIndex.value = color;
-        GameManager.instance.characterSpawner.SpawnCharacter(index, this);
-        StartCoroutine(NotifyLoaded());
-    }
+        if (charIndex < 0 || charIndex >= CharacterRegistry.instance.PrefabCount())
+        {
+            Debug.LogError($"[PlayerData] Invalid charIndex {charIndex} — defaulting to 0");
+            charIndex = 0;
+        }
 
-    private IEnumerator NotifyLoaded()
-    {
-        yield return new WaitForSeconds(0.5f);
-        Debug.Log($"[NotifyLoaded] Calling PlayerLoaded. GameManager.instance={GameManager.instance != null}");
-        GameManager.instance?.PlayerLoaded();
+        var character = Instantiate(CharacterRegistry.instance.GetPrefab(charIndex), transform.position, transform.rotation);
+        if (character.TryGetComponent(out NetworkIdentity identity))
+            identity.GiveOwnership(owner.Value);
     }
 }

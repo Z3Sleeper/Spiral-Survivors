@@ -68,6 +68,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Elite Shootiest Gloom
       objectReference: {fileID: 0}
+    - target: {fileID: 5465574972081060386, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
+      propertyPath: m_Mass
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: xpValue
       value: 750
@@ -82,7 +86,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: multishot
-      value: 6
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 5857904218305540780, guid: 10de5b77df8a08d4388b88cfea38f0c0, type: 3}
       propertyPath: spawnOffset

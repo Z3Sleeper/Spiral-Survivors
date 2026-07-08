@@ -24,6 +24,11 @@ public class WeaponBase : NetworkIdentity
     private float[] _baseXScales;
     [System.NonSerialized] public float designOrbit;
 
+    [System.NonSerialized] public SyncVar<float>   _rangeSync     = new(0f, ownerAuth: true);
+    [System.NonSerialized] public SyncVar<Vector3> _rootScaleSync = new(Vector3.one, ownerAuth: true);
+
+    private CharacterStats _colorStats;
+
     public void InitModelVisuals()
     {
         if (rangeScaleTarget != null)
@@ -124,7 +129,8 @@ public class WeaponBase : NetworkIdentity
         RaiseOnHit(_stats, enemy, 1f, isCrit);
         Vector3 dir = enemy.transform.position - _stats.transform.position;
         dir.y = 0f;
-        if (dir != Vector3.zero) enemy.ApplyKnockbackRpc(dir.normalized, _stats.Knockback);
+        if (dir != Vector3.zero)
+            enemy.ApplyKnockback(dir.normalized, _stats.Knockback);
     }
     public static void RaiseOnStrike(CharacterStats stats, EnemyBase enemy, float effectiveness = 1f, bool isCrit = false)
     {
@@ -132,7 +138,8 @@ public class WeaponBase : NetworkIdentity
         RaiseOnHit(stats, enemy, effectiveness, isCrit);
         Vector3 dir = enemy.transform.position - stats.transform.position;
         dir.y = 0f;
-        if (dir != Vector3.zero) enemy.ApplyKnockbackRpc(dir.normalized, stats.Knockback);
+        if (dir != Vector3.zero)
+            enemy.ApplyKnockback(dir.normalized, stats.Knockback);
     }
 
     public static event System.Action<CharacterStats, EnemyBase, float, bool> OnHit;
@@ -152,14 +159,51 @@ public class WeaponBase : NetworkIdentity
         base.OnSpawned();
         if (_stats != null) return; // Already initialized by WeaponManager on the owner
         if (!owner.HasValue) return;
-        if (CharacterStats.All.TryGetValue(owner.Value, out var stats))
-            foreach (var a in GetComponentsInChildren<PlayerColorApplicator>(true))
-                a.Apply(stats.playerColor);
+        if (!CharacterStats.All.TryGetValue(owner.Value, out var stats))
+        {
+            Debug.LogWarning($"[WeaponBase.OnSpawned] No CharacterStats found for owner {owner.Value} — scale/color won't apply on this client");
+            return;
+        }
+
+        _colorStats = stats;
+        ApplyColor(stats._playerColorSync.value);
+        stats._playerColorSync.onChanged += ApplyColor;
+
+        if (IsMelee)
+        {
+            InitModelVisuals();
+            _rangeSync.onChanged     += _ => ApplyScaleVisual(_rootScaleSync.value, _rangeSync.value);
+            _rootScaleSync.onChanged += _ => ApplyScaleVisual(_rootScaleSync.value, _rangeSync.value);
+            if (_rangeSync.value > 0f)
+                ApplyScaleVisual(_rootScaleSync.value, _rangeSync.value);
+        }
+    }
+
+    private void ApplyScaleVisual(Vector3 rootScale, float range)
+    {
+        if (range <= 0f) return;
+        transform.localScale = rootScale;
+        ScaleModel(range);
+    }
+
+    private void ApplyColor(Color c)
+    {
+        foreach (var a in GetComponentsInChildren<PlayerColorApplicator>(true))
+            a.Apply(c);
     }
 
     public virtual void Init(CharacterStats stats)
     {
         _stats = stats;
         _controller = stats.GetComponent<PlayerController>();
+        _colorStats = stats;
+        ApplyColor(stats._playerColorSync.value);
+        stats._playerColorSync.onChanged += ApplyColor;
+    }
+
+    protected override void OnDespawned(bool asServer)
+    {
+        if (_colorStats != null) _colorStats._playerColorSync.onChanged -= ApplyColor;
+        base.OnDespawned(asServer);
     }
 }

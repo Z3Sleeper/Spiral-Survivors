@@ -10,6 +10,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     protected Collider _hurtbox;
     protected Collider _physicsCollider;
     protected Collider _contactDamageCollider;
+    protected Animator _animator;
 
     [Header("Identity")]
     public string enemyName = "Enemy";
@@ -34,6 +35,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     private bool _atPreferredRange = false;
     [NonSerialized] public bool _isDead = false;
     public bool stunResistant = false;
+    [Range(0f, 1f)] public float knockbackResistance = 0f;
     public bool showDamageNumbers = true;
     [SerializeField] private float _damageNumberPlayerOffset = 0f;
     private PlayerID _killerOwner;
@@ -78,7 +80,7 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     public Transform CurrentTarget => _target;
 
     private float _findTargetTimer = 0;
-    private const float FindTargetInterval = 1f;
+    protected float FindTargetInterval = 1f;
     protected Transform _target;
 
     private void Awake()
@@ -107,21 +109,48 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
 
         _findTargetTimer = UnityEngine.Random.Range(0f, FindTargetInterval);
         CacheRenderers();
+        _animator = GetComponentInChildren<Animator>();
     }
 
-    protected override void OnSpawned()
+    private void KillGraph()
     {
-        base.OnSpawned();
+        if (_animator == null) return;
+        if (_animator.playableGraph.IsValid())
+            _animator.playableGraph.Destroy();
+        _animator.enabled = false;
+    }
 
-        _syncMaxHealth.onChanged += val => maxHealth = val;
+    protected override void OnDespawned(bool asServer)
+    {
+        KillGraph();
+        base.OnDespawned(asServer);
+    }
 
-        if (!isServer) return;
+    protected override void OnSpawned(bool asServer)
+    {
+        if (_animator != null) _animator.enabled = true;
+        base.OnSpawned(asServer);
+
+        _syncMaxHealth.onChanged -= OnMaxHealthChanged;
+        _syncMaxHealth.onChanged += OnMaxHealthChanged;
+
+        if (!asServer) return;
         _syncMaxHealth.value = maxHealth;
         CurrentHealth = maxHealth;
         ActiveCount++;
         if (isPleb) ActivePlebCount++;
         else if (!isUncapped) ActiveNormalCount++;
     }
+
+    protected override void OnDestroy()
+    {
+        KillGraph();
+        base.OnDestroy();
+    }
+
+    private void OnApplicationQuit() => KillGraph();
+
+    private void OnMaxHealthChanged(float val) => maxHealth = val;
 
     public void Stun(float duration)
     {
@@ -395,11 +424,16 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         TakeDamage(damage, isCrit, info.sender);
     }
 
-    [ServerRpc(requireOwnership: false)]
-    public void ApplyKnockbackRpc(Vector3 direction, float force)
+    public void ApplyKnockback(Vector3 direction, float force)
     {
         if (!isStunnable || _isDead) return;
-        _rb.AddForce(direction * force, ForceMode.VelocityChange);
+        ApplyKnockbackRpc(direction, force * (1f - knockbackResistance));
+    }
+
+    [ObserversRpc(requireServer: false, runLocally: true)]
+    private void ApplyKnockbackRpc(Vector3 direction, float scaledForce)
+    {
+        _rb.AddForce(direction * scaledForce, ForceMode.VelocityChange);
     }
 
     protected virtual void Die()
@@ -436,6 +470,27 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     {
         var shield = GetComponentInChildren<GloomShield>();
         if (shield != null) shield.HideOnDeathRpc();
+    }
+
+    protected override void OnPoolReset()
+    {
+        base.OnPoolReset();
+        _isDead = false;
+        IsStunned = false;
+        _specialRoutineActive = false;
+        _atPreferredRange = false;
+        _target = null;
+        _deferredStunEndTime = -1f;
+        _killerOwner = default;
+        _findTargetTimer = UnityEngine.Random.Range(0f, FindTargetInterval);
+        if (_stunCoroutine != null) { StopCoroutine(_stunCoroutine); _stunCoroutine = null; }
+        if (_rb != null) { _rb.isKinematic = false; _rb.linearVelocity = Vector3.zero; _rb.angularVelocity = Vector3.zero; }
+        foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
+        for (int i = 0; i < _renderers.Length; i++)
+            if (_renderers[i] != null) _renderers[i].material.color = _originalColors[i];
+        if (_hurtbox != null) _hurtbox.enabled = true;
+        if (_physicsCollider != null) _physicsCollider.enabled = true;
+        if (_contactDamageCollider != null) _contactDamageCollider.enabled = contactColliderEnabled;
     }
 
 }

@@ -32,7 +32,7 @@ public class ReviveZone : NetworkIdentity
         reviveAreaCollider.enabled = dead;
         reviveProgressArea.SetActive(dead);
         reviveArea.SetActive(dead);
-        ChargeTimer = 0f;
+        if (isServer) ChargeTimer = 0f;
         _alliesInZone.Clear();
         if (dead)
             reviveProgressArea.transform.localScale = new Vector3(0f, reviveProgressArea.transform.localScale.y, 0f);

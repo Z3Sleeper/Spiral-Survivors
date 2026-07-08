@@ -268,7 +268,7 @@ public class LocalUIManager : MonoBehaviour
     {
         healthBar.value = _stats.CurrentHealth / _stats.MaxHealth;
         shieldBar.value = _stats.CurrentShield / _stats.MaxShield;
-        shieldRegenBar.value = (_stats.ShieldRegenTime - _stats._shieldRechargeTimer) / _stats.ShieldRegenTime;
+        shieldRegenBar.value = (_stats.shieldRechargeTime - _stats._shieldRechargeTimer) / _stats.shieldRechargeTime;
         healthText.text = $"<b><color=#FF00FF>{FormatStat(_stats.CurrentShield)}/{FormatStat(_stats.MaxShield)}</color> {FormatStat(_stats.CurrentHealth)}/{FormatStat(_stats.MaxHealth)}</b>";
     }
 

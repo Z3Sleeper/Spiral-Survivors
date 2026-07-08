@@ -25,6 +25,27 @@ public class XPOrb : NetworkIdentity
 
     protected override void OnDestroy() { CancelInvoke(); base.OnDestroy(); }
 
+    protected override void OnPoolReset()
+    {
+        base.OnPoolReset();
+        _collected = false;
+        _settled = false;
+        _attractQueued = false;
+        _attractTarget = null;
+        _collectorId = default;
+        CancelInvoke();
+        if (_rb != null)
+        {
+            _rb.isKinematic = false;
+            _rb.linearVelocity = Vector3.zero;
+            _rb.angularVelocity = Vector3.zero;
+        }
+        foreach (var col in GetComponentsInChildren<Collider>())
+            col.enabled = true;
+        foreach (var rend in GetComponentsInChildren<Renderer>())
+            rend.enabled = true;
+    }
+
     public void Init(int value)
     {
         _value = value;

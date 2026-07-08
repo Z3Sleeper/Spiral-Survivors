@@ -5,7 +5,7 @@ public class ShieldDamageReductionAugment : MonoBehaviour
 {
     [SerializeField] private float _damageReduction = 0.25f;
     [SerializeField] private float _duration = 5f;
-    [SerializeField] private float _maxShieldBonusPercent = 0.5f;
+    [SerializeField] private float _maxShieldBonusFlat = 0.05f;
 
     private CharacterStats _stats;
     private Coroutine _removalCoroutine;
@@ -16,7 +16,7 @@ public class ShieldDamageReductionAugment : MonoBehaviour
     {
         _stats = GetComponentInParent<CharacterStats>();
         if (_stats == null || !_stats.isOwner) { Destroy(gameObject); return; }
-        _stats.AddMaxShieldPercent(_maxShieldBonusPercent);
+        _stats.BonusMaxShieldFlat += _maxShieldBonusFlat;
         _stats.damageReductionPercent *= (1f - _damageReduction);
         _active = true;
         _prevShield = _stats.CurrentShield;
@@ -30,7 +30,7 @@ public class ShieldDamageReductionAugment : MonoBehaviour
         if (_active && _stats != null)
         {
             _stats.damageReductionPercent /= (1f - _damageReduction);
-            _stats.AddMaxShieldPercent(-_maxShieldBonusPercent);
+            _stats.BonusMaxShieldFlat -= _maxShieldBonusFlat;
         }
     }
 

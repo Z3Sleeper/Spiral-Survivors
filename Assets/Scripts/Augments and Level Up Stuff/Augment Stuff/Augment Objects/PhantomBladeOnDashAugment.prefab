@@ -45,7 +45,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeOnDashAugment
   phantomBladePrefab: {fileID: 2942187867930129664, guid: 4c94aad85e38e064283a82cc7a20be4f, type: 3}
-  damageStatMultiplier: 3
-  targetCount: 1
+  _baseDamageMultiplier: 1
+  _variancePercent: 0.2
+  targetCount: 3
   dashHasteBonus: 20
   bladeDamageBonus: 0.1

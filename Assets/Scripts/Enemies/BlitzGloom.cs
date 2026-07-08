@@ -171,6 +171,21 @@ public class BlitzGloom : EnemyBase
 
     protected override void OnHideOnDeath()
     {
-        if (windupIndicator != null) Destroy(windupIndicator);
+        if (windupIndicator == null) return;
+        windupIndicator.SetActive(false);
+        windupIndicator.transform.SetParent(transform);
+    }
+
+    protected override void OnPoolReset()
+    {
+        base.OnPoolReset();
+        _blitzesRemaining = blitzesPerAttack;
+        _state = State.Moving;
+        if (windupIndicator != null)
+        {
+            windupIndicator.SetActive(false);
+            windupIndicator.transform.SetParent(transform);
+        }
+        if (windupFill != null) windupFill.ResetFill();
     }
 }

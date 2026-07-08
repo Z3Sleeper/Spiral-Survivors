@@ -1745,7 +1745,7 @@ namespace PurrNet.Modules
             t.localScale = scale;
 
 #if UNITY_PHYSICS_3D
-            if (t.TryGetComponent<Rigidbody>(out var rb))
+            if (t.gameObject.activeInHierarchy && t.TryGetComponent<Rigidbody>(out var rb))
             {
                 rb.position = t.position;
                 rb.rotation = t.rotation;
@@ -1753,7 +1753,7 @@ namespace PurrNet.Modules
 #endif
 
 #if UNITY_PHYSICS_2D
-            if (t.TryGetComponent<Rigidbody2D>(out var rb2d))
+            if (t.gameObject.activeInHierarchy && t.TryGetComponent<Rigidbody2D>(out var rb2d))
             {
                 rb2d.position = t.position;
                 rb2d.rotation = t.rotation.eulerAngles.z;

@@ -7,7 +7,6 @@ public class LeaperGloom : EnemyBase
     private static readonly int LeapHash = Animator.StringToHash("LeaperLeap");
     private static readonly int WindupSpeedHash = Animator.StringToHash("WindupSpeed");
     private static readonly int LeapSpeedHash = Animator.StringToHash("LeapSpeed");
-    private Animator _animator;
     [Header("Leap Settings")]
     [SerializeField] private float windupDuration = 0.8f;
     [SerializeField] private float leapDuration = 0.5f;
@@ -52,7 +51,6 @@ public class LeaperGloom : EnemyBase
     {
         base.OnSpawned();
         OnStateChanged(State.Moving);
-        TryGetComponent(out _animator);
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
             if (clip.name == "Leaper Gloom Windup")
@@ -213,14 +211,31 @@ public class LeaperGloom : EnemyBase
 
     protected override void Die()
     {
-        DestroyDangerIndicatorRpc();
+        HideIndicatorRpc();
         base.Die();
     }
 
     [ObserversRpc]
-    private void DestroyDangerIndicatorRpc()
+    private void HideIndicatorRpc()
     {
+        if (windupIndicator == null) return;
+        windupIndicator.SetActive(false);
+        windupIndicator.transform.SetParent(transform);
+        if (windupFill != null) windupFill.ResetFill();
+    }
+
+    protected override void OnPoolReset()
+    {
+        base.OnPoolReset();
+        _state = State.Moving;
+        _clientLeapElapsed = 0f;
+        if (model != null) model.localPosition = new Vector3(0f, 0.5f, 0f);
+        if (aoeHitbox != null) aoeHitbox.enabled = false;
         if (windupIndicator != null)
-            Destroy(windupIndicator);
+        {
+            windupIndicator.SetActive(false);
+            windupIndicator.transform.SetParent(transform);
+        }
+        if (windupFill != null) windupFill.ResetFill();
     }
 }

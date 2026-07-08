@@ -215,6 +215,7 @@ public class AugmentManager : NetworkBehaviour
     [TargetRpc]
     private void ApplyAugmentLocalRpc(PlayerID target, int idxA, int idxB, float effectiveValueA = 1f, float effectiveValueB = 1f)
     {
+        if (networkManager.localPlayer != target) return;
         if (!CharacterStats.All.TryGetValue(target, out var stats)) return;
         ApplyStatLocal(stats, statDatabase.stats[idxA], effectiveValueA);
         ApplyStatLocal(stats, statDatabase.stats[idxB], effectiveValueB);
@@ -240,7 +241,7 @@ public class AugmentManager : NetworkBehaviour
     [TargetRpc]
     private void SendOptionsToPlayerRpc(PlayerID target, int[] types, int[] primaryIndices, int[] secondaryIndices)
     {
-        Debug.Log($"[SendOptionsToPlayerRpc] isServer={isServer} isOwner={isOwner} optionCount={types.Length}");
+        if (networkManager.localPlayer != target) return;
         var options = new List<LevelUpOption>();
         for (int i = 0; i < types.Length; i++)
         {

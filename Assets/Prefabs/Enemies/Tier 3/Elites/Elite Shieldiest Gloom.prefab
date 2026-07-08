@@ -88,6 +88,38 @@ PrefabInstance:
       propertyPath: shieldOffset
       value: 2
       objectReference: {fileID: 0}
+    - target: {fileID: 5749802652078439992, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
+      propertyPath: xpValue
+      value: 750
+      objectReference: {fileID: 0}
+    - target: {fileID: 5749802652078439992, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
+      propertyPath: enemyName
+      value: Elite Shieldiest Gloom
+      objectReference: {fileID: 0}
+    - target: {fileID: 5749802652078439992, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
+      propertyPath: maxHealth
+      value: 60000
+      objectReference: {fileID: 0}
+    - target: {fileID: 5749802652078439992, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
+      propertyPath: preferredRange
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 5749802652078439992, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
+      propertyPath: rangeToleranceFar
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 5749802652078439992, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
+      propertyPath: rangeToleranceClose
+      value: 0.06
+      objectReference: {fileID: 0}
+    - target: {fileID: 5749802652078439992, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
+      objectReference: {fileID: 0}
+    - target: {fileID: 6961141694086808746, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
+      propertyPath: m_Mass
+      value: 75
+      objectReference: {fileID: 0}
     - target: {fileID: 7056611374838680088, guid: dc24b3787c03acc49b2cc593a50fe3e7, type: 3}
       propertyPath: shieldOffset
       value: 2

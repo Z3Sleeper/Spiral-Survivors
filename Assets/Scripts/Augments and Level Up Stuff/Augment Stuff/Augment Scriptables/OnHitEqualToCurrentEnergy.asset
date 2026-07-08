@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: OnHitEqualToCurrentEnergy
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Repurposed Energy</color>
-  description: 'Deal <color=#FFFF00>8%-12% Current Energy</color> <color=#FF0050>On-Hit</color>.
+  description: 'Deal <color=#FFFF00>40%-60% Current Energy</color> <color=#FF0050>On-Hit</color>.
 
     <color=#FFFF00>+25
     Max Energy</color>'

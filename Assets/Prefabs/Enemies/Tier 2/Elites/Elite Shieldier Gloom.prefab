@@ -24,6 +24,34 @@ PrefabInstance:
       propertyPath: shieldOffset
       value: 2
       objectReference: {fileID: 0}
+    - target: {fileID: 3127123560731663145, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: xpValue
+      value: 150
+      objectReference: {fileID: 0}
+    - target: {fileID: 3127123560731663145, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: enemyName
+      value: Elite Shieldier Gloom
+      objectReference: {fileID: 0}
+    - target: {fileID: 3127123560731663145, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: maxHealth
+      value: 6000
+      objectReference: {fileID: 0}
+    - target: {fileID: 3127123560731663145, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: preferredRange
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3127123560731663145, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: rangeToleranceFar
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: 3127123560731663145, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: rangeToleranceClose
+      value: 0.06
+      objectReference: {fileID: 0}
+    - target: {fileID: 3127123560731663145, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
+      objectReference: {fileID: 0}
     - target: {fileID: 3450885902949319882, guid: 9e6e9391ced09e64eb34070380370334, type: 3}
       propertyPath: m_AnchorMax.x
       value: 0

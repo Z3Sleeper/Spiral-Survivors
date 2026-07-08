@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: HealthRegenOnEnemyDeath
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Life Reaping</color>
-  description: 'On Enemy deaths, <color=#7DFF00>heal 40%-60% Health Regen</color>.
+  description: 'On Enemy deaths, <color=#7DFF00>heal 16%-24% Health Regen</color>.
 
     <color=#7DFF00>+0.5
     Health Regen</color>'

@@ -290,7 +290,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7839943648137112170}
-  - component: {fileID: 6248512419650773259}
+  - component: {fileID: -5734930278300960818}
   - component: {fileID: -6517404654491541546}
   - component: {fileID: -8394223174193477460}
   - component: {fileID: -6973549993052189348}
@@ -324,7 +324,7 @@ Transform:
   - {fileID: 4142903890462952001}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &6248512419650773259
+--- !u!114 &-5734930278300960818
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -333,9 +333,9 @@ MonoBehaviour:
   m_GameObject: {fileID: 1597157536724350220}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 46ec57da776f0a047bb6504d77e907b4, type: 3}
+  m_Script: {fileID: 11500000, guid: cacfeeaff29da9e47b99a911fe84c171, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::EnemyBase
+  m_EditorClassIdentifier: Assembly-CSharp::ShielderGloom
   _isSetup: 0
   _prefabId: -2147483648
   _componentIndex: -2147483648
@@ -357,6 +357,7 @@ MonoBehaviour:
   contactColliderEnabled: 0
   contactCooldown: 0.5
   stunResistant: 0
+  knockbackResistance: 0
   showDamageNumbers: 1
   _damageNumberPlayerOffset: 0.625
   _currentHealthSync:
@@ -367,7 +368,8 @@ MonoBehaviour:
     _value: 0
     _ownerAuth: 0
     _sendIntervalInSeconds: 0
-  _renderers: []
+  _renderers:
+  - {fileID: 3448404629509916890}
 --- !u!114 &-6517404654491541546
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -406,8 +408,8 @@ MonoBehaviour:
   _syncScale: 0
   _syncParent: 0
   _interpolateSettings: 7
-  _minBufferSize: 1
-  _maxBufferSize: 2
+  _minBufferSize: 2
+  _maxBufferSize: 4
   _characterControllerPatch: 0
   _ownerAuth: 1
   _interpolationTiming: 0

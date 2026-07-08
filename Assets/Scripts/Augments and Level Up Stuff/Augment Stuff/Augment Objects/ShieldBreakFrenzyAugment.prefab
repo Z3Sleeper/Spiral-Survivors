@@ -44,7 +44,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c3030662c10679e4da028dc6d12e69dd, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShieldBreakFrenzyAugment
-  _attackSpeedBonus: 0.5
-  _moveSpeedBonus: 0.5
+  _totalAttackSpeedBonus: 0.25
+  _moveSpeedBonus: 0.25
   _duration: 5
-  _maxShieldBonusPercent: 0.5
+  _maxShieldBonusFlat: 0.05

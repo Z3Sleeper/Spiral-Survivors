@@ -36,9 +36,22 @@ public class WeaponArrow : NetworkIdentity
     protected override void OnSpawned()
     {
         base.OnSpawned();
+        if (isOwner) InitOwner();
+        else InitNonOwner();
+    }
+
+    private void InitOwner()
+    {
         _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
         _strikeableMask = LayerMask.GetMask("Strikeable");
         _playerHurtboxMask = LayerMask.GetMask("PlayerHurtbox");
+    }
+
+    private void InitNonOwner()
+    {
+        if (!owner.HasValue || !CharacterStats.All.TryGetValue(owner.Value, out var stats)) return;
+        foreach (var a in GetComponentsInChildren<PlayerColorApplicator>(true))
+            a.Apply(stats.playerColor);
     }
 
     public void Init(float damage, float maxRange, Vector3 direction, float speed, float critChance, float critDamage, int ricochet, AudioClip hitSound = null, CharacterStats ownerStats = null, float damageDropoff = 0f, float onHitDropOff = 0f, bool canContactAllies = false, bool canDamageAllies = false)

@@ -13,6 +13,7 @@ public class EnemyUI : MonoBehaviour
     {
         _enemy = GetComponentInParent<EnemyBase>();
         _camera = Camera.main;
+        if (healthBar != null) healthBar.value = 1f;
     }
 
     private void Update()
@@ -23,6 +24,9 @@ public class EnemyUI : MonoBehaviour
             healthText.gameObject.SetActive(false);
             return;
         }
+        if (!healthBar.gameObject.activeSelf) healthBar.gameObject.SetActive(true);
+        if (!healthText.gameObject.activeSelf) healthText.gameObject.SetActive(true);
+        if (_enemy.maxHealth <= 0f) return;
         healthBar.value = _enemy.CurrentHealth / _enemy.maxHealth;
         healthText.text = $"<b>{FormatStat(_enemy.CurrentHealth)}/{FormatStat(_enemy.maxHealth)}</b>";
     }

@@ -1,7 +1,6 @@
 using PurrNet;
 using UnityEngine;
 using System.Collections.Generic;
-using UnityEngine.Analytics;
 
 public class WeaponManager : NetworkBehaviour
 {
@@ -17,25 +16,15 @@ public class WeaponManager : NetworkBehaviour
     private float _currentSize;
     private Vector3 _weaponPrefabScale;
 
-    protected override void OnSpawned()
+    public void Init(CharacterStats stats)
     {
-        base.OnSpawned();
-        enabled = isOwner;
-        if (!isOwner) return;
-        InitializeForOwner();
-    }
-
-    public void InitializeForOwner()
-    {
-        if (_stats != null) return;
-        _stats = GetComponent<CharacterStats>();
-        _currentCount = _stats.WeaponCount;
-        _currentRange = _stats.WeaponRange;
-        _currentSize = _stats.WeaponSize;
+        _stats = stats;
+        _currentCount = stats.WeaponCount;
+        _currentRange = stats.WeaponRange;
+        _currentSize = stats.WeaponSize;
         _weaponPrefabScale = weaponPrefab.transform.localScale;
-        SpawnWeapons(_stats.WeaponCount);
-        _stats._isDeadSync.onChanged += OnDeathStateChanged;
-        enabled = true;
+        SpawnWeapons(stats.WeaponCount);
+        stats._isDeadSync.onChanged += OnDeathStateChanged;
     }
 
     private void OnDeathStateChanged(bool dead)
@@ -55,17 +44,8 @@ public class WeaponManager : NetworkBehaviour
             weapon.InitModelVisuals();
             weapon.transform.localScale = _weaponPrefabScale * _currentSize;
             SetWeaponRange(weapon);
-            foreach (var applicator in obj.GetComponentsInChildren<PlayerColorApplicator>(true))
-                applicator.Apply(_stats.playerColor);
             _weapons.Add(weapon);
         }
-    }
-
-    public void ReapplyColor(Color color)
-    {
-        foreach (var weapon in _weapons)
-            foreach (var applicator in weapon.GetComponentsInChildren<PlayerColorApplicator>(true))
-                applicator.Apply(color);
     }
 
     private void DespawnWeapons(int count)
@@ -102,11 +82,13 @@ public class WeaponManager : NetworkBehaviour
             );
         }
         weapon.ScaleModel(_stats.WeaponRange);
+        weapon._rootScaleSync.value = weapon.transform.localScale;
+        weapon._rangeSync.value     = _stats.WeaponRange;
     }
 
     private void Update()
     {
-        if (_weapons == null || _weapons.Count == 0 || _stats.IsDead) return;
+        if (_stats == null || _weapons == null || _weapons.Count == 0 || _stats.IsDead) return;
 
         if (_stats.WeaponCount != _currentCount)
         {

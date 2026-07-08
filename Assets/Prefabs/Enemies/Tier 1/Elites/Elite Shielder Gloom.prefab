@@ -12,6 +12,34 @@ PrefabInstance:
       propertyPath: m_Mass
       value: 75
       objectReference: {fileID: 0}
+    - target: {fileID: -5734930278300960818, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: xpValue
+      value: 30
+      objectReference: {fileID: 0}
+    - target: {fileID: -5734930278300960818, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: enemyName
+      value: Elite Shielder Gloom
+      objectReference: {fileID: 0}
+    - target: {fileID: -5734930278300960818, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: maxHealth
+      value: 600
+      objectReference: {fileID: 0}
+    - target: {fileID: -5734930278300960818, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: preferredRange
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: -5734930278300960818, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: rangeToleranceFar
+      value: 0.2
+      objectReference: {fileID: 0}
+    - target: {fileID: -5734930278300960818, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: rangeToleranceClose
+      value: 0.06
+      objectReference: {fileID: 0}
+    - target: {fileID: -5734930278300960818, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
+      propertyPath: _damageNumberPlayerOffset
+      value: 1.25
+      objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: c9d131cc2983f4943b86a83a9a92c877, type: 3}
       propertyPath: m_Name
       value: Elite Shielder Gloom

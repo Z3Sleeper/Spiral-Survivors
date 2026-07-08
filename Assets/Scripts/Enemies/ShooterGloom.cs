@@ -4,8 +4,6 @@ using UnityEngine;
 public class ShooterGloom : EnemyBase
 {
     private static readonly int ShooterShootHash = Animator.StringToHash("ShooterShoot");
-    private Animator _animator;
-
     [Header("Shooter Settings")]
     [SerializeField] private GameObject projectilePrefab;
     [SerializeField] private float spawnOffset = 0.75f;
@@ -50,7 +48,6 @@ public class ShooterGloom : EnemyBase
     {
         base.OnSpawned();
         OnStateChanged(State.Moving);
-        TryGetComponent(out _animator);
         _shotsRemaining = shotsPerAttack;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, attackCooldown);
     }
@@ -195,6 +192,13 @@ public class ShooterGloom : EnemyBase
     private void EnterMoving()
     {
         SetState(State.Moving);
+        _shotsRemaining = shotsPerAttack;
+    }
+
+    protected override void OnPoolReset()
+    {
+        base.OnPoolReset();
+        _state = State.Moving;
         _shotsRemaining = shotsPerAttack;
     }
 }

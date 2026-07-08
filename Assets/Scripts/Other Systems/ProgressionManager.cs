@@ -5,7 +5,7 @@ using UnityEngine;
 
 public static class ProgressionManager
 {
-    private const int    CurrentSaveVersion = 1;
+    private const int    CurrentSaveVersion = 2;
     private const string SaveFileName       = "progression.json";
 
     private const int   BaseFee       = 50;
@@ -13,49 +13,49 @@ public static class ProgressionManager
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
     private static readonly int[] WeaponDamageCosts =
-        { 0, 1000, 2000 };
+        { 0, 500, 1000 };
     private static readonly int[] DashChargesCosts =
-        { 0, 500, 1000, 1500 };
+        { 0, 250, 500, 750 };
     private static readonly int[] LuckCosts =
         { 0, 500, 1000, 2000, 2500 };
     private static readonly int[] EnergyRegenCosts =
-        { 0, 1000, 2000 };
-    private static readonly int[] RevivePowerCosts =
-        { 0, 500, 1000, 1500, 2000 };
-    private static readonly int[] MaxHealthCosts =
-        { 0, 1000, 2000, 3000, 4000 };
+        { 0, 500, 1000 };
     private static readonly int[] DashHasteCosts =
-        { 0, 500, 1000, 1500 };
+        { 0, 250, 500, 750 };
     private static readonly int[] CritChanceCosts =
-        { 0, 500, 1000, 1500 };
+        { 0, 250, 500, 750 };
     private static readonly int[] MaxShieldCosts =
-        { 0, 5000, 10000 };
+        { 0, 1000, 2000 };
     private static readonly int[] HealthRegenCosts =
-        { 500, 1000, 1500, 2000 };
+        { 0, 500, 1000, 1500 };
+    private static readonly int[] MaxHealthCosts =
+        { 500, 1000, 1500, 2000, 2500 };
+    private static readonly int[] RevivePowerCosts =
+        { 500, 750, 1000, 1250, 1500 };
+    private static readonly int[] CollectionRadiusCosts =
+        { 500, 1000, 1500, 2000, 2500 };
+    private static readonly int[] MaxEnergyCosts =
+        { 500, 1000, 1500, 2000, 2500 };
+    private static readonly int[] WeaponRangeCosts =
+        { 500, 1000 };
     private static readonly int[] ReviveTimePenaltyCosts =
         { 1000, 2000 };
-    private static readonly int[] CollectionRadiusCosts =
-        { 1000, 2000, 3000, 4000, 5000 };
-    private static readonly int[] MaxEnergyCosts =
-        { 1000, 2000, 3000, 4000, 5000 };
     private static readonly int[] AttackSpeedCosts =
         { 1500, 3000 };
-    private static readonly int[] LevelUpStatsCosts =
-        { 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000 };
-    private static readonly int[] WeaponRangeCosts =
-        { 2000, 4000 };
-    private static readonly int[] XPMultiplierCosts =
-        { 2000, 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000 };
+    private static readonly int[] ShieldRechargeTimeCosts =
+        { 1500, 3000, 4500, 6000 };
     private static readonly int[] MoveSpeedCosts =
         { 2000, 4000 };
-    private static readonly int[] DamagePerLevelCosts =
-        { 4000, 8000, 12000, 16000, 20000 };
-    private static readonly int[] ShieldRechargeTimeCosts =
-        { 5000, 10000, 15000, 20000 };
-    private static readonly int[] WeaponDamagePercentCosts =
-        { 6000, 12000, 18000, 24000, 30000 };
+    private static readonly int[] LevelUpStatsCosts =
+        { 4000, 8000, 12000, 16000, 20000, 24000, 28000, 32000, 36000, 40000 };
+    private static readonly int[] XPMultiplierCosts =
+        { 8000, 16000, 24000, 32000, 40000, 48000, 56000, 64000, 72000, 80000 };
     private static readonly int[] LevelUpOptionsCosts =
         { 10000, 20000 };
+    private static readonly int[] DamagePerLevelCosts =
+        { 100000, 150000, 200000, 250000, 300000 };
+    private static readonly int[] WeaponDamagePercentCosts =
+        { 250000, 500000, 750000, 1000000, 1250000 };
 
     private static string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
 

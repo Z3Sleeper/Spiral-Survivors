@@ -24,8 +24,13 @@ public class WeaponBow : WeaponBase
     protected override void OnSpawned()
     {
         base.OnSpawned();
-        _playerHurtboxMask = LayerMask.GetMask("PlayerHurtbox");
+        if (isOwner) InitOwner();
         enabled = isOwner;
+    }
+
+    private void InitOwner()
+    {
+        _playerHurtboxMask = LayerMask.GetMask("PlayerHurtbox");
     }
 
     public override void Init(CharacterStats stats)
