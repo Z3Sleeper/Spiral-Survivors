@@ -313,7 +313,7 @@ public class LobbySceneController : MonoBehaviour
     {
         if (_purrNetPlayersJoined < _expectedPlayerCount) return;
         networkManager.onPlayerJoined -= OnPurrNetPlayerJoined;
-        networkManager.sceneModule.LoadSceneAsync("Networked Game Scene", new PurrSceneSettings
+        networkManager.sceneModule.LoadSceneAsync(GameStartData.GameSceneName, new PurrSceneSettings
         {
             mode = LoadSceneMode.Single,
             isPublic = true

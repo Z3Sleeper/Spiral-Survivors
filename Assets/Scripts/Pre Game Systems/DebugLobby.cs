@@ -48,7 +48,7 @@ public class DebugLobby : MonoBehaviour
     {
         if (!NetworkManager.main.isServer) return;
         if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
-        NetworkManager.main.sceneModule.LoadSceneAsync("Networked Game Scene", new PurrSceneSettings
+        NetworkManager.main.sceneModule.LoadSceneAsync(GameStartData.GameSceneName, new PurrSceneSettings
         {
             mode = LoadSceneMode.Single,
             isPublic = true

@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0fd6605d666f95f479712408e07522e5, type: 3}
+  m_Name: PredictedPrefabs
+  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedPrefabs
+  _autoGenerate: 1
+  _folder: {fileID: 102900000, guid: 00000000000000001000000000000000, type: 3}
+  _defaultPooling:
+    usePooling: 0
+    initialSize: 0
+  _prefabs: []
+  _newPrefabs:
+  - prefab: {fileID: 7610165696036385783, guid: b20783ea485c0fa418e5b5c6e4b30676, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 2942187867930129664, guid: e465cb0b11f85b4458591525101dc6e3, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 1597157536724350220, guid: e2bafb70f1547904da52c6726e8a929b, type: 3}
+    pooling:
+      usePooling: 1
+      initialSize: 0
+  - prefab: {fileID: 1597157536724350220, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
+    pooling:
+      usePooling: 1
+      initialSize: 0

@@ -41,7 +41,7 @@ public class DamageNumberManager : MonoBehaviour
 
         if (!attackerOwner.Equals(default(PlayerID)))
         {
-            bool isOwn = CharacterStats.All.TryGetValue(attackerOwner, out var stats) && stats.isOwner;
+            bool isOwn = CharacterStatsPD.All.TryGetValue(attackerOwner, out var stats) && stats.isOwner;
             if (!isOwn && !Settings.SeeOtherPlayerDamage) return;
         }
 

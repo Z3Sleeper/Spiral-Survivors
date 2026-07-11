@@ -68,7 +68,7 @@ public class CharacterStats : NetworkBehaviour
     public int bonusWeaponCountMultiplier = 1;
     public int WeaponCount => (baseWeaponCount + bonusWeaponCountFlat) * bonusWeaponCountMultiplier;
 
-    public float baseWeaponRange = 5f;
+    public float baseWeaponRange = 10f;
     public float bonusWeaponRangeFlat = 0f;
     public float bonusWeaponRangePercent = 1f;
     public float weaponRangePenalty = 1f;
@@ -117,7 +117,7 @@ public class CharacterStats : NetworkBehaviour
     public float ProjectileOnHitDropoff => baseProjectileOnHitDropoff * projectileOnHitDropoffReduction;
 
     [Header("Health")]
-    public SyncVar<float> _baseMaxHealth = new(20f);
+    public SyncVar<float> _baseMaxHealth = new(50f);
     [HideInInspector] public float BaseMaxHealth
     {
         get => _baseMaxHealth.value;
@@ -143,7 +143,7 @@ public class CharacterStats : NetworkBehaviour
         get => _currentHealth.value;
         set => _currentHealth.value = value;
     }
-    public float baseHealthRegen = 0.5f;
+    public float baseHealthRegen = 0f;
     public SyncVar<float> _bonusHealthRegenFlat = new(0f, ownerAuth: true);
     public float BonusHealthRegenFlat
     {
@@ -164,7 +164,7 @@ public class CharacterStats : NetworkBehaviour
     /// Percentage of max health. Ex: 0.1f = max shield equal to 10% max health.
     /// </summary>
     [Header("Shield")]
-    public float baseMaxShield = 0.1f;
+    public float baseMaxShield = 0.05f;
     public SyncVar<float> _bonusMaxShieldFlat = new(0f, ownerAuth: true);
     public float BonusMaxShieldFlat
     {
@@ -193,7 +193,7 @@ public class CharacterStats : NetworkBehaviour
     [NonSerialized] public float _shieldRechargeTimer = 0f;
 
     [Header("Surge + Energy")]
-    public float baseMaxEnergy = 100f;
+    public float baseMaxEnergy = 50f;
     [NonSerialized] public float bonusMaxEnergyFlat = 0f;
     [NonSerialized] public float bonusMaxEnergyPercent = 1f;
     public float MaxEnergy => (baseMaxEnergy + bonusMaxEnergyFlat) * bonusMaxEnergyPercent;
@@ -203,7 +203,7 @@ public class CharacterStats : NetworkBehaviour
         get => _currentEnergy.value;
         set => _currentEnergy.value = value;
     }
-    public float baseEnergyRegen = 5f;
+    public float baseEnergyRegen = 4f;
     [NonSerialized] public float bonusEnergyRegenFlat = 0f;
     [NonSerialized] public float bonusEnergyRegenPercent = 1f;
     [NonSerialized] public float energyRegenPenalty = 1f;
@@ -228,7 +228,7 @@ public class CharacterStats : NetworkBehaviour
     public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty * SurgeEffectiveness;
 
     [Header("Dash")]
-    public int dashCharges = 3;
+    public int dashCharges = 1;
     [NonSerialized] public int levelUpOptions = 3;
     public float baseDashCooldown = 5f;
     public float dashHaste = 0f;

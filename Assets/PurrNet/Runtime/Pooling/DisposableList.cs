@@ -290,6 +290,7 @@ namespace PurrNet.Pooling
 
         public void RemoveRange(int opIndex, int opLength)
         {
+            if (opLength == 0) return;
             if (isDisposed) throw new ObjectDisposedException(nameof(DisposableList<T>));
             NotifyUsage();
 

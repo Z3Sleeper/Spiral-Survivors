@@ -13903,14 +13903,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - v0.15b
+      - v0.2
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - v0.15b
+    - v0.2
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -18943,7 +18943,7 @@ MonoBehaviour:
   _networkRules: {fileID: 11400000, guid: d8799083b96579a42b8b2d03e4ceae98, type: 2}
   _visibilityRules: {fileID: 11400000, guid: 8f014a5bd8dc68646a2a3c0b18c5bbd8, type: 2}
   _authenticator: {fileID: 1457045225}
-  _tickRate: 30
+  _tickRate: 50
   _patchLingeringProcessBug: 0
 --- !u!4 &1457045224
 Transform:
@@ -19925,7 +19925,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.15b
+  m_text: Version 0.2
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -25587,6 +25587,8 @@ MonoBehaviour:
   - {fileID: 2272951876664129887, guid: d7c3138941af2e242977ae94e8ca1ec3, type: 3}
   - {fileID: 2272951876664129887, guid: 450b495428051fe4cb0d4cf6615ff316, type: 3}
   - {fileID: 2272951876664129887, guid: ad466fea73c0edc438ac3ed64857ed66, type: 3}
+  predictedCharacterPrefabs:
+  - {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
 --- !u!4 &1914955370
 Transform:
   m_ObjectHideFlags: 0

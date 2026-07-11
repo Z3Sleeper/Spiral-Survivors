@@ -2,8 +2,8 @@ using UnityEngine;
 
 public class CameraController : MonoBehaviour
 {
-    [SerializeField] private Transform target;
-    [SerializeField] private Vector3 offset = new Vector3(0, 12, -8);
+    private Transform target;
+    [SerializeField] private Vector3 offset = new Vector3(0, 15, -10);
     [SerializeField] private float smoothSpeed = 8f;
 
     private void Start()

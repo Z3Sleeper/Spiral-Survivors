@@ -1,0 +1,522 @@
+using System;
+using System.Collections.Generic;
+using PurrNet;
+using PurrNet.Prediction;
+using UnityEngine;
+
+public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
+{
+    public static readonly Dictionary<PlayerID, CharacterStatsPD> All = new();
+
+    public enum CharacterClass { Knight, Rogue, Archer, Bladeweaver, Executioner }
+    public CharacterClass characterClass;
+    public bool outerXScalesWithRange = false;
+
+    // ── Serialized base values ─────────────────────────────────────────────
+
+    [Header("Movement")]
+    public float baseMoveSpeed = 1f;
+
+    [Header("Weapon")]
+    public float damagePerLevel = 2.5f;
+    public float baseWeaponDamage = 15f;
+    public float baseWeaponRadius = 0f;
+    public float baseAttackSpeed = 0.5f;
+    public int baseWeaponCount = 1;
+    public float baseWeaponRange = 10f;
+    public float baseWeaponSize = 1f;
+    public bool continuousFire = false;
+
+    [Header("Crit")]
+    public float baseCritChance = 0f;
+    public float baseCritDamage = 2f;
+
+    [Header("Ranged Weapons")]
+    public float baseRicochet = 0f;
+    public float baseMultishot = 0f;
+    public float multishotSpreadAngle = 75f;
+    public float baseProjectileDamageDropoff = 0.1f;
+    public float baseProjectileOnHitDropoff = 0.1f;
+
+    [Header("Health")]
+    public float baseMaxHealth = 50f;
+    public float baseHealthRegen = 0f;
+
+    [Header("Shield")]
+    public float baseMaxShield = 0.05f;
+    public float shieldRechargeTime = 5f;
+
+    [Header("Energy")]
+    public float baseMaxEnergy = 50f;
+    public float baseEnergyRegen = 4f;
+
+    [Header("Surge")]
+    public float baseSurgeCost = 2f;
+    public float surgeMoveSpeedMulti = 1f;
+    public float surgeMoveSpeedPenalty = 0.5f;
+    public float surgeAttackSpeedMulti = 2f;
+
+    [Header("Dash")]
+    public int dashCharges = 1;
+    public float baseDashCooldown = 5f;
+    public int levelUpOptions = 3;
+
+    [Header("Burst + SP")]
+    public float baseMaxSP = 100f;
+
+    [Header("Luck")]
+    public float baseLuck = 0f;
+
+    [Header("Knockback")]
+    public float baseKnockback = 10f;
+
+    [Header("Misc")]
+    public float baseOnHitPower = 1f;
+    public float baseXPRadius = 5f;
+    [SerializeField] private PlayerColorPalette _colorPalette;
+
+    [Header("Audio")]
+    [SerializeField] private AudioClip _damagedSfx;
+    public AudioClip hitSfx;
+
+    [Header("Revive")]
+    public float reviveTime = 3f;
+
+    // ── Augment/bonus modifiers ────────────────────────────────────────────
+
+    [HideInInspector] public float bonusMoveSpeedFlat = 0f;
+    [HideInInspector] public float bonusMoveSpeedPercent = 1f;
+    [HideInInspector] public float moveSpeedPenalty = 1f;
+
+    [HideInInspector] public float bonusWeaponDamageFlat = 0f;
+    [HideInInspector] public float bonusWeaponDamagePercent = 1f;
+    [HideInInspector] public float bonusWeaponDamagePenalty = 1f;
+
+    [HideInInspector] public float bonusWeaponRadiusFlat = 0f;
+    [HideInInspector] public float bonusWeaponRadiusPercent = 1f;
+
+    [HideInInspector] public float attackSpeedPercent = 0f;
+    [HideInInspector] public float attackSpeedTotalPercent = 1f;
+    [HideInInspector] public float attackSpeedPenalty = 1f;
+
+    [HideInInspector] public int bonusWeaponCountFlat = 0;
+    [HideInInspector] public int bonusWeaponCountMultiplier = 1;
+
+    [HideInInspector] public float bonusWeaponRangeFlat = 0f;
+    [HideInInspector] public float bonusWeaponRangePercent = 1f;
+    [HideInInspector] public float weaponRangePenalty = 1f;
+
+    [HideInInspector] public float bonusWeaponSizePercent = 1f;
+
+    [HideInInspector] public bool canContactAllies = false;
+    [HideInInspector] public bool canDamageAllies = false;
+
+    [HideInInspector] public float bonusCritChanceFlat = 0f;
+    [HideInInspector] public float bonusCritChancePercent = 1f;
+
+    [HideInInspector] public float bonusCritDamageFlat = 0f;
+    [HideInInspector] public float bonusCritDamagePercent = 1f;
+
+    [HideInInspector] public float bonusRicochetFlat = 0f;
+    [HideInInspector] public float bonusRicochetPercent = 1f;
+
+    [HideInInspector] public float bonusMultishotFlat = 0f;
+    [HideInInspector] public float bonusMultishotPercent = 1f;
+
+    [HideInInspector] public float projectileDamageDropoffReduction = 1f;
+    [HideInInspector] public float projectileOnHitDropoffReduction = 1f;
+
+    [HideInInspector] public float bonusMaxHealthFlat = 0f;
+    [HideInInspector] public float bonusMaxHealthPercent = 1f;
+
+    [HideInInspector] public float bonusHealthRegenFlat = 0f;
+    [HideInInspector] public float bonusHealthRegenPercent = 1f;
+
+    [HideInInspector] public float bonusMaxShieldFlat = 0f;
+    [HideInInspector] public float bonusMaxShieldPercent = 1f;
+
+    [HideInInspector] public float bonusMaxEnergyFlat = 0f;
+    [HideInInspector] public float bonusMaxEnergyPercent = 1f;
+
+    [HideInInspector] public float bonusEnergyRegenFlat = 0f;
+    [HideInInspector] public float bonusEnergyRegenPercent = 1f;
+    [HideInInspector] public float energyRegenPenalty = 1f;
+
+    [HideInInspector] public float bonusSurgeCostFlat = 0f;
+    [HideInInspector] public float bonusSurgeCostPercent = 1f;
+    [HideInInspector] public float surgeEffectiveness = 1f;
+    [HideInInspector] public float surgeEffectivenessPenalty = 1f;
+    [HideInInspector] public float surgeAttackSpeedPenalty = 1f;
+
+    [HideInInspector] public float dashHaste = 0f;
+
+    [HideInInspector] public float bonusMaxSPFlat = 0f;
+    [HideInInspector] public float bonusMaxSPPercent = 1f;
+
+    [HideInInspector] public float bonusLuckFlat = 0f;
+    [HideInInspector] public float bonusLuckPercent = 1f;
+    [HideInInspector] public float luckPenalty = 1f;
+
+    [HideInInspector] public float knockbackMultiplier = 1f;
+    [HideInInspector] public float knockbackPenalty = 1f;
+
+    [HideInInspector] public float bonusOnHitPowerMultiplier = 1f;
+    [HideInInspector] public float bonusOnHitPowerPenalty = 1f;
+
+    [HideInInspector] public float stackPowerPercent = 1f;
+    [HideInInspector] public float stackPowerPenalty = 1f;
+
+    [HideInInspector] public float xpMultiplier = 1f;
+    [HideInInspector] public float xpPenalty = 1f;
+
+    [HideInInspector] public float bonusXPRadiusFlat = 0f;
+    [HideInInspector] public float bonusXPRadiusPercent = 1f;
+
+    [HideInInspector] public float reviveTimePenalty = 1f;
+    [HideInInspector] public float reviveTimePenaltyReduction = 1f;
+    [HideInInspector] public float revivePower = 1f;
+
+    [HideInInspector] public float damageReductionPercent = 1f;
+    [HideInInspector] public float damageReductionPenalty = 1f;
+
+    // ── Computed properties ────────────────────────────────────────────────
+
+    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent * moveSpeedPenalty * (currentState.isSurging ? SurgeMoveSpeedMulti : 1f);
+
+    public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent * bonusWeaponDamagePenalty;
+    public float UnpenalizedWeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent;
+    public float WeaponRadius => (baseWeaponRadius + bonusWeaponRadiusFlat) * bonusWeaponRadiusPercent;
+
+    public float AttackSpeed => (baseAttackSpeed + attackSpeedPercent) * attackSpeedTotalPercent * attackSpeedPenalty * (currentState.isSurging ? SurgeAttackSpeedMultiplier : 1f);
+    public float WeaponSpeed => AttackSpeed * 360f;
+    public float AttackSpeedPercent => attackSpeedTotalPercent * attackSpeedPenalty;
+
+    public int WeaponCount => (baseWeaponCount + bonusWeaponCountFlat) * bonusWeaponCountMultiplier;
+    public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent * weaponRangePenalty * 0.2f;
+    public float WeaponSize => baseWeaponSize * bonusWeaponSizePercent;
+
+    public float CritChance => (baseCritChance + bonusCritChanceFlat) * bonusCritChancePercent;
+    public float CritDamage => ((baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent) + Mathf.Max(0f, CritChance - 1f) * 0.5f;
+
+    public float Ricochet => (baseRicochet + bonusRicochetFlat) * bonusRicochetPercent;
+    public float Multishot => (baseMultishot + bonusMultishotFlat) * bonusMultishotPercent;
+    public float ProjectileDamageDropoff => baseProjectileDamageDropoff * projectileDamageDropoffReduction;
+    public float ProjectileOnHitDropoff => baseProjectileOnHitDropoff * projectileOnHitDropoffReduction;
+
+    public float MaxHealth => (baseMaxHealth + bonusMaxHealthFlat) * bonusMaxHealthPercent;
+    public float HealthRegen => (baseHealthRegen + bonusHealthRegenFlat) * bonusHealthRegenPercent;
+
+    public float MaxShieldPercentOfMaxHealth => (baseMaxShield + bonusMaxShieldFlat) * bonusMaxShieldPercent;
+    public float MaxShield => MaxHealth * MaxShieldPercentOfMaxHealth;
+
+    public float MaxEnergy => (baseMaxEnergy + bonusMaxEnergyFlat) * bonusMaxEnergyPercent;
+    public float EnergyRegen => (baseEnergyRegen + bonusEnergyRegenFlat) * bonusEnergyRegenPercent * energyRegenPenalty;
+
+    public float SurgeCost => (baseSurgeCost + bonusSurgeCostFlat) * bonusSurgeCostPercent;
+    public float SurgeActivationThreshhold => SurgeCost * 5f;
+    public float SurgeEffectiveness => surgeEffectiveness * surgeEffectivenessPenalty;
+    public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty * SurgeEffectiveness;
+    public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty * SurgeEffectiveness;
+
+    public float DashCooldown => baseDashCooldown / (1f + dashHaste / 100f);
+
+    public float MaxSP => (baseMaxSP + bonusMaxSPFlat) * bonusMaxSPPercent;
+
+    public float Luck => (baseLuck + bonusLuckFlat) * bonusLuckPercent * luckPenalty;
+    public float LuckChance => Luck / (Luck + 100f);
+
+    public float Knockback => baseKnockback * knockbackMultiplier * knockbackPenalty;
+
+    public float OnHitPower => baseOnHitPower * bonusOnHitPowerMultiplier * bonusOnHitPowerPenalty;
+    public float StackPower => stackPowerPercent * stackPowerPenalty;
+    public float XPModifier => xpMultiplier * xpPenalty;
+    public float XPRadius => (baseXPRadius + bonusXPRadiusFlat) * bonusXPRadiusPercent;
+
+    public float ReviveTimePenalty => reviveTimePenalty * reviveTimePenaltyReduction;
+    public float DamageReduction => damageReductionPercent * damageReductionPenalty;
+
+    // Simulation state reads (use in Simulate / gameplay logic only)
+    public float CurrentHealth => currentState.health;
+    public float CurrentEnergy => currentState.energy;
+    public float CurrentShield => currentState.shield;
+    public float CurrentSP     => currentState.sp;
+    public bool  IsDead        => currentState.isDead;
+    public bool  IsSurging     => currentState.isSurging;
+    public bool  IsInvincible  => currentState.invincible;
+
+    // UI-facing state (set in UpdateView — safe to read from MonoBehaviour.Update)
+    // Health/shield use verified state to avoid prediction-rollback jumps.
+    // Energy/SP/surge use viewState since the owner predicts these accurately.
+    public float UIHealth              { get; private set; }
+    public float UIShield              { get; private set; }
+    public float UIShieldRechargeTimer { get; private set; }
+    public float UIEnergy              { get; private set; }
+    public float UISP                  { get; private set; }
+    public bool  UIIsSurging           { get; private set; }
+
+    // ── State ──────────────────────────────────────────────────────────────
+    public struct State : IPredictedData<State>
+    {
+        public float health;
+        public float energy;
+        public float shield;
+        public float sp;
+        public bool isDead;
+        public bool isSurging;
+        public bool invincible;
+        public float invincibleTimer;
+        public float surgeTickTimer;
+        public float surgeMinDurationTimer;
+        public int colorIndex;
+        public float healthRegenTimer;
+        public float shieldRechargeTimer;
+        public uint damageEventId;
+        public void Dispose() { }
+    }
+
+    protected override State GetInitialState() => new()
+    {
+        health = baseMaxHealth,
+        energy = baseMaxEnergy,
+        shield = 0f,
+        sp = 0f,
+        healthRegenTimer = 1f,
+        shieldRechargeTimer = 0f
+    };
+
+    // ── Lifecycle ──────────────────────────────────────────────────────────
+    protected override void LateAwake()
+    {
+        // bonuses applied by PlayerDataPD.Simulate after spawn
+        GetComponent<WeaponManagerPD>()?.Init(this);
+        // TODO: GetComponent<RogueClassPassive>()?.Init(this);
+
+        UIHealth = baseMaxHealth;
+        UIEnergy = baseMaxEnergy;
+
+        if (isOwner && LocalUIManagerPD.instance != null)
+            LocalUIManagerPD.instance.SetPlayer(this);
+    }
+
+    private const float SurgeTickInterval = 0.1f;
+    private const float SurgeMinDuration  = 0.5f;
+
+    protected override void Simulate(ref State state, float delta)
+    {
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        // Energy recharges even while dead so the player has energy on revive.
+        if (!state.isSurging)
+            state.energy = Mathf.Min(state.energy + EnergyRegen * delta, MaxEnergy);
+
+        if (state.isDead) return;
+
+        // Invincibility timer
+        if (state.invincible && state.invincibleTimer > 0f)
+        {
+            state.invincibleTimer -= delta;
+            if (state.invincibleTimer <= 0f)
+                state.invincible = false;
+        }
+
+        // Health regen
+        if (state.health < MaxHealth)
+        {
+            state.healthRegenTimer -= delta;
+            if (state.healthRegenTimer <= 0f)
+            {
+                state.health = Mathf.Min(state.health + HealthRegen, MaxHealth);
+                state.healthRegenTimer = 1f;
+            }
+        }
+
+        // Shield regen
+        if (state.shield < MaxShield)
+        {
+            state.shieldRechargeTimer -= delta;
+            if (state.shieldRechargeTimer <= 0f)
+                state.shield = MaxShield;
+        }
+
+        // Surge energy drain (can't be surging while dead, so this block is alive-only)
+        if (state.isSurging)
+        {
+            if (state.surgeMinDurationTimer > 0f)
+                state.surgeMinDurationTimer -= delta;
+
+            state.surgeTickTimer -= delta;
+            if (state.surgeTickTimer <= 0f)
+            {
+                state.surgeTickTimer = SurgeTickInterval;
+                state.energy -= SurgeCost;
+                if (state.energy <= 0f)
+                {
+                    state.energy = 0f;
+                    state.isSurging = false;
+                }
+            }
+        }
+    }
+
+    public static event Action<CharacterStatsPD, float> OnHeal;
+    private float _previousHealth;
+    private uint  _lastDamageEventId;
+
+    protected override void UpdateView(State viewState, State? verified)
+    {
+        UIHealth              = viewState.health;
+        UIShield              = viewState.shield;
+        UIShieldRechargeTimer = viewState.shieldRechargeTimer;
+        UIEnergy              = viewState.energy;
+        UISP                  = viewState.sp;
+        UIIsSurging           = viewState.isSurging;
+
+        if (viewState.health > _previousHealth)
+            OnHeal?.Invoke(this, viewState.health - _previousHealth);
+        _previousHealth = viewState.health;
+
+        if (isOwner && viewState.damageEventId != _lastDamageEventId)
+        {
+            _lastDamageEventId = viewState.damageEventId;
+            if (SFXManager.instance != null) SFXManager.instance.Play(_damagedSfx, transform.position);
+        }
+
+        // TODO: apply color
+    }
+
+    protected override void Destroyed()
+    {
+        if (owner.HasValue)
+            All.Remove(owner.Value);
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    public struct ProgressionBonuses
+    {
+        public float weaponDamageFlat, moveSpeedFlat, attackSpeedPct, energyRegenFlat;
+        public float dashHaste, critChanceFlat, xpRadiusFlat, weaponRangeFlat, maxEnergyFlat;
+        public int   dashChargesBonus, levelUpOptionsBonus;
+        public float revivePower, reviveTimePenaltyMult, xpMultiplier;
+        public float maxHealthFlat, healthRegenFlat, weaponDamagePct;
+        public float luckFlat, damagePerLevel, maxShieldFlat, shieldRechargeTime;
+    }
+
+    public static ProgressionBonuses ComputeProgressionBonuses() => new()
+    {
+        weaponDamageFlat        = ProgressionManager.GetBaseStatBonus(StatType.WeaponDamage),
+        moveSpeedFlat           = ProgressionManager.GetBaseStatBonus(StatType.MoveSpeed) * 0.1f,
+        attackSpeedPct          = ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f,
+        energyRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen),
+        dashHaste               = ProgressionManager.GetBaseStatBonus(StatType.DashHaste),
+        critChanceFlat          = ProgressionManager.GetBaseStatBonus(StatType.CritChance) * 0.01f,
+        xpRadiusFlat            = ProgressionManager.GetBaseStatBonus(StatType.CollectionRadius),
+        weaponRangeFlat         = ProgressionManager.GetBaseStatBonus(StatType.WeaponRange),
+        maxEnergyFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxEnergy),
+        dashChargesBonus        = (int)ProgressionManager.GetBaseStatBonus(StatType.DashCharges),
+        levelUpOptionsBonus     = (int)ProgressionManager.GetBaseStatBonus(StatType.LevelUpOptions),
+        revivePower             = ProgressionManager.GetBaseStatBonus(StatType.RevivePower),
+        reviveTimePenaltyMult   = Mathf.Pow(0.75f, ProgressionManager.GetBaseStatTier(StatType.ReviveTimePenalty)),
+        xpMultiplier            = ProgressionManager.GetBaseStatBonus(StatType.XPMultiplier) * 0.01f,
+        maxHealthFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxHealth),
+        healthRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.HealthRegen),
+        weaponDamagePct         = ProgressionManager.GetBaseStatBonus(StatType.WeaponDamagePercent),
+        luckFlat                = ProgressionManager.GetBaseStatBonus(StatType.Luck),
+        damagePerLevel          = ProgressionManager.GetBaseStatBonus(StatType.DamagePerLevel),
+        maxShieldFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxShield),
+        shieldRechargeTime      = ProgressionManager.GetBaseStatBonus(StatType.ShieldRechargeTime),
+    };
+
+    private bool _bonusesApplied;
+    public void ApplyProgressionBonuses(ProgressionBonuses b)
+    {
+        if (_bonusesApplied) return;
+        _bonusesApplied = true;
+        bonusWeaponDamageFlat      += b.weaponDamageFlat;
+        bonusMoveSpeedFlat         += b.moveSpeedFlat;
+        attackSpeedPercent         += b.attackSpeedPct * baseAttackSpeed;
+        bonusEnergyRegenFlat       += b.energyRegenFlat;
+        dashHaste                  += b.dashHaste;
+        bonusCritChanceFlat        += b.critChanceFlat;
+        bonusXPRadiusFlat          += b.xpRadiusFlat;
+        bonusWeaponRangeFlat       += b.weaponRangeFlat;
+        bonusMaxEnergyFlat         += b.maxEnergyFlat;
+        dashCharges                += b.dashChargesBonus;
+        levelUpOptions             += b.levelUpOptionsBonus;
+        revivePower                += b.revivePower;
+        reviveTimePenaltyReduction *= b.reviveTimePenaltyMult;
+        xpMultiplier               += b.xpMultiplier;
+        bonusMaxHealthFlat         += b.maxHealthFlat;
+        bonusHealthRegenFlat       += b.healthRegenFlat;
+        bonusWeaponDamagePercent   += b.weaponDamagePct;
+        bonusLuckFlat              += b.luckFlat;
+        damagePerLevel             += b.damagePerLevel;
+        bonusMaxShieldFlat         += b.maxShieldFlat;
+        shieldRechargeTime         += b.shieldRechargeTime;
+    }
+
+    public Color PlayerColor { get; private set; } = Color.white;
+    public void ApplyColor(int colorIndex)
+    {
+        Color c = _colorPalette != null ? _colorPalette.Get(colorIndex) : Color.white;
+        PlayerColor = c;
+        foreach (var a in GetComponentsInChildren<PlayerColorApplicator>(true))
+            a.Apply(c);
+        if (TryGetComponent(out WeaponManagerPD wm))
+            wm.ApplyColor(c);
+    }
+
+    // ── Public API ─────────────────────────────────────────────────────────
+    public void StartSurge()
+    {
+        if (currentState.isDead || currentState.isSurging) return;
+        currentState.isSurging = true;
+        currentState.surgeTickTimer = SurgeTickInterval;
+        currentState.surgeMinDurationTimer = SurgeMinDuration;
+        currentState.energy -= SurgeCost;
+    }
+
+    public void TryEndSurge()
+    {
+        if (!currentState.isSurging || currentState.surgeMinDurationTimer > 0f) return;
+        currentState.isSurging = false;
+    }
+
+    public void SetInvincible(float duration)
+    {
+        if (duration <= 0f) { currentState.invincible = false; currentState.invincibleTimer = 0f; return; }
+        currentState.invincible = true;
+        currentState.invincibleTimer = duration;
+    }
+
+    public void TakeDamage(float damage)
+    {
+        if (currentState.isDead) return;
+        if (currentState.invincible) return;
+
+        currentState.damageEventId++;
+        currentState.shieldRechargeTimer = shieldRechargeTime;
+        damage *= DamageReduction;
+
+        if (currentState.shield > 0f)
+        {
+            float shieldDamage = Mathf.Min(damage, currentState.shield);
+            currentState.shield -= shieldDamage;
+            damage -= shieldDamage;
+        }
+
+        if (damage > 0f)
+            currentState.health -= damage;
+
+        if (currentState.health <= 0f)
+        {
+            currentState.health = 0f;
+            currentState.isDead = true;
+        }
+    }
+
+    public void Heal(float amount)
+    {
+        if (currentState.isDead) return;
+        currentState.health = Mathf.Min(currentState.health + amount, MaxHealth);
+    }
+}

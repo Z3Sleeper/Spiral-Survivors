@@ -2719,7 +2719,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 38e9f852262fe8248b020ab7cdd9303e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CameraController
-  target: {fileID: 0}
   offset: {x: 0, y: 15, z: -10}
   smoothSpeed: 8
 --- !u!1 &351818064
