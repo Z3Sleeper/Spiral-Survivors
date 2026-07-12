@@ -30,7 +30,6 @@ public class ShooterGloom : EnemyBase
     private State _state = State.Moving;
     private void SetState(State state)
     {
-        isStunnable = state == State.Moving ? !stunResistant : false;
         _state = state;
         OnStateChanged(state);
         SyncStateRpc(state);
@@ -69,8 +68,9 @@ public class ShooterGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (TargetInRange() && _attackCooldownTimer <= 0f && !_specialRoutineActive)
+                if (TargetInRange() && _attackCooldownTimer <= 0f)
                 {
+                    isStunnable = false;
                     if (TargetTooClose())
                         EnterDash();
                     else
@@ -191,6 +191,7 @@ public class ShooterGloom : EnemyBase
 
     private void EnterMoving()
     {
+        isStunnable = !stunResistant;
         SetState(State.Moving);
         _shotsRemaining = shotsPerAttack;
     }

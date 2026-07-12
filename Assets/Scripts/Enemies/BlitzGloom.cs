@@ -26,7 +26,6 @@ public class BlitzGloom : EnemyBase
 
     private void SetState(State state)
     {
-        isStunnable = state == State.Moving ? !stunResistant : false;
         _windupPosition = transform.position;
         _state = state;
         OnStateChanged(state);
@@ -87,8 +86,11 @@ public class BlitzGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (TargetInRange() && _attackCooldownTimer <= 0f && !_specialRoutineActive)
+                if (TargetInRange() && _attackCooldownTimer <= 0f)
+                {
+                    isStunnable = false;
                     EnterWindup();
+                }
                 break;
 
             case State.Windup:
@@ -156,6 +158,7 @@ public class BlitzGloom : EnemyBase
 
     private void EnterPostBlitz()
     {
+        isStunnable = !stunResistant;
         SetState(State.PostBlitz);
         _stateTimer = postBlitzPause;
         _physicsCollider.enabled = true;

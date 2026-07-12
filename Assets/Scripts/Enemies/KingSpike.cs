@@ -109,13 +109,13 @@ public class KingSpike : BossBase
         switch (_state)
         {
             case State.Moving:
-                if (_attackCooldownTimer <= 0f && !_isSurging && !_specialRoutineActive)
+                if (_attackCooldownTimer <= 0f && !_isSurging)
                 {
                     _preSurgeMoveSpeed = moveSpeed;
                     moveSpeed = _preSurgeMoveSpeed * 5f;
                     _isSurging = true;
                 }
-                if (_attackCooldownTimer <= 0f && _target != null && !_specialRoutineActive &&
+                if (_attackCooldownTimer <= 0f && _target != null &&
                     Vector3.Distance(transform.position, _target.position) <= attackRange)
                 {
                     _chargesRemaining = chargesPerAttack;

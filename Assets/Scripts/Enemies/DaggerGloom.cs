@@ -33,7 +33,6 @@ public class DaggerGloom : EnemyBase
 
     private void SetState(State state)
     {
-        isStunnable = state == State.Moving ? !stunResistant : false;
         _state = state;
         OnStateChanged(state);
         SyncStateRpc(state);
@@ -105,11 +104,12 @@ public class DaggerGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (_attackCooldownTimer <= 0f && _target != null && !_specialRoutineActive)
+                if (_attackCooldownTimer <= 0f && _target != null)
                 {
                     float dist = Vector3.Distance(transform.position, _target.position);
                     if (dist <= preferredRange * 2f)
                     {
+                        isStunnable = false;
                         if (dist > preferredRange / 2f)
                             EnterDashToTarget();
                         else
@@ -204,6 +204,7 @@ public class DaggerGloom : EnemyBase
 
     private void EnterPostSpin()
     {
+        isStunnable = !stunResistant;
         SetState(State.PostSpin);
         _stateTimer = postSpinPause;
         _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);

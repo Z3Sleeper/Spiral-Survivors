@@ -39,25 +39,9 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     public bool showDamageNumbers = true;
     [SerializeField] private float _damageNumberPlayerOffset = 0f;
     private PlayerID _killerOwner;
-    protected bool _specialRoutineActive = false;
-    private bool _isStunnable;
-    public bool isStunnable
-    {
-        get => _isStunnable;
-        set
-        {
-            _isStunnable = value;
-            if (value && _deferredStunEndTime > Time.time)
-            {
-                float remaining = _deferredStunEndTime - Time.time;
-                _deferredStunEndTime = -1f;
-                Stun(remaining);
-            }
-        }
-    }
+    public bool isStunnable;
     public bool IsStunned { get; private set; }
     private Coroutine _stunCoroutine;
-    private float _deferredStunEndTime = -1f;
     public EnemyBase Source => this;
     public virtual float GetDamage() => damage;
     public virtual bool CanContactDamage => true;
@@ -155,12 +139,8 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     public void Stun(float duration)
     {
         if (!isServer || _isDead) return;
-        if (stunResistant) return;
-        if (!isStunnable)
-        {
-            _deferredStunEndTime = Mathf.Max(_deferredStunEndTime, Time.time + duration);
-            return;
-        }
+        if (!isStunnable) return;
+        _rb.linearVelocity = Vector3.zero;
         if (_stunCoroutine != null) StopCoroutine(_stunCoroutine);
         _stunCoroutine = StartCoroutine(StunCoroutine(duration));
     }
@@ -168,7 +148,6 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     private IEnumerator StunCoroutine(float duration)
     {
         IsStunned = true;
-        _rb.linearVelocity = Vector3.zero;
         bool hadContactDamage = _contactDamageCollider != null && _contactDamageCollider.enabled;
         if (_contactDamageCollider != null) _contactDamageCollider.enabled = false;
         yield return new WaitForSeconds(duration);
@@ -427,12 +406,20 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
     public void ApplyKnockback(Vector3 direction, float force)
     {
         if (!isStunnable || _isDead) return;
-        ApplyKnockbackRpc(direction, force * (1f - knockbackResistance));
+        float scaledForce = force * (1f - knockbackResistance);
+        const float drag      = 9f;
+        const float threshold = 1f;
+        float stunDuration = scaledForce > threshold
+            ? Mathf.Log(scaledForce / threshold) / drag
+            : 0f;
+        Stun(stunDuration);
+        ApplyKnockbackRpc(direction, scaledForce);
     }
 
     [ObserversRpc(requireServer: false, runLocally: true)]
     private void ApplyKnockbackRpc(Vector3 direction, float scaledForce)
     {
+        _rb.linearVelocity = Vector3.zero;
         _rb.AddForce(direction * scaledForce, ForceMode.VelocityChange);
     }
 
@@ -477,10 +464,9 @@ public class EnemyBase : NetworkIdentity, IEnemyAttack
         base.OnPoolReset();
         _isDead = false;
         IsStunned = false;
-        _specialRoutineActive = false;
+        isStunnable = !stunResistant;
         _atPreferredRange = false;
         _target = null;
-        _deferredStunEndTime = -1f;
         _killerOwner = default;
         _findTargetTimer = UnityEngine.Random.Range(0f, FindTargetInterval);
         if (_stunCoroutine != null) { StopCoroutine(_stunCoroutine); _stunCoroutine = null; }

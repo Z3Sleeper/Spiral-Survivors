@@ -32,7 +32,6 @@ public class LeaperGloom : EnemyBase
     private State _state = State.Moving;
     private void SetState(State state)
     {
-        isStunnable = state == State.Moving ? !stunResistant : false;
         _state = state;
         OnStateChanged(state);
         SyncStateRpc(state, _leapTarget);
@@ -98,8 +97,11 @@ public class LeaperGloom : EnemyBase
         switch (_state)
         {
             case State.Moving:
-                if (TargetInRange() && _attackCooldownTimer <= 0f && !_specialRoutineActive)
+                if (TargetInRange() && _attackCooldownTimer <= 0f)
+                {
+                    isStunnable = false;
                     EnterWindup();
+                }
                 break;
 
             case State.Windup:
@@ -197,6 +199,7 @@ public class LeaperGloom : EnemyBase
             EnterWindup();
         else
         {
+            isStunnable = !stunResistant;
             SetState(State.PostLeap);
             _stateTimer = postLeapPause;
             _attackCooldownTimer = attackCooldown + UnityEngine.Random.Range(0f, 0.2f * attackCooldown);
