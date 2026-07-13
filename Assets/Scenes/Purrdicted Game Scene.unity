@@ -2764,7 +2764,7 @@ GameObject:
   - component: {fileID: 352673809}
   - component: {fileID: 352673808}
   m_Layer: 5
-  m_Name: Session Points Text
+  m_Name: Upgrade Points Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -8644,7 +8644,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1107560119}
-  - component: {fileID: 1107560120}
   m_Layer: 5
   m_Name: Augment Tooltips
   m_TagString: Untagged
@@ -8672,22 +8671,6 @@ RectTransform:
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 255, y: 202.5}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!114 &1107560120
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1107560118}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 9909dba9bf9df6a45a96f1a92ce90e0f, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AugmentTooltip
-  panel: {fileID: 1077039109}
-  descriptionText: {fileID: 737798737}
-  canvas: {fileID: 264528625}
-  offset: {x: 200, y: 0}
 --- !u!1 &1110419184
 GameObject:
   m_ObjectHideFlags: 0
@@ -9491,6 +9474,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1198725973}
+  - component: {fileID: 1198725974}
   m_Layer: 0
   m_Name: AugmentManager
   m_TagString: Untagged
@@ -9513,6 +9497,19 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1198725974
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1198725972}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 807d6a439e128a448bdbcac20d1b9567, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentManagerPD
+  statDatabase: {fileID: 11400000, guid: bbc5f045a6dd0f1459c51d35a4dd093c, type: 2}
 --- !u!1 &1199022795
 GameObject:
   m_ObjectHideFlags: 0
@@ -9903,24 +9900,24 @@ MonoBehaviour:
   m_GameObject: {fileID: 1250590738}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 18e4c039547a05049a94ba88bf0b9dd0, type: 3}
+  m_Script: {fileID: 11500000, guid: 2fa0b9b49fe85da44b0cbd906cf866a4, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::XPOrbManager
+  m_EditorClassIdentifier: Assembly-CSharp::XPOrbManagerPD
   _tiers:
   - value: 1
-    prefab: {fileID: 476323272898777100, guid: 7b57a6261e375564093988f6fd01f5fe, type: 3}
+    prefab: {fileID: 476323272898777100, guid: 407489e301dbd3047a4bf4a3608d5c61, type: 3}
   - value: 5
-    prefab: {fileID: 1192195012697706914, guid: f8a28c05b5768f34688175ca304d9263, type: 3}
-  - value: 10
-    prefab: {fileID: 2013969533327138723, guid: e47400996a642964899844a20767b565, type: 3}
+    prefab: {fileID: 367739414525045843, guid: 63233d577cfca1243886b9e37de376a1, type: 3}
   - value: 25
-    prefab: {fileID: 6885481270945548442, guid: ee5f5fe0bdc2185479ffc3b9439f900e, type: 3}
-  - value: 100
-    prefab: {fileID: 2451627451878974218, guid: 4f7380baf6c954c4db67124accd4b8a3, type: 3}
-  - value: 500
-    prefab: {fileID: 3413149451848251513, guid: 911d7532eddbf8748b6b4c65d92ae33c, type: 3}
-  - value: 2500
-    prefab: {fileID: 6479263110349042156, guid: 441de80f95d79d4409f48576a235ab9d, type: 3}
+    prefab: {fileID: 6926881607162196772, guid: 0d221d011b863b14e8a578e6e5b00d27, type: 3}
+  - value: 125
+    prefab: {fileID: 2845189970182134515, guid: ea404ebd9877643448a627d8175327d7, type: 3}
+  - value: 625
+    prefab: {fileID: 3124182798681716878, guid: e3bd546243993394e90aaf4e9bc68161, type: 3}
+  - value: 3125
+    prefab: {fileID: 1024037519198458873, guid: b1724a146b5db254898397d6b41584ce, type: 3}
+  - value: 15625
+    prefab: {fileID: 7033530327805133976, guid: ca842e1f8cafcd941ab60971cfc8fa03, type: 3}
 --- !u!1 &1253565070
 GameObject:
   m_ObjectHideFlags: 0
@@ -10679,7 +10676,7 @@ GameObject:
   - component: {fileID: 1352201838}
   - component: {fileID: 1352201837}
   m_Layer: 5
-  m_Name: Session Points Background
+  m_Name: Upgrade Points Background
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -11991,6 +11988,59 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1513644542}
   m_CullTransparentMesh: 1
+--- !u!1 &1517409357
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1517409358}
+  - component: {fileID: 1517409359}
+  m_Layer: 0
+  m_Name: ReturnToLobbyManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1517409358
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1517409357}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -1.18749, y: 0, z: 0.32058}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1517409359
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1517409357}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 06196e596f5acbc49a8e2e992445bc3d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ReturnToLobbyManager
+  _isSetup: 0
+  _prefabId: -2147483648
+  _componentIndex: -2147483648
+  _shouldBePooled: 0
+  _parent: {fileID: 0}
+  _invertedPathToNearestParent: 
+  _directChildren: []
+  _networkRules: {fileID: 0}
+  _visitiblityRules: {fileID: 0}
 --- !u!1 &1526139481
 GameObject:
   m_ObjectHideFlags: 0
@@ -15433,16 +15483,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8ab1ada64fd73404dbf49482752acd59, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManagerPD
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
-  _enemySpawner: {fileID: 1129491048}
+  baseXPToNextLevel: 20
+  xpLevelStep: 5
+  coopSpawnTimeScalar: 1
 --- !u!1 &2037280116
 GameObject:
   m_ObjectHideFlags: 0
@@ -16127,7 +16170,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2111317653}
-  - component: {fileID: 2111317654}
   m_Layer: 5
   m_Name: Augment List
   m_TagString: Untagged
@@ -16156,20 +16198,6 @@ RectTransform:
   m_AnchoredPosition: {x: -750, y: 125}
   m_SizeDelta: {x: 300, y: 600}
   m_Pivot: {x: 0.5, y: 0.5}
---- !u!114 &2111317654
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2111317652}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a5e4500a4c200264590e0170c15f3b48, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::AugmentListUI
-  container: {fileID: 83635214}
-  entryPrefab: {fileID: 9009871486022598678, guid: e7143460497caa94f9ddf688ddf7bfe2, type: 3}
 --- !u!1 &2115245227
 GameObject:
   m_ObjectHideFlags: 0
@@ -16213,6 +16241,7 @@ SceneRoots:
   - {fileID: 264528626}
   - {fileID: 1147083179}
   - {fileID: 2030860279}
+  - {fileID: 1517409358}
   - {fileID: 1129491047}
   - {fileID: 1198725973}
   - {fileID: 1250590739}

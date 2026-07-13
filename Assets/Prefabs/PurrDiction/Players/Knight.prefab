@@ -118,7 +118,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 10, y: 0.01, z: 10}
+  m_LocalScale: {x: 1, y: 0.01, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7508126291795954218}
@@ -312,7 +312,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::CharacterStatsPD
   characterClass: 0
   outerXScalesWithRange: 0
-  baseMoveSpeed: 1
+  baseMoveSpeed: 10
   damagePerLevel: 2.5
   baseWeaponDamage: 15
   baseWeaponRadius: 0
@@ -349,6 +349,7 @@ MonoBehaviour:
   _colorPalette: {fileID: 11400000, guid: a99146994b6277c4581917449060f19f, type: 2}
   _damagedSfx: {fileID: 8300000, guid: 48b83bb02b5dbe1428951aaa5c764aaa, type: 3}
   hitSfx: {fileID: 8300000, guid: 719c88378fbe95e48a7810292b6df95b, type: 3}
+  _invincibilityShell: {fileID: 3938961821255119698}
   reviveTime: 3
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 1
@@ -429,7 +430,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WeaponManagerPD
   weaponPrefab: {fileID: 2942187867930129664, guid: e465cb0b11f85b4458591525101dc6e3, type: 3}
-  _visualsRoot: {fileID: 4433399181805987514}
+  _visualsRoot: {fileID: 7508126291795954218}
 --- !u!114 &-8161279469328764311
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -506,8 +507,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
   _graphics: {fileID: 7508126291795954218}
-  _floatAccuracy: 2
-  _interpolationSettings: {fileID: 11400000, guid: 4a8aa8e44e23cfd4a8d4387ef3f36173, type: 2}
+  _floatAccuracy: 1
+  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
   _unparentGraphics: 0
   _characterControllerPatch: 0
 --- !u!114 &2030771590138127021
@@ -523,7 +524,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedRigidbody
   _rigidbody: {fileID: 6078663367532249722}
-  _floatAccuracy: 0
+  _floatAccuracy: 1
   _eventMask: 63
   _ignoreTriggerOnTrigger: 0
 --- !u!1 &2657799351097180954
@@ -1214,7 +1215,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 5925581709578661190}
-  - component: {fileID: 2627378920288749833}
+  - component: {fileID: 4993528775910170645}
   m_Layer: 0
   m_Name: ReviveZone
   m_TagString: Untagged
@@ -1237,27 +1238,22 @@ Transform:
   m_Children: []
   m_Father: {fileID: 4433399181805987514}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!135 &2627378920288749833
-SphereCollider:
+--- !u!114 &4993528775910170645
+MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4567504977836683979}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 1
-  m_ProvidesContacts: 0
   m_Enabled: 1
-  serializedVersion: 3
-  m_Radius: 5
-  m_Center: {x: 0, y: 0, z: 0}
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6f45d103cd079574989f10aea7161ce5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ReviveZonePD
+  reviveArea: {fileID: 994057564990091576}
+  reviveProgressArea: {fileID: 8057881774231736990}
+  reviveRadius: 5
+  baseChargeRate: 1
 --- !u!1 &4682547681423405945
 GameObject:
   m_ObjectHideFlags: 0
@@ -1662,7 +1658,6 @@ GameObject:
   m_Component:
   - component: {fileID: 1784258740639185447}
   - component: {fileID: 1046179636567246685}
-  - component: {fileID: 2946939478374517439}
   m_Layer: 9
   m_Name: Hurtbox
   m_TagString: Untagged
@@ -1706,18 +1701,6 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.25
   m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &2946939478374517439
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5684261055220899450}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d3bba8e6c39cd9a41a050e615b9e0788, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::PlayerHurtboxReceiver
 --- !u!1 &5942536094427973354
 GameObject:
   m_ObjectHideFlags: 0
@@ -2238,7 +2221,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 10, y: 0.01, z: 10}
+  m_LocalScale: {x: 1, y: 0.01, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7508126291795954218}

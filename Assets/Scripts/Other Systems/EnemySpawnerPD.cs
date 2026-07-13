@@ -13,26 +13,19 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private GameObject enemyPrefab;
     [SerializeField] public float spawnInterval = 3f;
 
-    public static EnemySpawnerPD instance;
-
-    private void Awake()
-    {
-        if (instance != null) { Destroy(gameObject); return; }
-        instance = this;
-    }
-
     protected override State GetInitialState() => default;
-
-    public void StartSpawning()
-    {
-        currentState.isActive = true;
-        currentState.spawnTimer = spawnInterval;
-    }
 
     protected override void Simulate(ref State state, float delta)
     {
-        if (!state.isActive) return;
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        if (!state.isActive)
+        {
+            if (GameManagerPD.instance == null || !GameManagerPD.instance.GameStarted) return;
+            state.isActive = true;
+            state.spawnTimer = spawnInterval;
+            return;
+        }
 
         state.spawnTimer -= delta;
         if (state.spawnTimer <= 0f)

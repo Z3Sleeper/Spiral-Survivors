@@ -39,3 +39,31 @@ MonoBehaviour:
     pooling:
       usePooling: 1
       initialSize: 0
+  - prefab: {fileID: 476323272898777100, guid: 407489e301dbd3047a4bf4a3608d5c61, type: 3}
+    pooling:
+      usePooling: 1
+      initialSize: 0
+  - prefab: {fileID: 367739414525045843, guid: 63233d577cfca1243886b9e37de376a1, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 6926881607162196772, guid: 0d221d011b863b14e8a578e6e5b00d27, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 2845189970182134515, guid: ea404ebd9877643448a627d8175327d7, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 3124182798681716878, guid: e3bd546243993394e90aaf4e9bc68161, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 1024037519198458873, guid: b1724a146b5db254898397d6b41584ce, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 7033530327805133976, guid: ca842e1f8cafcd941ab60971cfc8fa03, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0

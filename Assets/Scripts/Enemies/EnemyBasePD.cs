@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using PurrNet;
+using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -16,6 +17,14 @@ public interface IEnemyPD
     void TriggerHitFeedback(float damage, bool isCrit, CharacterStatsPD attacker);
 }
 
+// Per-target contact damage cooldown — contact damage repeats over time (unlike a one-shot attack),
+// so each player touching the enemy needs their own independent cooldown, not a single shared one.
+public struct ContactCooldown
+{
+    public PlayerID player;
+    public float remaining;
+}
+
 // Common enemy simulation fields; embedded inside each enemy's TState struct.
 public struct EnemyBaseState
 {
@@ -24,13 +33,13 @@ public struct EnemyBaseState
     public float stunTimer;
     public bool atPreferredRange;
     public float findTargetTimer;
-    public float contactCooldownTimer;
+    public DisposableList<ContactCooldown> contactCooldowns;
     public bool isDashing;
     public Vector3 dashDirection;
     public Vector3 dashDestination;
     public float    dashSpeed;
     public PlayerID killerOwner;
-    public Vector3 pendingKnockback;
+    public bool initialized;
 }
 
 [RequireComponent(typeof(PredictedRigidbody))]
@@ -47,7 +56,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public string enemyName = "Enemy";
 
     [Header("Stats")]
-    public float moveSpeed = 0.6f;
+    public float moveSpeed = 6f;
     [NonSerialized] public float baseMoveSpeed;
     public float backpedalSpeedDivisor = 3f;
     public float maxHealth = 30f;
@@ -59,7 +68,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
     [NonSerialized] public float baseXpValue;
-    [NonSerialized] public float pointValue;
 
     [Header("Contact Damage")]
     public bool contactColliderEnabled = true;
@@ -108,6 +116,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ref var b = ref GetBase(ref s);
         b.health = maxHealth;
         b.findTargetTimer = FindTargetInterval;
+        b.contactCooldowns = DisposableList<ContactCooldown>.Create(4);
         return s;
     }
 
@@ -131,7 +140,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         baseDamage = damage;
         baseMoveSpeed = moveSpeed;
         baseXpValue = xpValue;
-        pointValue = xpValue;
         isStunnable = !stunResistant;
 
         CacheRenderers();
@@ -156,14 +164,26 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     {
         if (!CanContactDamage) return;
         if (IsStunned) return;
-        if (B.contactCooldownTimer > 0f) return;
-        if (B.isDead) return;
+        ref var b = ref B;
+        if (b.isDead) return;
 
         var stats = other.GetComponentInParent<CharacterStatsPD>();
-        if (stats == null) return;
+        if (stats == null || !stats.owner.HasValue) return;
 
+        var player = stats.owner.Value;
+        var cooldowns = b.contactCooldowns;
+
+        for (int i = 0; i < cooldowns.Count; i++)
+        {
+            if (!cooldowns[i].player.Equals(player)) continue;
+            if (cooldowns[i].remaining > 0f) return;
+            cooldowns[i] = new ContactCooldown { player = player, remaining = contactCooldown };
+            stats.TakeDamage(GetDamage());
+            return;
+        }
+
+        cooldowns.Add(new ContactCooldown { player = player, remaining = contactCooldown });
         stats.TakeDamage(GetDamage());
-        B.contactCooldownTimer = contactCooldown;
     }
 
     protected override void Destroyed()
@@ -174,15 +194,65 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // ── Simulation ─────────────────────────────────────────────────────────
     protected override void Simulate(ref TState state, float delta)
     {
-        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
-        ref var b = ref GetBase(ref state);
-        if (b.isDead) return;
-
-        if (b.pendingKnockback.sqrMagnitude > 0f)
+        if (PausePD.instance != null && PausePD.instance.IsPaused)
         {
-            _rigidbody.velocity += b.pendingKnockback;
-            b.pendingKnockback = default;
+            // DoPhysicsPass() isn't gated by IsPaused — it keeps integrating whatever velocity the
+            // Rigidbody already has every tick regardless of the visual pause. Without this, an enemy
+            // mid-knockback or mid-dash-to-target when pause hits would keep sliding from residual
+            // momentum while "paused" (same root cause as the equivalent player-side fix).
+            if (_rigidbody != null)
+            {
+                _rigidbody.velocity = Vector3.zero;
+                _rigidbody.angularVelocity = Vector3.zero;
+            }
+            return;
         }
+        ref var b = ref GetBase(ref state);
+
+        // Pooled reuse never calls OnRemovedFromPool() (PredictedHierarchy's pool path re-registers
+        // with reset:false), so first-tick setup has to be driven off State instead, since
+        // GetInitialState() is the one thing reliably re-run on every reuse.
+        if (!b.initialized)
+        {
+            // On the client, this tick can be replayed before the pooled object has actually been
+            // reactivated yet, which throws when touching the Animator and — worse — would otherwise
+            // mark this spawn as already-reset without ever having rebound the animator, permanently
+            // leaving it on whatever pose it was frozen in during its previous pooled life. Don't commit
+            // to initialized until we can actually do the reset; retry next tick instead.
+            if (!gameObject.activeInHierarchy) return;
+
+            b.initialized = true;
+            _target = null;
+            _wasDeadLastFrame = false;
+            _verifiedHealth   = maxHealth;
+
+            if (_rigidbody != null)
+            {
+                _rigidbody.velocity = Vector3.zero;
+                _rigidbody.angularVelocity = Vector3.zero;
+            }
+
+            foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
+            for (int i = 0; i < _renderers.Length; i++)
+                if (_renderers[i] != null) _renderers[i].material.color = _originalColors[i];
+
+            if (_hurtbox != null) _hurtbox.enabled = true;
+            if (_physicsCollider != null) _physicsCollider.enabled = true;
+            if (_contactDamageCollider != null) _contactDamageCollider.enabled = contactColliderEnabled;
+
+            if (_animator != null)
+            {
+                _animator.enabled = true;
+                // Force back to each layer's default state, regardless of whatever pose it was
+                // frozen in when pooled (e.g. mid-attack) — enabled alone doesn't reset this.
+                _animator.Rebind();
+                _animator.Update(0f);
+            }
+
+            OnRespawnReset();
+        }
+
+        if (b.isDead) return;
 
         if (b.stunTimer > 0f)
         {
@@ -197,8 +267,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             FindTarget();
         }
 
-        if (b.contactCooldownTimer > 0f)
-            b.contactCooldownTimer -= delta;
+        for (int i = b.contactCooldowns.Count - 1; i >= 0; i--)
+        {
+            var entry = b.contactCooldowns[i];
+            entry.remaining -= delta;
+            if (entry.remaining <= 0f)
+                b.contactCooldowns.RemoveAt(i);
+            else
+                b.contactCooldowns[i] = entry;
+        }
 
         bool wasDashing = b.isDashing;
         if (b.isDashing)
@@ -231,8 +308,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 CharacterStatsPD.All.TryGetValue(vb.killerOwner, out _);
                 // TODO: CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
                 // TODO: if (killer != null && killer.isOwner) CharacterStatsPD.RaiseOnEnemyKill(killer, this);
-                // TODO: XPOrbManager.instance.SpawnOrbs(transform.position, xpValue);
-                // TODO: GameManager.instance?.AwardPoints(Mathf.RoundToInt(pointValue));
+                if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(xpValue);
 
                 hierarchy.Delete(this);
             }
@@ -282,20 +358,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 if (distToTarget > preferredRange + rangeToleranceFar)
                 {
                     b.atPreferredRange = false;
-                    _rigidbody.AddForce(dir * moveSpeed, ForceMode.VelocityChange);
+                    _rigidbody.AddForce(dir * (moveSpeed * delta * 5f), ForceMode.VelocityChange);
                 }
                 else if (distToTarget < preferredRange - rangeToleranceClose)
                 {
                     b.atPreferredRange = false;
-                    _rigidbody.AddForce(-dir * (moveSpeed / backpedalSpeedDivisor), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(-dir * (moveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
                 }
             }
             else
             {
                 if (distToTarget > preferredRange)
-                    _rigidbody.AddForce(dir * moveSpeed, ForceMode.VelocityChange);
+                    _rigidbody.AddForce(dir * (moveSpeed * delta * 5f), ForceMode.VelocityChange);
                 else if (distToTarget < preferredRange)
-                    _rigidbody.AddForce(-dir * (moveSpeed / backpedalSpeedDivisor), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(-dir * (moveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
 
                 if (Mathf.Abs(distToTarget - preferredRange) <= 0.1f)
                     b.atPreferredRange = true;
@@ -303,7 +379,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
         else
         {
-            _rigidbody.AddForce(dir * moveSpeed, ForceMode.VelocityChange);
+            _rigidbody.AddForce(dir * (moveSpeed * delta * 5f), ForceMode.VelocityChange);
         }
     }
 
@@ -413,6 +489,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ActiveCount--;
         if (isPleb) ActivePlebCount--;
         else if (!isUncapped) ActiveNormalCount--;
+
+        if (XPOrbManagerPD.instance != null)
+            XPOrbManagerPD.instance.SpawnOrbs(hierarchy, transform.position, xpValue);
     }
 
     public void Stun(float duration)
@@ -426,7 +505,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     {
         if (!isStunnable || _isDead) return;
         float effectiveSpeed = impulse.magnitude * (1f - knockbackResistance);
-        B.pendingKnockback += impulse.normalized * effectiveSpeed;
+        // Zeroed first rather than added to, so knockback doesn't have to fight whatever velocity the
+        // enemy's own movement AddForce was already carrying that tick.
+        _rigidbody.velocity = impulse.normalized * effectiveSpeed;
         const float drag      = 9f;
         const float threshold = 1f;
         float stunDuration = effectiveSpeed > threshold
@@ -438,6 +519,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // ── Visuals ────────────────────────────────────────────────────────────
     protected virtual void OnHideOnDeath() { }
     protected virtual void UpdateAnimator(TState viewState) { }
+
+    // Called once per (re)spawn, from within the guaranteed-reliable respawn block in Simulate().
+    // Subclasses with their own pooled state (attack phases, hitboxes, visual-state caches, etc.)
+    // should reset it here instead of OnRemovedFromPool(), which never fires for pooled reuse.
+    protected virtual void OnRespawnReset() { }
 
     private void ShowDamageNumber(float amount, PlayerID attackerOwner, bool isCrit = false)
     {
@@ -477,35 +563,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private void KillGraph()
     {
         if (_animator == null) return;
-        if (_animator.playableGraph.IsValid())
-            _animator.playableGraph.Destroy();
+        // Not destroying playableGraph here: Destroyed() fires on every pooled death (not just true
+        // destruction), and a destroyed graph can't be recreated by Rebind() on the next reuse — it
+        // permanently severs the Animator's connection to its controller. The GameObject is already
+        // SetActive(false) while pooled, which already stops it from being ticked at all, so simply
+        // disabling the component is sufficient and reuse-safe.
         _animator.enabled = false;
     }
 
     // ── Pool callbacks ─────────────────────────────────────────────────────
-    protected override void OnRemovedFromPool()
-    {
-        _target = null;
-        _wasDeadLastFrame = false;
-        _verifiedHealth   = maxHealth;
-
-        if (_rigidbody != null)
-        {
-            _rigidbody.velocity = Vector3.zero;
-            _rigidbody.angularVelocity = Vector3.zero;
-        }
-
-        foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
-        for (int i = 0; i < _renderers.Length; i++)
-            if (_renderers[i] != null) _renderers[i].material.color = _originalColors[i];
-
-        if (_hurtbox != null) _hurtbox.enabled = true;
-        if (_physicsCollider != null) _physicsCollider.enabled = true;
-        if (_contactDamageCollider != null) _contactDamageCollider.enabled = contactColliderEnabled;
-
-        if (_animator != null) _animator.enabled = true;
-    }
-
     protected override void OnAddedToPool()
     {
         KillGraph();

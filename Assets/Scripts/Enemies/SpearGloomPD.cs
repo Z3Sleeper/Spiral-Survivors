@@ -1,3 +1,5 @@
+using PurrNet;
+using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -10,7 +12,19 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         public float spearStateTimer;
         public float spearAttackCooldownTimer;
         public int spearAttacksRemaining;
-        public void Dispose() { }
+        public DisposableList<PlayerID> hitTargetsThisStab;
+        public void Dispose()
+        {
+            hitTargetsThisStab.Dispose();
+            b.contactCooldowns.Dispose();
+        }
+    }
+
+    protected override State GetInitialState()
+    {
+        var s = base.GetInitialState();
+        s.hitTargetsThisStab = DisposableList<PlayerID>.Create(4);
+        return s;
     }
 
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;
@@ -23,6 +37,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         }
     }
 
+    private static readonly int IdleHash          = Animator.StringToHash("Idle");
     private static readonly int SpearWindupHash   = Animator.StringToHash("SpearWindup");
     private static readonly int SpearStabHash     = Animator.StringToHash("SpearStab");
     private static readonly int SpearPostStabHash = Animator.StringToHash("SpearPostStab");
@@ -41,9 +56,9 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     [SerializeField] private float postStabPause      = 0.6f;
     [SerializeField] private float attackCooldown     = 3f;
     [SerializeField] private int   attacksPerAttack   = 1;
-    [SerializeField] private float dashSpeedMultiplier = 15f;
+    [SerializeField] private float dashSpeedMultiplier = 1.5f;
     [SerializeField] private GameObject _windupIndicator;
-    [SerializeField] private WindupFill _windupFill;
+    [SerializeField] private WindupFillPD _windupFill;
 
     public enum SpearState { Moving, Windup, Stabbing, BetweenStabs, PostStab, DashingToTarget }
 
@@ -81,7 +96,16 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     {
         if (B.isDead) return;
         var stats = other.GetComponentInParent<CharacterStatsPD>();
-        if (stats == null) return;
+        if (stats == null || !stats.owner.HasValue) return;
+
+        // Trigger events dispatch twice under normal operation — once live, once again if this tick
+        // later replays as a verified/reconciliation pass — so this needs its own dedup, scoped to
+        // one stab, per target (not a single flag — a stab can still legitimately hit multiple
+        // different players at once, just not the same player twice).
+        var target = stats.owner.Value;
+        if (currentState.hitTargetsThisStab.Contains(target)) return;
+
+        currentState.hitTargetsThisStab.Add(target);
         stats.TakeDamage(damage * stabDamageMultiplier);
     }
 
@@ -158,6 +182,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     {
         state.spearStateTimer = stabDuration;
         state.spearAttacksRemaining--;
+        state.hitTargetsThisStab.Clear();
         SetSpearState(ref state, SpearState.Stabbing);
     }
 
@@ -195,6 +220,12 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     {
         base.UpdateView(viewState, verified);
 
+        // Same reasoning as EnemyBasePD's initialized guard: on the client this can run while the
+        // pooled object is transiently inactive during replay. Bail before recording _lastVisualState
+        // so this same transition gets retried once actually active, instead of being silently
+        // skipped forever (which left stale animator state from the object's previous pooled life).
+        if (!gameObject.activeInHierarchy) return;
+
         var ss = (SpearState)viewState.spearStateId;
         if (ss == _lastVisualState) return;
         _lastVisualState = ss;
@@ -209,6 +240,9 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         if (_animator == null) return;
         switch (ss)
         {
+            case SpearState.Moving:
+                _animator.Play(IdleHash, 0, 0f);
+                break;
             case SpearState.Windup:
                 _animator.Play(SpearWindupHash, 0, 0f);
                 break;
@@ -232,9 +266,8 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         if (_windupFill != null) _windupFill.ResetFill();
     }
 
-    protected override void OnRemovedFromPool()
+    protected override void OnRespawnReset()
     {
-        base.OnRemovedFromPool();
         currentState.spearStateId             = 0;
         currentState.spearAttacksRemaining    = attacksPerAttack;
         currentState.spearAttackCooldownTimer = attackCooldown;

@@ -29,7 +29,7 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI xpText;
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI bossTimerText;
-    [SerializeField] private TextMeshProUGUI sessionPointsText;
+    [SerializeField] private TextMeshProUGUI upgradePointsText;
 
     [Header("Boss UI")]
     [SerializeField] private GameObject bossUIContainer;
@@ -65,7 +65,7 @@ public class LocalUIManagerPD : MonoBehaviour
     private readonly System.Text.StringBuilder _statsExpandedSB = new();
 
     private CharacterStatsPD _stats;
-    private PDCharacterController _controller;
+    private PlayerControllerPD _controller;
     private bool _isRanged;
 
     private void Awake()
@@ -123,7 +123,7 @@ public class LocalUIManagerPD : MonoBehaviour
     public void SetPlayer(CharacterStatsPD stats)
     {
         _stats = stats;
-        _controller = stats.GetComponent<PDCharacterController>();
+        _controller = stats.GetComponent<PlayerControllerPD>();
         _isRanged = stats.GetComponent<WeaponManagerPD>().IsRanged;
         statsWordsTextExpanded.text = _isRanged
             ? "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nRicochet:\nMultishot:"
@@ -133,21 +133,6 @@ public class LocalUIManagerPD : MonoBehaviour
         shieldRegenBar.value = 1f;
         dashChargeCooldownImage.fillAmount = 1f;
         energyImage.fillAmount = 1f;
-    }
-
-    public void SetUpLevelUpScreen(List<LevelUpOption> options, PlayerID playerID)
-    {
-        levelUpTimerText.text = NetworkManager.main.playerCount > 1 ? "Time Remaining: 30s" : "";
-        HideAllCards();
-        for (int i = 0; i < options.Count; i++)
-        {
-            var card = GetCard(i);
-            if (options[i].type == LevelUpOption.OptionType.Augment)
-                card.AugmentSetup(options[i].augmentData, i, playerID);
-            else
-                card.StatAugmentSetup(options[i].statPair, i, playerID);
-        }
-        GameManager.instance.ReadyToLevelRpc(playerID);
     }
 
     public bool IsLevelingUp { get; private set; }
@@ -164,12 +149,42 @@ public class LocalUIManagerPD : MonoBehaviour
         levelUpScreen.SetActive(false);
     }
 
-    public void UpdateTimer(int secondsRemaining)
+    // Barebones — every level-up is a stat-augment pick for now, no real augment pool yet.
+    public void SetUpStatAugmentScreen(List<StatAugmentPair> options)
     {
-        if (levelUpTimerText != null)
-            levelUpTimerText.text = NetworkManager.main.playerCount >= 2
-                ? "Time Remaining: " + secondsRemaining + "s"
-                : "";
+        HideAllCards();
+        for (int i = 0; i < options.Count; i++)
+            GetCard(i).StatAugmentSetup(options[i], i);
+    }
+
+    // Only buffers the request through the local player's own controller — Simulate() performs the
+    // actual pick once this is drained into Input, same reasoning as the ready/pause buttons.
+    public void RequestPick(int cardIndex)
+    {
+        if (_controller == null) return;
+        _controller.RequestPick(cardIndex);
+    }
+
+    private bool _levelUpScreenShown;
+
+    private void UpdateLevelUpScreen()
+    {
+        if (AugmentManagerPD.instance == null || _controller == null || !_controller.owner.HasValue) return;
+
+        bool shouldShow = AugmentManagerPD.instance.VerifiedIsPresenting
+            && !AugmentManagerPD.instance.HasPlayerPicked(_controller.owner.Value);
+
+        if (shouldShow && !_levelUpScreenShown)
+        {
+            SetUpStatAugmentScreen(AugmentManagerPD.instance.GetOptionsForPlayer(_controller.owner.Value));
+            ShowLevelUpScreen();
+            _levelUpScreenShown = true;
+        }
+        else if (!shouldShow && _levelUpScreenShown)
+        {
+            HideLevelUpScreen();
+            _levelUpScreenShown = false;
+        }
     }
 
     public void HideAllCards()
@@ -215,6 +230,11 @@ public class LocalUIManagerPD : MonoBehaviour
             pauseReadyCountText.text = $"{ready}/{total} Ready";
     }
 
+    private void UpdatePauseReadyButton()
+    {
+        SetText(pauseReadyButtonText, _controller.IsReady ? "Unready" : "Ready Up");
+    }
+
     public void SetFallbackTimer(int seconds, bool visible)
     {
         if (pauseFallbackTimerText == null) return;
@@ -225,9 +245,9 @@ public class LocalUIManagerPD : MonoBehaviour
     public void OnPauseReadyClicked()
     {
         if (_controller == null) return;
-        _controller.ToggleReady();
-        if (pauseReadyButtonText != null)
-            pauseReadyButtonText.text = _controller.IsReady ? "Unready" : "Ready Up";
+        // Only buffers the request — Simulate() performs the actual toggle once this is drained into
+        // Input, so the button label updates reactively in UpdatePauseReadyButton() instead of here.
+        _controller.RequestReadyToggle();
     }
 
     public void OnSettingsClicked()
@@ -242,12 +262,13 @@ public class LocalUIManagerPD : MonoBehaviour
 
     public void OnResumeClicked()
     {
-        if (PausePD.instance != null) PausePD.instance.RequestToggle();
+        if (_controller == null) return;
+        _controller.RequestPausePressed();
     }
 
     public void OnReturnToLobbyClicked()
     {
-        if (GameManagerPD.instance != null) GameManagerPD.instance.ReturnToLobby();
+        if (ReturnToLobbyManager.instance != null) ReturnToLobbyManager.instance.ReturnToLobby();
     }
 
     private AugmentCardUI GetCard(int index)
@@ -274,9 +295,37 @@ public class LocalUIManagerPD : MonoBehaviour
         UpdateStatsExpanded();
         UpdateSP();
         UpdateXP();
-        UpdateSessionPoints();
+        UpdateUpgradePoints();
         UpdateRunClock();
         UpdateBossUI();
+        UpdatePauseReadyButton();
+        UpdateLevelUpScreen();
+    }
+
+    // Only writes when the value actually changed, so tiny prediction/rollback jitter doesn't
+    // constantly rewrite the UI (which is what caused the "ticking up and down" flicker).
+    private static void SetSlider(Slider slider, float value)
+    {
+        if (slider != null && !Mathf.Approximately(slider.value, value))
+            slider.value = value;
+    }
+
+    private static void SetFill(Image image, float value)
+    {
+        if (image != null && !Mathf.Approximately(image.fillAmount, value))
+            image.fillAmount = value;
+    }
+
+    private static void SetColor(Image image, Color value)
+    {
+        if (image != null && image.color != value)
+            image.color = value;
+    }
+
+    private static void SetText(TextMeshProUGUI text, string value)
+    {
+        if (text != null && text.text != value)
+            text.text = value;
     }
 
     private static string FormatStat(float value, int decimals = 0)
@@ -290,39 +339,39 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private void UpdateHealthAndShields()
     {
-        healthBar.value      = _stats.UIHealth / _stats.MaxHealth;
-        shieldBar.value      = _stats.MaxShield > 0f ? _stats.UIShield / _stats.MaxShield : 0f;
-        shieldRegenBar.value = (_stats.shieldRechargeTime - _stats.UIShieldRechargeTimer) / _stats.shieldRechargeTime;
-        healthText.text      = $"<b><color=#FF00FF>{FormatStat(_stats.UIShield)}/{FormatStat(_stats.MaxShield)}</color> {FormatStat(_stats.UIHealth)}/{FormatStat(_stats.MaxHealth)}</b>";
+        SetSlider(healthBar, _stats.UIHealth / _stats.MaxHealth);
+        SetSlider(shieldBar, _stats.MaxShield > 0f ? _stats.UIShield / _stats.MaxShield : 0f);
+        SetSlider(shieldRegenBar, (_stats.shieldRechargeTime - _stats.UIShieldRechargeTimer) / _stats.shieldRechargeTime);
+        SetText(healthText, $"<b><color=#FF00FF>{FormatStat(_stats.UIShield)}/{FormatStat(_stats.MaxShield)}</color> {FormatStat(_stats.UIHealth)}/{FormatStat(_stats.MaxHealth)}</b>");
     }
 
     private void UpdateHealthRegen()
     {
-        healthRegenText.text = $"<b>+{FormatStat(_stats.HealthRegen, 2)}/s</b>";
+        SetText(healthRegenText, $"<b>+{FormatStat(_stats.HealthRegen, 2)}/s</b>");
     }
 
     private void UpdateDamageReduction()
     {
         float percent = (1f - _stats.DamageReduction) * 100f;
         string sign = percent >= 0f ? "+" : "";
-        damageReductionText.text = $"<b>{sign}{percent:F0}% DR</b>";
+        SetText(damageReductionText, $"<b>{sign}{percent:F0}% DR</b>");
     }
 
     private void UpdateDash()
     {
-        dashChargeCooldownImage.fillAmount = _controller.currentState.currentCharges < _stats.dashCharges
+        SetFill(dashChargeCooldownImage, _controller.currentState.currentCharges < _stats.dashCharges
             ? 1f - (_controller.currentState.chargeRegenTimer / _stats.DashCooldown)
-            : 1f;
-        dashChargesText.text = $"<b>{_controller.currentState.currentCharges}</b>";
+            : 1f);
+        SetText(dashChargesText, $"<b>{_controller.currentState.currentCharges}</b>");
     }
 
     private void UpdateEnergy()
     {
-        energyImage.fillAmount = _stats.UIEnergy < _stats.MaxEnergy
+        SetFill(energyImage, _stats.UIEnergy < _stats.MaxEnergy
             ? _stats.UIEnergy / _stats.MaxEnergy
-            : 1f;
-        energyImage.color = _stats.UIIsSurging || _stats.UIEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow;
-        energyText.text = $"<b>{(int)_stats.UIEnergy}</b>";
+            : 1f);
+        SetColor(energyImage, _stats.UIIsSurging || _stats.UIEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow);
+        SetText(energyText, $"<b>{(int)_stats.UIEnergy}</b>");
     }
 
     private void UpdateStats()
@@ -332,13 +381,13 @@ public class LocalUIManagerPD : MonoBehaviour
         _statsSB.AppendLine($" {_stats.AttackSpeed:G4}");
         _statsSB.AppendLine($" {_stats.EnergyRegen:G4}");
         _statsSB.AppendLine($" {_stats.WeaponRange * 5f:G4}");
-        _statsSB.AppendLine($" {_stats.MoveSpeed * 10f:G4}");
+        _statsSB.AppendLine($" {_stats.MoveSpeed:G4}");
         _statsSB.AppendLine($" {_stats.dashHaste:G4}");
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
         _statsSB.AppendLine($" {_stats.Luck:G4}");
         _statsSB.AppendLine($" {_stats.OnHitPower * 100f:G4}%");
-        statsNumbersText.text = _statsSB.ToString();
+        SetText(statsNumbersText, _statsSB.ToString());
     }
 
     private void UpdateStatsExpanded()
@@ -355,26 +404,26 @@ public class LocalUIManagerPD : MonoBehaviour
             _statsExpandedSB.AppendLine($" {_stats.Ricochet}");
             _statsExpandedSB.AppendLine($" {_stats.Multishot}");
         }
-        statsNumbersTextExpanded.text = _statsExpandedSB.ToString();
+        SetText(statsNumbersTextExpanded, _statsExpandedSB.ToString());
     }
 
     private void UpdateSP()
     {
-        spBar.value = _stats.UISP / _stats.MaxSP;
-        spText.text = _stats.UISP >= _stats.MaxSP ? "<b>BURST</b>" : $"<b>{(int)_stats.UISP}/{(int)_stats.MaxSP}</b>";
+        SetSlider(spBar, _stats.UISP / _stats.MaxSP);
+        SetText(spText, _stats.UISP >= _stats.MaxSP ? "<b>BURST</b>" : $"<b>{(int)_stats.UISP}/{(int)_stats.MaxSP}</b>");
     }
 
     private void UpdateXP()
     {
-        if (GameManager.instance == null) return;
-        xpBar.value = GameManager.instance.CurrentXP / GameManager.instance.XPToNextLevel;
-        xpText.text = $"<b>Level {GameManager.instance.Level} | {FormatStat(GameManager.instance.CurrentXP, 1)}/{FormatStat(GameManager.instance.XPToNextLevel, 1)} XP</b>";
+        if (GameManagerPD.instance == null) return;
+        SetSlider(xpBar, GameManagerPD.instance.CurrentXP / GameManagerPD.instance.XPToNextLevel);
+        SetText(xpText, $"<b>Level {GameManagerPD.instance.Level} | {FormatStat(GameManagerPD.instance.CurrentXP, 1)}/{FormatStat(GameManagerPD.instance.XPToNextLevel, 1)} XP</b>");
     }
 
-    private void UpdateSessionPoints()
+    private void UpdateUpgradePoints()
     {
-        if (sessionPointsText == null || GameManager.instance == null) return;
-        sessionPointsText.text = $"<b>{GameManager.instance.SessionPoints} pts</b>";
+        if (upgradePointsText == null || GameManagerPD.instance == null) return;
+        SetText(upgradePointsText, $"<b>{FormatStat(GameManagerPD.instance.UpgradePoints)} pts</b>");
     }
 
     private void UpdateRunClock()
@@ -382,30 +431,15 @@ public class LocalUIManagerPD : MonoBehaviour
         float runtime = Time.timeSinceLevelLoad;
         int minutes = (int)(runtime / 60f);
         int seconds = (int)(runtime % 60f);
-        timerText.text = $"<b>{minutes:00}:{seconds:00}</b>";
+        SetText(timerText, $"<b>{minutes:00}:{seconds:00}</b>");
     }
 
+    // TODO: bosses haven't been ported to the PD system yet — no EnemySpawnerPD/BossBasePD equivalent
+    // exists. Left as a no-op (keeps the boss UI hidden) rather than wired to the old (non-PD)
+    // EnemySpawner/BossBase, which are being moved out of Assets/.
     private void UpdateBossUI()
     {
-        if (EnemySpawner.instance == null) return;
-
-        var boss = BossBase.Current;
-        bool bossAlive = boss != null && !boss._isDead;
-
-        bossUIContainer.SetActive(bossAlive);
-        bossTimerText.gameObject.SetActive(!bossAlive);
-
-        if (bossAlive)
-        {
-            bossHealthBar.value = boss.maxHealth > 0f ? boss.CurrentHealth / boss.maxHealth : 0f;
-            if (bossEnrageBar != null) bossEnrageBar.value = boss.EnrageProgress;
-            bossHealthText.text = $"<b>{FormatStat(boss.CurrentHealth)}/{FormatStat(boss.maxHealth)}</b>";
-            bossNameText.text = boss.enemyName;
-        }
-        else
-        {
-            int bossSeconds = (int)EnemySpawner.instance.CycleTimer;
-            bossTimerText.text = $"<b>Next Boss: {bossSeconds / 60:00}:{bossSeconds % 60:00}</b>";
-        }
+        bossUIContainer.SetActive(false);
+        bossTimerText.gameObject.SetActive(false);
     }
 }

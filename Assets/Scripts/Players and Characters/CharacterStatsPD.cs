@@ -15,7 +15,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // ── Serialized base values ─────────────────────────────────────────────
 
     [Header("Movement")]
-    public float baseMoveSpeed = 1f;
+    public float baseMoveSpeed = 10f;
 
     [Header("Weapon")]
     public float damagePerLevel = 2.5f;
@@ -78,6 +78,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [Header("Audio")]
     [SerializeField] private AudioClip _damagedSfx;
     public AudioClip hitSfx;
+
+    [Header("Visuals")]
+    [SerializeField] private GameObject _invincibilityShell;
 
     [Header("Revive")]
     public float reviveTime = 3f;
@@ -243,6 +246,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public bool  IsDead        => currentState.isDead;
     public bool  IsSurging     => currentState.isSurging;
     public bool  IsInvincible  => currentState.invincible;
+    public float CurrentReviveTime => currentState.currentReviveTime;
 
     // UI-facing state (set in UpdateView — safe to read from MonoBehaviour.Update)
     // Health/shield use verified state to avoid prediction-rollback jumps.
@@ -271,6 +275,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         public float healthRegenTimer;
         public float shieldRechargeTimer;
         public uint damageEventId;
+        public float currentReviveTime;
         public void Dispose() { }
     }
 
@@ -281,12 +286,33 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         shield = 0f,
         sp = 0f,
         healthRegenTimer = 1f,
-        shieldRechargeTimer = 0f
+        shieldRechargeTimer = 0f,
+        currentReviveTime = reviveTime
     };
+
+    // ── Events ─────────────────────────────────────────────────────────────
+    // Per-instance (not static): each character's events are its own, not a shared global channel.
+    // PredictedEvent handles view-safety itself — server always fires, the owner fires once on its
+    // own live (non-replay) pass, and non-owners fire once the tick is verified — so callers don't
+    // need to reason about replay/ownership at the invoke site.
+    private PredictedEvent<float> _onHeal;
+    private PredictedEvent _onSurgeStarted;
+    private PredictedEvent _onSurgeEnded;
+
+    public void AddHealListener(Action<float> listener) => _onHeal.AddListener(listener);
+    public void RemoveHealListener(Action<float> listener) => _onHeal.RemoveListener(listener);
+    public void AddSurgeStartedListener(Action listener) => _onSurgeStarted.AddListener(listener);
+    public void RemoveSurgeStartedListener(Action listener) => _onSurgeStarted.RemoveListener(listener);
+    public void AddSurgeEndedListener(Action listener) => _onSurgeEnded.AddListener(listener);
+    public void RemoveSurgeEndedListener(Action listener) => _onSurgeEnded.RemoveListener(listener);
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
     protected override void LateAwake()
     {
+        _onHeal          = new PredictedEvent<float>(predictionManager, this);
+        _onSurgeStarted  = new PredictedEvent(predictionManager, this);
+        _onSurgeEnded    = new PredictedEvent(predictionManager, this);
+
         // bonuses applied by PlayerDataPD.Simulate after spawn
         GetComponent<WeaponManagerPD>()?.Init(this);
         // TODO: GetComponent<RogueClassPassive>()?.Init(this);
@@ -325,8 +351,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             state.healthRegenTimer -= delta;
             if (state.healthRegenTimer <= 0f)
             {
-                state.health = Mathf.Min(state.health + HealthRegen, MaxHealth);
+                float healed = Mathf.Min(HealthRegen, MaxHealth - state.health);
+                state.health += healed;
                 state.healthRegenTimer = 1f;
+                if (healed > 0f) _onHeal.Invoke(healed);
             }
         }
 
@@ -353,33 +381,37 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
                 {
                     state.energy = 0f;
                     state.isSurging = false;
+                    _onSurgeEnded.Invoke();
                 }
             }
         }
     }
 
-    public static event Action<CharacterStatsPD, float> OnHeal;
-    private float _previousHealth;
-    private uint  _lastDamageEventId;
+    private uint _lastDamageEventId;
 
     protected override void UpdateView(State viewState, State? verified)
     {
-        UIHealth              = viewState.health;
-        UIShield              = viewState.shield;
-        UIShieldRechargeTimer = viewState.shieldRechargeTimer;
+        // Health/shield use verified state, not viewState: viewState is the predicted/interpolated
+        // value, which visibly snaps every time a rollback correction lands. Verified state only
+        // moves forward once confirmed, so displaying it skips the correction jitter entirely.
+        if (verified.HasValue)
+        {
+            UIHealth              = verified.Value.health;
+            UIShield              = verified.Value.shield;
+            UIShieldRechargeTimer = verified.Value.shieldRechargeTimer;
+        }
         UIEnergy              = viewState.energy;
         UISP                  = viewState.sp;
         UIIsSurging           = viewState.isSurging;
-
-        if (viewState.health > _previousHealth)
-            OnHeal?.Invoke(this, viewState.health - _previousHealth);
-        _previousHealth = viewState.health;
 
         if (isOwner && viewState.damageEventId != _lastDamageEventId)
         {
             _lastDamageEventId = viewState.damageEventId;
             if (SFXManager.instance != null) SFXManager.instance.Play(_damagedSfx, transform.position);
         }
+
+        if (_invincibilityShell != null)
+            _invincibilityShell.SetActive(viewState.invincible);
 
         // TODO: apply color
     }
@@ -404,7 +436,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public static ProgressionBonuses ComputeProgressionBonuses() => new()
     {
         weaponDamageFlat        = ProgressionManager.GetBaseStatBonus(StatType.WeaponDamage),
-        moveSpeedFlat           = ProgressionManager.GetBaseStatBonus(StatType.MoveSpeed) * 0.1f,
+        moveSpeedFlat           = ProgressionManager.GetBaseStatBonus(StatType.MoveSpeed),
         attackSpeedPct          = ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f,
         energyRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen),
         dashHaste               = ProgressionManager.GetBaseStatBonus(StatType.DashHaste),
@@ -426,32 +458,90 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         shieldRechargeTime      = ProgressionManager.GetBaseStatBonus(StatType.ShieldRechargeTime),
     };
 
+    // Wraps any stat mutation that might raise MaxHealth/MaxEnergy, and carries current resources up
+    // by the same delta so the ceiling never rises while current stays pinned below it.
+    // Shield is deliberately excluded — it doesn't gradually regen like health/energy, it snaps to
+    // full after a no-damage timer, so a max-shield increase should only raise that ceiling and let
+    // the existing regen naturally catch current shield up to it.
+    // Every future stat-granting effect (augments, etc.) should route through this rather than
+    // mutating bonus fields directly, so refill-on-max-increase stays a single, shared behavior.
+    private void ApplyStatChange(Action mutate)
+    {
+        float maxHealthBefore = MaxHealth;
+        float maxEnergyBefore = MaxEnergy;
+
+        mutate();
+
+        // Floored rather than left to go negative, in case a future effect ever decreases a max stat.
+        // Health floors at 1 so a max decrease alone can never be a kill; energy can bottom out at 0.
+        currentState.health = Mathf.Max(1f, currentState.health + (MaxHealth - maxHealthBefore));
+        currentState.energy = Mathf.Max(0f, currentState.energy + (MaxEnergy - maxEnergyBefore));
+    }
+
     private bool _bonusesApplied;
     public void ApplyProgressionBonuses(ProgressionBonuses b)
     {
         if (_bonusesApplied) return;
         _bonusesApplied = true;
-        bonusWeaponDamageFlat      += b.weaponDamageFlat;
-        bonusMoveSpeedFlat         += b.moveSpeedFlat;
-        attackSpeedPercent         += b.attackSpeedPct * baseAttackSpeed;
-        bonusEnergyRegenFlat       += b.energyRegenFlat;
-        dashHaste                  += b.dashHaste;
-        bonusCritChanceFlat        += b.critChanceFlat;
-        bonusXPRadiusFlat          += b.xpRadiusFlat;
-        bonusWeaponRangeFlat       += b.weaponRangeFlat;
-        bonusMaxEnergyFlat         += b.maxEnergyFlat;
-        dashCharges                += b.dashChargesBonus;
-        levelUpOptions             += b.levelUpOptionsBonus;
-        revivePower                += b.revivePower;
-        reviveTimePenaltyReduction *= b.reviveTimePenaltyMult;
-        xpMultiplier               += b.xpMultiplier;
-        bonusMaxHealthFlat         += b.maxHealthFlat;
-        bonusHealthRegenFlat       += b.healthRegenFlat;
-        bonusWeaponDamagePercent   += b.weaponDamagePct;
-        bonusLuckFlat              += b.luckFlat;
-        damagePerLevel             += b.damagePerLevel;
-        bonusMaxShieldFlat         += b.maxShieldFlat;
-        shieldRechargeTime         += b.shieldRechargeTime;
+
+        ApplyStatChange(() =>
+        {
+            bonusWeaponDamageFlat      += b.weaponDamageFlat;
+            bonusMoveSpeedFlat         += b.moveSpeedFlat;
+            attackSpeedPercent         += b.attackSpeedPct * baseAttackSpeed;
+            bonusEnergyRegenFlat       += b.energyRegenFlat;
+            dashHaste                  += b.dashHaste;
+            bonusCritChanceFlat        += b.critChanceFlat;
+            bonusXPRadiusFlat          += b.xpRadiusFlat;
+            bonusWeaponRangeFlat       += b.weaponRangeFlat;
+            bonusMaxEnergyFlat         += b.maxEnergyFlat;
+            dashCharges                += b.dashChargesBonus;
+            levelUpOptions             += b.levelUpOptionsBonus;
+            revivePower                += b.revivePower;
+            reviveTimePenaltyReduction *= b.reviveTimePenaltyMult;
+            xpMultiplier               += b.xpMultiplier;
+            bonusMaxHealthFlat         += b.maxHealthFlat;
+            bonusHealthRegenFlat       += b.healthRegenFlat;
+            bonusWeaponDamagePercent   += b.weaponDamagePct;
+            bonusLuckFlat              += b.luckFlat;
+            damagePerLevel             += b.damagePerLevel;
+            bonusMaxShieldFlat         += b.maxShieldFlat;
+            shieldRechargeTime         += b.shieldRechargeTime;
+        });
+    }
+
+    // Called from GameManagerPD.UpdateView() once per level gained, off verified state only — never
+    // from Simulate(), since bonus fields aren't part of predicted State and can't roll back on replay.
+    public void OnLevelUp() => ApplyStatChange(() => bonusWeaponDamageFlat += damagePerLevel);
+
+    // Called from AugmentManagerPD.UpdateView() once per verified pick, same reasoning as OnLevelUp.
+    // multiplier is the picking player's own meta-progression multiplier (ProgressionManager.GetStatMultiplier),
+    // captured into PlayerControllerPD.Input by the OWNING client — never recomputed locally here, since
+    // a remote machine's own ProgressionManager save data would give a different (wrong) answer.
+    public void ApplyStatAugmentPick(StatAugmentEntry entryA, StatAugmentEntry entryB, float multiplier)
+    {
+        ApplyStatChange(() =>
+        {
+            ApplySingleStatEntry(entryA, multiplier);
+            ApplySingleStatEntry(entryB, multiplier);
+        });
+    }
+
+    private void ApplySingleStatEntry(StatAugmentEntry entry, float multiplier)
+    {
+        switch (entry.statType)
+        {
+            case StatType.MaxHealth:     bonusMaxHealthFlat    += entry.value * multiplier; break;
+            case StatType.WeaponDamage:  bonusWeaponDamageFlat += entry.value * multiplier; break;
+            case StatType.MoveSpeed:     bonusMoveSpeedFlat    += entry.value * multiplier; break;
+            case StatType.WeaponRange:   bonusWeaponRangeFlat  += entry.value; break;
+            case StatType.AttackSpeed:   attackSpeedPercent    += entry.value * 0.01f * baseAttackSpeed * multiplier; break;
+            case StatType.HealthRegen:   bonusHealthRegenFlat  += entry.value * multiplier; break;
+            case StatType.EnergyRegen:   bonusEnergyRegenFlat  += entry.value * multiplier; break;
+            case StatType.DashHaste:     dashHaste             += entry.value * multiplier; break;
+            case StatType.CritChance:    bonusCritChanceFlat   += entry.value * 0.01f * multiplier; break;
+            case StatType.Luck:          bonusLuckFlat         += entry.value * multiplier; break;
+        }
     }
 
     public Color PlayerColor { get; private set; } = Color.white;
@@ -473,12 +563,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         currentState.surgeTickTimer = SurgeTickInterval;
         currentState.surgeMinDurationTimer = SurgeMinDuration;
         currentState.energy -= SurgeCost;
+        _onSurgeStarted.Invoke();
     }
 
     public void TryEndSurge()
     {
         if (!currentState.isSurging || currentState.surgeMinDurationTimer > 0f) return;
         currentState.isSurging = false;
+        _onSurgeEnded.Invoke();
     }
 
     public void SetInvincible(float duration)
@@ -517,6 +609,21 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void Heal(float amount)
     {
         if (currentState.isDead) return;
-        currentState.health = Mathf.Min(currentState.health + amount, MaxHealth);
+        float healed = Mathf.Min(amount, MaxHealth - currentState.health);
+        if (healed <= 0f) return;
+        currentState.health += healed;
+        _onHeal.Invoke(healed);
+    }
+
+    public void Revive(float healthPercent = 0.5f)
+    {
+        if (!currentState.isDead) return;
+
+        currentState.isDead = false;
+        currentState.health = MaxHealth * healthPercent;
+        currentState.shield = MaxShield;
+        currentState.energy = MaxEnergy;
+        currentState.currentReviveTime += ReviveTimePenalty;
+        SetInvincible(2f);
     }
 }

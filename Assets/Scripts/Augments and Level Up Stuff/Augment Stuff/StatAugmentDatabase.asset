@@ -21,7 +21,7 @@ MonoBehaviour:
     appendText: 
     allowedClasses: 
   - statType: 2
-    displayName: Movement Speed
+    displayName: Move Speed
     color: {r: 1, g: 1, b: 1, a: 1}
     value: 0.25
     prependText: +
@@ -58,7 +58,7 @@ MonoBehaviour:
   - statType: 9
     displayName: Crit Chance
     color: {r: 1, g: 0, b: 0, a: 1}
-    value: 2.5
+    value: 5
     prependText: +
     appendText: '%'
     allowedClasses: 

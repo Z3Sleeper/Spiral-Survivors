@@ -62,10 +62,21 @@ public class WeaponBladePD : WeaponBasePD<WeaponBladePD.State>
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
         state.angle -= _stats.WeaponSpeed * delta;
+    }
+
+    // Runs after the framework's DoPhysicsPass() for this tick (Simulate() on every identity happens
+    // first, then physics integrates, then LateSimulate() on every identity) — so _stats.transform.position
+    // here already reflects the player's post-physics, current-tick position. Reading it in Simulate()
+    // instead (which runs BEFORE the physics pass) is always one tick stale: invisible at normal speed,
+    // but glaring during a dash or high move speed, where a single tick covers real distance.
+    protected override void LateSimulate(ref State state, float delta)
+    {
+        if (!_initialized || _stats == null || _stats.IsDead) return;
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
         // Compute orbital position and apply to transform.
         // PredictedTransform records these tick-positions and interpolates the Visuals child for rendering.
-        Vector3 origin  = _manager.VisualsRoot != null ? _manager.VisualsRoot.position : _stats.transform.position;
+        Vector3 origin = _stats.transform.position;
         Vector3 orbitPos = OrbitalPosition(state.angle, origin);
         Vector3 outward  = orbitPos - origin;
         if (outward == Vector3.zero) return;

@@ -5,6 +5,7 @@ using UnityEngine;
 
 public struct PlayerShellInput : IPredictedData, IEquatable<PlayerShellInput>
 {
+    public bool ready;
     public int characterIndex;
     public int colorIndex;
     public CharacterStatsPD.ProgressionBonuses bonuses;
@@ -12,6 +13,7 @@ public struct PlayerShellInput : IPredictedData, IEquatable<PlayerShellInput>
     public void Dispose() { }
 
     public bool Equals(PlayerShellInput other) =>
+        ready == other.ready &&
         characterIndex == other.characterIndex &&
         colorIndex == other.colorIndex &&
         bonuses.Equals(other.bonuses);
@@ -31,6 +33,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
 {
     protected override void GetFinalInput(ref PlayerShellInput input)
     {
+        input.ready = true;
         input.characterIndex = GameStartData.LocalCharacterIndex;
         input.colorIndex = GameStartData.LocalColorIndex;
         input.bonuses = CharacterStatsPD.ComputeProgressionBonuses();
@@ -45,6 +48,8 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
 
     protected override void Simulate(PlayerShellInput input, ref PlayerShellState state, float dt)
     {
+        if (!input.ready) return;
+
         state.colorIndex = input.colorIndex;
 
         if (state.spawned) return;
@@ -89,7 +94,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
         {
             if (Camera.main.TryGetComponent(out CameraController cam))
             {
-                var ctrl = character.GetComponent<PDCharacterController>();
+                var ctrl = character.GetComponent<PlayerControllerPD>();
                 cam.SetTarget(ctrl != null ? ctrl.CameraTarget : character.transform);
                 _cameraSet = true;
             }
@@ -125,7 +130,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
             if (owner.HasValue && character.TryGetComponent(out CharacterStatsPD readyStats))
             {
                 CharacterStatsPD.All[owner.Value] = readyStats;
-                if (isOwner && character.TryGetComponent(out PDCharacterController ctrl))
+                if (isOwner && character.TryGetComponent(out PlayerControllerPD ctrl))
                     ctrl.EnableInput();
             }
         }

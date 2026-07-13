@@ -132,7 +132,7 @@ public class AugmentManager : NetworkBehaviour
 
         var validStats = new List<StatAugmentEntry>();
         foreach (var entry in statDatabase.stats)
-            if (entry.allowedClasses.Length == 0 || Array.IndexOf(entry.allowedClasses, playerClass) >= 0)
+            if (entry.allowedClasses.Length == 0 || Array.Exists(entry.allowedClasses, c => (int)c == (int)playerClass))
                 validStats.Add(entry);
 
         if (validStats.Count < 2) return null;
@@ -267,16 +267,4 @@ public class AugmentManager : NetworkBehaviour
         _playerOptions.Remove(player);
     }
 
-}
-
-public class StatAugmentPair
-{
-    public StatAugmentEntry statA;
-    public StatAugmentEntry statB;
-
-    public StatAugmentPair(StatAugmentEntry a, StatAugmentEntry b)
-    {
-        statA = a;
-        statB = b;
-    }
 }

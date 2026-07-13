@@ -12,13 +12,13 @@ public class PlayerUIWorldSpace : MonoBehaviour
     [SerializeField] private Image energyImage;
 
     private CharacterStatsPD _stats;
-    private PDCharacterController _controller;
+    private PlayerControllerPD _controller;
     private Camera _camera;
 
     private void Start()
     {
         _stats = GetComponentInParent<CharacterStatsPD>();
-        _controller = GetComponentInParent<PDCharacterController>();
+        _controller = GetComponentInParent<PlayerControllerPD>();
         _camera = Camera.main;
 
         bool owner = _controller != null && _controller.isOwner;

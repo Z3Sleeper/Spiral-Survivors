@@ -282,7 +282,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SpearGloomPD
   _rigidbody: {fileID: -8117565900580008965}
   enemyName: Spear Gloom
-  moveSpeed: 1.2
+  moveSpeed: 12
   backpedalSpeedDivisor: 3
   maxHealth: 100
   preferredRange: 3.5
@@ -307,7 +307,7 @@ MonoBehaviour:
   postStabPause: 0.6
   attackCooldown: 3
   attacksPerAttack: 1
-  dashSpeedMultiplier: 15
+  dashSpeedMultiplier: 1.5
   _windupIndicator: {fileID: 3368275256615124461}
   _windupFill: {fileID: 2539281391920625006}
 --- !u!54 &-6973549993052189348
@@ -373,7 +373,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
   _graphics: {fileID: 6883465488274931265}
   _floatAccuracy: 1
-  _interpolationSettings: {fileID: 11400000, guid: 4a8aa8e44e23cfd4a8d4387ef3f36173, type: 2}
+  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
   _unparentGraphics: 0
   _characterControllerPatch: 0
 --- !u!114 &-8117565900580008965
@@ -582,7 +582,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2767609669452999298}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: aa65e4e8d724bea4db2b9392ffb3bfe3, type: 3}
+  m_Script: {fileID: 11500000, guid: d0286821fcd084e4b9784a4471505cc2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::WindupFill
   fillType: 0
@@ -1453,6 +1453,7 @@ GameObject:
   m_Component:
   - component: {fileID: 5513950161839650562}
   - component: {fileID: 6862016049425897889}
+  - component: {fileID: 8338545427178877003}
   m_Layer: 15
   m_Name: ContactDamageCollider
   m_TagString: Untagged
@@ -1496,6 +1497,19 @@ SphereCollider:
   serializedVersion: 3
   m_Radius: 0.5
   m_Center: {x: 0, y: 0, z: 0}
+--- !u!114 &8338545427178877003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8083332680176052889}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b199eaec503d014489345869ebf512b0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedPhysicsCallbacks
+  _eventMask: 63
 --- !u!1 &8564681709930575193
 GameObject:
   m_ObjectHideFlags: 0

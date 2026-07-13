@@ -1,4 +1,3 @@
-using PurrNet;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -13,14 +12,12 @@ public class AugmentCardUI : MonoBehaviour
     [SerializeField] private AudioClip pickSound;
 
     private int _cardIndex;
-    private PlayerID _player;
     private float _effectiveValueA;
     private float _effectiveValueB;
 
-    public void StatAugmentSetup(StatAugmentPair pair, int cardIndex, PlayerID player)
+    public void StatAugmentSetup(StatAugmentPair pair, int cardIndex)
     {
         _cardIndex = cardIndex;
-        _player = player;
         pickButton.interactable = true;
 
         _effectiveValueA = pair.statA.value * ProgressionManager.GetStatMultiplier(pair.statA.statType);
@@ -34,24 +31,10 @@ public class AugmentCardUI : MonoBehaviour
         pickButton.onClick.AddListener(OnPicked);
     }
 
-    public void AugmentSetup(AugmentData augment, int cardIndex, PlayerID player)
-    {
-        _cardIndex = cardIndex;
-        _player = player;
-        _effectiveValueA = 1f;
-        _effectiveValueB = 1f;
-        pickButton.interactable = true;
-        augmentImage.sprite = augment.icon;
-        titleText.text = augment.displayName;
-        descriptionText.text = augment.description;
-        pickButton.onClick.RemoveAllListeners();
-        pickButton.onClick.AddListener(OnPicked);
-    }
-
     private void OnPicked()
     {
         SFXManager.instance?.Play(pickSound, Vector3.zero);
-        LocalUIManager.instance.HideAllCards();
-        AugmentManager.instance.PickAugmentRpc(_player, _cardIndex, _effectiveValueA, _effectiveValueB);
+        LocalUIManagerPD.instance.HideAllCards();
+        LocalUIManagerPD.instance.RequestPick(_cardIndex);
     }
 }

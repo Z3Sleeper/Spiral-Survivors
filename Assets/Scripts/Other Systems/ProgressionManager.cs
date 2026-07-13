@@ -306,14 +306,14 @@ public static class ProgressionManager
         Save();
     }
 
-    public static void CommitPoints(long sessionPoints)
+    public static void CommitPoints(long upgradePoints)
     {
         bool shopWasUnlocked = IsShopUnlocked;
         var prevUnlocked = new HashSet<StatType>();
         foreach (StatType stat in System.Enum.GetValues(typeof(StatType)))
             if (IsStatUnlocked(stat)) prevUnlocked.Add(stat);
 
-        Data.totalPoints = System.Math.Min(Data.totalPoints + sessionPoints, PointsCap);
+        Data.totalPoints = System.Math.Min(Data.totalPoints + upgradePoints, PointsCap);
         Save();
 
         if (!shopWasUnlocked && IsShopUnlocked)

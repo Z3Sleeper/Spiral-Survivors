@@ -441,7 +441,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnemyBasePD
   _rigidbody: {fileID: -2186915327312289600}
   enemyName: Spike Gloom
-  moveSpeed: 0.6
+  moveSpeed: 6
   backpedalSpeedDivisor: 3
   maxHealth: 30
   preferredRange: 0
@@ -499,7 +499,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
   _graphics: {fileID: 6078516058932629184}
   _floatAccuracy: 1
-  _interpolationSettings: {fileID: 11400000, guid: 4a8aa8e44e23cfd4a8d4387ef3f36173, type: 2}
+  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
   _unparentGraphics: 0
   _characterControllerPatch: 0
 --- !u!114 &-2186915327312289600

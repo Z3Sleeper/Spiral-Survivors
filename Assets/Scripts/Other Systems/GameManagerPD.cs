@@ -1,15 +1,47 @@
 using PurrNet;
-using PurrNet.Modules;
+using PurrNet.Prediction;
 using UnityEngine;
-using UnityEngine.SceneManagement;
 
-public class GameManagerPD : NetworkIdentity
+public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
 {
+    public struct State : IPredictedData<State>
+    {
+        public bool gameStarted;
+        public float currentXP;
+        public int level;
+        public float xpToNextLevel;
+        public float upgradePoints;
+        public void Dispose() { }
+    }
+
     public static GameManagerPD instance;
 
-    [SerializeField] private EnemySpawnerPD _enemySpawner;
+    [Header("XP")]
+    [SerializeField] private float baseXPToNextLevel = 20f;
+    [SerializeField] private float xpLevelStep = 5f;
+    // TODO: move onto EnemySpawnerPD once a real spawner exists — this is where the old system kept it,
+    // since it's really an enemy-pacing knob that happens to also scale the XP curve.
+    [SerializeField] private float coopSpawnTimeScalar = 1f;
 
-    private bool _gameStarted;
+    [Header("Upgrade Points")]
+    // Lets a harder level award more points per kill without having to also inflate enemy XP values
+    // (which would throw off the level-up pacing) for balance purposes.
+    [SerializeField] private float upgradePointMultiplier = 1f;
+    // Committed periodically rather than only at game end, so a player who disconnects mid-run keeps
+    // whatever was earned up through the last commit instead of walking away with nothing. Kept fairly
+    // infrequent since ProgressionManager.CommitPoints does a synchronous file write — too cheap to
+    // matter every few seconds, too expensive to do on every single kill in a horde swarm.
+    [SerializeField] private float pointCommitInterval = 5f;
+
+    public bool  GameStarted   => currentState.gameStarted;
+    public float CurrentXP     => currentState.currentXP;
+    public int   Level         => currentState.level;
+    public float XPToNextLevel => currentState.xpToNextLevel;
+    public float UpgradePoints => currentState.upgradePoints;
+
+    private bool _wasGameStartedLastFrame;
+    private float _committedUpgradePoints;
+    private float _pointCommitTimer;
 
     private void Awake()
     {
@@ -17,52 +49,89 @@ public class GameManagerPD : NetworkIdentity
         instance = this;
     }
 
-    private void Update()
+    protected override State GetInitialState() => new()
     {
-        if (!_gameStarted)
-        {
-            var nm = NetworkManager.main;
-            if (nm != null && AllPlayersInitialized(nm))
-                OnGameStarted(nm);
-        }
-    }
+        level = 1,
+        xpToNextLevel = baseXPToNextLevel,
+    };
 
     // ── Game start ──────────────────────────────────────────────────────────
 
-    private static bool AllPlayersInitialized(NetworkManager nm)
+    protected override void Simulate(ref State state, float delta)
     {
-        if (nm.playerCount == 0) return false;
-        foreach (var player in nm.players)
-            if (!CharacterStatsPD.All.ContainsKey(player)) return false;
-        return true;
+        if (state.gameStarted) return;
+
+        var nm = NetworkManager.main;
+        if (nm == null || nm.playerCount == 0) return;
+        if (CharacterStatsPD.All.Count < nm.playerCount) return;
+
+        state.gameStarted = true;
     }
 
-    private void OnGameStarted(NetworkManager nm)
+    // ── Upgrade points ─────────────────────────────────────────────────────
+
+    // Called from EnemyBasePD.UpdateView() off a verified death transition — never from Simulate(),
+    // same reasoning as OnLevelUp()/ApplyStatAugmentPick(): this is a += accumulation, and calling it
+    // from Simulate() risks the client's routine replay pass double-firing it for the same kill.
+    public void AwardUpgradePoints(float baseAmount) => currentState.upgradePoints += baseAmount * upgradePointMultiplier;
+
+    // Commits only the delta earned since the last commit (ProgressionManager.CommitPoints is additive)
+    // to this machine's own local save. Called periodically below and once more at game end
+    // (ReturnToLobbyManager) as a final safety net for whatever accrued since the last periodic tick.
+    public void FlushUpgradePoints()
     {
-        _gameStarted = true;
-        if (LoadingScreen.instance != null) LoadingScreen.instance.Hide();
-        if (MusicPlayer.instance != null) MusicPlayer.instance.Play();
-        if (nm.isServer && _enemySpawner != null)
-            _enemySpawner.StartSpawning();
+        float verifiedPoints = verifiedState?.upgradePoints ?? _committedUpgradePoints;
+        float delta = verifiedPoints - _committedUpgradePoints;
+        if (delta <= 0f) return;
+
+        _committedUpgradePoints = verifiedPoints;
+        ProgressionManager.CommitPoints((long)Mathf.Round(delta));
     }
 
-    // ── Return to lobby ─────────────────────────────────────────────────────
+    // ── XP ─────────────────────────────────────────────────────────────────
 
-    public void ReturnToLobby()
+    // Called from XPOrbPD.UpdateView() off a verified collection transition — deterministic, so every
+    // machine applies the exact same XP/level result.
+    public void AwardXP(float value)
     {
-        if (!isServer) return;
-        Time.timeScale = 1f;
-        SetReturningFromGameRpc();
-        NetworkManager.main.sceneModule.LoadSceneAsync(GameStartData.LobbySceneName, new PurrSceneSettings
+        int playerCount = CharacterStatsPD.All.Count;
+        if (playerCount <= 0) return;
+
+        float totalMod = 0f;
+        foreach (var stats in CharacterStatsPD.All.Values)
+            totalMod += stats.XPModifier;
+        float avgXPMod = totalMod / playerCount;
+
+        float coopXPPenalty = 1f + (playerCount - 1) * coopSpawnTimeScalar;
+        if (coopXPPenalty <= 0f) coopXPPenalty = 1f;
+
+        currentState.currentXP += value * avgXPMod / coopXPPenalty;
+
+        while (currentState.currentXP >= currentState.xpToNextLevel)
         {
-            mode = LoadSceneMode.Single,
-            isPublic = true
-        });
+            currentState.currentXP -= currentState.xpToNextLevel;
+            currentState.xpToNextLevel += xpLevelStep * ((currentState.level / 5) + 1);
+            currentState.level++;
+        }
     }
 
-    [ObserversRpc]
-    private void SetReturningFromGameRpc()
+    protected override void UpdateView(State viewState, State? verified)
     {
-        PurrLobby.LobbyFlags.IsReturningFromGame = true;
+        if (!verified.HasValue) return;
+        var v = verified.Value;
+
+        if (v.gameStarted && !_wasGameStartedLastFrame)
+        {
+            if (LoadingScreen.instance != null) LoadingScreen.instance.Hide();
+            if (MusicPlayer.instance != null) MusicPlayer.instance.Play();
+        }
+        _wasGameStartedLastFrame = v.gameStarted;
+
+        _pointCommitTimer += Time.deltaTime;
+        if (_pointCommitTimer >= pointCommitInterval)
+        {
+            _pointCommitTimer = 0f;
+            FlushUpgradePoints();
+        }
     }
 }
