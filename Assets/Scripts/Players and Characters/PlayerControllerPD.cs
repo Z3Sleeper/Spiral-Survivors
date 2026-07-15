@@ -12,7 +12,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
 
     // Distance is just an emergent property of speed and duration, not a separately-tuned input.
     private const float DashDuration        = 0.2f;
-    private const float DashSpeedMultiplier = 3f;
+    private const float DashSpeedMultiplier = 5f;
 
     // Per-instance, not static — each player's dash events are its own, not a shared global channel.
     // Surge events live on CharacterStatsPD instead, since StartSurge()/TryEndSurge() are defined there.
@@ -29,6 +29,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     private bool _pendingPausePressed;
     private bool _pendingPickPressed;
     private int  _pendingPickIndex;
+    private bool _pendingEndScreenReadyPressed;
     private InputSystem_Actions _input;
 
     // Predicted, not verified — this only drives the local owner's own button label, and instant
@@ -45,6 +46,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         public bool readyPressed;
         public bool pickPressed;
         public int pickedCardIndex;
+        public bool endScreenReadyPressed;
         // The picking player's own meta-progression multiplier — captured here (owning client only,
         // via GetFinalInput) rather than recomputed by AugmentManagerPD, since a remote machine's own
         // local ProgressionManager save data would give a different (wrong) answer for this player's pick.
@@ -118,6 +120,9 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _pendingPickIndex = cardIndex;
     }
 
+    // Called from the win/game-over screen's ready button. Same buffer-and-drain pattern as ready/pause.
+    public void RequestEndScreenReady() => _pendingEndScreenReadyPressed = true;
+
     // ── Input ──────────────────────────────────────────────────────────────
     protected override void UpdateInput(ref Input input)
     {
@@ -139,6 +144,9 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             input.pickedCardIndex = _pendingPickIndex;
         }
         _pendingPickPressed = false;
+
+        input.endScreenReadyPressed |= _pendingEndScreenReadyPressed;
+        _pendingEndScreenReadyPressed = false;
     }
 
     protected override void GetFinalInput(ref Input input)
@@ -147,6 +155,23 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (_input == null) return;
         input.direction = _input.Player.Move.ReadValue<Vector2>();
         input.surgeHeld = _input.Player.Surge.IsPressed();
+    }
+
+    // One-shot, edge-triggered "just pressed this tick" flags must not persist when the same real input
+    // gets copied forward across several extrapolated ticks (missing/delayed real data) — left uncleared,
+    // every extrapolated tick would re-see e.g. dashPressed=true and could re-trigger that action once
+    // per extrapolated tick from a single real button press. Don't rely on an incidental state guard
+    // elsewhere (like dash's !state.isDashing) to paper over this — that only holds as long as the
+    // guarded state outlasts the extrapolation gap, which isn't guaranteed. direction/surgeHeld are
+    // deliberately left alone: those reflect ongoing held state, so repeating the last known value is
+    // the correct guess while waiting for fresher real input, not something to clear.
+    protected override void ModifyExtrapolatedInput(ref Input input)
+    {
+        input.dashPressed = false;
+        input.pausePressed = false;
+        input.readyPressed = false;
+        input.pickPressed = false;
+        input.endScreenReadyPressed = false;
     }
 
     // ── Simulation ─────────────────────────────────────────────────────────
@@ -176,6 +201,19 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
 
         if (input.pickPressed && AugmentManagerPD.instance != null && owner.HasValue)
             AugmentManagerPD.instance.SubmitPick(owner.Value, input.pickedCardIndex, input.pickMultiplier);
+
+        // Not gated by isPresenting/IsPaused — the end screen only ever shows once the game has already
+        // won/ended, and readying up from it should work regardless of whatever pause state happens to be
+        // latched at that point.
+        if (input.endScreenReadyPressed && GameManagerPD.instance != null
+            && (GameManagerPD.instance.HasWon || GameManagerPD.instance.IsGameOver) && owner.HasValue)
+            GameManagerPD.instance.SetEndScreenReady(owner.Value);
+
+        // Presenting timer expired and this player still hasn't picked — AutoPick re-checks both of
+        // those itself, so it's safe to just keep calling this every tick rather than needing a separate
+        // one-shot guard here.
+        if (AugmentManagerPD.instance != null && AugmentManagerPD.instance.HasPresentingTimerExpired && owner.HasValue)
+            AugmentManagerPD.instance.AutoPick(owner.Value, input.pickMultiplier);
 
         if (PausePD.instance != null && PausePD.instance.IsPaused)
         {

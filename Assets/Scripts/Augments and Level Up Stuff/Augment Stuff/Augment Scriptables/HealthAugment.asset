@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: HealthAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#00FF00>Chonk</color>
+  description: '<color=#00FF00>+100 Health</color>
+
+    <i>You are Chonk</i>'
+  icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}
+  restrictedToClasses: 
+  excludedClasses: 
+  effectPrefab: {fileID: 5639814992278396488, guid: 5de4b62bee678664e922e0fa722796df, type: 3}
+  multiplayerOnly: 0
+  incompatibleAugments: []
+  requiredAugments: []
+  requiredOneOfAugments: []

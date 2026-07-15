@@ -5,16 +5,28 @@ using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
+// Which spawn-cap bucket an enemy counts against — decided entirely by whichever spawner created it
+// (which list it pulled the prefab from), never by the prefab/class itself. This is what lets a boss just
+// be an EnemyBasePD spawned via SpawnCategory.Boss instead of needing a dedicated BossBasePD subclass.
+public enum EnemySpawnCategory { Normal, Elite, Pleb, Boss }
+
 public interface IEnemyPD
 {
     bool _isDead { get; }
     float CurrentHealth { get; }
     float MaxHealth { get; }
+    string EnemyName { get; }
     Transform transform { get; }
     void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
     void TriggerHitFeedback(float damage, bool isCrit, CharacterStatsPD attacker);
+
+    // Lets a spawner mark a freshly hierarchy.Create()'d enemy with which category spawned it (deciding
+    // which Active*Count bucket it counts against) and apply co-op/elite stat scaling, generically,
+    // regardless of which concrete TState the enemy's subclass uses — same reason this interface exists
+    // at all.
+    void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier);
 }
 
 // Per-target contact damage cooldown — contact damage repeats over time (unlike a one-shot attack),
@@ -87,9 +99,30 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     public static int ActiveCount = 0;
     public static int ActiveNormalCount = 0;
+    public static int ActiveEliteCount = 0;
     public static int ActivePlebCount = 0;
-    [NonSerialized] public bool isPleb = false;
-    [NonSerialized] public bool isUncapped = false;
+    public static int ActiveBossCount = 0;
+    // Which spawn-cap bucket this instance counts against — set by whichever spawner created it via
+    // ConfigureSpawn(), not authored per-prefab (a single prefab can be spawned as different categories
+    // by different spawn calls, e.g. the same enemy used as both a tier's normal and elite variant).
+    [NonSerialized] public EnemySpawnCategory spawnCategory = EnemySpawnCategory.Normal;
+
+    // Static fields never reset themselves — there's no domain reload in a built game (that's an Editor-
+    // only Play Mode concept), and a player going Lobby -> Start -> Lobby -> Start within one launch is a
+    // scene load, not a process restart. Worse, enemies still alive when a session ends get torn down by
+    // scene unload rather than their own Die(), so the normal decrement never runs for them. Called from
+    // every point a fresh game session could begin or a stale one could end — see EnemySpawnerPD.Awake(),
+    // GameManagerPD.UpdateView() (game-start and game-end transitions), ReturnToLobbyManager (both the
+    // server and client leave-game paths), and CharacterRegistry.OnApplicationQuit() — deliberately
+    // redundant across all of them rather than trusting any single exit path to always fire cleanly.
+    public static void ResetActiveCounts()
+    {
+        ActiveCount = 0;
+        ActiveNormalCount = 0;
+        ActiveEliteCount = 0;
+        ActivePlebCount = 0;
+        ActiveBossCount = 0;
+    }
 
     public virtual float GetDamage() => damage;
     public virtual bool CanContactDamage => true;
@@ -108,6 +141,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public float CurrentHealth => _verifiedHealth;
 
     public float MaxHealth => maxHealth;
+
+    public string EnemyName => enemyName;
 
     // ── State ──────────────────────────────────────────────────────────────
     protected override TState GetInitialState()
@@ -149,8 +184,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected override void LateAwake()
     {
         ActiveCount++;
-        if (isPleb) ActivePlebCount++;
-        else if (!isUncapped) ActiveNormalCount++;
+        AdjustCategoryCount(spawnCategory, +1);
         _verifiedHealth = maxHealth;
 
         if (_contactDamageCollider != null && _contactDamageCollider.TryGetComponent(out PredictedPhysicsCallbacks callbacks))
@@ -477,7 +511,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     public void TriggerHitFeedback(float damage, bool isCrit, CharacterStatsPD attacker)
     {
-        if (!B.isDead) StartCoroutine(FlashCoroutine());
+        // PD weapons (WeaponMeleePD, WeaponRangedProjectilePD) queue hit feedback in Simulate()/
+        // LateSimulate() but only drain and fire it here in UpdateView(), at render rate — by the time it
+        // fires, this pooled enemy instance can already have been reused for a new spawn (isDead reset to
+        // false) while transiently still inactive, same as the respawn-reset/animator cases elsewhere in
+        // this class.
+        if (!B.isDead && gameObject.activeInHierarchy) StartCoroutine(FlashCoroutine());
         if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit);
         if (attacker.isOwner && SFXManager.instance != null)
             SFXManager.instance.Play(attacker.hitSfx, transform.position, 1f, 0.05f);
@@ -487,8 +526,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     {
         B.isDead = true;
         ActiveCount--;
-        if (isPleb) ActivePlebCount--;
-        else if (!isUncapped) ActiveNormalCount--;
+        AdjustCategoryCount(spawnCategory, -1);
 
         if (XPOrbManagerPD.instance != null)
             XPOrbManagerPD.instance.SpawnOrbs(hierarchy, transform.position, xpValue);
@@ -499,6 +537,53 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (_isDead || stunResistant || !isStunnable) return;
         if (IsReadyToAttack) return;
         B.stunTimer = Mathf.Max(B.stunTimer, duration);
+    }
+
+    // Called by a spawner right after hierarchy.Create() returns, telling this instance which category
+    // spawned it. spawnCategory is [NonSerialized] and always starts Normal — LateAwake() has already
+    // bucketed this instance into ActiveNormalCount using that default by the time this runs, so the
+    // bucket is corrected here rather than assumed, regardless of exactly when LateAwake() ran relative to
+    // this call. Health scaling mutates B.health directly (not just maxHealth) since GetInitialState()
+    // already baked b.health = maxHealth before the spawner got a chance to scale it — same "mutate
+    // currentState right after Create()" pattern as XPOrbPD.SetValue(). damage doesn't need that trick
+    // (nothing bakes it into predicted state at spawn time — it's read live off the field every use), but
+    // its base* snapshot (captured in Awake(), before this ever runs) DOES need to be scaled in lockstep,
+    // since subclasses can derive further values from it.
+    public void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier)
+    {
+        if (category != spawnCategory)
+        {
+            AdjustCategoryCount(spawnCategory, -1);
+            spawnCategory = category;
+            AdjustCategoryCount(spawnCategory, +1);
+        }
+
+        xpValue *= xpMultiplier;
+        baseXpValue *= xpMultiplier;
+
+        if (healthMultiplier != 1f)
+        {
+            maxHealth *= healthMultiplier;
+            baseHealth *= healthMultiplier;
+            B.health = maxHealth;
+        }
+
+        if (damageMultiplier != 1f)
+        {
+            damage *= damageMultiplier;
+            baseDamage *= damageMultiplier;
+        }
+    }
+
+    private static void AdjustCategoryCount(EnemySpawnCategory category, int delta)
+    {
+        switch (category)
+        {
+            case EnemySpawnCategory.Normal: ActiveNormalCount += delta; break;
+            case EnemySpawnCategory.Elite:  ActiveEliteCount  += delta; break;
+            case EnemySpawnCategory.Pleb:   ActivePlebCount   += delta; break;
+            case EnemySpawnCategory.Boss:   ActiveBossCount   += delta; break;
+        }
     }
 
     public void AddKnockbackVelocity(Vector3 impulse)

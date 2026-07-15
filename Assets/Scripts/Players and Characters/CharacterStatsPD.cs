@@ -12,6 +12,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public CharacterClass characterClass;
     public bool outerXScalesWithRange = false;
 
+    [SerializeField] private ClassPassiveData classPassive;
+
     // ── Serialized base values ─────────────────────────────────────────────
 
     [Header("Movement")]
@@ -111,6 +113,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     [HideInInspector] public float bonusWeaponSizePercent = 1f;
 
+    // Character-size augments (Titan, and any future ones) add their delta here rather than each
+    // multiplying transform.localScale directly — additive, so multiple size augments stack (+25% +
+    // +30% = +55%) instead of compounding multiplicatively (1.25 * 1.30 = 1.625x). WeaponSize (the
+    // weapon's actual hitbox/visual scale) scales by this too, so the weapon grows with the character
+    // without a separate per-augment multiply call. WeaponRadius (orbit distance) deliberately does not
+    // — see its own comment for why.
+    [HideInInspector] public float bonusSizePercent = 1f;
+
     [HideInInspector] public bool canContactAllies = false;
     [HideInInspector] public bool canDamageAllies = false;
 
@@ -188,6 +198,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent * bonusWeaponDamagePenalty;
     public float UnpenalizedWeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent;
+    // Deliberately doesn't factor in bonusSizePercent, unlike WeaponSize — Bladeweaver is the only class
+    // that uses this for actual orbit distance (hovering blades), and a size augment pushing that
+    // distance out further makes it harder for them to hit anything nearby, which isn't the intent of a
+    // size augment. WeaponSize (hitbox/visual scale) still scales with size; this doesn't need to.
     public float WeaponRadius => (baseWeaponRadius + bonusWeaponRadiusFlat) * bonusWeaponRadiusPercent;
 
     public float AttackSpeed => (baseAttackSpeed + attackSpeedPercent) * attackSpeedTotalPercent * attackSpeedPenalty * (currentState.isSurging ? SurgeAttackSpeedMultiplier : 1f);
@@ -196,7 +210,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public int WeaponCount => (baseWeaponCount + bonusWeaponCountFlat) * bonusWeaponCountMultiplier;
     public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent * weaponRangePenalty * 0.2f;
-    public float WeaponSize => baseWeaponSize * bonusWeaponSizePercent;
+    public float WeaponSize => baseWeaponSize * bonusWeaponSizePercent * bonusSizePercent;
 
     public float CritChance => (baseCritChance + bonusCritChanceFlat) * bonusCritChancePercent;
     public float CritDamage => ((baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent) + Mathf.Max(0f, CritChance - 1f) * 0.5f;
@@ -478,6 +492,40 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         currentState.energy = Mathf.Max(0f, currentState.energy + (MaxEnergy - maxEnergyBefore));
     }
 
+    // Public entry point for augment effect components (e.g. HealthAugment) to grant a flat max health
+    // bonus — routes through ApplyStatChange so current health rises with the new ceiling instead of
+    // staying pinned below it. Augment effects apply identically on every machine (unlike the old
+    // owner-only model), so this needs no isOwner gating here.
+    public void AddMaxHealthFlat(float amount) => ApplyStatChange(() => bonusMaxHealthFlat += amount);
+
+    // Same pattern as AddMaxHealthFlat, for augments that grant a percentage bonus instead (additive
+    // against the 1f baseline, e.g. +0.2 = +20% total).
+    public void AddMaxHealthPercent(float amount) => ApplyStatChange(() => bonusMaxHealthPercent += amount);
+    public void AddWeaponRangePercent(float amount) => ApplyStatChange(() => bonusWeaponRangePercent += amount);
+
+    // These children stay visually the same size regardless of the character's own scale — a revive
+    // trigger volume and worldspace/minimap UI markers shouldn't grow along with the player.
+    private static readonly string[] _unscaledSizeChildren = { "ReviveZone", "WorldspaceUI", "Minimap Icon" };
+
+    // Additive against the 1f baseline (amount is a delta, e.g. +0.25 = +25%), same convention as every
+    // other bonus here — unlike a direct transform.localScale *= multiplier, which would compound
+    // multiplicatively across multiple size augments instead of stacking their percentages. Re-derives
+    // the full scale from bonusSizePercent every call rather than incrementally adjusting the transform,
+    // so this stays correct no matter how many size augments have been applied. WeaponRadius/WeaponSize
+    // already read bonusSizePercent directly, so no separate call is needed to scale the weapon too.
+    public void AddSizePercent(float amount)
+    {
+        bonusSizePercent += amount;
+        transform.localScale = Vector3.one * bonusSizePercent;
+
+        foreach (var childName in _unscaledSizeChildren)
+        {
+            var child = transform.Find(childName);
+            if (child != null)
+                child.localScale = Vector3.one / bonusSizePercent;
+        }
+    }
+
     private bool _bonusesApplied;
     public void ApplyProgressionBonuses(ProgressionBonuses b)
     {
@@ -525,6 +573,132 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             ApplySingleStatEntry(entryA, multiplier);
             ApplySingleStatEntry(entryB, multiplier);
         });
+    }
+
+    // Called from PlayerDataPD.UpdateView() once per character spawn, on every machine (not owner-gated
+    // like ApplyProgressionBonuses — classPassive is a shared asset reference baked into the prefab, not
+    // per-machine save data, so every observer computes the identical result). No meta-progression
+    // multiplier applied here, unlike picked stat augments — a class passive is a fixed identity bonus,
+    // not something ProgressionManager's LevelUpStats upgrade is meant to scale.
+    private bool _classPassivesApplied;
+    public void ApplyClassPassives()
+    {
+        if (_classPassivesApplied) return;
+        _classPassivesApplied = true;
+
+        // "No passive assigned" resolves as "applied" too — future code checking this flag directly
+        // shouldn't need to separately handle the no-passive case as a distinct not-yet-resolved state.
+        if (classPassive == null) return;
+
+        var p = classPassive;
+        ApplyStatChange(() =>
+        {
+            bonusMoveSpeedFlat              += p.bonusMoveSpeedFlat;
+            bonusMoveSpeedPercent           += p.bonusMoveSpeedPercent;
+            moveSpeedPenalty                += p.moveSpeedPenalty;
+
+            bonusWeaponDamageFlat           += p.bonusWeaponDamageFlat;
+            bonusWeaponDamagePercent        += p.bonusWeaponDamagePercent;
+            bonusWeaponDamagePenalty        += p.bonusWeaponDamagePenalty;
+
+            bonusWeaponRadiusFlat           += p.bonusWeaponRadiusFlat;
+            bonusWeaponRadiusPercent        += p.bonusWeaponRadiusPercent;
+
+            attackSpeedPercent              += p.attackSpeedPercent;
+            attackSpeedTotalPercent         += p.attackSpeedTotalPercent;
+            attackSpeedPenalty              += p.attackSpeedPenalty;
+
+            bonusWeaponCountFlat            += p.bonusWeaponCountFlat;
+            bonusWeaponCountMultiplier      *= p.bonusWeaponCountMultiplier;
+
+            bonusWeaponRangeFlat            += p.bonusWeaponRangeFlat;
+            bonusWeaponRangePercent         += p.bonusWeaponRangePercent;
+            weaponRangePenalty              += p.weaponRangePenalty;
+
+            bonusWeaponSizePercent          += p.bonusWeaponSizePercent;
+
+            if (p.bonusSizePercent != 0f) AddSizePercent(p.bonusSizePercent);
+
+            canContactAllies                |= p.canContactAllies;
+            canDamageAllies                 |= p.canDamageAllies;
+
+            bonusCritChanceFlat             += p.bonusCritChanceFlat;
+            bonusCritChancePercent          += p.bonusCritChancePercent;
+
+            bonusCritDamageFlat             += p.bonusCritDamageFlat;
+            bonusCritDamagePercent          += p.bonusCritDamagePercent;
+
+            bonusRicochetFlat               += p.bonusRicochetFlat;
+            bonusRicochetPercent            += p.bonusRicochetPercent;
+
+            bonusMultishotFlat              += p.bonusMultishotFlat;
+            bonusMultishotPercent           += p.bonusMultishotPercent;
+
+            projectileDamageDropoffReduction += p.projectileDamageDropoffReduction;
+            projectileOnHitDropoffReduction  += p.projectileOnHitDropoffReduction;
+
+            bonusMaxHealthFlat              += p.bonusMaxHealthFlat;
+            bonusMaxHealthPercent           += p.bonusMaxHealthPercent;
+
+            bonusHealthRegenFlat            += p.bonusHealthRegenFlat;
+            bonusHealthRegenPercent         += p.bonusHealthRegenPercent;
+
+            bonusMaxShieldFlat              += p.bonusMaxShieldFlat;
+            bonusMaxShieldPercent           += p.bonusMaxShieldPercent;
+
+            bonusMaxEnergyFlat              += p.bonusMaxEnergyFlat;
+            bonusMaxEnergyPercent           += p.bonusMaxEnergyPercent;
+
+            bonusEnergyRegenFlat            += p.bonusEnergyRegenFlat;
+            bonusEnergyRegenPercent         += p.bonusEnergyRegenPercent;
+            energyRegenPenalty              += p.energyRegenPenalty;
+
+            bonusSurgeCostFlat              += p.bonusSurgeCostFlat;
+            bonusSurgeCostPercent           += p.bonusSurgeCostPercent;
+            surgeEffectiveness              *= p.surgeEffectiveness;
+            surgeEffectivenessPenalty       += p.surgeEffectivenessPenalty;
+            surgeAttackSpeedPenalty         += p.surgeAttackSpeedPenalty;
+
+            dashHaste                       += p.dashHaste;
+
+            bonusMaxSPFlat                  += p.bonusMaxSPFlat;
+            bonusMaxSPPercent               += p.bonusMaxSPPercent;
+
+            bonusLuckFlat                   += p.bonusLuckFlat;
+            bonusLuckPercent                += p.bonusLuckPercent;
+            luckPenalty                     += p.luckPenalty;
+
+            knockbackMultiplier             *= p.knockbackMultiplier;
+            knockbackPenalty                += p.knockbackPenalty;
+
+            bonusOnHitPowerMultiplier       *= p.bonusOnHitPowerMultiplier;
+            bonusOnHitPowerPenalty          += p.bonusOnHitPowerPenalty;
+
+            stackPowerPercent               += p.stackPowerPercent;
+            stackPowerPenalty               += p.stackPowerPenalty;
+
+            xpMultiplier                    += p.xpMultiplier;
+            xpPenalty                       += p.xpPenalty;
+
+            bonusXPRadiusFlat               += p.bonusXPRadiusFlat;
+            bonusXPRadiusPercent            += p.bonusXPRadiusPercent;
+
+            reviveTimePenalty               += p.reviveTimePenalty;
+            reviveTimePenaltyReduction      *= p.reviveTimePenaltyReduction;
+            revivePower                     += p.revivePower;
+
+            damageReductionPercent          += p.damageReductionPercent;
+            damageReductionPenalty          += p.damageReductionPenalty;
+        });
+
+        if (classPassive.effectPrefabs != null)
+        {
+            foreach (var prefab in classPassive.effectPrefabs)
+            {
+                if (prefab != null)
+                    hierarchy.Create(prefab, transform.position, transform.rotation, owner);
+            }
+        }
     }
 
     private void ApplySingleStatEntry(StatAugmentEntry entry, float multiplier)

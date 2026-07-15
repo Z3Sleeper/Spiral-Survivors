@@ -1,7 +1,26 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>
+// Lets WeaponManagerPD (and anything else that needs to treat "a weapon" generically) operate on any
+// WeaponBasePD<TState> subclass regardless of its own state type — same reason IEnemyPD exists for
+// EnemyBasePD<TState>. Melee (WeaponMeleePD) and ranged (WeaponRangedPD) weapons each have their own
+// simulated state shape, so neither can be the other's base class; this interface is what lets
+// WeaponManagerPD manage both through one list instead of being hard-coded to one concrete weapon type.
+public interface IWeaponPD
+{
+    int SlotIndex { get; set; }
+    bool IsMelee { get; }
+    Transform transform { get; }
+    Transform hitboxTarget { get; }
+    Transform rangeScaleTarget { get; }
+    float RangeValue { get; set; }
+    Vector3 RootScale { get; set; }
+    void Init(CharacterStatsPD stats);
+    void InitModelVisuals();
+    void ScaleModel(float range);
+}
+
+public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponPD
     where TState : struct, IPredictedData<TState>
 {
     protected CharacterStatsPD _stats;
@@ -10,7 +29,16 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>
     public Transform   hitboxTarget;
     public Transform   rangeScaleTarget;
     public Transform[] rangeFollowers;
-    [SerializeField] protected float     bladeTipOffset   = 0f;
+
+    // Explicit interface forwarding, not auto-properties — hitboxTarget/rangeScaleTarget above are plain
+    // public fields wired up in the Inspector on existing weapon prefabs (e.g. KnightWeapon.prefab).
+    // Converting them to auto-properties would satisfy IWeaponPD directly but silently drop those
+    // Inspector-assigned references (auto-properties aren't serialized), breaking the prefab. Forwarding
+    // keeps the fields serialized exactly as before while still satisfying the interface for
+    // WeaponManagerPD's IWeaponPD-typed access.
+    Transform IWeaponPD.hitboxTarget    => hitboxTarget;
+    Transform IWeaponPD.rangeScaleTarget => rangeScaleTarget;
+    [SerializeField] protected float     tipOffset        = 0f;
     [SerializeField] public    float     xRangeScaleRatio = 0f;
     [SerializeField] public    Transform[] yScaleFollowers;
     [SerializeField] public    Transform[] xzScaleFollowers;
@@ -22,9 +50,16 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>
     private Vector2[] _baseXZScales;
     private float[]   _baseXScales;
 
-    [System.NonSerialized] public float   designOrbit;
-    [System.NonSerialized] public float   _range;
-    [System.NonSerialized] public Vector3 _rootScale = Vector3.one;
+    [System.NonSerialized] public float designOrbit;
+    public float   RangeValue { get; set; }
+    public Vector3 RootScale  { get; set; } = Vector3.one;
+    public int     SlotIndex  { get; set; }
+
+    // Every weapon (melee or ranged) registers with its owner's WeaponManagerPD the same way — see
+    // WeaponMeleePD.TryInit()/WeaponRangedPD's equivalent — and OrbitalPosition() below needs WeaponCount
+    // from it for the multi-weapon angular-spacing term, so this lives here rather than being duplicated
+    // per weapon type.
+    [System.NonSerialized] public WeaponManagerPD _manager;
 
     public virtual void Init(CharacterStatsPD stats) => _stats = stats;
 
@@ -69,7 +104,7 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>
         if (rangeScaleTarget == null && rangeFollowers == null && (yScaleFollowers == null || yScaleFollowers.Length == 0)) return;
         float rootZ       = transform.localScale.z;
         float rangePart   = range / rootZ - designOrbit;
-        float visualFront = rangePart - bladeTipOffset;
+        float visualFront = rangePart - tipOffset;
 
         float xRatio = xRangeScaleRatio > 0f
             ? Mathf.Lerp(1f, range / Mathf.Max(0.001f, designOrbit * rootZ), xRangeScaleRatio)
@@ -119,5 +154,20 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>
         float max = damage * (1f + DamageVariance);
         float min = Mathf.Lerp(damage * (1f - DamageVariance), max, _stats.LuckChance);
         return GameRandom.instance.NextFloat(min, max);
+    }
+
+    // Shared orbital-position formula — both WeaponMeleePD (swept hitbox) and WeaponRangedPD (fires at
+    // whatever it has line-of-sight to) orbit their owner identically, only what happens once they're
+    // positioned differs. WeaponCount comes from _manager so multiple simultaneous weapons space evenly
+    // around the circle regardless of which weapon type(s) they are.
+    protected Vector3 OrbitalPosition(float baseAngle, Vector3 origin)
+    {
+        int   total     = _manager != null ? Mathf.Max(1, _manager.WeaponCount) : 1;
+        float rad       = (baseAngle + 360f / total * SlotIndex) * Mathf.Deg2Rad;
+        float halfRange = rangeScaleTarget != null
+            ? designOrbit * RootScale.z
+            : (IsMelee ? RangeValue / 2f : 0.25f);
+        float radius = _stats.WeaponRadius + _stats.transform.lossyScale.x * 0.5f + halfRange;
+        return origin + new Vector3(Mathf.Cos(rad) * radius, 0f, Mathf.Sin(rad) * radius);
     }
 }

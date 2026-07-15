@@ -273,7 +273,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &6321156
 RectTransform:
   m_ObjectHideFlags: 0
@@ -7403,12 +7403,10 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Gain Attack Speed equal to 100% Move Speed
+  m_text: '+30% Attack Speed & +40% Total Attack Speed
 
-    +30% Attack Speed
-
-    +1
-    Movement Speed & +10% Move Speed'
+    +1 Movement Speed & +10%
+    Move Speed'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -25537,14 +25535,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8af6c3743c923e64f9f09f8b455a4d43, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CharacterRegistry
-  characterPrefabs:
-  - {fileID: 2272951876664129887, guid: e7ea7d77f5b744941bf862712fc82a82, type: 3}
-  - {fileID: 2272951876664129887, guid: 8148cff9ad9973c42a79168be56ea2a4, type: 3}
-  - {fileID: 2272951876664129887, guid: d7c3138941af2e242977ae94e8ca1ec3, type: 3}
-  - {fileID: 2272951876664129887, guid: 450b495428051fe4cb0d4cf6615ff316, type: 3}
-  - {fileID: 2272951876664129887, guid: ad466fea73c0edc438ac3ed64857ed66, type: 3}
   predictedCharacterPrefabs:
-  - {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+  - {fileID: 3384548716234012153, guid: b766f1c7e33e6ad45bf35cba85f451d9, type: 3}
+  - {fileID: 8058231238311545800, guid: a1f59c22e0d70734fb7a9f1355342de2, type: 3}
 --- !u!4 &1914955370
 Transform:
   m_ObjectHideFlags: 0

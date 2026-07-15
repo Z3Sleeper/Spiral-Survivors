@@ -9,7 +9,6 @@ public class StatAugmentEntry
     public float value;
     public string prependText;
     public string appendText;
-    public CharacterClassID[] allowedClasses;
 
     public string ColoredName => $"<color=#{ColorUtility.ToHtmlStringRGB(color)}>{displayName}</color>";
     public string Colored(string text) => $"<color=#{ColorUtility.ToHtmlStringRGB(color)}>{text}</color>";

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using PurrNet;
+using PurrNet.Prediction;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -32,14 +33,22 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI upgradePointsText;
 
     [Header("Boss UI")]
-    [SerializeField] private GameObject bossUIContainer;
-    [SerializeField] private Slider bossHealthBar;
-    [SerializeField] private Slider bossEnrageBar;
-    [SerializeField] private TextMeshProUGUI bossHealthText;
-    [SerializeField] private TextMeshProUGUI bossNameText;
+    // Pooled per-boss health bar, one instance per currently-alive boss — supports any number spawned
+    // simultaneously (see EnemySpawnerPD's activeBosses list). bossBarTemplate is a prefab asset (not an
+    // in-scene object) so Instantiate() can freely clone it; bossBarContainer is the Horizontal Layout
+    // Group that arranges however many are currently active.
+    [SerializeField] private BossHealthBarUI bossBarTemplate;
+    [SerializeField] private Transform bossBarContainer;
+    private readonly Dictionary<PredictedObjectID, BossHealthBarUI> _activeBossBars = new();
+    private readonly Stack<BossHealthBarUI> _bossBarPool = new();
+    private readonly List<PredictedObjectID> _bossIdBuffer = new();
+    private readonly List<PredictedObjectID> _staleBossIdBuffer = new();
 
     [Header("Level Up Panel")]
     [SerializeField] private GameObject levelUpScreen;
+    // Separate from levelUpScreen so the paused-feeling tint can stay up for the whole multiplayer
+    // presenting window, independent of whether THIS player specifically has already picked.
+    [SerializeField] private GameObject levelUpBackground;
     [SerializeField] private TextMeshProUGUI levelUpTimerText;
     [SerializeField] private AugmentCardUI cardPrefab;
     [SerializeField] private Transform cardContainer;
@@ -61,6 +70,11 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI pauseReadyButtonText;
     [SerializeField] private GameObject returnToLobbyButton;
 
+    [Header("End Screen")]
+    [SerializeField] private GameObject endScreenPanel;
+    [SerializeField] private TextMeshProUGUI endScreenTitleText;
+    [SerializeField] private TextMeshProUGUI endScreenReadyCountText;
+
     private readonly System.Text.StringBuilder _statsSB = new();
     private readonly System.Text.StringBuilder _statsExpandedSB = new();
 
@@ -72,15 +86,20 @@ public class LocalUIManagerPD : MonoBehaviour
     {
         instance = this;
         levelUpScreen.SetActive(false);
+        levelUpBackground.SetActive(false);
         pauseCountdownText.gameObject.SetActive(false);
-        bossUIContainer.SetActive(false);
         statsUI.SetActive(true);
         statsUIExpanded.SetActive(false);
         pauseScreen.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
+        if (endScreenPanel != null) endScreenPanel.SetActive(false);
         PausePD.OnPauseChanged += OnPauseStateChanged;
         PausePD.OnCountdownChanged += OnCountdownChanged;
         PausePD.OnReadyCountChanged += OnReadyCountChanged;
+        PausePD.OnFallbackTimerChanged += SetFallbackTimer;
+        AugmentManagerPD.OnPresentingTimerChanged += OnPresentingTimerChanged;
+        GameManagerPD.OnGameEnded += OnGameEnded;
+        GameManagerPD.OnEndReadyCountChanged += OnEndReadyCountChanged;
     }
 
     private void OnDestroy()
@@ -88,6 +107,40 @@ public class LocalUIManagerPD : MonoBehaviour
         PausePD.OnPauseChanged -= OnPauseStateChanged;
         PausePD.OnCountdownChanged -= OnCountdownChanged;
         PausePD.OnReadyCountChanged -= OnReadyCountChanged;
+        PausePD.OnFallbackTimerChanged -= SetFallbackTimer;
+        AugmentManagerPD.OnPresentingTimerChanged -= OnPresentingTimerChanged;
+        GameManagerPD.OnGameEnded -= OnGameEnded;
+        GameManagerPD.OnEndReadyCountChanged -= OnEndReadyCountChanged;
+    }
+
+    private void OnGameEnded(bool hasWon)
+    {
+        if (endScreenPanel == null) return;
+        if (endScreenTitleText != null) endScreenTitleText.text = hasWon ? "Victory!" : "Defeat";
+        if (endScreenReadyCountText != null)
+        {
+            int total = NetworkManager.main != null ? NetworkManager.main.playerCount : 1;
+            endScreenReadyCountText.text = $"0/{total} Ready";
+        }
+        endScreenPanel.SetActive(true);
+    }
+
+    private void OnEndReadyCountChanged(int ready, int total)
+    {
+        if (endScreenReadyCountText != null)
+            endScreenReadyCountText.text = $"{ready}/{total} Ready";
+    }
+
+    public void OnEndScreenReadyClicked()
+    {
+        if (_controller == null) return;
+        _controller.RequestEndScreenReady();
+    }
+
+    private void OnPresentingTimerChanged(int seconds)
+    {
+        if (levelUpTimerText == null) return;
+        levelUpTimerText.text = $"Time Remaining: {seconds}s";
     }
 
     private void OnPauseStateChanged(bool isPaused)
@@ -150,11 +203,17 @@ public class LocalUIManagerPD : MonoBehaviour
     }
 
     // Barebones — every level-up is a stat-augment pick for now, no real augment pool yet.
-    public void SetUpStatAugmentScreen(List<StatAugmentPair> options)
+    public void SetUpLevelUpScreen(List<LevelUpOption> options)
     {
         HideAllCards();
         for (int i = 0; i < options.Count; i++)
-            GetCard(i).StatAugmentSetup(options[i], i);
+        {
+            var card = GetCard(i);
+            if (options[i].isAugment)
+                card.AugmentSetup(options[i].augmentData, i);
+            else
+                card.StatAugmentSetup(options[i].statPair, i);
+        }
     }
 
     // Only buffers the request through the local player's own controller — Simulate() performs the
@@ -166,21 +225,39 @@ public class LocalUIManagerPD : MonoBehaviour
     }
 
     private bool _levelUpScreenShown;
+    private bool _levelUpBackgroundShown;
 
     private void UpdateLevelUpScreen()
     {
         if (AugmentManagerPD.instance == null || _controller == null || !_controller.owner.HasValue) return;
 
-        bool shouldShow = AugmentManagerPD.instance.VerifiedIsPresenting
-            && !AugmentManagerPD.instance.HasPlayerPicked(_controller.owner.Value);
+        bool presenting = AugmentManagerPD.instance.VerifiedIsPresenting;
 
-        if (shouldShow && !_levelUpScreenShown)
+        // Background reflects the whole multiplayer presenting window (every player, not just this
+        // one) — otherwise it drops the instant THIS player picks, even while teammates are still
+        // choosing and the game is still effectively paused underneath.
+        if (presenting && !_levelUpBackgroundShown)
         {
-            SetUpStatAugmentScreen(AugmentManagerPD.instance.GetOptionsForPlayer(_controller.owner.Value));
+            levelUpBackground.SetActive(true);
+            _levelUpBackgroundShown = true;
+        }
+        else if (!presenting && _levelUpBackgroundShown)
+        {
+            levelUpBackground.SetActive(false);
+            _levelUpBackgroundShown = false;
+        }
+
+        // Cards only need to be visible until THIS player has picked — no reason to keep showing your
+        // own already-answered options while waiting on everyone else.
+        bool shouldShowCards = presenting && !AugmentManagerPD.instance.HasPlayerPicked(_controller.owner.Value);
+
+        if (shouldShowCards && !_levelUpScreenShown)
+        {
+            SetUpLevelUpScreen(AugmentManagerPD.instance.GetOptionsForPlayer(_controller.owner.Value));
             ShowLevelUpScreen();
             _levelUpScreenShown = true;
         }
-        else if (!shouldShow && _levelUpScreenShown)
+        else if (!shouldShowCards && _levelUpScreenShown)
         {
             HideLevelUpScreen();
             _levelUpScreenShown = false;
@@ -298,6 +375,7 @@ public class LocalUIManagerPD : MonoBehaviour
         UpdateUpgradePoints();
         UpdateRunClock();
         UpdateBossUI();
+        UpdateBossHealthBars();
         UpdatePauseReadyButton();
         UpdateLevelUpScreen();
     }
@@ -422,24 +500,75 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private void UpdateUpgradePoints()
     {
-        if (upgradePointsText == null || GameManagerPD.instance == null) return;
-        SetText(upgradePointsText, $"<b>{FormatStat(GameManagerPD.instance.UpgradePoints)} pts</b>");
+        if (upgradePointsText == null) return;
+        SetText(upgradePointsText, $"<b>{FormatStat(LocalUpgradePointsTracker.instance.TotalEarnedThisSession)} pts</b>");
     }
 
     private void UpdateRunClock()
     {
-        float runtime = Time.timeSinceLevelLoad;
+        if (GameManagerPD.instance == null) return;
+        float runtime = GameManagerPD.instance.ElapsedRunTime;
         int minutes = (int)(runtime / 60f);
         int seconds = (int)(runtime % 60f);
         SetText(timerText, $"<b>{minutes:00}:{seconds:00}</b>");
     }
 
-    // TODO: bosses haven't been ported to the PD system yet — no EnemySpawnerPD/BossBasePD equivalent
-    // exists. Left as a no-op (keeps the boss UI hidden) rather than wired to the old (non-PD)
-    // EnemySpawner/BossBase, which are being moved out of Assets/.
+    // TODO: enrage timer bar not implemented yet — deferred until the enrage mechanic itself exists.
     private void UpdateBossUI()
     {
-        bossUIContainer.SetActive(false);
+        if (EnemySpawnerPD.instance != null && bossTimerText != null)
+        {
+            float remaining = Mathf.Max(0f, EnemySpawnerPD.instance.CycleTimer);
+            int minutes = (int)(remaining / 60f);
+            int seconds = (int)(remaining % 60f);
+            bossTimerText.gameObject.SetActive(true);
+            SetText(bossTimerText, $"Next Boss:\n{minutes:00}:{seconds:00}");
+            return;
+        }
+
         bossTimerText.gameObject.SetActive(false);
+    }
+
+    // Pools one BossHealthBarUI per currently-alive boss (see EnemySpawnerPD.activeBosses) — supports any
+    // number spawned simultaneously. Never holds an IEnemyPD reference across frames: enemies are pooled
+    // and reused for new spawns, so a cached reference from an earlier frame could silently end up
+    // pointing at a completely different enemy later. Resolves fresh from the id every call instead.
+    private void UpdateBossHealthBars()
+    {
+        if (EnemySpawnerPD.instance == null || bossBarTemplate == null || bossBarContainer == null) return;
+
+        EnemySpawnerPD.instance.GetVerifiedActiveBosses(_bossIdBuffer);
+
+        // Release bars for bosses that are no longer active.
+        _staleBossIdBuffer.Clear();
+        foreach (var id in _activeBossBars.Keys)
+            if (!_bossIdBuffer.Contains(id)) _staleBossIdBuffer.Add(id);
+
+        for (int i = 0; i < _staleBossIdBuffer.Count; i++)
+        {
+            var id = _staleBossIdBuffer[i];
+            var staleBar = _activeBossBars[id];
+            _activeBossBars.Remove(id);
+            staleBar.gameObject.SetActive(false);
+            _bossBarPool.Push(staleBar);
+        }
+
+        // Acquire bars for newly active bosses, and refresh every currently active one's health.
+        for (int i = 0; i < _bossIdBuffer.Count; i++)
+        {
+            var id = _bossIdBuffer[i];
+            var enemy = EnemySpawnerPD.instance.ResolveBoss(id);
+            if (enemy == null) continue;
+
+            if (!_activeBossBars.TryGetValue(id, out var bar))
+            {
+                bar = _bossBarPool.Count > 0 ? _bossBarPool.Pop() : Instantiate(bossBarTemplate, bossBarContainer);
+                bar.gameObject.SetActive(true);
+                bar.SetName(enemy.EnemyName);
+                _activeBossBars[id] = bar;
+            }
+
+            bar.SetHealth(enemy.CurrentHealth, enemy.MaxHealth);
+        }
     }
 }

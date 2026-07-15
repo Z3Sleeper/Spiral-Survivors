@@ -1,8 +1,8 @@
 using UnityEngine;
 
 // Lightweight replacement for PredictedTransform on objects whose position is already fully
-// deterministic and derived from other already-synced state (e.g. WeaponBladePD's orbit, computed
-// from the player's position + the weapon's own angle state) — there's nothing independently
+// deterministic and derived from other already-synced state (e.g. a WeaponBasePD<TState> subclass's
+// orbit, computed from the player's position + the weapon's own angle state) — there's nothing independently
 // mispredicted here to roll back, so the full PredictedIdentity/network-sync machinery is pure
 // redundant traffic. Unity's own Update/LateUpdate runs after PurrDiction finishes all tick/replay
 // processing for the frame, so by the time this runs, transform.position is already the final,
@@ -29,8 +29,9 @@ public class LocalGraphicsSmoother : MonoBehaviour
     {
         if (_graphics == null) return;
 
-        // Unscaled on purpose. WeaponBladePD.LateSimulate() stops updating transform.position on its
-        // own once PausePD's predicted IsPaused flips true — that's the real freeze point. This smoother
+        // Unscaled on purpose. A weapon's own LateSimulate() (WeaponMeleePD, WeaponRangedPD) stops
+        // updating transform.position on its own once PausePD's predicted IsPaused flips true — that's
+        // the real freeze point. This smoother
         // just needs to keep making real progress toward wherever the root currently is regardless of
         // Time.timeScale, so it fully converges within a few frames right as pause visually kicks in,
         // instead of either racing to finish (snap-on-pause) or getting stuck mid-lag if gated on pause

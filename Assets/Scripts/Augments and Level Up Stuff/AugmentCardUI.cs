@@ -31,6 +31,19 @@ public class AugmentCardUI : MonoBehaviour
         pickButton.onClick.AddListener(OnPicked);
     }
 
+    public void AugmentSetup(AugmentData augment, int cardIndex)
+    {
+        _cardIndex = cardIndex;
+        pickButton.interactable = true;
+
+        augmentImage.sprite = augment.icon;
+        titleText.text = augment.displayName;
+        descriptionText.text = augment.description;
+
+        pickButton.onClick.RemoveAllListeners();
+        pickButton.onClick.AddListener(OnPicked);
+    }
+
     private void OnPicked()
     {
         SFXManager.instance?.Play(pickSound, Vector3.zero);

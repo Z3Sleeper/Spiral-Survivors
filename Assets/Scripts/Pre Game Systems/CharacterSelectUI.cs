@@ -115,13 +115,13 @@ public class CharacterSelectUI : MonoBehaviour
 
             if (member.Id == GameStartData.LocalUserId)
             {
-                charName = _isRandom ? "Random" : CharacterRegistry.instance.GetPrefab(GameStartData.LocalCharacterIndex).name;
+                charName = _isRandom ? "Random" : CharacterRegistry.instance.GetPredictedPrefab(GameStartData.LocalCharacterIndex).name;
                 colorIndex = GameStartData.LocalColorIndex;
             }
             else
             {
                 if (_charSelections.TryGetValue(member.Id, out int charIdx))
-                    charName = charIdx == -1 ? "Random" : CharacterRegistry.instance.GetPrefab(charIdx).name;
+                    charName = charIdx == -1 ? "Random" : CharacterRegistry.instance.GetPredictedPrefab(charIdx).name;
                 if (_colorSelections.TryGetValue(member.Id, out int cIdx))
                     colorIndex = cIdx;
             }

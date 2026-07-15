@@ -1,5 +1,37 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
+--- !u!1 &174137699940259925
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6027961897727917986}
+  m_Layer: 0
+  m_Name: Visuals
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6027961897727917986
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 174137699940259925}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 6538681499716106083}
+  m_Father: {fileID: 7965949495438917252}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &654317818432330654
 GameObject:
   m_ObjectHideFlags: 0
@@ -189,8 +221,8 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7965949495438917252}
+  - component: {fileID: 8675369283089289376}
   - component: {fileID: -3199902600759759578}
-  - component: {fileID: -8942802009306055094}
   - component: {fileID: 3467452945836349495}
   m_Layer: 0
   m_Name: BladeweaverWeapon
@@ -212,10 +244,33 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 6538681499716106083}
+  - {fileID: 6027961897727917986}
   - {fileID: 4623957236076310883}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8675369283089289376
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2942187867930129664}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f1cb8febb1923148b388de1f438c094, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponBladePD
+  hitboxTarget: {fileID: 4623957236076310883}
+  rangeScaleTarget: {fileID: 1776253383228023903}
+  rangeFollowers:
+  - {fileID: 1719263058978148157}
+  - {fileID: 5657548761046776144}
+  bladeTipOffset: 0
+  xRangeScaleRatio: 0.1
+  yScaleFollowers: []
+  xzScaleFollowers: []
+  xScaleFollowers: []
+  bladeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
 --- !u!114 &-3199902600759759578
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -247,42 +302,6 @@ MonoBehaviour:
   _characterControllerPatch: 0
   _ownerAuth: 1
   _interpolationTiming: 0
---- !u!114 &-8942802009306055094
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2942187867930129664}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 01c1137a5ca87d540b00e4628a9d20fc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WeaponBlade
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
-  hitboxTarget: {fileID: 4623957236076310883}
-  rangeScaleTarget: {fileID: 1776253383228023903}
-  rangeFollowers:
-  - {fileID: 1719263058978148157}
-  - {fileID: 5657548761046776144}
-  bladeTipOffset: 0.2834
-  xRangeScaleRatio: 0.05
-  yScaleFollowers: []
-  xzScaleFollowers:
-  - {fileID: 1719263058978148157}
-  - {fileID: 5657548761046776144}
-  - {fileID: 4463360279216630659}
-  - {fileID: 4537251992964991104}
-  xScaleFollowers: []
-  bladeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
 --- !u!114 &3467452945836349495
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -509,7 +528,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6381208085429435541}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -519,7 +538,7 @@ Transform:
   - {fileID: 5657548761046776144}
   - {fileID: 4463360279216630659}
   - {fileID: 4537251992964991104}
-  m_Father: {fileID: 7965949495438917252}
+  m_Father: {fileID: 6027961897727917986}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6838032805661041711
 GameObject:

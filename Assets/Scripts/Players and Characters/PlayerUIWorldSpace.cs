@@ -21,9 +21,8 @@ public class PlayerUIWorldSpace : MonoBehaviour
         _controller = GetComponentInParent<PlayerControllerPD>();
         _camera = Camera.main;
 
-        bool owner = _controller != null && _controller.isOwner;
-        if (dashUI != null) dashUI.SetActive(owner);
-        if (energyUI != null) energyUI.SetActive(owner);
+        if (dashUI != null) dashUI.SetActive(true);
+        if (energyUI != null) energyUI.SetActive(true);
     }
 
     private void Update()
@@ -35,7 +34,7 @@ public class PlayerUIWorldSpace : MonoBehaviour
         if (shieldBar != null)
             shieldBar.value = _stats.MaxShield > 0f ? _stats.UIShield / _stats.MaxShield : 0f;
 
-        if (_controller == null || !_controller.isOwner) return;
+        if (_controller == null) return;
 
         UpdateDash();
         UpdateEnergy();

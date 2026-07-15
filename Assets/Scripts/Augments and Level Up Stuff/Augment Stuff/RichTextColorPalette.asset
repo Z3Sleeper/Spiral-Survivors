@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: cb9ffb3dd968efc43ae8917704a74fd0, type: 3}
+  m_Name: RichTextColorPalette
+  m_EditorClassIdentifier: Assembly-CSharp-Editor::RichTextColorPalette
+  colors:
+  - name: Damage
+    color: {r: 1, g: 0.3137255, b: 0, a: 0}
+  - name: Health
+    color: {r: 0, g: 1, b: 0, a: 0}
+  - name: Healing
+    color: {r: 0.49019608, g: 1, b: 0, a: 0}
+  - name: Move Speed
+    color: {r: 1, g: 1, b: 1, a: 0}
+  - name: Attack Speed / On Hit
+    color: {r: 1, g: 0, b: 0.3137255, a: 0}
+  - name: Crit
+    color: {r: 1, g: 0, b: 0, a: 0}
+  - name: Energy
+    color: {r: 1, g: 1, b: 0, a: 0}
+  - name: Dash
+    color: {r: 0, g: 1, b: 1, a: 0}
+  - name: Range
+    color: {r: 0.19607843, g: 0.47058824, b: 1, a: 0}
+  - name: Luck
+    color: {r: 0, g: 1, b: 0.5294118, a: 0}
+  - name: Stacking
+    color: {r: 0.39215687, g: 0, b: 1, a: 0}
+  - name: Damage Reduction
+    color: {r: 0.78431374, g: 0.78431374, b: 0.78431374, a: 0}
+  - name: Shield
+    color: {r: 1, g: 0, b: 1, a: 0}
+  - name: Phantom Blade
+    color: {r: 0.54901963, g: 0.54901963, b: 0.54901963, a: 0}

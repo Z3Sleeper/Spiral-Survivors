@@ -7,13 +7,13 @@ public class WeaponManagerPD : MonoBehaviour
     [SerializeField] private Transform  _visualsRoot;
 
     public GameObject WeaponPrefab      => weaponPrefab;
-    public bool       IsRanged          => !weaponPrefab.GetComponent<WeaponBladePD>().IsMelee;
+    public bool       IsRanged          => !weaponPrefab.GetComponent<IWeaponPD>().IsMelee;
     public int        WeaponCount       => _weapons.Count;
     public Transform  VisualsRoot       => _visualsRoot;
     public Vector3    WeaponPrefabScale => _weaponPrefabScale;
 
-    private CharacterStatsPD             _stats;
-    private readonly List<WeaponBladePD> _weapons = new();
+    private CharacterStatsPD          _stats;
+    private readonly List<IWeaponPD> _weapons = new();
     private int     _currentCount;
     private float   _currentRange;
     private float   _currentSize;
@@ -42,67 +42,67 @@ public class WeaponManagerPD : MonoBehaviour
     {
         for (int i = 0; i < count && _weapons.Count > 0; i++)
         {
-            var blade = _weapons[_weapons.Count - 1];
+            var weapon = _weapons[_weapons.Count - 1];
             _weapons.RemoveAt(_weapons.Count - 1);
-            _stats.hierarchy.Delete(blade.gameObject);
+            _stats.hierarchy.Delete(weapon.transform.gameObject);
         }
     }
 
-    // ── Blade registration ────────────────────────────────────────────────────
+    // ── Weapon registration ───────────────────────────────────────────────────
 
-    public void RegisterBlade(WeaponBladePD blade)
+    public void RegisterWeapon(IWeaponPD weapon)
     {
-        if (_weapons.Contains(blade)) return;
-        blade.SlotIndex = _weapons.Count;
-        _weapons.Add(blade);
-        blade.Init(_stats);
-        blade.InitModelVisuals();
-        blade.transform.localScale = _weaponPrefabScale * _currentSize;
-        SetupBladeRange(blade);
-        foreach (var a in blade.GetComponentsInChildren<PlayerColorApplicator>(true))
+        if (_weapons.Contains(weapon)) return;
+        weapon.SlotIndex = _weapons.Count;
+        _weapons.Add(weapon);
+        weapon.Init(_stats);
+        weapon.InitModelVisuals();
+        weapon.transform.localScale = _weaponPrefabScale * _currentSize;
+        SetupWeaponRange(weapon);
+        foreach (var a in weapon.transform.GetComponentsInChildren<PlayerColorApplicator>(true))
             a.Apply(_stats.PlayerColor);
     }
 
-    public void UnregisterBlade(WeaponBladePD blade)
+    public void UnregisterWeapon(IWeaponPD weapon)
     {
-        if (!_weapons.Remove(blade)) return;
+        if (!_weapons.Remove(weapon)) return;
         for (int i = 0; i < _weapons.Count; i++)
             _weapons[i].SlotIndex = i;
     }
 
     // ── Range / size helpers ──────────────────────────────────────────────────
 
-    public void SetupBladeRange(WeaponBladePD blade)
+    public void SetupWeaponRange(IWeaponPD weapon)
     {
-        if (!blade.IsMelee) return;
-        if (blade.hitboxTarget != null)
+        if (!weapon.IsMelee) return;
+        if (weapon.hitboxTarget != null)
         {
-            float rootZ = blade.transform.localScale.z;
+            float rootZ = weapon.transform.localScale.z;
             float r     = _stats.WeaponRange;
-            var s = blade.hitboxTarget.localScale;
-            blade.hitboxTarget.localScale = new Vector3(s.x, s.y, r / rootZ);
-            if (blade.rangeScaleTarget != null)
+            var s = weapon.hitboxTarget.localScale;
+            weapon.hitboxTarget.localScale = new Vector3(s.x, s.y, r / rootZ);
+            if (weapon.rangeScaleTarget != null)
             {
-                var p = blade.hitboxTarget.localPosition;
-                blade.hitboxTarget.localPosition = new Vector3(p.x, p.y, r / (2f * rootZ) - transform.lossyScale.x * 0.5f);
+                var p = weapon.hitboxTarget.localPosition;
+                weapon.hitboxTarget.localPosition = new Vector3(p.x, p.y, r / (2f * rootZ) - transform.lossyScale.x * 0.5f);
             }
         }
         else
         {
-            blade.transform.localScale = new Vector3(
-                blade.transform.localScale.x,
-                blade.transform.localScale.y,
+            weapon.transform.localScale = new Vector3(
+                weapon.transform.localScale.x,
+                weapon.transform.localScale.y,
                 _stats.WeaponRange);
         }
-        blade.ScaleModel(_stats.WeaponRange);
-        blade._rootScale = blade.transform.localScale;
-        blade._range     = _stats.WeaponRange;
+        weapon.ScaleModel(_stats.WeaponRange);
+        weapon.RootScale  = weapon.transform.localScale;
+        weapon.RangeValue = _stats.WeaponRange;
     }
 
     public void ApplyColor(Color c)
     {
-        foreach (var blade in _weapons)
-            foreach (var a in blade.GetComponentsInChildren<PlayerColorApplicator>(true))
+        foreach (var weapon in _weapons)
+            foreach (var a in weapon.transform.GetComponentsInChildren<PlayerColorApplicator>(true))
                 a.Apply(c);
     }
 
@@ -129,16 +129,16 @@ public class WeaponManagerPD : MonoBehaviour
         if (_stats.WeaponRange != _currentRange)
         {
             _currentRange = _stats.WeaponRange;
-            foreach (var blade in _weapons) SetupBladeRange(blade);
+            foreach (var weapon in _weapons) SetupWeaponRange(weapon);
         }
 
         if (_stats.WeaponSize != _currentSize)
         {
             _currentSize = _stats.WeaponSize;
-            foreach (var blade in _weapons)
+            foreach (var weapon in _weapons)
             {
-                blade.transform.localScale = _weaponPrefabScale * _currentSize;
-                SetupBladeRange(blade);
+                weapon.transform.localScale = _weaponPrefabScale * _currentSize;
+                SetupWeaponRange(weapon);
             }
         }
     }
