@@ -2,11 +2,13 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Orbits its owner exactly like WeaponMeleePD (same shared OrbitalPosition() formula on WeaponBasePD<TState>)
-// but never touches anything directly — instead, once per cooldown window, it looks for the nearest enemy
-// it has an unobstructed line of sight to from its current orbital position and fires a
-// WeaponRangedProjectilePD at it. No target = no fire; the cooldown holds at/below zero and retries every
-// tick until one becomes available, so it fires the instant something's in range/LoS rather than on some
-// fixed cadence unrelated to target availability.
+// but never touches anything directly — instead, every tick it raycasts forward (its current orbit-facing
+// direction) out to WeaponRange looking for an enemy hurtbox. If it finds one and isn't on cooldown, it
+// fires a WeaponRangedProjectilePD at that enemy's hurtbox bounds CENTER, not the raw raycast hit point —
+// since the ray is thin and the weapon is orbiting, the hit point is usually on the near/side edge of the
+// collider, which would cause frequent near-misses. If it finds one but IS on cooldown, it doesn't fire and
+// doesn't reset the cooldown, so it retries every subsequent tick until the cooldown clears. Ported from
+// the old WeaponBow.GetTargetPosition()/Fire().
 public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 {
     public struct State : IPredictedData<State>
@@ -21,15 +23,14 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     [Header("Ranged")]
     [SerializeField] private GameObject projectilePrefab;
     [SerializeField] private float projectileSpeed = 20f;
-    // Raycast against this to confirm a candidate target is actually visible, not behind a wall — a mask
-    // of 0 (nothing assigned) means "no obstruction layers configured," so the LoS check is skipped
-    // entirely rather than treated as "always blocked."
-    [SerializeField] private LayerMask obstacleLayerMask;
+    // Shots/sec = _stats.AttackSpeed * fireRateMultiplier — ported from the old WeaponBow, which used 12
+    // here (AttackSpeed 0.5 -> 6 shots/sec).
+    [SerializeField] private float fireRateMultiplier = 12f;
 
     private int  _enemyHurtboxMask;
     private bool _initialized;
 
-    private readonly Collider[] _searchResults = new Collider[32];
+    private readonly RaycastHit[] _rayResults = new RaycastHit[16];
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -86,36 +87,38 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         state.fireTimer -= delta;
         if (state.fireTimer > 0f) return;
 
-        var target = FindTarget(transform.position);
-        if (target == null) return;
+        if (!FindTarget(transform.position, transform.forward, out Vector3 hurtboxCenter)) return;
 
-        Fire(target);
-        state.fireTimer += 1f / Mathf.Max(0.01f, _stats.AttackSpeed);
+        Fire(hurtboxCenter);
+        state.fireTimer += 1f / Mathf.Max(0.01f, _stats.AttackSpeed * fireRateMultiplier);
     }
 
     // ── Targeting ─────────────────────────────────────────────────────────────
 
-    private IEnemyPD FindTarget(Vector3 from)
+    // Pulls the ray origin back 1 unit and pads the range by 1 to match — same as old WeaponBow — so an
+    // enemy pressed right up against the weapon's own origin still gets hit instead of the ray starting
+    // inside/past it.
+    private bool FindTarget(Vector3 from, Vector3 forward, out Vector3 hurtboxCenter)
     {
-        int n = Physics.OverlapSphereNonAlloc(from, _stats.WeaponRange, _searchResults, _enemyHurtboxMask);
-        IEnemyPD best = null;
+        Vector3 origin = from - forward * 1f;
+        float   range  = _stats.WeaponRange + 1f;
+
+        int   n        = Physics.RaycastNonAlloc(origin, forward, _rayResults, range, _enemyHurtboxMask);
         float bestDist = float.MaxValue;
+        hurtboxCenter = default;
+        bool found = false;
+
         for (int i = 0; i < n; i++)
         {
-            var enemy = _searchResults[i].GetComponentInParent<IEnemyPD>();
+            var enemy = _rayResults[i].collider.GetComponentInParent<IEnemyPD>();
             if (enemy == null || enemy._isDead) continue;
+            if (_rayResults[i].distance >= bestDist) continue;
 
-            Vector3 toEnemy = enemy.transform.position - from;
-            float dist = toEnemy.magnitude;
-            if (dist >= bestDist) continue;
-
-            if (obstacleLayerMask.value != 0 && Physics.Raycast(from, toEnemy.normalized, dist, obstacleLayerMask))
-                continue;
-
-            best = enemy;
-            bestDist = dist;
+            bestDist      = _rayResults[i].distance;
+            hurtboxCenter = _rayResults[i].collider.bounds.center;
+            found = true;
         }
-        return best;
+        return found;
     }
 
     // ── Fire ──────────────────────────────────────────────────────────────────
@@ -124,7 +127,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     // of each stat is guaranteed, the fractional part is a probability roll for one more (e.g. Ricochet =
     // 1.5 gives 1 bounce always, 2 bounces half the time). GameRandom, never UnityEngine.Random — this
     // runs from LateSimulate(), a deterministic/replay-safe context.
-    private void Fire(IEnemyPD target)
+    private void Fire(Vector3 targetPosition)
     {
         if (projectilePrefab == null) return;
 
@@ -138,7 +141,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         int multishot = 1 + bonusShots;
 
         Vector3 origin = transform.position;
-        Vector3 baseDir = (target.transform.position - origin).normalized;
+        Vector3 baseDir = (targetPosition - origin).normalized;
         float startAngle = multishot > 1 ? -_stats.multishotSpreadAngle / 2f : 0f;
         float angleStep = multishot > 1 ? _stats.multishotSpreadAngle / (multishot - 1) : 0f;
 

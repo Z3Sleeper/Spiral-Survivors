@@ -53,7 +53,7 @@ MonoBehaviour:
   _rigidbody: {fileID: 9220562662159228819}
   scatterForce: 3
   attractSpeed: 20
-  collectRadius: 0.5
+  collectRadius: 0.3
   collectSound: {fileID: 8300000, guid: f831e9f89c7b67f4c8d9579fb370bdac, type: 3}
 --- !u!54 &-5675643182975690526
 Rigidbody:
@@ -101,7 +101,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.5
+  m_Radius: 0.3
   m_Center: {x: 0, y: 0, z: 0}
 --- !u!114 &8763474947480066200
 MonoBehaviour:
@@ -117,7 +117,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
   _graphics: {fileID: 3902309061477883899}
   _floatAccuracy: 1
-  _interpolationSettings: {fileID: 11400000, guid: 4a8aa8e44e23cfd4a8d4387ef3f36173, type: 2}
+  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
   _unparentGraphics: 0
   _characterControllerPatch: 0
 --- !u!114 &9220562662159228819
@@ -386,8 +386,8 @@ Transform:
   m_GameObject: {fileID: 8679386597202240635}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.5, z: 0}
-  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
+  m_LocalPosition: {x: 0, y: 0.3, z: 0}
+  m_LocalScale: {x: 0.3, y: 0.3, z: 0.3}
   m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 1215824548626260623}

@@ -99,9 +99,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7965949495438917252}
-  - component: {fileID: -3199902600759759578}
-  - component: {fileID: 4394618201896549309}
+  - component: {fileID: 3151545990270142077}
   - component: {fileID: 3650817367354450114}
+  - component: {fileID: 7951618835084280162}
   m_Layer: 0
   m_Name: ArcherWeaponProjectile
   m_TagString: Untagged
@@ -122,10 +122,10 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 1756998077258277713}
+  - {fileID: 5949573564150280467}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &-3199902600759759578
+--- !u!114 &3151545990270142077
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -134,50 +134,19 @@ MonoBehaviour:
   m_GameObject: {fileID: 2942187867930129664}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 817fe5016bd0a2a49a95b6eb338bb132, type: 3}
+  m_Script: {fileID: 11500000, guid: 36257785fef02d0468ee354c750bcbe8, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkTransform
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
-  _syncPosition: 1
-  _syncRotation: 1
-  _syncScale: 1
-  _syncParent: 0
-  _interpolateSettings: 7
-  _minBufferSize: 1
-  _maxBufferSize: 2
-  _characterControllerPatch: 0
-  _ownerAuth: 1
-  _interpolationTiming: 0
---- !u!114 &4394618201896549309
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2942187867930129664}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c34b0826b3854d54cba0e13cd7f598bc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WeaponArrow
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
-  arrowHalfExtents: {x: 0.1, y: 0.1, z: 0.25}
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponRangedProjectilePD
+  hitboxTarget: {fileID: 0}
+  rangeScaleTarget: {fileID: 0}
+  rangeFollowers: []
+  tipOffset: 0
+  xRangeScaleRatio: 0
+  yScaleFollowers: []
+  xzScaleFollowers: []
+  xScaleFollowers: []
+  hitRadius: 0.25
+  ricochetSearchRadius: 15
 --- !u!114 &3650817367354450114
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -197,6 +166,23 @@ MonoBehaviour:
   tintedRenderers:
   - {fileID: 1696888333252749135}
   tintedMaterialIndex: 0
+--- !u!114 &7951618835084280162
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2942187867930129664}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98dbb08343eac044895b9b52872bcb49, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
+  _graphics: {fileID: 5949573564150280467}
+  _floatAccuracy: 1
+  _interpolationSettings: {fileID: 11400000, guid: 4a8aa8e44e23cfd4a8d4387ef3f36173, type: 2}
+  _unparentGraphics: 0
+  _characterControllerPatch: 0
 --- !u!1 &4849697052719355549
 GameObject:
   m_ObjectHideFlags: 0
@@ -221,14 +207,14 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4849697052719355549}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 6538681499716106083}
   - {fileID: 1732096736850336960}
-  m_Father: {fileID: 7965949495438917252}
+  m_Father: {fileID: 5949573564150280467}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6381208085429435541
 GameObject:
@@ -320,3 +306,35 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &8021537367245235044
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5949573564150280467}
+  m_Layer: 0
+  m_Name: Visuals
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5949573564150280467
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8021537367245235044}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 1756998077258277713}
+  m_Father: {fileID: 7965949495438917252}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}

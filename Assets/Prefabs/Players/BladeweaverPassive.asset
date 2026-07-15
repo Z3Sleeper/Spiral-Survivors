@@ -18,7 +18,7 @@ MonoBehaviour:
   bonusWeaponDamageFlat: 0
   bonusWeaponDamagePercent: 0
   bonusWeaponDamagePenalty: 0.5
-  bonusWeaponRadiusFlat: 5
+  bonusWeaponRadiusFlat: 3
   bonusWeaponRadiusPercent: 0
   attackSpeedPercent: 0
   attackSpeedTotalPercent: 0
@@ -27,7 +27,7 @@ MonoBehaviour:
   bonusWeaponCountMultiplier: 1
   bonusWeaponRangeFlat: 0
   bonusWeaponRangePercent: 0
-  weaponRangePenalty: 0.5
+  weaponRangePenalty: -0.5
   bonusWeaponSizePercent: 0
   bonusSizePercent: 0
   canContactAllies: 0

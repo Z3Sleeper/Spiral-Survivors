@@ -25538,6 +25538,7 @@ MonoBehaviour:
   predictedCharacterPrefabs:
   - {fileID: 3384548716234012153, guid: b766f1c7e33e6ad45bf35cba85f451d9, type: 3}
   - {fileID: 8058231238311545800, guid: a1f59c22e0d70734fb7a9f1355342de2, type: 3}
+  - {fileID: 3529459938880667348, guid: 06a6e40a820ff5e4c9f8e9f0e17f4010, type: 3}
 --- !u!4 &1914955370
 Transform:
   m_ObjectHideFlags: 0

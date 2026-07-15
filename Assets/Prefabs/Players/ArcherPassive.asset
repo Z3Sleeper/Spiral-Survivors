@@ -12,7 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 009657d7a5a7e3844b9ada055b0289d0, type: 3}
   m_Name: ArcherPassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
-  characterClass: 2
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0
@@ -26,8 +25,8 @@ MonoBehaviour:
   attackSpeedPenalty: 0
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
-  bonusWeaponRangeFlat: 0
-  bonusWeaponRangePercent: 0
+  bonusWeaponRangeFlat: 10
+  bonusWeaponRangePercent: 0.5
   weaponRangePenalty: 0
   bonusWeaponSizePercent: 0
   bonusSizePercent: 0

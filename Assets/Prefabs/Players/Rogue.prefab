@@ -16,6 +16,10 @@ PrefabInstance:
       propertyPath: characterClass
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: weaponPrefab
+      value: 
+      objectReference: {fileID: 2942187867930129664, guid: c2522599a7ce86843a28389dd9424ed3, type: 3}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
       value: Rogue

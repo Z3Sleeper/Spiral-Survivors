@@ -222,8 +222,8 @@ GameObject:
   m_Component:
   - component: {fileID: 7965949495438917252}
   - component: {fileID: 8675369283089289376}
-  - component: {fileID: -3199902600759759578}
   - component: {fileID: 3467452945836349495}
+  - component: {fileID: 8079103019073412873}
   m_Layer: 0
   m_Name: BladeweaverWeapon
   m_TagString: Untagged
@@ -265,43 +265,16 @@ MonoBehaviour:
   rangeFollowers:
   - {fileID: 1719263058978148157}
   - {fileID: 5657548761046776144}
-  bladeTipOffset: 0
-  xRangeScaleRatio: 0.1
+  tipOffset: 0.2834
+  xRangeScaleRatio: 0.05
   yScaleFollowers: []
-  xzScaleFollowers: []
+  xzScaleFollowers:
+  - {fileID: 1719263058978148157}
+  - {fileID: 5657548761046776144}
+  - {fileID: 4463360279216630659}
+  - {fileID: 4537251992964991104}
   xScaleFollowers: []
-  bladeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
---- !u!114 &-3199902600759759578
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2942187867930129664}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 817fe5016bd0a2a49a95b6eb338bb132, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkTransform
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
-  _syncPosition: 1
-  _syncRotation: 1
-  _syncScale: 1
-  _syncParent: 1
-  _interpolateSettings: 7
-  _minBufferSize: 1
-  _maxBufferSize: 2
-  _characterControllerPatch: 0
-  _ownerAuth: 1
-  _interpolationTiming: 0
+  meleeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
 --- !u!114 &3467452945836349495
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -324,6 +297,23 @@ MonoBehaviour:
   - {fileID: 8587555913918658902}
   - {fileID: 9174594737152162479}
   tintedMaterialIndex: 0
+--- !u!114 &8079103019073412873
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2942187867930129664}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98dbb08343eac044895b9b52872bcb49, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
+  _graphics: {fileID: 6027961897727917986}
+  _floatAccuracy: 1
+  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
+  _unparentGraphics: 0
+  _characterControllerPatch: 0
 --- !u!1 &2965791002601135373
 GameObject:
   m_ObjectHideFlags: 0

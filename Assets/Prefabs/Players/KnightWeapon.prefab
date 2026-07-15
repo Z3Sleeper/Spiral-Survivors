@@ -191,7 +191,6 @@ GameObject:
   - component: {fileID: 7965949495438917252}
   - component: {fileID: 4475587580579230247}
   - component: {fileID: 8198260059138025823}
-  - component: {fileID: 6743528055132476529}
   - component: {fileID: 6886117423986760106}
   m_Layer: 0
   m_Name: KnightWeapon
@@ -233,7 +232,7 @@ MonoBehaviour:
   rangeScaleTarget: {fileID: 1776253383228023903}
   rangeFollowers:
   - {fileID: 1719263058978148157}
-  bladeTipOffset: 0.2834
+  tipOffset: 0
   xRangeScaleRatio: 0.1
   yScaleFollowers:
   - {fileID: 7916714521472660137}
@@ -241,7 +240,7 @@ MonoBehaviour:
   - {fileID: 1719263058978148157}
   xScaleFollowers:
   - {fileID: 5658850961026097083}
-  bladeHalfExtents: {x: 0.2, y: 0.1, z: 0.5}
+  meleeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
 --- !u!114 &8198260059138025823
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -264,22 +263,6 @@ MonoBehaviour:
   - {fileID: 8667004372245903466}
   - {fileID: 3231712233815679040}
   tintedMaterialIndex: 0
---- !u!114 &6743528055132476529
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2942187867930129664}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: cbb3fe94cc07c064fb3ad14a06faf5f4, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::LocalGraphicsSmoother
-  _graphics: {fileID: 7428362762127812158}
-  _positionSmoothTime: 0.05
-  _rotationSmoothSpeed: 20
-  _snapDistance: 1.5
 --- !u!114 &6886117423986760106
 MonoBehaviour:
   m_ObjectHideFlags: 0

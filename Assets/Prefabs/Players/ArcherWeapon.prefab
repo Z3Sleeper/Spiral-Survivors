@@ -99,9 +99,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7965949495438917252}
-  - component: {fileID: -3199902600759759578}
-  - component: {fileID: 4036672240503081848}
+  - component: {fileID: 6937934420572055414}
   - component: {fileID: 4065948657444989573}
+  - component: {fileID: 658208300417350086}
   m_Layer: 0
   m_Name: ArcherWeapon
   m_TagString: Untagged
@@ -122,11 +122,11 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 7983150946184223005}
+  - {fileID: 3273598209279064071}
   - {fileID: 3060469143772989073}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &-3199902600759759578
+--- !u!114 &6937934420572055414
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -135,63 +135,22 @@ MonoBehaviour:
   m_GameObject: {fileID: 2942187867930129664}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 817fe5016bd0a2a49a95b6eb338bb132, type: 3}
+  m_Script: {fileID: 11500000, guid: 214303305000eb641ac0ed762b9f3528, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkTransform
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
-  _syncPosition: 1
-  _syncRotation: 1
-  _syncScale: 1
-  _syncParent: 1
-  _interpolateSettings: 7
-  _minBufferSize: 1
-  _maxBufferSize: 2
-  _characterControllerPatch: 0
-  _ownerAuth: 1
-  _interpolationTiming: 0
---- !u!114 &4036672240503081848
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2942187867930129664}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4d31bace36a55f4439fb1180fe13b90c, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WeaponBow
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponRangedPD
   hitboxTarget: {fileID: 3060469143772989073}
   rangeScaleTarget: {fileID: 0}
   rangeFollowers: []
-  bladeTipOffset: 0
+  tipOffset: 0
   xRangeScaleRatio: 0
   yScaleFollowers: []
   xzScaleFollowers: []
   xScaleFollowers: []
-  arrowPrefab: {fileID: 2942187867930129664, guid: df7c1070cd907454dbeb1ca6089d1643, type: 3}
-  enemyHurtboxLayer:
-    serializedVersion: 2
-    m_Bits: 1024
+  projectilePrefab: {fileID: 2942187867930129664, guid: 2d918d54e127e5444b6e0a0f3407f294, type: 3}
   projectileSpeed: 20
-  bowAttackSpeedScaling: 12
+  obstacleLayerMask:
+    serializedVersion: 2
+    m_Bits: 0
 --- !u!114 &4065948657444989573
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -213,6 +172,23 @@ MonoBehaviour:
   tintedRenderers:
   - {fileID: 2896685284800185084}
   tintedMaterialIndex: 0
+--- !u!114 &658208300417350086
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2942187867930129664}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98dbb08343eac044895b9b52872bcb49, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
+  _graphics: {fileID: 3273598209279064071}
+  _floatAccuracy: 1
+  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
+  _unparentGraphics: 0
+  _characterControllerPatch: 0
 --- !u!1 &4318597951351945260
 GameObject:
   m_ObjectHideFlags: 0
@@ -573,11 +549,43 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8447764159321559071}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 214279872147717802}
+  m_Father: {fileID: 3273598209279064071}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &9098146742048899407
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3273598209279064071}
+  m_Layer: 0
+  m_Name: Visuals
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3273598209279064071
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 9098146742048899407}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 7983150946184223005}
   m_Father: {fileID: 7965949495438917252}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}

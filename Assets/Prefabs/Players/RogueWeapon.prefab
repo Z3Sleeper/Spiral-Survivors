@@ -189,9 +189,9 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7965949495438917252}
-  - component: {fileID: -3199902600759759578}
-  - component: {fileID: -8942802009306055094}
+  - component: {fileID: 1154951344010972017}
   - component: {fileID: 363066565067786396}
+  - component: {fileID: 7409015839559055299}
   m_Layer: 0
   m_Name: RogueWeapon
   m_TagString: Untagged
@@ -212,11 +212,11 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 6538681499716106083}
+  - {fileID: 6694666491816140268}
   - {fileID: 4623957236076310883}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &-3199902600759759578
+--- !u!114 &1154951344010972017
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -225,54 +225,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 2942187867930129664}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 817fe5016bd0a2a49a95b6eb338bb132, type: 3}
+  m_Script: {fileID: 11500000, guid: 4f1cb8febb1923148b388de1f438c094, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: PurrNet.Runtime::PurrNet.NetworkTransform
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
-  _syncPosition: 1
-  _syncRotation: 1
-  _syncScale: 1
-  _syncParent: 1
-  _interpolateSettings: 7
-  _minBufferSize: 1
-  _maxBufferSize: 2
-  _characterControllerPatch: 0
-  _ownerAuth: 1
-  _interpolationTiming: 0
---- !u!114 &-8942802009306055094
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2942187867930129664}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 01c1137a5ca87d540b00e4628a9d20fc, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WeaponBlade
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponMeleePD
   hitboxTarget: {fileID: 4623957236076310883}
   rangeScaleTarget: {fileID: 1776253383228023903}
   rangeFollowers:
   - {fileID: 1719263058978148157}
-  bladeTipOffset: 0.1417
+  tipOffset: 0.1417
   xRangeScaleRatio: 0.05
   yScaleFollowers:
   - {fileID: 7916714521472660137}
@@ -280,7 +240,7 @@ MonoBehaviour:
   - {fileID: 1719263058978148157}
   xScaleFollowers:
   - {fileID: 5658850961026097083}
-  bladeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
+  meleeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
 --- !u!114 &363066565067786396
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -303,6 +263,23 @@ MonoBehaviour:
   - {fileID: 8667004372245903466}
   - {fileID: 3231712233815679040}
   tintedMaterialIndex: 0
+--- !u!114 &7409015839559055299
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2942187867930129664}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98dbb08343eac044895b9b52872bcb49, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
+  _graphics: {fileID: 6694666491816140268}
+  _floatAccuracy: 1
+  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
+  _unparentGraphics: 0
+  _characterControllerPatch: 0
 --- !u!1 &2965791002601135373
 GameObject:
   m_ObjectHideFlags: 0
@@ -417,7 +394,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6381208085429435541}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -427,7 +404,7 @@ Transform:
   - {fileID: 7916714521472660137}
   - {fileID: 7704373777106297253}
   - {fileID: 5658850961026097083}
-  m_Father: {fileID: 7965949495438917252}
+  m_Father: {fileID: 6694666491816140268}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6838032805661041711
 GameObject:
@@ -550,6 +527,38 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &7563695248304411264
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 6694666491816140268}
+  m_Layer: 0
+  m_Name: Visuals
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &6694666491816140268
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7563695248304411264}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 6538681499716106083}
+  m_Father: {fileID: 7965949495438917252}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &8602884255748453870
 GameObject:
   m_ObjectHideFlags: 0
