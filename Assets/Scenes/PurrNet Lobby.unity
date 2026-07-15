@@ -7403,9 +7403,9 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '+30% Attack Speed & +40% Total Attack Speed
+  m_text: '+30% Attack Speed & +30% Total Attack Speed
 
-    +1 Movement Speed & +10%
+    +1 Movement Speed & +20%
     Move Speed'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -9761,7 +9761,7 @@ MonoBehaviour:
   m_text: '+15% Crit Chance & +50% Total Crit Chance
 
     <color=red>Handle hits
-    deal 50% damage and can''t Crit</color>
+    deal 25% damage and can''t Crit</color>
 
     +2 Range & axe width scales more
     with range'
@@ -25538,7 +25538,9 @@ MonoBehaviour:
   predictedCharacterPrefabs:
   - {fileID: 3384548716234012153, guid: b766f1c7e33e6ad45bf35cba85f451d9, type: 3}
   - {fileID: 8058231238311545800, guid: a1f59c22e0d70734fb7a9f1355342de2, type: 3}
+  - {fileID: 7092174114236318440, guid: 798e09cb59c4cc542a974d608902cc71, type: 3}
   - {fileID: 3529459938880667348, guid: 06a6e40a820ff5e4c9f8e9f0e17f4010, type: 3}
+  - {fileID: 6892742767279467393, guid: 3ab13fb687135614f8719caf0650670b, type: 3}
 --- !u!4 &1914955370
 Transform:
   m_ObjectHideFlags: 0

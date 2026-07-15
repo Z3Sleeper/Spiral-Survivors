@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: RoguePassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
   bonusMoveSpeedFlat: 1
-  bonusMoveSpeedPercent: 0.1
+  bonusMoveSpeedPercent: 0.2
   moveSpeedPenalty: 0
   bonusWeaponDamageFlat: 0
   bonusWeaponDamagePercent: 0
@@ -21,7 +21,7 @@ MonoBehaviour:
   bonusWeaponRadiusFlat: 0
   bonusWeaponRadiusPercent: 0
   attackSpeedPercent: 0.3
-  attackSpeedTotalPercent: 0.4
+  attackSpeedTotalPercent: 0.3
   attackSpeedPenalty: 0
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1

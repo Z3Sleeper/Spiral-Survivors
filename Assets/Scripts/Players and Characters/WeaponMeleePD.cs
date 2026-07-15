@@ -13,7 +13,6 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
     [SerializeField] private Vector3 meleeHalfExtents = new(0.1f, 0.1f, 0.5f);
 
-    private int  _enemyHurtboxMask;
     private bool _initialized;
 
     private readonly RaycastHit[]                _sweepResults  = new RaycastHit[32];
@@ -21,6 +20,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private readonly Dictionary<IEnemyPD, float> _hitCooldowns  = new();
     private readonly List<IEnemyPD>                                  _cooldownBuffer   = new();
     private readonly List<(IEnemyPD enemy, float dmg, bool isCrit)> _hitFeedbackQueue = new();
+    private readonly HashSet<IEnemyPD>                               _touchedThisTick  = new();
 
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
 
@@ -38,7 +38,6 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         var mgr = stats.GetComponent<WeaponManagerPD>();
         if (mgr == null) return;
         _manager = mgr;
-        _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
         _initialized = true;
         mgr.RegisterWeapon(this);
     }
@@ -98,6 +97,8 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             meleeHalfExtents.y * hb.lossyScale.y,
             meleeHalfExtents.z * hb.lossyScale.z);
 
+        _touchedThisTick.Clear();
+
         // Box sweep from previous tick position (catches enemies the weapon swept through)
         if (state.prevSet)
         {
@@ -106,30 +107,33 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             if (dist > 0.001f)
             {
                 int n = Physics.BoxCastNonAlloc(prevCenter, half, sweep / dist,
-                    _sweepResults, hitboxRot, dist, _enemyHurtboxMask);
+                    _sweepResults, hitboxRot, dist, CombatLayerMasks.EnemyHurtboxMask);
                 for (int i = 0; i < n; i++)
                 {
-                    var enemy = _sweepResults[i].collider.GetComponentInParent<IEnemyPD>();
-                    if (enemy != null && !_hitCooldowns.ContainsKey(enemy))
-                    {
-                        _hitCooldowns[enemy] = HitCooldown;
-                        Hit(enemy);
-                    }
+                    var enemy = _sweepResults[i].collider.GetComponent<IEnemyPD>();
+                    if (enemy != null) _touchedThisTick.Add(enemy);
                 }
             }
         }
 
         // Overlap at current position
-        int oc = Physics.OverlapBoxNonAlloc(center, half, _overlapResults, hitboxRot, _enemyHurtboxMask);
+        int oc = Physics.OverlapBoxNonAlloc(center, half, _overlapResults, hitboxRot, CombatLayerMasks.EnemyHurtboxMask);
         for (int i = 0; i < oc; i++)
         {
-            var enemy = _overlapResults[i].GetComponentInParent<IEnemyPD>();
-            if (enemy != null && !_hitCooldowns.ContainsKey(enemy))
-            {
-                _hitCooldowns[enemy] = HitCooldown;
-                Hit(enemy);
-            }
+            var enemy = _overlapResults[i].GetComponent<IEnemyPD>();
+            if (enemy != null) _touchedThisTick.Add(enemy);
         }
+
+        // Only enemies that weren't already touching last tick AND aren't on cooldown register a hit —
+        // an enemy that stays continuously overlapped needs to actually separate before it can be hit
+        // again, cooldown expiring alone isn't enough. See WeaponBasePD.IsFreshHit().
+        foreach (var enemy in _touchedThisTick)
+        {
+            if (!IsFreshHit(enemy, _hitCooldowns)) continue;
+            _hitCooldowns[enemy] = HitCooldown;
+            Hit(enemy);
+        }
+        CommitOverlapFrame(_touchedThisTick);
 
         state.prevSet = true;
     }

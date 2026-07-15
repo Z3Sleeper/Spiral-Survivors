@@ -10,7 +10,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public enum CharacterClass { Knight, Rogue, Archer, Bladeweaver, Executioner }
     public CharacterClass characterClass;
-    public bool outerXScalesWithRange = false;
 
     [SerializeField] private ClassPassiveData classPassive;
 

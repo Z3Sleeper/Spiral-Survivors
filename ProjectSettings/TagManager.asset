@@ -15,8 +15,8 @@ TagManager:
   - Bounds
   - PlayerPhysics
   - EnemyPhysics
-  - PlayerHurtbox
-  - EnemyHurtbox
+  - Player
+  - Enemy
   - BoundsCollision
   - PlebCollider
   - XPOrb

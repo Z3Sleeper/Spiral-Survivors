@@ -89,7 +89,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public bool showDamageNumbers = true;
     [SerializeField] private float _damageNumberPlayerOffset = 0f;
 
-    protected float FindTargetInterval = 1f;
+    // Virtual, not a plain field, so a subclass can override it with zero lifecycle-ordering risk — a
+    // plain field reassigned in some override hook could easily run after GetInitialState() already read
+    // it (same class of bug as the field-init-before-OnSpawned issue elsewhere in this project), whereas a
+    // property is always current whenever it's actually read.
+    protected virtual float FindTargetInterval => 1f;
     protected Transform _target;
 
     public bool isStunnable = true;
@@ -150,7 +154,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         var s = default(TState);
         ref var b = ref GetBase(ref s);
         b.health = maxHealth;
-        b.findTargetTimer = FindTargetInterval;
+        // 0, not FindTargetInterval — a freshly spawned (or pooled-reused) enemy should search for a
+        // target on its very first tick, not sit idle for a full interval first. Only the RENEWAL after
+        // that first search (in Simulate(), below) uses the full FindTargetInterval.
+        b.findTargetTimer = 0f;
         b.contactCooldowns = DisposableList<ContactCooldown>.Create(4);
         return s;
     }
@@ -158,8 +165,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // ── Lifecycle ──────────────────────────────────────────────────────────
     private void Awake()
     {
-        var hurtboxChild = transform.Find("Hurtbox");
-        if (hurtboxChild != null) _hurtbox = hurtboxChild.GetComponent<Collider>();
+        // Hurtbox lives directly on the root (not a child, unlike PhysicsCollider/ContactDamageCollider
+        // below) so hit-detection code can resolve it to IEnemyPD via a same-GameObject GetComponent()
+        // instead of GetComponentInParent() — cheap either way here since the hierarchy was already
+        // shallow, but this is checked on every physics-hit-result, every tick, across every active
+        // weapon/projectile, so avoiding the wasted extra hop adds up.
+        _hurtbox = GetComponent<Collider>();
 
         var physicsChild = transform.Find("PhysicsCollider");
         if (physicsChild != null) _physicsCollider = physicsChild.GetComponent<Collider>();
@@ -201,7 +212,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ref var b = ref B;
         if (b.isDead) return;
 
-        var stats = other.GetComponentInParent<CharacterStatsPD>();
+        var stats = other.GetComponent<CharacterStatsPD>();
         if (stats == null || !stats.owner.HasValue) return;
 
         var player = stats.owner.Value;

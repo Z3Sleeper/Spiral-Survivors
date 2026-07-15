@@ -95,7 +95,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void OnSpearHit(GameObject other)
     {
         if (B.isDead) return;
-        var stats = other.GetComponentInParent<CharacterStatsPD>();
+        var stats = other.GetComponent<CharacterStatsPD>();
         if (stats == null || !stats.owner.HasValue) return;
 
         // Trigger events dispatch twice under normal operation — once live, once again if this tick

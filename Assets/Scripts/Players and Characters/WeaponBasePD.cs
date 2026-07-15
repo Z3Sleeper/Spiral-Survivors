@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -18,6 +19,31 @@ public interface IWeaponPD
     void Init(CharacterStatsPD stats);
     void InitModelVisuals();
     void ScaleModel(float range);
+}
+
+// Shared damage-roll formula, non-generic so it's usable by anything that needs it without inheriting
+// from WeaponBasePD<TState> — e.g. WeaponRangedProjectilePD, which is deliberately NOT a weapon (no
+// orbit, no range-scaling visuals), matching the old system's WeaponBase.RollDamage static helper.
+public static class WeaponDamageMath
+{
+    private const float DamageVariance = 0.20f;
+
+    public static float RollDamage(float damage, float luckChance)
+    {
+        float max = damage * (1f + DamageVariance);
+        float min = Mathf.Lerp(damage * (1f - DamageVariance), max, luckChance);
+        return GameRandom.instance.NextFloat(min, max);
+    }
+}
+
+// LayerMask.GetMask() does a string lookup every call — cheap once, wasteful when called per-instance
+// (WeaponMeleePD/WeaponRangedPD registration) or worse, per-shot (WeaponRangedProjectilePD.Launch()). The
+// layer→index mapping is fixed at editor time and never changes at runtime, so a static field computed
+// once (C#'s guaranteed single-init-on-first-access for static fields) covers every caller for the whole
+// process lifetime.
+public static class CombatLayerMasks
+{
+    public static readonly int EnemyHurtboxMask = LayerMask.GetMask("Enemy");
 }
 
 public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponPD
@@ -147,13 +173,28 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
             }
     }
 
-    private const float DamageVariance = 0.20f;
+    protected float RollDamage(float damage) => WeaponDamageMath.RollDamage(damage, _stats.LuckChance);
 
-    protected float RollDamage(float damage)
+    // Shared "must separate then re-contact to re-hit" gate — both WeaponMeleePD and WeaponAxePD sweep one
+    // or more shapes per tick and need this identically, so it lives here rather than being duplicated.
+    // A cooldown alone isn't enough: without this, an enemy standing continuously inside a hitbox gets
+    // rehit the instant its cooldown clears, even though the weapon never actually left and struck again.
+    // Subclasses build their own local "touched this tick" set as they run their physics queries (they
+    // need to iterate it anyway for their own hit pass — WeaponAxePD additionally needs it for its
+    // outer-zone tie-break), then hand it to CommitOverlapFrame() once at the end of the tick.
+    private readonly HashSet<IEnemyPD> _currentOverlaps = new();
+
+    // True only if this enemy wasn't already touching last tick AND isn't on cooldown — a hit this tick
+    // should only register once per "contact session," not every tick contact continues.
+    protected bool IsFreshHit(IEnemyPD enemy, Dictionary<IEnemyPD, float> hitCooldowns)
+        => !_currentOverlaps.Contains(enemy) && !hitCooldowns.ContainsKey(enemy);
+
+    // Call once at the end of every tick's hit-detection pass, after all zones have been checked, passing
+    // every enemy touched this tick (regardless of whether it resulted in a hit).
+    protected void CommitOverlapFrame(IEnumerable<IEnemyPD> touchedThisTick)
     {
-        float max = damage * (1f + DamageVariance);
-        float min = Mathf.Lerp(damage * (1f - DamageVariance), max, _stats.LuckChance);
-        return GameRandom.instance.NextFloat(min, max);
+        _currentOverlaps.Clear();
+        _currentOverlaps.UnionWith(touchedThisTick);
     }
 
     // Shared orbital-position formula — both WeaponMeleePD (swept hitbox) and WeaponRangedPD (fires at

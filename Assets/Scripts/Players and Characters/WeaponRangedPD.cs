@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -27,8 +28,15 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     // here (AttackSpeed 0.5 -> 6 shots/sec).
     [SerializeField] private float fireRateMultiplier = 12f;
 
-    private int  _enemyHurtboxMask;
     private bool _initialized;
+
+    // Same per-enemy hit cooldown as WeaponMeleePD — an enemy currently on cooldown is skipped when
+    // picking a target, but if firing at a different eligible target happens to also hit a cooling-down
+    // enemy along the way (e.g. it was standing behind the intended target), that's fine; the cooldown
+    // only gates target SELECTION, not the projectile's own hit detection.
+    private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
+    private readonly Dictionary<IEnemyPD, float> _hitCooldowns = new();
+    private readonly List<IEnemyPD> _cooldownBuffer = new();
 
     private readonly RaycastHit[] _rayResults = new RaycastHit[16];
 
@@ -46,7 +54,6 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         var mgr = stats.GetComponent<WeaponManagerPD>();
         if (mgr == null) return;
         _manager = mgr;
-        _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
         _initialized = true;
         mgr.RegisterWeapon(this);
     }
@@ -58,6 +65,21 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     }
 
     protected override State GetInitialState() => default;
+
+    protected override void UpdateView(State viewState, State? verified)
+    {
+        if (!_initialized) TryInit();
+
+        // Tick cooldowns at render rate — not in Simulate, so resims can't expire them early. Same
+        // pattern as WeaponMeleePD.UpdateView().
+        _cooldownBuffer.Clear();
+        _cooldownBuffer.AddRange(_hitCooldowns.Keys);
+        foreach (var e in _cooldownBuffer)
+        {
+            _hitCooldowns[e] -= Time.deltaTime;
+            if (_hitCooldowns[e] <= 0f) _hitCooldowns.Remove(e);
+        }
+    }
 
     // ── Simulation ────────────────────────────────────────────────────────────
 
@@ -87,38 +109,43 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         state.fireTimer -= delta;
         if (state.fireTimer > 0f) return;
 
-        if (!FindTarget(transform.position, transform.forward, out Vector3 hurtboxCenter)) return;
+        if (!FindTarget(transform.position, transform.forward, out IEnemyPD target, out Vector3 hurtboxCenter)) return;
 
+        _hitCooldowns[target] = HitCooldown;
         Fire(hurtboxCenter);
-        state.fireTimer += 1f / Mathf.Max(0.01f, _stats.AttackSpeed * fireRateMultiplier);
+        // Hard reset, not += — fireTimer can drift arbitrarily negative while no target is in the forward
+        // ray (the common case for a thin raycast), and accumulating the cooldown on top of that debt
+        // instead of clearing it would cause a rapid-fire burst to pay it off once a target reappears.
+        state.fireTimer = 1f / Mathf.Max(0.01f, _stats.AttackSpeed * fireRateMultiplier);
     }
 
     // ── Targeting ─────────────────────────────────────────────────────────────
 
     // Pulls the ray origin back 1 unit and pads the range by 1 to match — same as old WeaponBow — so an
     // enemy pressed right up against the weapon's own origin still gets hit instead of the ray starting
-    // inside/past it.
-    private bool FindTarget(Vector3 from, Vector3 forward, out Vector3 hurtboxCenter)
+    // inside/past it. Enemies currently on _hitCooldowns are skipped so the ray "sees past" them to
+    // whatever's next in line, same reason the old WeaponBow tracked _initialHitCooldowns.
+    private bool FindTarget(Vector3 from, Vector3 forward, out IEnemyPD enemy, out Vector3 hurtboxCenter)
     {
         Vector3 origin = from - forward * 1f;
         float   range  = _stats.WeaponRange + 1f;
 
-        int   n        = Physics.RaycastNonAlloc(origin, forward, _rayResults, range, _enemyHurtboxMask);
+        int   n        = Physics.RaycastNonAlloc(origin, forward, _rayResults, range, CombatLayerMasks.EnemyHurtboxMask);
         float bestDist = float.MaxValue;
+        enemy = null;
         hurtboxCenter = default;
-        bool found = false;
 
         for (int i = 0; i < n; i++)
         {
-            var enemy = _rayResults[i].collider.GetComponentInParent<IEnemyPD>();
-            if (enemy == null || enemy._isDead) continue;
+            var e = _rayResults[i].collider.GetComponent<IEnemyPD>();
+            if (e == null || e._isDead || _hitCooldowns.ContainsKey(e)) continue;
             if (_rayResults[i].distance >= bestDist) continue;
 
             bestDist      = _rayResults[i].distance;
+            enemy         = e;
             hurtboxCenter = _rayResults[i].collider.bounds.center;
-            found = true;
         }
-        return found;
+        return enemy != null;
     }
 
     // ── Fire ──────────────────────────────────────────────────────────────────

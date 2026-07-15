@@ -4,9 +4,12 @@ using UnityEngine;
 
 // A short-lived, self-contained flying projectile — spawned by WeaponRangedPD.Fire(), not a child of the
 // weapon that fired it (an already-loosed shot keeps flying regardless of whether its firer is currently
-// alive). Ricochet retargeting and multiplicative per-hit damage/on-hit-power dropoff port directly from
-// the old WeaponArrow.ProcessHit.
-public class WeaponRangedProjectilePD : WeaponBasePD<WeaponRangedProjectilePD.State>
+// alive). Deliberately NOT a WeaponBasePD<TState> subclass — none of that shared orbit/range-scaling
+// visual machinery (hitboxTarget, rangeScaleTarget, rangeFollowers, etc.) applies to a fixed-size flying
+// object, matching the old system where WeaponArrow was a plain NetworkIdentity, not a WeaponBase
+// subclass. Box-sweep hit detection, ricochet retargeting, and multiplicative per-hit damage/on-hit-power
+// dropoff port directly from the old WeaponArrow.
+public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectilePD.State>
 {
     public struct State : IPredictedData<State>
     {
@@ -22,16 +25,10 @@ public class WeaponRangedProjectilePD : WeaponBasePD<WeaponRangedProjectilePD.St
         public void Dispose() { }
     }
 
-    public override bool IsMelee => false;
+    [SerializeField] private Vector3 arrowHalfExtents = new(0.1f, 0.1f, 0.25f);
 
-    [SerializeField] private float hitRadius = 0.25f;
-    // Search radius for a fresh target once the current one's been hit and ricochetsRemaining > 0.
-    // Deliberately a fixed-radius physics query, not the old system's FindObjectsByType<EnemyBase> scan —
-    // that isn't deterministic/replay-safe (iteration order isn't guaranteed, and it wouldn't roll back
-    // correctly), a physics query against a synced physics world is.
-    [SerializeField] private float ricochetSearchRadius = 15f;
-
-    private int   _enemyHurtboxMask;
+    private CharacterStatsPD _stats;
+    private Vector3 _baseScale;
     private float _speed;
     private float _maxRange;
     private float _critChance;
@@ -50,14 +47,29 @@ public class WeaponRangedProjectilePD : WeaponBasePD<WeaponRangedProjectilePD.St
 
     // ── Launch ────────────────────────────────────────────────────────────────
 
+    // Plain Unity Awake(), NOT PredictedIdentity's LateAwake() override — LateAwake() is PD's own
+    // "logical spawn" hook and DOES re-fire on every pooled reuse (confirmed: caching _baseScale there
+    // caused it to re-capture an already-WeaponSize-scaled transform.localScale each reuse, compounding
+    // indefinitely). Raw Unity Awake() is guaranteed to fire exactly once per real GameObject instance
+    // even under SetActive-based pooling, same reason EnemyBasePD's own private Awake() (not its
+    // LateAwake() override) is where it caches prefab-level things like _animator/baseHealth once.
+    private void Awake()
+    {
+        _baseScale = transform.localScale;
+    }
+
     // Called by WeaponRangedPD.Fire() immediately after hierarchy.Create() returns — synchronous and
     // deterministic, same "mutate currentState right after Create()" pattern as XPOrbPD.SetValue(). Values
     // are captured once here (not re-read live from stats later), so a level-up mid-flight can't
-    // retroactively change an already-loosed shot's damage.
+    // retroactively change an already-loosed shot's damage. WeaponSize scaling and color application port
+    // directly from the old WeaponBow.Fire() — but scale is set as an absolute multiple of _baseScale, not
+    // multiplied onto the current value, since a pooled instance's current scale is whatever WeaponSize
+    // left it at during its PREVIOUS life; `*=` would compound further every reuse instead of resetting.
+    // _hitTargets/_hitFeedbackQueue are plain fields too (not part of predicted State, so GetInitialState()
+    // can't reset them) — cleared here so a recycled instance doesn't inherit a previous life's hit history.
     public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, int ricochets)
     {
-        Init(stats);
-        _enemyHurtboxMask = LayerMask.GetMask("EnemyHurtbox");
+        _stats = stats;
         _speed          = speed;
         _maxRange       = stats.WeaponRange * 1.25f;
         _critChance     = stats.CritChance;
@@ -71,7 +83,14 @@ public class WeaponRangedProjectilePD : WeaponBasePD<WeaponRangedProjectilePD.St
         currentState.currentDamage       = stats.WeaponDamage;
         currentState.currentOnHitPower   = stats.OnHitPower;
 
-        transform.rotation = Quaternion.LookRotation(direction);
+        transform.rotation    = Quaternion.LookRotation(direction);
+        transform.localScale  = _baseScale * stats.WeaponSize;
+
+        _hitTargets.Clear();
+        _hitFeedbackQueue.Clear();
+
+        foreach (var a in GetComponentsInChildren<PlayerColorApplicator>(true))
+            a.Apply(stats.PlayerColor);
     }
 
     protected override State GetInitialState() => default;
@@ -99,12 +118,13 @@ public class WeaponRangedProjectilePD : WeaponBasePD<WeaponRangedProjectilePD.St
         float dist = step.magnitude;
         if (dist > 0.0001f)
         {
-            int n = Physics.SphereCastNonAlloc(prevPos, hitRadius, step / dist, _sweepResults, dist, _enemyHurtboxMask);
+            Vector3 halfExtents = Vector3.Scale(arrowHalfExtents, transform.lossyScale);
+            int n = Physics.BoxCastNonAlloc(prevPos, halfExtents, step / dist, _sweepResults, transform.rotation, dist, CombatLayerMasks.EnemyHurtboxMask);
             IEnemyPD hitEnemy = null;
             float bestHitDist = float.MaxValue;
             for (int i = 0; i < n; i++)
             {
-                var enemy = _sweepResults[i].collider.GetComponentInParent<IEnemyPD>();
+                var enemy = _sweepResults[i].collider.GetComponent<IEnemyPD>();
                 if (enemy == null || enemy._isDead || _hitTargets.Contains(enemy)) continue;
                 if (_sweepResults[i].distance < bestHitDist)
                 {
@@ -125,7 +145,7 @@ public class WeaponRangedProjectilePD : WeaponBasePD<WeaponRangedProjectilePD.St
     {
         _hitTargets.Add(enemy);
 
-        float damage = RollDamage(state.currentDamage);
+        float damage = WeaponDamageMath.RollDamage(state.currentDamage, _stats.LuckChance);
         bool  isCrit = GameRandom.instance.NextFloat() < _critChance;
         if (isCrit) damage *= _critDamage;
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
@@ -151,14 +171,19 @@ public class WeaponRangedProjectilePD : WeaponBasePD<WeaponRangedProjectilePD.St
         }
     }
 
+    // Deliberately a fixed-radius physics query, not the old system's FindObjectsByType<EnemyBase> scan —
+    // that isn't deterministic/replay-safe (iteration order isn't guaranteed, and it wouldn't roll back
+    // correctly), a physics query against a synced physics world is. Radius matches _maxRange (the same
+    // WeaponRange * 1.25 the projectile flies) since distanceTravelled resets to 0 on every ricochet leg —
+    // each bounce gets the same full flight budget to reach its new target as the initial shot did.
     private IEnemyPD FindRicochetTarget(Vector3 from)
     {
-        int n = Physics.OverlapSphereNonAlloc(from, ricochetSearchRadius, _retargetResults, _enemyHurtboxMask);
+        int n = Physics.OverlapSphereNonAlloc(from, _maxRange, _retargetResults, CombatLayerMasks.EnemyHurtboxMask);
         IEnemyPD best = null;
         float bestDist = float.MaxValue;
         for (int i = 0; i < n; i++)
         {
-            var enemy = _retargetResults[i].GetComponentInParent<IEnemyPD>();
+            var enemy = _retargetResults[i].GetComponent<IEnemyPD>();
             if (enemy == null || enemy._isDead || _hitTargets.Contains(enemy)) continue;
             float dist = Vector3.Distance(from, enemy.transform.position);
             if (dist < bestDist) { bestDist = dist; best = enemy; }

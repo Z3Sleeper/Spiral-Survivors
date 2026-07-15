@@ -148,9 +148,7 @@ MonoBehaviour:
   xScaleFollowers: []
   projectilePrefab: {fileID: 2942187867930129664, guid: 2d918d54e127e5444b6e0a0f3407f294, type: 3}
   projectileSpeed: 20
-  obstacleLayerMask:
-    serializedVersion: 2
-    m_Bits: 0
+  fireRateMultiplier: 12
 --- !u!114 &4065948657444989573
 MonoBehaviour:
   m_ObjectHideFlags: 0

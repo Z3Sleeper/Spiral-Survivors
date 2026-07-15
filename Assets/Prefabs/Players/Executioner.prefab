@@ -8,9 +8,21 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: -7348429529868077153, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: classPassive
+      value: 
+      objectReference: {fileID: 11400000, guid: e6f468950d1141745b16ac310413f00d, type: 2}
+    - target: {fileID: -7348429529868077153, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: characterClass
+      value: 4
+      objectReference: {fileID: 0}
+    - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: weaponPrefab
+      value: 
+      objectReference: {fileID: 2942187867930129664, guid: d3d7e865e3672834280ffac23466fd13, type: 3}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
-      value: BaseCharacter
+      value: Executioner
       objectReference: {fileID: 0}
     - target: {fileID: 4433399181805987514, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_LocalPosition.x
