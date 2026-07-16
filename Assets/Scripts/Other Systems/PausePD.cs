@@ -147,7 +147,20 @@ public class PausePD : PredictedIdentity<PausePD.State>
 
         bool presenting = AugmentManagerPD.instance != null && AugmentManagerPD.instance.VerifiedIsPresenting;
         bool gameEnded = GameManagerPD.instance != null && GameManagerPD.instance.VerifiedGameEnded;
-        Time.timeScale = (s.isPaused || presenting || gameEnded) ? 0f : 1f;
+        float targetTimeScale = (s.isPaused || presenting || gameEnded) ? 0f : 1f;
+
+        // Routed through predictionManager.time (PurrDiction's own PredictedTime module) instead of
+        // setting UnityEngine.Time.timeScale directly — its setter updates both Time.timeScale AND
+        // PurrDiction's own internally-tracked timeScale together. PredictionManager.DoPhysicsPass() reads
+        // that internal value (not Time.timeScale directly) to scale its Physics.Simulate() delta, and
+        // asserting a clean 0/1 here every frame is what actually prevents it from drifting to something
+        // like -0.0000001 on its own (which trips PhysicsScene.Simulate's negative-time guard) — setting
+        // Time.timeScale alone left PurrDiction to re-derive its own copy a tick later, which is
+        // apparently where that drift crept in.
+        if (predictionManager != null && predictionManager.time != null)
+            predictionManager.time.timeScale = targetTimeScale;
+        else
+            Time.timeScale = targetTimeScale;
 
         int countdownSecs = s.pauseCountdown > 0f ? Mathf.CeilToInt(s.pauseCountdown) : 0;
         if (countdownSecs != _prevCountdownSecs)

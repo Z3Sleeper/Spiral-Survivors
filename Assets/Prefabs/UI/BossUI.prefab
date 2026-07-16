@@ -489,6 +489,7 @@ MonoBehaviour:
   healthBar: {fileID: 7177622067277202758}
   hpText: {fileID: 4588170138710346941}
   nameText: {fileID: 6340847397888667558}
+  enrageBar: {fileID: 1115730878389493163}
 --- !u!1 &6017889155455451837
 GameObject:
   m_ObjectHideFlags: 0

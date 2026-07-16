@@ -149,9 +149,15 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     protected override State GetInitialState() => new()
     {
         spawnInterval = spawnIntervalQ1,
-        spawnTimer = spawnIntervalQ1,
+        // 0, not spawnIntervalQ1/plebSpawnIntervalQ1 — Simulate() early-returns entirely while
+        // !state.isActive, so these sit untouched at 0 until GameManagerPD confirms GameStarted. The very
+        // first active tick's countdown then immediately finds spawnTimer/plebSpawnTimer <= 0f, triggering
+        // the first normal enemy + pleb batch right away instead of waiting out a full interval first.
+        // Every SUBSEQUENT spawn still waits the full interval as normal, since it gets re-added
+        // (state.spawnTimer += state.spawnInterval) after firing.
+        spawnTimer = 0f,
         plebSpawnInterval = plebSpawnIntervalQ1,
-        plebSpawnTimer = plebSpawnIntervalQ1,
+        plebSpawnTimer = 0f,
         cycleTimer = cycleInterval,
         currentSetIndices = DisposableList<int>.Create(3),
         previousSetIndices = DisposableList<int>.Create(3),

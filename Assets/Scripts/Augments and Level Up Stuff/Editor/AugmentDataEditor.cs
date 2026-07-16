@@ -13,6 +13,7 @@ public class AugmentDataEditor : Editor
     private SerializedProperty _displayNameProp;
     private SerializedProperty _descriptionProp;
     private GUIStyle _previewStyle;
+    private GUIStyle _textAreaStyle;
 
     private const string DisplayNameControl = "AugmentDataEditor_DisplayName";
     private const string DescriptionControl = "AugmentDataEditor_Description";
@@ -46,9 +47,9 @@ public class AugmentDataEditor : Editor
                 MessageType.Info);
         }
 
-        DrawColoredTextField("Display Name", _displayNameProp, DisplayNameControl);
+        DrawColoredTextField("Display Name", _displayNameProp, DisplayNameControl, 40f);
         EditorGUILayout.Space();
-        DrawColoredTextField("Description", _descriptionProp, DescriptionControl);
+        DrawColoredTextField("Description", _descriptionProp, DescriptionControl, 160f);
         EditorGUILayout.Space();
 
         // requiredCount/requiredAugments excluded here and drawn manually right after, so the clamped
@@ -79,13 +80,17 @@ public class AugmentDataEditor : Editor
             countProp.intValue = Mathf.Clamp(newValue, 0, max);
     }
 
-    private void DrawColoredTextField(string label, SerializedProperty prop, string controlName)
+    private void DrawColoredTextField(string label, SerializedProperty prop, string controlName, float minHeight)
     {
         EditorGUILayout.LabelField(label, EditorStyles.boldLabel);
 
+        // Explicit wordWrap — EditorGUILayout.TextArea's default style isn't guaranteed to wrap, which
+        // made a single long sentence run off-screen horizontally instead of wrapping to new lines.
+        _textAreaStyle ??= new GUIStyle(EditorStyles.textArea) { wordWrap = true };
+
         GUI.SetNextControlName(controlName);
         EditorGUI.BeginChangeCheck();
-        string newValue = EditorGUILayout.TextArea(prop.stringValue, GUILayout.MinHeight(40));
+        string newValue = EditorGUILayout.TextArea(prop.stringValue, _textAreaStyle, GUILayout.MinHeight(minHeight));
         if (EditorGUI.EndChangeCheck())
             prop.stringValue = newValue;
 

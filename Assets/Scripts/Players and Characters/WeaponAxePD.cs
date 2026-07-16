@@ -43,7 +43,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private readonly List<IEnemyPD>               _cooldownBuffer   = new();
     private readonly HashSet<IEnemyPD>            _touchedThisTick  = new();
     private readonly HashSet<IEnemyPD>            _outerHitsThisTick = new();
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit)> _hitFeedbackQueue = new();
+    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
 
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
 
@@ -56,6 +56,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     protected override void LateAwake()
     {
+        base.LateAwake();
         TryInit();
     }
 
@@ -100,53 +101,73 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
         Transform hb = hitboxTarget != null ? hitboxTarget : transform;
 
-        // Compute previous-tick zone geometry BEFORE moving — hb still reflects last tick's transform
-        // here, same trick WeaponMeleePD.LateSimulate() uses for its single hitbox, just applied to all
-        // three zone-defining points (no extra State needed; PredictedTransform guarantees this read is
-        // accurate across rollback).
-        Vector3 prevInnerCenter = default, prevOuterPoint1 = default, prevOuterPoint2 = default;
-        if (state.prevSet)
-        {
-            var prevZones = ComputeZones(hb);
-            prevInnerCenter = prevZones.innerCenter;
-            prevOuterPoint1 = prevZones.outerPoint1;
-            prevOuterPoint2 = prevZones.outerPoint2;
-        }
-
-        transform.SetPositionAndRotation(orbitPos, Quaternion.LookRotation(outward));
-
-        var zones = ComputeZones(hb);
-
         _touchedThisTick.Clear();
         _outerHitsThisTick.Clear();
 
+        (Vector3 innerCenter, Vector3 innerExt, Vector3 outerPoint1, Vector3 outerPoint2, float capsuleRadius, Quaternion rot) zones;
+
         if (state.prevSet)
         {
-            Vector3 innerDelta = zones.innerCenter - prevInnerCenter;
-            float   id = innerDelta.magnitude;
-            if (id > 0.001f)
+            // Same sub-arc reasoning as WeaponMeleePD.LateSimulate() — a straight sweep between this tick's
+            // start and end position is a chord across the orbit circle, not the arc itself, and can miss
+            // an enemy sitting on the arc between them at high enough rotation speed. Subdivide into
+            // intermediate stops along the true arc when needed (see WeaponBasePD.ComputeSubArcCount()) —
+            // at normal speeds this is always exactly 1 segment, identical to a plain single sweep.
+            float angleDelta = _stats.WeaponSpeed * delta;
+            float startAngle = state.angle + angleDelta; // angle before this tick's Simulate() decrement
+            int   subArcs    = ComputeSubArcCount(angleDelta);
+
+            // Last tick's final zone geometry, before any movement this tick — same trick as
+            // WeaponMeleePD, hb still reflects last tick's transform here.
+            var segZones = ComputeZones(hb);
+
+            for (int step = 1; step <= subArcs; step++)
             {
-                int c = Physics.BoxCastNonAlloc(prevInnerCenter, zones.innerExt, innerDelta / id,
-                    _innerSweep, zones.rot, id, CombatLayerMasks.EnemyHurtboxMask);
-                for (int i = 0; i < c; i++)
+                bool    isLastStep = step == subArcs;
+                Vector3 stepPos = isLastStep
+                    ? orbitPos
+                    : OrbitalPosition(Mathf.Lerp(startAngle, state.angle, step / (float)subArcs), origin);
+                Vector3 stepOutward = stepPos - origin;
+                if (stepOutward == Vector3.zero) continue;
+
+                transform.SetPositionAndRotation(stepPos, Quaternion.LookRotation(stepOutward));
+                var newSegZones = ComputeZones(hb);
+
+                Vector3 innerDelta = newSegZones.innerCenter - segZones.innerCenter;
+                float   id = innerDelta.magnitude;
+                if (id > 0.001f)
                 {
-                    var e = _innerSweep[i].collider.GetComponent<IEnemyPD>();
-                    if (e != null) _touchedThisTick.Add(e);
+                    int c = Physics.BoxCastNonAlloc(segZones.innerCenter, newSegZones.innerExt, innerDelta / id,
+                        _innerSweep, newSegZones.rot, id, CombatLayerMasks.EnemyHurtboxMask);
+                    for (int i = 0; i < c; i++)
+                    {
+                        var e = _innerSweep[i].collider.GetComponent<IEnemyPD>();
+                        if (e != null) _touchedThisTick.Add(e);
+                    }
                 }
+
+                Vector3 p1Delta = newSegZones.outerPoint1 - segZones.outerPoint1;
+                float   od = p1Delta.magnitude;
+                if (od > 0.001f)
+                {
+                    int c = Physics.CapsuleCastNonAlloc(segZones.outerPoint1, segZones.outerPoint2, newSegZones.capsuleRadius,
+                        p1Delta / od, _outerSweep, od, CombatLayerMasks.EnemyHurtboxMask);
+                    for (int i = 0; i < c; i++)
+                    {
+                        var e = _outerSweep[i].collider.GetComponent<IEnemyPD>();
+                        if (e != null) { _touchedThisTick.Add(e); _outerHitsThisTick.Add(e); }
+                    }
+                }
+
+                segZones = newSegZones;
             }
 
-            Vector3 p1Delta = zones.outerPoint1 - prevOuterPoint1;
-            float   od = p1Delta.magnitude;
-            if (od > 0.001f)
-            {
-                int c = Physics.CapsuleCastNonAlloc(prevOuterPoint1, prevOuterPoint2, zones.capsuleRadius,
-                    p1Delta / od, _outerSweep, od, CombatLayerMasks.EnemyHurtboxMask);
-                for (int i = 0; i < c; i++)
-                {
-                    var e = _outerSweep[i].collider.GetComponent<IEnemyPD>();
-                    if (e != null) { _touchedThisTick.Add(e); _outerHitsThisTick.Add(e); }
-                }
-            }
+            zones = segZones;
+        }
+        else
+        {
+            transform.SetPositionAndRotation(orbitPos, Quaternion.LookRotation(outward));
+            zones = ComputeZones(hb);
         }
 
         int ic = Physics.OverlapBoxNonAlloc(zones.innerCenter, zones.innerExt, _innerOverlap, zones.rot, CombatLayerMasks.EnemyHurtboxMask);
@@ -225,8 +246,8 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         // Fire hit feedback immediately at render rate — bypasses state propagation delay.
         if (_stats != null)
         {
-            foreach (var (enemy, dmg, isCrit) in _hitFeedbackQueue)
-                enemy.TriggerHitFeedback(dmg, isCrit, _stats);
+            foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
+                enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, _stats);
         }
         _hitFeedbackQueue.Clear();
     }
@@ -254,13 +275,16 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     {
         if (enemy._isDead) return;
         float baseDamage = isOuter ? _stats.WeaponDamage : _stats.WeaponDamage * innerDamageMultiplier;
-        float damage = RollDamage(baseDamage);
+        float damage = RollDamage(baseDamage, out bool isHighroll);
+        if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = isOuter && GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
+        if (isHighroll) _onHighroll.Invoke(damage);
+        if (isCrit) _onCritStrike.Invoke(enemy.ObjectId);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback);
-        _hitFeedbackQueue.Add((enemy, damage, isCrit));
+        _hitFeedbackQueue.Add((enemy, damage, isCrit, isHighroll));
     }
 
     // ── Gizmos ────────────────────────────────────────────────────────────────

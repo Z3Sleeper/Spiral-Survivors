@@ -13,6 +13,8 @@ MonoBehaviour:
   m_Name: RichTextColorPalette
   m_EditorClassIdentifier: Assembly-CSharp-Editor::RichTextColorPalette
   colors:
+  - name: Keyword
+    color: {r: 1, g: 0.627451, b: 0, a: 0}
   - name: Damage
     color: {r: 1, g: 0.3137255, b: 0, a: 0}
   - name: Health

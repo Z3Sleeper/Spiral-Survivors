@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: PhantomBladeOnCritAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#8C8C8C>Phantom Crit</color>
+  description: '<color=#FFA000>Every third Crit Strike:</color> <color=#8C8C8C>Summon
+    a Phantom Blade</color> piercing the last <color=#FF0000>Critically Struck</color>
+    enemy for <color=#FF5000>75%<color=#00FF87>*</color> Damage</color>.
+
+    <color=#00FF87>*Affected
+    by Luck*</color>'
+  icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
+  effectPrefab: {fileID: 5535341184026080922, guid: d1a0e5aea57cad3459af3cf6a77645c1, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []

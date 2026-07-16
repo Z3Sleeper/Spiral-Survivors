@@ -48,8 +48,12 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private float _postStabClipLength;
 
     [Header("Spear Settings")]
-    [SerializeField] private Collider _spearHitbox;
+    [SerializeField] private BoxCollider _spearHitbox;
     public float stabDamageMultiplier = 1f;
+    // Separate from preferredRange (which governs the approach/dash/stab behavioral thresholds) — this is
+    // the single source of truth for reach; both the visual indicator and the actual hitbox derive from
+    // it every frame (see UpdateView()), so tuning this one field keeps everything in sync automatically.
+    [SerializeField] private float stabRange          = 3f;
     [SerializeField] private float windupDuration     = 0.5f;
     [SerializeField] private float stabDuration       = 0.1f;
     [SerializeField] private float betweenStabPause   = 0.3f;
@@ -69,27 +73,33 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     {
         base.LateAwake();
 
-        if (_animator != null)
-        {
-            foreach (var clip in _animator.runtimeAnimatorController.animationClips)
-            {
-                if (clip.name == "Spear Gloom Windup")
-                    _animator.SetFloat(WindupSpeedHash, clip.length / windupDuration);
-                else if (clip.name == "Spear Gloom Stab")
-                    _animator.SetFloat(StabSpeedHash, clip.length / stabDuration);
-                else if (clip.name == "Spear Gloom PostStab")
-                {
-                    _postStabClipLength = clip.length;
-                    _animator.SetFloat(PostStabSpeedHash, clip.length / postStabPause);
-                }
-            }
-        }
-
         if (_spearHitbox != null && _spearHitbox.TryGetComponent(out PredictedPhysicsCallbacks cb))
             cb.onTriggerEnter += OnSpearHit;
 
-        currentState.spearAttackCooldownTimer = attackCooldown;
+        currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.spearAttacksRemaining    = attacksPerAttack;
+    }
+
+    // Sets WindupSpeed/StabSpeed (and caches _postStabClipLength, re-derived fresh from PostStabPause/
+    // BetweenStabPause at each use in UpdateView so it doesn't need re-setting here) so each clip's actual
+    // playback duration matches windupDuration/stabDuration exactly. Deliberately NOT in LateAwake() —
+    // EnemyBasePD.Simulate()'s first-tick init block calls _animator.Rebind() (to force a clean pose after
+    // pooled reuse), which resets ALL Animator Controller parameters back to their defaults, wiping out
+    // whatever LateAwake() computed. OnRespawnReset() runs right after that Rebind() call (on every reuse,
+    // including the very first spawn), so re-applying here is what actually sticks — WindupSpeed/StabSpeed
+    // were silently broken (playing at each clip's raw 1x speed) until now.
+    private void ApplyAnimatorClipSpeeds()
+    {
+        if (_animator == null) return;
+        foreach (var clip in _animator.runtimeAnimatorController.animationClips)
+        {
+            if (clip.name == "Spear Gloom Windup")
+                _animator.SetFloat(WindupSpeedHash, clip.length / windupDuration);
+            else if (clip.name == "Spear Gloom Stab")
+                _animator.SetFloat(StabSpeedHash, clip.length / stabDuration);
+            else if (clip.name == "Spear Gloom PostStab")
+                _postStabClipLength = clip.length;
+        }
     }
 
     private void OnSpearHit(GameObject other)
@@ -166,8 +176,32 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         if (_spearHitbox != null)
             _spearHitbox.enabled = ss == SpearState.Stabbing;
 
+        // Two different "immovable" mechanisms depending on why: DashingToTarget is fast movement, so its
+        // collider is disabled (Case 1 — non-interacting, so a fast dash doesn't fling other enemies/
+        // players around). Windup and Stabbing are stationary telegraphed-attack windows where the stab's
+        // indicator needs to stay trustworthy, so they go kinematic instead (Case 2 — immovable but still
+        // physically present, can still push other things, just can't itself be knocked off-position by
+        // an incoming hit mid-telegraph). Everything else (Moving, BetweenStabs, PostStab) is normal
+        // physics, collider enabled, not kinematic.
+        bool isWindupOrStab = ss == SpearState.Windup || ss == SpearState.Stabbing;
+        isStunnable = !isWindupOrStab;
+        if (_rigidbody != null)
+        {
+            // Zero velocity on the entering edge only (not every tick while already kinematic) — setting
+            // velocity on an already-kinematic PredictedRigidbody throws ("not supported"). Whatever
+            // residual velocity this rigidbody was carrying the instant it goes kinematic needs clearing
+            // so it doesn't sit there stale (harmless in practice since kinematic ignores it, but leaves
+            // a nonzero value another system could read/act on).
+            if (isWindupOrStab && !_rigidbody.isKinematic)
+            {
+                _rigidbody.velocity = Vector3.zero;
+                _rigidbody.angularVelocity = Vector3.zero;
+            }
+            _rigidbody.isKinematic = isWindupOrStab;
+        }
+
         if (_physicsCollider != null)
-            _physicsCollider.enabled = ss == SpearState.Moving || ss == SpearState.PostStab;
+            _physicsCollider.enabled = ss != SpearState.DashingToTarget;
     }
 
     // ── State transitions ──────────────────────────────────────────────────
@@ -201,7 +235,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void EnterPostStab(ref State state)
     {
         state.spearStateTimer          = postStabPause;
-        state.spearAttackCooldownTimer = attackCooldown;
+        state.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         SetSpearState(ref state, SpearState.PostStab);
     }
@@ -225,6 +259,12 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         // so this same transition gets retried once actually active, instead of being silently
         // skipped forever (which left stale animator state from the object's previous pooled life).
         if (!gameObject.activeInHierarchy) return;
+
+        // Re-applied every frame, not just once at spawn — stabRange is the single source of truth for
+        // reach; both the visual indicator and the actual hitbox derive from it here, so neither can
+        // silently drift out of sync with it (or with each other).
+        if (_windupIndicator != null) IndicatorMath.ApplyLineTransform(_windupIndicator.transform, stabRange);
+        IndicatorMath.ApplyLineCollider(_spearHitbox, stabRange);
 
         var ss = (SpearState)viewState.spearStateId;
         if (ss == _lastVisualState) return;
@@ -268,13 +308,18 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
 
     protected override void OnRespawnReset()
     {
+        ApplyAnimatorClipSpeeds();
         currentState.spearStateId             = 0;
         currentState.spearAttacksRemaining    = attacksPerAttack;
-        currentState.spearAttackCooldownTimer = attackCooldown;
+        currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.spearStateTimer          = 0f;
         if (_spearHitbox != null)    _spearHitbox.enabled    = false;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.ResetFill();
+        // In case death happened mid-Windup/Stabbing, while kinematic was on — HandleActiveState would
+        // correct this on the next tick anyway (spearStateId resets to Moving above), but resetting
+        // explicitly here avoids even a one-tick window where a freshly-reused instance reads as kinematic.
+        if (_rigidbody != null) _rigidbody.isKinematic = false;
         _lastVisualState = (SpearState)(-1);
     }
 }

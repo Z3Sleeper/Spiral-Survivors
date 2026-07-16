@@ -64,6 +64,14 @@ MonoBehaviour:
   bonusLuckFlat: 0
   bonusLuckPercent: 0
   luckPenalty: 0
+  bonusLuckFloorPercent: 0
+  luckFloorPenalty: 0
+  bonusLuckCeilingPercent: 0
+  luckCeilingPenalty: 0
+  bonusHighrollPercent: 0
+  highrollPenalty: 0
+  bonusHighrollBonusPercent: 0
+  highrollBonusPenalty: 0
   knockbackMultiplier: 1
   knockbackPenalty: 0
   bonusOnHitPowerMultiplier: 1

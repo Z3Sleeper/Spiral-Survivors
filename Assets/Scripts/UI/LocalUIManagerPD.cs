@@ -179,8 +179,8 @@ public class LocalUIManagerPD : MonoBehaviour
         _controller = stats.GetComponent<PlayerControllerPD>();
         _isRanged = stats.GetComponent<WeaponManagerPD>().IsRanged;
         statsWordsTextExpanded.text = _isRanged
-            ? "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nRicochet:\nMultishot:"
-            : "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:";
+            ? "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nLuck Variance:\nHighroll Bonus:\nRicochet:\nMultishot:"
+            : "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nLuck Variance:\nHighroll Bonus:";
         healthBar.value = 1f;
         shieldBar.value = 1f;
         shieldRegenBar.value = 1f;
@@ -477,6 +477,8 @@ public class LocalUIManagerPD : MonoBehaviour
         _statsExpandedSB.AppendLine($" {_stats.bonusWeaponRangePercent * _stats.weaponRangePenalty * 100f - 100f:+0.0;-0.0}%");
         _statsExpandedSB.AppendLine($" {_stats.bonusMoveSpeedPercent * _stats.moveSpeedPenalty * 100f - 100f:+0.0;-0.0}%");
         _statsExpandedSB.AppendLine($" {_stats.DashCooldown:F1}s");
+        _statsExpandedSB.AppendLine($" {(_stats.LuckFloor - 1f) * 100f:+0.0;-0.0}% | {(_stats.LuckCeiling - 1f) * 100f:+0.0;-0.0}%");
+        _statsExpandedSB.AppendLine($" {_stats.HighrollBonus * 100f:+0.0;-0.0}%");
         if (_isRanged)
         {
             _statsExpandedSB.AppendLine($" {_stats.Ricochet}");
@@ -569,6 +571,7 @@ public class LocalUIManagerPD : MonoBehaviour
             }
 
             bar.SetHealth(enemy.CurrentHealth, enemy.MaxHealth);
+            bar.SetEnrage(enemy.EnrageProgress);
         }
     }
 }

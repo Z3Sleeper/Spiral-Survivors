@@ -229,3 +229,7 @@ MonoBehaviour:
   _text: {fileID: 5872084163197778109}
   _floatSpeed: 0.75
   _duration: 0.75
+  _normalColor: {r: 1, g: 1, b: 1, a: 1}
+  _critColor: {r: 1, g: 0, b: 0, a: 1}
+  _highrollColor: {r: 0, g: 1, b: 0.5294118, a: 1}
+  _critHighrollColor: {r: 1, g: 0, b: 1, a: 1}

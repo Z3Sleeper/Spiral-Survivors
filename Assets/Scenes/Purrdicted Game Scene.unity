@@ -257,8 +257,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 507.49994}
-  m_SizeDelta: {x: 200, y: 65}
+  m_AnchoredPosition: {x: 0, y: 500}
+  m_SizeDelta: {x: 200, y: 80}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &28150915
 MonoBehaviour:
@@ -1774,7 +1774,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 425}
+  m_AnchoredPosition: {x: 0, y: 405}
   m_SizeDelta: {x: 1800, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &255453178
@@ -2844,7 +2844,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: " 0\n 0\n 0\n 0\n 0\n 5\n 0\n 0"
+  m_text: " 0\n 0\n 0\n 0\n 0\n 5\n -50% | +50%\n +50%\n 0\n 0"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -3842,7 +3842,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: " 10.0\n 0.5\n 5\n 10\n 10\n 0\n 5%\n 300%\n 0\n 100%"
+  m_text: " 10.0\n 0.5\n 5\n 10\n 10\n 0\n 5%\n 200%\n 0\n 100%"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -8107,18 +8107,25 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::EnemySpawnerPD
   tier1:
     normal:
+    - {fileID: 1597157536724350220, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
+    - {fileID: 1597157536724350220, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
     - {fileID: 1597157536724350220, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
+    - {fileID: 1597157536724350220, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
     elite:
-    - {fileID: 1597157536724350220, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
+    - {fileID: 1812104275775090706, guid: 85488a841a962ae4a9a0ea80b412b47c, type: 3}
+    - {fileID: 8329396689059783766, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
+    - {fileID: 4196754441784489447, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
+    - {fileID: 6304511416081444933, guid: 39e35a18b925c6444ab288f082127594, type: 3}
     boss:
-    - {fileID: 1597157536724350220, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
+    - {fileID: 1597157536724350220, guid: 792329ba50ec0674d9470944996bc057, type: 3}
     pleb:
     - {fileID: 1597157536724350220, guid: e2bafb70f1547904da52c6726e8a929b, type: 3}
   tier2:
     normal: []
     elite: []
     boss: []
-    pleb: []
+    pleb:
+    - {fileID: 7982909587109357788, guid: fcfbbb54c7d81514282de80e9637c490, type: 3}
   tier3:
     normal: []
     elite: []
@@ -8156,16 +8163,16 @@ MonoBehaviour:
   eliteSpawnTimeFirst: 150
   eliteSpawnTimeLast: 30
   eliteSpawnRampRatio: 0.8
-  baseEliteCount: 1
-  bossesToDefeatForWin: 1
+  baseEliteCount: 10
+  bossesToDefeatForWin: 2
   maxNormalEnemies: 100
   maxEliteEnemies: 100
   maxPlebEnemies: 300
   plebSpawnAmount: 5
-  plebSpawnIntervalQ1: 2
-  plebSpawnIntervalQ2: 1.5
-  plebSpawnIntervalQ3: 1
-  plebSpawnIntervalQ4: 0.5
+  plebSpawnIntervalQ1: 4
+  plebSpawnIntervalQ2: 3
+  plebSpawnIntervalQ3: 2
+  plebSpawnIntervalQ4: 1
 --- !u!1 &1131900761
 GameObject:
   m_ObjectHideFlags: 0
@@ -11491,22 +11498,8 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Damage %:
-
-    Attack Speed %:
-
-    Energy Regen %:
-
-    Range %:
-
-    Move
-    Speed %:
-
-    Dash Cooldown:
-
-    Ricochet:
-
-    Multishot:'
+  m_text: "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash
+    Cooldown:\nLuck Variance: \nHighroll Bonus: \nRicochet:\nMultishot:"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -14475,6 +14468,54 @@ Transform:
   m_Children: []
   m_Father: {fileID: 536416287}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &2044574971
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2044574973}
+  - component: {fileID: 2044574972}
+  m_Layer: 0
+  m_Name: AugmentTooltips
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &2044574972
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2044574971}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0838180800ed0df478a41e451a1eac84, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentTooltipPD
+  panel: {fileID: 1077039109}
+  descriptionText: {fileID: 737798737}
+  canvas: {fileID: 264528625}
+  offset: {x: 150, y: 0}
+--- !u!4 &2044574973
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2044574971}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &2046391506
 GameObject:
   m_ObjectHideFlags: 0
@@ -15202,6 +15243,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2111317653}
+  - component: {fileID: 2111317654}
   m_Layer: 5
   m_Name: Augment List
   m_TagString: Untagged
@@ -15230,6 +15272,20 @@ RectTransform:
   m_AnchoredPosition: {x: -750, y: 125}
   m_SizeDelta: {x: 300, y: 600}
   m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &2111317654
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2111317652}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 808c9f89c968a734088046d0d41ad95b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentListUIPD
+  container: {fileID: 83635214}
+  entryPrefab: {fileID: 5342603317993255335, guid: e7143460497caa94f9ddf688ddf7bfe2, type: 3}
 --- !u!1 &2115245227
 GameObject:
   m_ObjectHideFlags: 0
@@ -15286,3 +15342,4 @@ SceneRoots:
   - {fileID: 1395975678}
   - {fileID: 825706012}
   - {fileID: 474393706}
+  - {fileID: 2044574973}

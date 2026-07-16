@@ -10,17 +10,73 @@ using UnityEngine;
 // be an EnemyBasePD spawned via SpawnCategory.Boss instead of needing a dedicated BossBasePD subclass.
 public enum EnemySpawnCategory { Normal, Elite, Pleb, Boss }
 
+// Shared attack-indicator sizing math — not enemy-specific (RemoteSpikeBurstPD, a standalone hazard, is
+// not an EnemyBasePD<TState> at all), so this lives as a static class rather than a protected method on
+// EnemyBasePD<TState>, same reasoning as WeaponDamageMath sitting outside WeaponBasePD<TState>. Project
+// convention: line indicators are planes, radial indicators are cylinders — see each method for why the
+// axis math differs between the two.
+public static class IndicatorMath
+{
+    // Sizes/positions a line indicator (a plane) along its own local Z so it visually spans from its
+    // origin out to `distance` — Z scale is 10% of distance, Z position is half of it (since the plane
+    // pivots at its own center, moving it forward by half its own new length makes it start at the origin
+    // and reach exactly `distance` away). X/Y of both scale and position are left untouched — they're the
+    // indicator's own authored width/thickness/offset.
+    public static void ApplyLineTransform(Transform t, float distance)
+    {
+        if (t == null) return;
+        var scale = t.localScale;
+        var pos   = t.localPosition;
+        t.localScale    = new Vector3(scale.x, scale.y, distance * 0.1f);
+        t.localPosition = new Vector3(pos.x, pos.y, distance * 0.5f);
+    }
+
+    // Sizes a radial indicator (a cylinder) so its footprint matches `radius` — x2 because a cylinder's
+    // localScale.x/z map to diameter, not radius. Y is left untouched (the indicator's own authored
+    // flatness).
+    public static void ApplyRadialTransform(Transform t, float radius)
+    {
+        if (t == null) return;
+        float diameter = radius * 2f;
+        var scale = t.localScale;
+        t.localScale = new Vector3(diameter, scale.y, diameter);
+    }
+
+    // BoxCollider.size/center are separate from Transform.localScale/localPosition — size is a literal
+    // local-space length, not a scale multiplier off some baseline mesh, so unlike ApplyLineTransform this
+    // sets Z size to `distance` directly (no 0.1 ratio) and centers it the same way (half of distance, so
+    // the near edge sits at the origin and the far edge reaches exactly `distance` away). X/Y of both are
+    // left untouched — the hitbox's own authored width/height. A single range field on the enemy script is
+    // the source of truth — both this and ApplyLineTransform derive from it, so the indicator and the
+    // actual hitbox can never drift out of sync with each other.
+    public static void ApplyLineCollider(BoxCollider box, float distance)
+    {
+        if (box == null) return;
+        var size   = box.size;
+        var center = box.center;
+        box.size   = new Vector3(size.x, size.y, distance);
+        box.center = new Vector3(center.x, center.y, distance * 0.5f);
+    }
+}
+
 public interface IEnemyPD
 {
     bool _isDead { get; }
     float CurrentHealth { get; }
     float MaxHealth { get; }
     string EnemyName { get; }
+    // 1 = full time remaining before enraging, 0 = enraged (or enrageTimer isn't configured at all — most
+    // enemies). Same generic-regardless-of-TState reasoning as every other member here.
+    float EnrageProgress { get; }
     Transform transform { get; }
+    // Stable, rollback-safe reference to this enemy — safe to store in predicted state (e.g. a
+    // PredictedEvent payload), unlike a raw IEnemyPD/Transform reference, since enemies are pooled and
+    // reused for new spawns. Trivial passthrough — every PredictedIdentity already carries this.
+    PredictedObjectID ObjectId { get; }
     void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
-    void TriggerHitFeedback(float damage, bool isCrit, CharacterStatsPD attacker);
+    void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker);
 
     // Lets a spawner mark a freshly hierarchy.Create()'d enemy with which category spawned it (deciding
     // which Active*Count bucket it counts against) and apply co-op/elite stat scaling, generically,
@@ -52,6 +108,12 @@ public struct EnemyBaseState
     public float    dashSpeed;
     public PlayerID killerOwner;
     public bool initialized;
+    // Live, ticking-down countdown — kept separate from EnemyBasePD.enrageTimer (the configured starting
+    // duration, a plain never-mutated field) for the same reason WeaponRangedPD's fireTimer isn't just a
+    // plain field: anything that changes every tick during Simulate() has to live in predicted State to
+    // resimulate correctly, a plain field mutated in-place wouldn't roll back and replay consistently.
+    public float enrageCountdown;
+    public bool  enraged;
 }
 
 [RequireComponent(typeof(PredictedRigidbody))]
@@ -89,6 +151,16 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public bool showDamageNumbers = true;
     [SerializeField] private float _damageNumberPlayerOffset = 0f;
 
+    [Header("Enrage")]
+    // 0 = no enrage at all (the default, opt-in only) — anything <= 0 is treated as "not configured" and
+    // never ticks or fires OnEnrage(), so this is a no-op for every enemy that doesn't set it.
+    public float enrageTimer = 0f;
+
+    // Fires exactly once, the tick enrageCountdown first reaches 0 — stub by default, a subclass decides
+    // what enraging actually means for it (King Spike: reassigns its own attackCooldown and changes when
+    // its next-attack cooldown gets armed).
+    protected virtual void OnEnrage() { }
+
     // Virtual, not a plain field, so a subclass can override it with zero lifecycle-ordering risk — a
     // plain field reassigned in some override hook could easily run after GetInitialState() already read
     // it (same class of bug as the field-init-before-OnSpawned issue elsewhere in this project), whereas a
@@ -96,7 +168,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected virtual float FindTargetInterval => 1f;
     protected Transform _target;
 
-    public bool isStunnable = true;
+    // Public for cross-script reads (AddKnockbackVelocity, Stun()), not because it's meant to be hand-
+    // tuned — it's fully derived from stunResistant at Awake() and, for state-driven enemies, reassigned
+    // every tick from current attack state. Hidden so it doesn't read as a real Inspector setting
+    // alongside stunResistant, which actually is one.
+    [HideInInspector] public bool isStunnable = true;
     public bool IsStunned => B.stunTimer > 0f;
     protected virtual bool IsReadyToAttack => false;
     public bool _isDead => B.isDead;
@@ -135,6 +211,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private Color[] _originalColors;
     private bool  _wasDeadLastFrame;
     private float _verifiedHealth;
+    private float _verifiedEnrageCountdown;
 
     // ── Subclass contract ──────────────────────────────────────────────────
     protected abstract ref EnemyBaseState GetBase(ref TState state);
@@ -144,9 +221,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     public float CurrentHealth => _verifiedHealth;
 
+    // Verified (not predicted) same reasoning as CurrentHealth — reading straight off B.enrageCountdown
+    // would jitter/flicker on any misprediction rollback, since that's live predicted state, not confirmed.
+    // 0 for any enemy that doesn't configure enrageTimer at all (most enemies) — explicit "empty," not
+    // "full," so it doesn't visually imply an enrage that will never happen.
+    public float EnrageProgress => enrageTimer <= 0f ? 0f : Mathf.Clamp01(_verifiedEnrageCountdown / enrageTimer);
+
     public float MaxHealth => maxHealth;
 
     public string EnemyName => enemyName;
+
+    public PredictedObjectID ObjectId => id.objectId;
 
     // ── State ──────────────────────────────────────────────────────────────
     protected override TState GetInitialState()
@@ -159,6 +244,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // that first search (in Simulate(), below) uses the full FindTargetInterval.
         b.findTargetTimer = 0f;
         b.contactCooldowns = DisposableList<ContactCooldown>.Create(4);
+        b.enrageCountdown = enrageTimer;
         return s;
     }
 
@@ -245,7 +331,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             // Rigidbody already has every tick regardless of the visual pause. Without this, an enemy
             // mid-knockback or mid-dash-to-target when pause hits would keep sliding from residual
             // momentum while "paused" (same root cause as the equivalent player-side fix).
-            if (_rigidbody != null)
+            // Guarded by !isKinematic — SpearGloomPD/KingSpikePD's Windup/Stabbing-style kinematic windows
+            // mean this rigidbody can be kinematic when pause hits, and PredictedRigidbody's velocity
+            // setters throw ("not supported") if attempted on a kinematic body.
+            if (_rigidbody != null && !_rigidbody.isKinematic)
             {
                 _rigidbody.velocity = Vector3.zero;
                 _rigidbody.angularVelocity = Vector3.zero;
@@ -271,7 +360,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             _wasDeadLastFrame = false;
             _verifiedHealth   = maxHealth;
 
-            if (_rigidbody != null)
+            if (_rigidbody != null && !_rigidbody.isKinematic)
             {
                 _rigidbody.velocity = Vector3.zero;
                 _rigidbody.angularVelocity = Vector3.zero;
@@ -279,7 +368,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
             foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
             for (int i = 0; i < _renderers.Length; i++)
-                if (_renderers[i] != null) _renderers[i].material.color = _originalColors[i];
+                if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
 
             if (_hurtbox != null) _hurtbox.enabled = true;
             if (_physicsCollider != null) _physicsCollider.enabled = true;
@@ -303,6 +392,19 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         {
             b.stunTimer -= delta;
             return;
+        }
+
+        // enrageTimer <= 0 means "not configured" for this enemy — never ticks, OnEnrage() never fires,
+        // a no-op for every enemy that doesn't set it. Same "don't tick while stunned" behavior as old
+        // BossBase. !b.enraged guards it to firing exactly once.
+        if (!b.enraged && enrageTimer > 0f)
+        {
+            b.enrageCountdown -= delta;
+            if (b.enrageCountdown <= 0f)
+            {
+                b.enraged = true;
+                OnEnrage();
+            }
         }
 
         b.findTargetTimer -= delta;
@@ -350,9 +452,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             {
                 OnHideOnDeath();
 
-                CharacterStatsPD.All.TryGetValue(vb.killerOwner, out _);
-                // TODO: CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
-                // TODO: if (killer != null && killer.isOwner) CharacterStatsPD.RaiseOnEnemyKill(killer, this);
+                CharacterStatsPD.All.TryGetValue(vb.killerOwner, out var killer);
+                CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
+                if (killer != null && killer.isOwner) CharacterStatsPD.RaiseOnEnemyKill(killer, this);
                 if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(xpValue);
 
                 hierarchy.Delete(this);
@@ -360,6 +462,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
             _wasDeadLastFrame = vb.isDead;
             _verifiedHealth   = vb.health;
+            _verifiedEnrageCountdown = vb.enrageCountdown;
         }
     }
 
@@ -520,7 +623,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
     }
 
-    public void TriggerHitFeedback(float damage, bool isCrit, CharacterStatsPD attacker)
+    public void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker)
     {
         // PD weapons (WeaponMeleePD, WeaponRangedProjectilePD) queue hit feedback in Simulate()/
         // LateSimulate() but only drain and fire it here in UpdateView(), at render rate — by the time it
@@ -528,7 +631,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // false) while transiently still inactive, same as the respawn-reset/animator cases elsewhere in
         // this class.
         if (!B.isDead && gameObject.activeInHierarchy) StartCoroutine(FlashCoroutine());
-        if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit);
+        if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit, isHighroll);
         if (attacker.isOwner && SFXManager.instance != null)
             SFXManager.instance.Play(attacker.hitSfx, transform.position, 1f, 0.05f);
     }
@@ -621,7 +724,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // should reset it here instead of OnRemovedFromPool(), which never fires for pooled reuse.
     protected virtual void OnRespawnReset() { }
 
-    private void ShowDamageNumber(float amount, PlayerID attackerOwner, bool isCrit = false)
+    private void ShowDamageNumber(float amount, PlayerID attackerOwner, bool isCrit = false, bool isHighroll = false)
     {
         Vector3 pos = transform.position;
         if (_damageNumberPlayerOffset != 0f)
@@ -637,23 +740,31 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             }
         }
         if (DamageNumberManager.instance != null)
-            DamageNumberManager.instance.Spawn(amount, pos, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), isCrit, attackerOwner);
+            DamageNumberManager.instance.Spawn(amount, pos, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), isCrit, isHighroll, attackerOwner);
     }
 
     private IEnumerator FlashCoroutine()
     {
         for (int i = 0; i < _renderers.Length; i++)
-            _renderers[i].material.color = Color.red;
+            if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = Color.red;
         yield return new WaitForSeconds(0.08f);
         for (int i = 0; i < _renderers.Length; i++)
-            _renderers[i].material.color = _originalColors[i];
+            if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
     }
 
+    // Guards against both a null/empty _renderers array and individual entries lacking a material —
+    // .material returns null (not a thrown exception, just a silent null) for a Renderer with no materials
+    // assigned, which previously caused a NullReferenceException here and, more importantly, wherever
+    // _originalColors[i] later got read against a color that never got cached (EnemyBasePD.Simulate's
+    // pooled-reuse init block, FlashCoroutine above).
     private void CacheRenderers()
     {
+        _renderers ??= Array.Empty<Renderer>();
         _originalColors = new Color[_renderers.Length];
         for (int i = 0; i < _renderers.Length; i++)
-            _originalColors[i] = _renderers[i].material.color;
+            _originalColors[i] = _renderers[i] != null && _renderers[i].material != null
+                ? _renderers[i].material.color
+                : Color.white;
     }
 
     private void KillGraph()

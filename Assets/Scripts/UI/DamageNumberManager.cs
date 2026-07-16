@@ -20,6 +20,7 @@ public class DamageNumberManager : MonoBehaviour
         public float damage;
         public Vector3 pos;
         public bool hasCrit;
+        public bool hasHighroll;
         public Coroutine routine;
     }
     private readonly Dictionary<int, PendingNumber> _pending = new();
@@ -35,7 +36,7 @@ public class DamageNumberManager : MonoBehaviour
         }
     }
 
-    public void Spawn(float amount, Vector3 worldPos, int groupKey = 0, bool isCrit = false, PlayerID attackerOwner = default)
+    public void Spawn(float amount, Vector3 worldPos, int groupKey = 0, bool isCrit = false, bool isHighroll = false, PlayerID attackerOwner = default)
     {
         if (amount <= 0f) return;
 
@@ -52,6 +53,7 @@ public class DamageNumberManager : MonoBehaviour
                 damage = entry.damage + amount,
                 pos = entry.pos,
                 hasCrit = entry.hasCrit || isCrit,
+                hasHighroll = entry.hasHighroll || isHighroll,
                 routine = entry.routine
             };
         }
@@ -62,12 +64,13 @@ public class DamageNumberManager : MonoBehaviour
                 damage = amount,
                 pos = worldPos,
                 hasCrit = isCrit,
+                hasHighroll = isHighroll,
                 routine = StartCoroutine(Flush(groupKey))
             };
         }
         else
         {
-            SpawnImmediate(amount, worldPos, isCrit);
+            SpawnImmediate(amount, worldPos, isCrit, isHighroll);
         }
     }
 
@@ -77,15 +80,15 @@ public class DamageNumberManager : MonoBehaviour
         if (_pending.TryGetValue(groupKey, out var entry))
         {
             _pending.Remove(groupKey);
-            SpawnImmediate(entry.damage, entry.pos, entry.hasCrit);
+            SpawnImmediate(entry.damage, entry.pos, entry.hasCrit, entry.hasHighroll);
         }
     }
 
-    private void SpawnImmediate(float amount, Vector3 worldPos, bool isCrit)
+    private void SpawnImmediate(float amount, Vector3 worldPos, bool isCrit, bool isHighroll)
     {
         var num = _pool.Count > 0 ? _pool.Dequeue() : Instantiate(_prefab, transform);
         float xOffset = Random.Range(-_spawnXJitter, _spawnXJitter);
-        num.Init(amount, worldPos + new Vector3(xOffset, _spawnYOffset, 0f), this, isCrit ? Color.red : Color.white);
+        num.Init(amount, worldPos + new Vector3(xOffset, _spawnYOffset, 0f), this, isCrit, isHighroll);
     }
 
     public void Return(DamageNumber num) => _pool.Enqueue(num);

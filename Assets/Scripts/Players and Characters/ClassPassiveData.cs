@@ -118,6 +118,14 @@ public class ClassPassiveData : ScriptableObject
     public float bonusLuckFlat = 0f;
     public float bonusLuckPercent = 0f;
     public float luckPenalty = 0f;
+    public float bonusLuckFloorPercent = 0f;
+    public float luckFloorPenalty = 0f;
+    public float bonusLuckCeilingPercent = 0f;
+    public float luckCeilingPenalty = 0f;
+    public float bonusHighrollPercent = 0f;
+    public float highrollPenalty = 0f;
+    public float bonusHighrollBonusPercent = 0f;
+    public float highrollBonusPenalty = 0f;
 
     [Header("Knockback")]
     public float knockbackMultiplier = 1f;

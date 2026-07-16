@@ -105,6 +105,26 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     // For view/UI purposes only — verified, so the level-up screen doesn't flicker on rollback.
     public bool VerifiedIsPresenting => verifiedState?.isPresenting ?? false;
 
+    // Copies into the caller's own buffer rather than exposing pickedAugments directly — same reasoning
+    // as EnemySpawnerPD.GetVerifiedActiveBosses: DisposableList<T>'s backing List<T> is pooled and can be
+    // reused/disposed as new verified snapshots arrive, so handing out a live reference would be unsafe to
+    // hold across frames. Verified (not predicted) since this only ever backs a UI list a player reads by
+    // hovering, not something needing instant reactivity — no harm in it lagging a tick behind a pick.
+    public void GetPickedAugmentsForPlayer(PlayerID player, List<AugmentData> buffer)
+    {
+        buffer.Clear();
+        if (!verifiedState.HasValue) return;
+        var list = verifiedState.Value.pickedAugments;
+        for (int i = 0; i < list.Count; i++)
+        {
+            var rec = list[i];
+            if (rec.player != player) continue;
+            if (rec.augmentIndex < 0 || rec.augmentIndex >= augmentDatabase.augments.Count) continue;
+            var augment = augmentDatabase.augments[rec.augmentIndex];
+            if (augment != null) buffer.Add(augment);
+        }
+    }
+
     // Cached the moment each round's options are generated via GameRandom in Simulate(). Every machine
     // calls GameRandom in the exact same deterministic order, so every machine lands on the identical
     // result independently — this cache itself isn't networked, it's just reproducibly-identical local

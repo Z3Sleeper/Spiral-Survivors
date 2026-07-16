@@ -8,6 +8,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 {
     public static readonly Dictionary<PlayerID, CharacterStatsPD> All = new();
 
+    // Static, not per-instance PredictedEvent — fired from EnemyBasePD.UpdateView() off verified state with
+    // its own edge-detection (isDead && !_wasDeadLastFrame), the same hand-rolled pattern already
+    // established as functionally equivalent to PredictedEvent (see GameManagerPD.OnGameEnded), so it's
+    // already safe to fire directly here without needing the PredictedEvent machinery itself. OnEnemyDeath
+    // fires for every enemy death regardless of killer (killer may be null if it doesn't resolve to a
+    // living player); OnEnemyKill only fires additionally when the killer is the LOCAL owner specifically —
+    // for augments that care only about the local player's own kills, not every death on the field.
+    public static event Action<CharacterStatsPD, IEnemyPD> OnEnemyDeath;
+    public static event Action<CharacterStatsPD, IEnemyPD> OnEnemyKill;
+    public static void RaiseOnEnemyDeath(CharacterStatsPD killer, IEnemyPD enemy) => OnEnemyDeath?.Invoke(killer, enemy);
+    public static void RaiseOnEnemyKill(CharacterStatsPD killer, IEnemyPD enemy) => OnEnemyKill?.Invoke(killer, enemy);
+
     public enum CharacterClass { Knight, Rogue, Archer, Bladeweaver, Executioner }
     public CharacterClass characterClass;
 
@@ -67,6 +79,23 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     [Header("Luck")]
     public float baseLuck = 0f;
+    // Worst/best-case roll multipliers for anything that wants a "luck-influenced random roll" (weapon
+    // damage, future augments, etc.) — roll against these shared stats instead of hardcoding a variance
+    // constant, so a single augment can move the floor or ceiling and affect every roller at once. Split
+    // into two independent multipliers (not a single symmetric +-variance) since a floor that can be
+    // pushed past 100% would allow zero/negative rolls; the ceiling has no such risk, so it isn't capped.
+    public float baseLuckFloor = 0.5f;
+    public float baseLuckCeiling = 1.5f;
+    // The "floor" of a highroll — a roll landing in the top (1 - Highroll) fraction of its own window
+    // snaps up to the max and invokes the hitting weapon's own _onHighroll (a PredictedEvent, rollback-safe
+    // — see WeaponBasePD<TState>._onHighroll / WeaponRangedProjectilePD._onHighroll). Same base+bonus+penalty
+    // convention as every other stat here, so a future augment/passive can push it (e.g. toward 1.0 = never
+    // highrolls, or lower = highrolls more often) without touching WeaponDamageMath itself.
+    public float baseHighroll = 0.99f;
+    // Bonus damage applied WHEN a hit highrolls — separate from baseHighroll (which only decides whether a
+    // roll counts as one). Applies as (1 + HighrollBonus) before crit, so the two stack multiplicatively
+    // rather than either replacing the other.
+    public float baseHighrollBonus = 0.5f;
 
     [Header("Knockback")]
     public float baseKnockback = 10f;
@@ -168,6 +197,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [HideInInspector] public float bonusLuckFlat = 0f;
     [HideInInspector] public float bonusLuckPercent = 1f;
     [HideInInspector] public float luckPenalty = 1f;
+    [HideInInspector] public float bonusLuckFloorPercent = 1f;
+    [HideInInspector] public float luckFloorPenalty = 1f;
+    [HideInInspector] public float bonusLuckCeilingPercent = 1f;
+    [HideInInspector] public float luckCeilingPenalty = 1f;
+    [HideInInspector] public float bonusHighrollPercent = 1f;
+    [HideInInspector] public float highrollPenalty = 1f;
+    [HideInInspector] public float bonusHighrollBonusPercent = 1f;
+    [HideInInspector] public float highrollBonusPenalty = 1f;
 
     [HideInInspector] public float knockbackMultiplier = 1f;
     [HideInInspector] public float knockbackPenalty = 1f;
@@ -240,6 +277,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public float Luck => (baseLuck + bonusLuckFlat) * bonusLuckPercent * luckPenalty;
     public float LuckChance => Luck / (Luck + 100f);
+    // Both clamped to a minimum of 0 here — the one source every consumer reads from — so no
+    // debuff/penalty stacking can ever push either one negative and cause a roll below zero. No upper
+    // clamp on the ceiling; an arbitrarily high one is just a bigger reward, not a bug.
+    public float LuckFloor   => Mathf.Max(0f, baseLuckFloor * bonusLuckFloorPercent * luckFloorPenalty);
+    public float LuckCeiling => Mathf.Max(0f, baseLuckCeiling * bonusLuckCeilingPercent * luckCeilingPenalty);
+    // Clamped to [0,1] here — it's a Mathf.Lerp t-value downstream (WeaponDamageMath.RollDamage), which
+    // would clamp it internally anyway, but keeping the source itself sane means anything else that reads
+    // Highroll directly later doesn't have to know that.
+    public float Highroll => Mathf.Clamp01(baseHighroll * bonusHighrollPercent * highrollPenalty);
+    // Clamped to >= 0 — same reasoning as LuckFloor/LuckCeiling: a highroll should never actively reduce
+    // damage below its already-rolled value, worst case is +0%.
+    public float HighrollBonus => Mathf.Max(0f, baseHighrollBonus * bonusHighrollBonusPercent * highrollBonusPenalty);
 
     public float Knockback => baseKnockback * knockbackMultiplier * knockbackPenalty;
 
@@ -311,6 +360,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     private PredictedEvent<float> _onHeal;
     private PredictedEvent _onSurgeStarted;
     private PredictedEvent _onSurgeEnded;
+    // Relayed here from WeaponManagerPD (which subscribes to every one of this player's own registered
+    // weapons' own crit events) — the one channel downstream per-player systems like
+    // PhantomBladeOnCritAugment subscribe to, instead of each augment needing to know about individual
+    // weapons at all. Deliberately per-instance like every other event here, not static — this is what
+    // makes cross-player interaction structurally impossible rather than just filtered against.
+    private PredictedEvent<PredictedObjectID> _onCritStrike;
 
     public void AddHealListener(Action<float> listener) => _onHeal.AddListener(listener);
     public void RemoveHealListener(Action<float> listener) => _onHeal.RemoveListener(listener);
@@ -318,6 +373,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void RemoveSurgeStartedListener(Action listener) => _onSurgeStarted.RemoveListener(listener);
     public void AddSurgeEndedListener(Action listener) => _onSurgeEnded.AddListener(listener);
     public void RemoveSurgeEndedListener(Action listener) => _onSurgeEnded.RemoveListener(listener);
+    public void AddCritStrikeListener(Action<PredictedObjectID> listener) => _onCritStrike.AddListener(listener);
+    public void RemoveCritStrikeListener(Action<PredictedObjectID> listener) => _onCritStrike.RemoveListener(listener);
+    public void NotifyCritStrike(PredictedObjectID target) => _onCritStrike.Invoke(target);
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
     protected override void LateAwake()
@@ -325,6 +383,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onHeal          = new PredictedEvent<float>(predictionManager, this);
         _onSurgeStarted  = new PredictedEvent(predictionManager, this);
         _onSurgeEnded    = new PredictedEvent(predictionManager, this);
+        _onCritStrike    = new PredictedEvent<PredictedObjectID>(predictionManager, this);
 
         // bonuses applied by PlayerDataPD.Simulate after spawn
         GetComponent<WeaponManagerPD>()?.Init(this);
@@ -501,6 +560,22 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // against the 1f baseline, e.g. +0.2 = +20% total).
     public void AddMaxHealthPercent(float amount) => ApplyStatChange(() => bonusMaxHealthPercent += amount);
     public void AddWeaponRangePercent(float amount) => ApplyStatChange(() => bonusWeaponRangePercent += amount);
+    public void AddAttackSpeedTotalPercent(float amount) => ApplyStatChange(() => attackSpeedTotalPercent += amount);
+    public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => bonusMoveSpeedPercent += amount);
+    public void AddHealthRegenFlat(float amount) => ApplyStatChange(() => bonusHealthRegenFlat += amount);
+    public void AddCritChanceFlat(float amount) => ApplyStatChange(() => bonusCritChanceFlat += amount);
+
+    // Shared "stacking bonus" scaffold for the whole Phantom Blade augment family — each Phantom Blade
+    // augment the player has picked contributes its own delta here (matching old system's per-augment
+    // OnSummon handlers, e.g. PhantomBladeOnCritAugment/PhantomBladePassiveAugment both doing
+    // `blade.damage += blade.baseDamage * bladeDamageBonus`), and every blade reads the combined total
+    // once at spawn time rather than each blade needing to know which augments exist. Plain += (not
+    // ApplyStatChange) — doesn't affect Max Health/Energy, and nothing else reads these live the way
+    // WeaponDamage/MoveSpeed etc. do.
+    [HideInInspector] public float phantomBladeDamageBonusPercent = 0f;
+    [HideInInspector] public float phantomBladeSizeBonusPercent = 0f;
+    public void AddPhantomBladeDamageBonusPercent(float amount) => phantomBladeDamageBonusPercent += amount;
+    public void AddPhantomBladeSizeBonusPercent(float amount) => phantomBladeSizeBonusPercent += amount;
 
     // These children stay visually the same size regardless of the character's own scale — a revive
     // trigger volume and worldspace/minimap UI markers shouldn't grow along with the player.
@@ -666,6 +741,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             bonusLuckFlat                   += p.bonusLuckFlat;
             bonusLuckPercent                += p.bonusLuckPercent;
             luckPenalty                     += p.luckPenalty;
+            bonusLuckFloorPercent           += p.bonusLuckFloorPercent;
+            luckFloorPenalty                += p.luckFloorPenalty;
+            bonusLuckCeilingPercent         += p.bonusLuckCeilingPercent;
+            luckCeilingPenalty              += p.luckCeilingPenalty;
+            bonusHighrollPercent            += p.bonusHighrollPercent;
+            highrollPenalty                 += p.highrollPenalty;
+            bonusHighrollBonusPercent       += p.bonusHighrollBonusPercent;
+            highrollBonusPenalty            += p.highrollBonusPenalty;
 
             knockbackMultiplier             *= p.knockbackMultiplier;
             knockbackPenalty                += p.knockbackPenalty;

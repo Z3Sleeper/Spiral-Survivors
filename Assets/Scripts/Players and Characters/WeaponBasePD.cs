@@ -19,6 +19,10 @@ public interface IWeaponPD
     void Init(CharacterStatsPD stats);
     void InitModelVisuals();
     void ScaleModel(float range);
+    // Lets WeaponManagerPD subscribe generically to any weapon's crit event, regardless of concrete type,
+    // so it can relay every registered weapon's crits up to the owning player's own CharacterStatsPD.
+    void AddCritStrikeListener(System.Action<PredictedObjectID> listener);
+    void RemoveCritStrikeListener(System.Action<PredictedObjectID> listener);
 }
 
 // Shared damage-roll formula, non-generic so it's usable by anything that needs it without inheriting
@@ -26,13 +30,32 @@ public interface IWeaponPD
 // orbit, no range-scaling visuals), matching the old system's WeaponBase.RollDamage static helper.
 public static class WeaponDamageMath
 {
-    private const float DamageVariance = 0.20f;
-
-    public static float RollDamage(float damage, float luckChance)
+    // Rolls against CharacterStatsPD.LuckFloor/LuckCeiling/Highroll instead of hardcoded constants — any
+    // future system that wants a "luck-influenced random roll" should roll against these same stats rather
+    // than adding its own variance constant, so a single augment moving the floor, ceiling, or highroll
+    // threshold affects all of them at once. luckFloor is already clamped to >= 0 at the source (LuckFloor
+    // property), so this never needs to guard against a negative result itself.
+    //
+    // highroll: landing in the top (1 - highroll) fraction of this roll's own [min, max] window snaps the
+    // result up to max and flags it — a true max roll is otherwise a measure-zero event off continuous
+    // random sampling, practically unreachable, which is the whole reason this exists.
+    public static float RollDamage(float damage, float luckChance, float luckFloor, float luckCeiling, float highroll, out bool isHighroll)
     {
-        float max = damage * (1f + DamageVariance);
-        float min = Mathf.Lerp(damage * (1f - DamageVariance), max, luckChance);
-        return GameRandom.instance.NextFloat(min, max);
+        float max = damage * luckCeiling;
+        float rawMin = damage * luckFloor;
+
+        // Threshold is fixed against the pre-luck [rawMin, max] window, not the luck-raised one below —
+        // luckChance only raises the roll's actual floor toward this already-placed line, it doesn't move
+        // the line itself. That's what makes Luck and Highroll interact: as luckChance climbs, min closes
+        // the gap on threshold, so the odds of clearing it rise too, and once luckChance >= highroll, min
+        // has caught up to (or passed) threshold and every roll highrolls.
+        float highrollThreshold = Mathf.Lerp(rawMin, max, highroll);
+
+        float min = Mathf.Lerp(rawMin, max, luckChance);
+        float roll = GameRandom.instance.NextFloat(min, max);
+
+        isHighroll = roll >= highrollThreshold;
+        return isHighroll ? max : roll;
     }
 }
 
@@ -173,7 +196,44 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
             }
     }
 
-    protected float RollDamage(float damage) => WeaponDamageMath.RollDamage(damage, _stats.LuckChance);
+    // isHighroll out so callers (which already have the attacker/target in scope for TakeDamage/etc.) can
+    // invoke OnHighroll themselves — keeps the event-raising at the actual hit call site, same separation
+    // the old system's RollDamage/RaiseOnCritStrike had.
+    protected float RollDamage(float damage, out bool isHighroll) =>
+        WeaponDamageMath.RollDamage(damage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out isHighroll);
+
+    // PredictedEvent, not a plain C# event — per PurrNet's docs (client-side-prediction/multi-identity-
+    // interactions), this is the framework's own mechanism for rollback-safe one-shot notifications: it
+    // only actually invokes subscribers once, off a verified/non-replaying pass, so a client-side
+    // misprediction that the server later disagrees with never fires it. A plain event fired directly from
+    // Simulate-context code (what this used to be) would fire again on every resimulation replay.
+    // protected, not private — subclasses (WeaponMeleePD.Hit(), WeaponAxePD.Hit()) invoke it directly at
+    // their own hit call sites. External subscribers use the Add/RemoveHighrollListener wrappers below,
+    // matching the private-field + wrapper-method convention CharacterStatsPD._onHeal and
+    // PlayerControllerPD._onDashStarted already established.
+    protected PredictedEvent<float> _onHighroll;
+
+    public void AddHighrollListener(System.Action<float> listener) => _onHighroll.AddListener(listener);
+    public void RemoveHighrollListener(System.Action<float> listener) => _onHighroll.RemoveListener(listener);
+
+    // Same PredictedEvent reasoning as _onHighroll above. Part of a per-owner event chain (weapon fires ->
+    // WeaponManagerPD relays -> owner's CharacterStatsPD fires its own -> subscribers like
+    // PhantomBladeOnCritAugment) deliberately built to have zero shared/global channel anywhere, unlike the
+    // old system's static WeaponBase.OnCritStrike bus. NotifyCritStrike is the external-invoke entry point
+    // for WeaponRangedProjectilePD, which rolls its own crit but isn't a WeaponBasePD<TState> itself, so it
+    // relays through the WeaponRangedPD that launched it instead.
+    protected PredictedEvent<PredictedObjectID> _onCritStrike;
+
+    public void AddCritStrikeListener(System.Action<PredictedObjectID> listener) => _onCritStrike.AddListener(listener);
+    public void RemoveCritStrikeListener(System.Action<PredictedObjectID> listener) => _onCritStrike.RemoveListener(listener);
+    public void NotifyCritStrike(PredictedObjectID target) => _onCritStrike.Invoke(target);
+
+    protected override void LateAwake()
+    {
+        base.LateAwake();
+        _onHighroll = new PredictedEvent<float>(predictionManager, this);
+        _onCritStrike = new PredictedEvent<PredictedObjectID>(predictionManager, this);
+    }
 
     // Shared "must separate then re-contact to re-hit" gate — both WeaponMeleePD and WeaponAxePD sweep one
     // or more shapes per tick and need this identically, so it lives here rather than being duplicated.
@@ -210,5 +270,26 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
             : (IsMelee ? RangeValue / 2f : 0.25f);
         float radius = _stats.WeaponRadius + _stats.transform.lossyScale.x * 0.5f + halfRange;
         return origin + new Vector3(Mathf.Cos(rad) * radius, 0f, Mathf.Sin(rad) * radius);
+    }
+
+    // How many sub-arcs a swept-hitbox weapon (WeaponMeleePD, WeaponAxePD) should sample this tick instead
+    // of sweeping straight from its start position to its end position. A straight-line sweep between two
+    // points on a circle is a chord, not the arc itself — at high enough rotation speed (WeaponSpeed *
+    // delta covering many degrees in one tick), that chord cuts across the circle's interior and can miss
+    // an enemy sitting on the arc between the two sampled points entirely. Below SubArcTriggerDegrees a
+    // single straight sweep is already close enough to the true arc that subdividing isn't worth it — by
+    // far the common case at any realistic WeaponSpeed, and costs nothing extra (falls straight through to
+    // the existing single-sweep behavior). Above that, subdivide down to MaxDegreesPerSubArc-sized
+    // segments, capped at MaxSubArcs total no matter how much faster the rotation gets beyond that — more
+    // than one full lap doesn't need finer coverage, it's the same circle of points either way.
+    private const float SubArcTriggerDegrees = 45f;
+    private const float MaxDegreesPerSubArc  = 30f;
+    private const int   MaxSubArcs           = 12;
+
+    protected static int ComputeSubArcCount(float angleDeltaDegrees)
+    {
+        float effective = Mathf.Min(Mathf.Abs(angleDeltaDegrees), 360f);
+        if (effective <= SubArcTriggerDegrees) return 1;
+        return Mathf.Clamp(Mathf.CeilToInt(effective / MaxDegreesPerSubArc), 2, MaxSubArcs);
     }
 }

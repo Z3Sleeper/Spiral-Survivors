@@ -44,6 +44,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
     protected override void LateAwake()
     {
+        base.LateAwake();
         TryInit();
     }
 
@@ -180,7 +181,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
             var go = hierarchy.GetGameObject(id.Value);
             if (go != null && go.TryGetComponent(out WeaponRangedProjectilePD projectile))
-                projectile.Launch(_stats, dir, projectileSpeed, ricochet);
+                projectile.Launch(this, _stats, dir, projectileSpeed, ricochet);
         }
     }
 }

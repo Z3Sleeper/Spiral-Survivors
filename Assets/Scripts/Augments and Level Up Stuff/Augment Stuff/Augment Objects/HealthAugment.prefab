@@ -44,4 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d1bfa389b85776741bcae244b0344da2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthAugment
-  healthBonus: 100
+  healthBonusFlat: 50
+  healthBonusPercent: 0.2

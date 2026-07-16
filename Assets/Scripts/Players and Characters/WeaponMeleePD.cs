@@ -19,7 +19,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private readonly Collider[]                  _overlapResults = new Collider[32];
     private readonly Dictionary<IEnemyPD, float> _hitCooldowns  = new();
     private readonly List<IEnemyPD>                                  _cooldownBuffer   = new();
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit)> _hitFeedbackQueue = new();
+    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
     private readonly HashSet<IEnemyPD>                               _touchedThisTick  = new();
 
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
@@ -28,6 +28,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
     protected override void LateAwake()
     {
+        base.LateAwake();
         TryInit();
     }
 
@@ -84,11 +85,8 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         // so hb.position here is always the accurate previous-tick hitbox world position.
         Vector3 prevCenter = state.prevSet ? hb.position : orbitPos;
 
-        transform.SetPositionAndRotation(orbitPos, Quaternion.LookRotation(outward));
-
-        // After setting transform, hb.position is now the current hitbox world center.
-        hb.GetPositionAndRotation(out Vector3 center, out Quaternion hitboxRot);
-
+        // half doesn't depend on position/rotation, only on scale (which a pure orbit move never changes),
+        // so it's safe to compute once up front and reuse across every sub-arc segment below.
         float xRatio = xRangeScaleRatio > 0f
             ? Mathf.Lerp(1f, hb.lossyScale.z / Mathf.Max(0.001f, designOrbit * transform.localScale.z), xRangeScaleRatio)
             : 1f;
@@ -98,22 +96,60 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             meleeHalfExtents.z * hb.lossyScale.z);
 
         _touchedThisTick.Clear();
+        Vector3    center;
+        Quaternion hitboxRot;
 
-        // Box sweep from previous tick position (catches enemies the weapon swept through)
         if (state.prevSet)
         {
-            Vector3 sweep = center - prevCenter;
-            float   dist  = sweep.magnitude;
-            if (dist > 0.001f)
+            // A straight sweep from last tick's hitbox position to this tick's is a chord across the orbit
+            // circle, not the arc itself — at high enough rotation speed that chord can cut past an enemy
+            // sitting on the arc between the two endpoints entirely. Subdivide into intermediate stops
+            // along the true arc when this tick's angle movement is large enough for that gap to matter
+            // (see WeaponBasePD.ComputeSubArcCount()) — at normal speeds this is always exactly 1 segment,
+            // identical to a plain single sweep straight to the final position.
+            float angleDelta = _stats.WeaponSpeed * delta;
+            float startAngle = state.angle + angleDelta; // angle before this tick's Simulate() decrement
+            int   subArcs    = ComputeSubArcCount(angleDelta);
+
+            Vector3    segStart  = prevCenter;
+            Vector3    segCenter = prevCenter;
+            Quaternion segRot    = hb.rotation;
+
+            for (int step = 1; step <= subArcs; step++)
             {
-                int n = Physics.BoxCastNonAlloc(prevCenter, half, sweep / dist,
-                    _sweepResults, hitboxRot, dist, CombatLayerMasks.EnemyHurtboxMask);
-                for (int i = 0; i < n; i++)
+                bool    isLastStep = step == subArcs;
+                Vector3 stepPos = isLastStep
+                    ? orbitPos
+                    : OrbitalPosition(Mathf.Lerp(startAngle, state.angle, step / (float)subArcs), origin);
+                Vector3 stepOutward = stepPos - origin;
+                if (stepOutward == Vector3.zero) continue;
+
+                transform.SetPositionAndRotation(stepPos, Quaternion.LookRotation(stepOutward));
+                hb.GetPositionAndRotation(out segCenter, out segRot);
+
+                Vector3 sweep = segCenter - segStart;
+                float   dist  = sweep.magnitude;
+                if (dist > 0.001f)
                 {
-                    var enemy = _sweepResults[i].collider.GetComponent<IEnemyPD>();
-                    if (enemy != null) _touchedThisTick.Add(enemy);
+                    int n = Physics.BoxCastNonAlloc(segStart, half, sweep / dist,
+                        _sweepResults, segRot, dist, CombatLayerMasks.EnemyHurtboxMask);
+                    for (int i = 0; i < n; i++)
+                    {
+                        var enemy = _sweepResults[i].collider.GetComponent<IEnemyPD>();
+                        if (enemy != null) _touchedThisTick.Add(enemy);
+                    }
                 }
+
+                segStart = segCenter;
             }
+
+            center    = segCenter;
+            hitboxRot = segRot;
+        }
+        else
+        {
+            transform.SetPositionAndRotation(orbitPos, Quaternion.LookRotation(outward));
+            hb.GetPositionAndRotation(out center, out hitboxRot);
         }
 
         // Overlap at current position
@@ -154,8 +190,8 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         // Fire hit feedback immediately at render rate — bypasses state propagation delay.
         if (_stats != null)
         {
-            foreach (var (enemy, dmg, isCrit) in _hitFeedbackQueue)
-                enemy.TriggerHitFeedback(dmg, isCrit, _stats);
+            foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
+                enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, _stats);
         }
         _hitFeedbackQueue.Clear();
     }
@@ -165,13 +201,16 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private void Hit(IEnemyPD enemy)
     {
         if (enemy._isDead) return;
-        float damage = RollDamage(_stats.WeaponDamage);
+        float damage = RollDamage(_stats.WeaponDamage, out bool isHighroll);
+        if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
+        if (isHighroll) _onHighroll.Invoke(damage);
+        if (isCrit) _onCritStrike.Invoke(enemy.ObjectId);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback);
-        _hitFeedbackQueue.Add((enemy, damage, isCrit));
+        _hitFeedbackQueue.Add((enemy, damage, isCrit, isHighroll));
     }
 
     // ── Gizmos ────────────────────────────────────────────────────────────────

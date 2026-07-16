@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using PurrNet.Prediction;
 using UnityEngine;
 
 public class WeaponManagerPD : MonoBehaviour
@@ -61,6 +62,10 @@ public class WeaponManagerPD : MonoBehaviour
         SetupWeaponRange(weapon);
         foreach (var a in weapon.transform.GetComponentsInChildren<PlayerColorApplicator>(true))
             a.Apply(_stats.PlayerColor);
+        // Relays every registered weapon's own crit event up to this player's own CharacterStatsPD — the
+        // one place downstream systems (e.g. PhantomBladeOnCritAugment) need to subscribe to, regardless
+        // of how many weapons this player has or which ones actually landed the crit.
+        weapon.AddCritStrikeListener(OnAnyWeaponCrit);
     }
 
     public void UnregisterWeapon(IWeaponPD weapon)
@@ -68,7 +73,10 @@ public class WeaponManagerPD : MonoBehaviour
         if (!_weapons.Remove(weapon)) return;
         for (int i = 0; i < _weapons.Count; i++)
             _weapons[i].SlotIndex = i;
+        weapon.RemoveCritStrikeListener(OnAnyWeaponCrit);
     }
+
+    private void OnAnyWeaponCrit(PredictedObjectID target) => _stats.NotifyCritStrike(target);
 
     // ── Range / size helpers ──────────────────────────────────────────────────
 

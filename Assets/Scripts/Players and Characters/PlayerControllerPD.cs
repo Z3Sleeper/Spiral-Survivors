@@ -130,6 +130,21 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         {
             input.dashPressed  |= _input.Player.Dash.WasPressedThisFrame();
             input.pausePressed |= _input.Player.Pause.WasPressedThisFrame();
+
+            // Purely local UI toggle, not part of the networked/predicted Input struct — matches old
+            // PlayerController's identical direct (un-networked) LocalUIManager calls, since this only
+            // ever affects this machine's own UI display, never simulation state. Holding Tab shows the
+            // expanded stats panel (hiding the compact one) and the augment list; releasing reverses both.
+            if (_input.Player.Tab.WasPressedThisFrame())
+            {
+                LocalUIManagerPD.instance?.SetStatsExpanded(true);
+                LocalUIManagerPD.instance?.SetAugmentListVisible(true);
+            }
+            else if (_input.Player.Tab.WasReleasedThisFrame())
+            {
+                LocalUIManagerPD.instance?.SetStatsExpanded(false);
+                LocalUIManagerPD.instance?.SetAugmentListVisible(false);
+            }
         }
 
         input.readyPressed |= _pendingReadyPressed;

@@ -311,7 +311,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CharacterStatsPD
   characterClass: 0
-  outerXScalesWithRange: 0
   classPassive: {fileID: 0}
   baseMoveSpeed: 10
   damagePerLevel: 2.5
@@ -344,6 +343,9 @@ MonoBehaviour:
   levelUpOptions: 3
   baseMaxSP: 100
   baseLuck: 0
+  baseLuckFloor: 0.5
+  baseLuckCeiling: 1.5
+  baseHighroll: 0.99
   baseKnockback: 5
   baseOnHitPower: 1
   baseXPRadius: 5
@@ -404,6 +406,12 @@ MonoBehaviour:
   bonusLuckFlat: 0
   bonusLuckPercent: 1
   luckPenalty: 1
+  bonusLuckFloorPercent: 1
+  luckFloorPenalty: 1
+  bonusLuckCeilingPercent: 1
+  luckCeilingPenalty: 1
+  bonusHighrollPercent: 1
+  highrollPenalty: 1
   knockbackMultiplier: 1
   knockbackPenalty: 1
   bonusOnHitPowerMultiplier: 1
