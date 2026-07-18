@@ -42,7 +42,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: knockbackResistance
-      value: 0.25
+      value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: remoteBurstInterval
@@ -56,6 +56,14 @@ PrefabInstance:
       propertyPath: spikeBurstChargeTime
       value: 1.125
       objectReference: {fileID: 0}
+    - target: {fileID: 354897101790281580, guid: 792329ba50ec0674d9470944996bc057, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
+    - target: {fileID: 1191430190877834793, guid: 792329ba50ec0674d9470944996bc057, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
     - target: {fileID: 1597157536724350220, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: m_Name
       value: King Spikier Gloom
@@ -68,6 +76,22 @@ PrefabInstance:
       propertyPath: m_AnchorMax.y
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 4915765862012716736, guid: 792329ba50ec0674d9470944996bc057, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
+    - target: {fileID: 5173062577797930298, guid: 792329ba50ec0674d9470944996bc057, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
+    - target: {fileID: 5427267374445519469, guid: 792329ba50ec0674d9470944996bc057, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
+    - target: {fileID: 6371288759870050912, guid: 792329ba50ec0674d9470944996bc057, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
     - target: {fileID: 7839943648137112170, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

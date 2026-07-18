@@ -19,10 +19,41 @@ public interface IWeaponPD
     void Init(CharacterStatsPD stats);
     void InitModelVisuals();
     void ScaleModel(float range);
-    // Lets WeaponManagerPD subscribe generically to any weapon's crit event, regardless of concrete type,
-    // so it can relay every registered weapon's crits up to the owning player's own CharacterStatsPD.
-    void AddCritStrikeListener(System.Action<PredictedObjectID> listener);
-    void RemoveCritStrikeListener(System.Action<PredictedObjectID> listener);
+    // Lets WeaponManagerPD subscribe generically to any weapon's crit/hit events, regardless of concrete
+    // type, so it can relay every registered weapon's crits/hits up to the owning player's own
+    // CharacterStatsPD.
+    void AddCritStrikeListener(System.Action<WeaponHitData> listener);
+    void RemoveCritStrikeListener(System.Action<WeaponHitData> listener);
+    void AddHitListener(System.Action<WeaponHitData> listener);
+    void RemoveHitListener(System.Action<WeaponHitData> listener);
+}
+
+// Shared payload for both the OnHit (every weapon hit) and OnCrit (the subset of hits that also crit)
+// event chains — a crit is still a hit, so it carries the same hit data rather than just a bare target id.
+// weaponDamage is the pre-luck-roll, pre-crit-multiplier damage baseline for THIS specific hit, not a
+// flat re-read of CharacterStatsPD.WeaponDamage — WeaponRangedProjectilePD passes its own already
+// ricochet-decayed State.currentDamage, and WeaponAxePD passes WeaponDamage * innerDamageMultiplier for
+// handle (inner) hits, so downstream on-hit effects see the damage that hit actually represented rather
+// than re-deriving it themselves per weapon type.
+public struct WeaponHitData
+{
+    public PredictedObjectID target;
+    public float weaponDamage;
+    public float onHitPower;
+}
+
+// Shared payload for CharacterStatsPD._onAllyStrike — fired whenever any of this player's weapons touches
+// (not damages) an ally, so any "hit ally, do something" augment can subscribe once rather than each
+// needing its own copy of the weapon-side overlap-detection plumbing. A direct CharacterStatsPD reference
+// (not a PredictedObjectID, unlike WeaponHitData's enemy target) is safe here — unlike enemies,
+// CharacterStatsPD instances are never pooled/reused for a different player mid-match, so there's no
+// SpawnGeneration-style staleness risk to guard against. onHitPower carries the same per-hit
+// dropoff/penalty treatment as WeaponHitData (ricochet decay, axe handle penalty), so ally-strike effects
+// scale down the same way onhit-damage effects already do.
+public struct AllyStrikeData
+{
+    public CharacterStatsPD ally;
+    public float onHitPower;
 }
 
 // Shared damage-roll formula, non-generic so it's usable by anything that needs it without inheriting
@@ -67,6 +98,10 @@ public static class WeaponDamageMath
 public static class CombatLayerMasks
 {
     public static readonly int EnemyHurtboxMask = LayerMask.GetMask("Enemy");
+    // Only ever queried when a weapon's owner has allyStrikeHitEnabled or allyStrikeDamageEnabled (any
+    // "hit ally, do something" augment, e.g. HealAllyOnStrikeAugment, or real friendly fire) — every other
+    // weapon skips the extra query entirely, so this costs nothing for players without either.
+    public static readonly int PlayerHurtboxMask = LayerMask.GetMask("Player");
 }
 
 public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponPD
@@ -222,39 +257,29 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // old system's static WeaponBase.OnCritStrike bus. NotifyCritStrike is the external-invoke entry point
     // for WeaponRangedProjectilePD, which rolls its own crit but isn't a WeaponBasePD<TState> itself, so it
     // relays through the WeaponRangedPD that launched it instead.
-    protected PredictedEvent<PredictedObjectID> _onCritStrike;
+    protected PredictedEvent<WeaponHitData> _onCritStrike;
 
-    public void AddCritStrikeListener(System.Action<PredictedObjectID> listener) => _onCritStrike.AddListener(listener);
-    public void RemoveCritStrikeListener(System.Action<PredictedObjectID> listener) => _onCritStrike.RemoveListener(listener);
-    public void NotifyCritStrike(PredictedObjectID target) => _onCritStrike.Invoke(target);
+    public void AddCritStrikeListener(System.Action<WeaponHitData> listener) => _onCritStrike.AddListener(listener);
+    public void RemoveCritStrikeListener(System.Action<WeaponHitData> listener) => _onCritStrike.RemoveListener(listener);
+    public void NotifyCritStrike(WeaponHitData data) => _onCritStrike.Invoke(data);
+
+    // Fires for every weapon hit (crit or not) — same per-owner event chain shape as _onCritStrike, and
+    // likewise relayed through WeaponRangedPD by WeaponRangedProjectilePD (NotifyHit). A crit still invokes
+    // this once via the normal hit path; augments that want a hit to count "extra" on crit (e.g.
+    // CritTriggerOnHitAugment) do so by calling CharacterStatsPD.NotifyHit again themselves from their own
+    // crit listener, not by this event double-firing on its own.
+    protected PredictedEvent<WeaponHitData> _onHit;
+
+    public void AddHitListener(System.Action<WeaponHitData> listener) => _onHit.AddListener(listener);
+    public void RemoveHitListener(System.Action<WeaponHitData> listener) => _onHit.RemoveListener(listener);
+    public void NotifyHit(WeaponHitData data) => _onHit.Invoke(data);
 
     protected override void LateAwake()
     {
         base.LateAwake();
         _onHighroll = new PredictedEvent<float>(predictionManager, this);
-        _onCritStrike = new PredictedEvent<PredictedObjectID>(predictionManager, this);
-    }
-
-    // Shared "must separate then re-contact to re-hit" gate — both WeaponMeleePD and WeaponAxePD sweep one
-    // or more shapes per tick and need this identically, so it lives here rather than being duplicated.
-    // A cooldown alone isn't enough: without this, an enemy standing continuously inside a hitbox gets
-    // rehit the instant its cooldown clears, even though the weapon never actually left and struck again.
-    // Subclasses build their own local "touched this tick" set as they run their physics queries (they
-    // need to iterate it anyway for their own hit pass — WeaponAxePD additionally needs it for its
-    // outer-zone tie-break), then hand it to CommitOverlapFrame() once at the end of the tick.
-    private readonly HashSet<IEnemyPD> _currentOverlaps = new();
-
-    // True only if this enemy wasn't already touching last tick AND isn't on cooldown — a hit this tick
-    // should only register once per "contact session," not every tick contact continues.
-    protected bool IsFreshHit(IEnemyPD enemy, Dictionary<IEnemyPD, float> hitCooldowns)
-        => !_currentOverlaps.Contains(enemy) && !hitCooldowns.ContainsKey(enemy);
-
-    // Call once at the end of every tick's hit-detection pass, after all zones have been checked, passing
-    // every enemy touched this tick (regardless of whether it resulted in a hit).
-    protected void CommitOverlapFrame(IEnumerable<IEnemyPD> touchedThisTick)
-    {
-        _currentOverlaps.Clear();
-        _currentOverlaps.UnionWith(touchedThisTick);
+        _onCritStrike = new PredictedEvent<WeaponHitData>(predictionManager, this);
+        _onHit = new PredictedEvent<WeaponHitData>(predictionManager, this);
     }
 
     // Shared orbital-position formula — both WeaponMeleePD (swept hitbox) and WeaponRangedPD (fires at

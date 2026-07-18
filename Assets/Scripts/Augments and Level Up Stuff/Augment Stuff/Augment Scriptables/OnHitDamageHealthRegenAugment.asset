@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: OnHitDamageHealthRegenAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#7DFF00>Hearty Hits</color>
+  description: 'Deal <color=#7DFF00>2,000%<color=#00FF87>*</color> Health Regen</color>
+    <color=#FF0050>On-Hit</color>.
+
+    <color=#7DFF00>+0.5 Health Regen</color>
+
+    <color=#00FF87>*Affected
+    by Luck*</color>'
+  icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
+  effectPrefab: {fileID: 2299717920538484476, guid: 5db67ca2ef8ea8043925ed18de5604bd, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags:
+  - On-Hit
+  - On-Hit Effect
+  requiredTags: []

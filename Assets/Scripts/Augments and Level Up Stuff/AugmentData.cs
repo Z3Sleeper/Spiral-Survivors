@@ -29,6 +29,19 @@ public class AugmentData : ScriptableObject
     public int requiredCount = int.MaxValue;
     public AugmentData[] requiredAugments;
 
+    [Header("Tags")]
+    // Tags this augment itself carries (e.g. "OnHit", "PhantomBlade") — matched against by exact string
+    // equality against AbilityTagDatabase entries. Other augments require any already-picked augment to
+    // carry a given tag via requiredTags below, instead of needing to individually list every augment that
+    // might ever carry it (which doesn't scale — a new OnHit-effect augment added later would silently
+    // fail to satisfy an existing requiredAugments-based requirement unless someone remembered to add it).
+    public string[] tags;
+    // Every tag listed here must have at least one already-picked augment carrying it (AND across all
+    // listed tags) — e.g. requiring ["OnHit", "PhantomBlade"] is satisfied once the player has picked any
+    // one augment tagged "OnHit" AND any one augment tagged "PhantomBlade", regardless of which specific
+    // augments those are or how many more get added to either tag later.
+    public string[] requiredTags;
+
     public bool IsAvailableForClass(CharacterClassID characterClass)
     {
         bool inList = characterClasses != null && System.Array.IndexOf(characterClasses, characterClass) >= 0;

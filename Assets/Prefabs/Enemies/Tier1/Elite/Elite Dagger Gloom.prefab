@@ -14,19 +14,35 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1897241763677513892, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_Radius
-      value: 1
+      value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: 3528644101431230945, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_Radius
-      value: 0.8
+      value: 0.6
       objectReference: {fileID: 0}
     - target: {fileID: 4142903890462952001, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 5
+      value: 7.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 4322054910023856751, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 4322054910023856751, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 4322054910023856751, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 4322054910023856751, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: m_ConstrainProportionsScale
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 5387227330093086761, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_Radius
-      value: 1
+      value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: 7839943648137112170, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_LocalPosition.x
@@ -82,15 +98,23 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: spinRadius
-      value: 6
+      value: 4.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: sizeYOffset
+      value: 0.625
+      objectReference: {fileID: 0}
+    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: sizeZOffset
+      value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: preferredRange
-      value: 10
+      value: 7.5
       objectReference: {fileID: 0}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: rangeToleranceFar
-      value: 2
+      value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: knockbackResistance
@@ -98,23 +122,23 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: rangeToleranceClose
-      value: 0.6
+      value: 0.45
       objectReference: {fileID: 0}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: _damageNumberPlayerOffset
-      value: 1.125
+      value: 1.25
       objectReference: {fileID: 0}
     - target: {fileID: 8996800994791557460, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_LocalScale.x
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8996800994791557460, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_LocalScale.y
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8996800994791557460, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_LocalScale.z
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 8996800994791557460, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_ConstrainProportionsScale

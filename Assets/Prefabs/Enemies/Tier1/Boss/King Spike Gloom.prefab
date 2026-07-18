@@ -576,10 +576,11 @@ MonoBehaviour:
   xpValue: 250
   contactColliderEnabled: 1
   contactCooldown: 0.5
-  stunResistant: 1
-  knockbackResistance: 0
+  stunResistant: 0
+  crowdControlResist: 0.75
   showDamageNumbers: 1
-  _damageNumberPlayerOffset: 3.125
+  sizeYOffset: 3.75
+  sizeZOffset: 3
   enrageTimer: 120
   isStunnable: 1
   _renderers:
@@ -2073,7 +2074,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 25, z: 0}
-  m_LocalScale: {x: 3, y: 3, z: 3}
+  m_LocalScale: {x: 6, y: 6, z: 6}
   m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 1572804381745438639}

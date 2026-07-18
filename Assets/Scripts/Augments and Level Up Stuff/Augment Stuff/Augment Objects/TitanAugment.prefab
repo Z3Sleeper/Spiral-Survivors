@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ca77074e19f53c447b9dcc7b6977360d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TitanAugment
-  sizeBonus: 0.15
-  rangeBonus: 0.15
-  healthBonus: 0.15
+  sizeBonus: 0.1
+  rangeBonus: 0.1
+  healthBonus: 0.1

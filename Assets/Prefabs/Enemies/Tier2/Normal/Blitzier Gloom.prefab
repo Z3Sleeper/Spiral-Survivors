@@ -92,10 +92,6 @@ PrefabInstance:
       propertyPath: windupDuration
       value: 0.375
       objectReference: {fileID: 0}
-    - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
-      propertyPath: knockbackResistance
-      value: 0.25
-      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

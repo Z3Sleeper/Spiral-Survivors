@@ -38,6 +38,15 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     private readonly Dictionary<IEnemyPD, float> _hitCooldowns = new();
     private readonly List<IEnemyPD> _cooldownBuffer = new();
 
+    // Ally targeting (HealAllyOnStrikeAugment, real friendly fire, future "hit ally, do something"
+    // augments) — only ever populated/queried when _stats.allyStrikeHitEnabled or
+    // _stats.allyStrikeDamageEnabled is true. Separate from _hitCooldowns since an ally is a
+    // CharacterStatsPD, not an IEnemyPD; same per-target cooldown-gates-SELECTION-only reasoning as the
+    // enemy dictionary above. This weapon only ever picks a target and fires toward it — the actual
+    // heal/damage happens once the launched WeaponRangedProjectilePD physically reaches the target.
+    private readonly Dictionary<CharacterStatsPD, float> _allyHitCooldowns = new();
+    private readonly List<CharacterStatsPD> _allyCooldownBuffer = new();
+
     private readonly RaycastHit[] _rayResults = new RaycastHit[16];
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -80,6 +89,14 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
             _hitCooldowns[e] -= Time.deltaTime;
             if (_hitCooldowns[e] <= 0f) _hitCooldowns.Remove(e);
         }
+
+        _allyCooldownBuffer.Clear();
+        _allyCooldownBuffer.AddRange(_allyHitCooldowns.Keys);
+        foreach (var a in _allyCooldownBuffer)
+        {
+            _allyHitCooldowns[a] -= Time.deltaTime;
+            if (_allyHitCooldowns[a] <= 0f) _allyHitCooldowns.Remove(a);
+        }
     }
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -110,9 +127,10 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         state.fireTimer -= delta;
         if (state.fireTimer > 0f) return;
 
-        if (!FindTarget(transform.position, transform.forward, out IEnemyPD target, out Vector3 hurtboxCenter)) return;
+        if (!FindTarget(transform.position, transform.forward, out IEnemyPD target, out CharacterStatsPD allyTarget, out Vector3 hurtboxCenter)) return;
 
-        _hitCooldowns[target] = HitCooldown;
+        if (target != null) _hitCooldowns[target] = HitCooldown;
+        else                 _allyHitCooldowns[allyTarget] = HitCooldown;
         Fire(hurtboxCenter);
         // Hard reset, not += — fireTimer can drift arbitrarily negative while no target is in the forward
         // ray (the common case for a thin raycast), and accumulating the cooldown on top of that debt
@@ -126,27 +144,52 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     // enemy pressed right up against the weapon's own origin still gets hit instead of the ray starting
     // inside/past it. Enemies currently on _hitCooldowns are skipped so the ray "sees past" them to
     // whatever's next in line, same reason the old WeaponBow tracked _initialHitCooldowns.
-    private bool FindTarget(Vector3 from, Vector3 forward, out IEnemyPD enemy, out Vector3 hurtboxCenter)
+    //
+    // Single combined raycast against Enemy + (when detectAllies) Player layers, so an ally competes
+    // for "closest valid target" on exactly the same footing as an enemy — the exact same targeting logic,
+    // just with a wider mask, rather than a separate ally-only pass. enemy/ally outputs are mutually
+    // exclusive (whichever the closest valid hit turned out to be); the caller branches cooldown
+    // bookkeeping off which one came back non-null.
+    private bool FindTarget(Vector3 from, Vector3 forward, out IEnemyPD enemy, out CharacterStatsPD ally, out Vector3 hurtboxCenter)
     {
         Vector3 origin = from - forward * 1f;
         float   range  = _stats.WeaponRange + 1f;
+        bool    detectAllies = _stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled;
+        int     mask = detectAllies
+            ? CombatLayerMasks.EnemyHurtboxMask | CombatLayerMasks.PlayerHurtboxMask
+            : CombatLayerMasks.EnemyHurtboxMask;
 
-        int   n        = Physics.RaycastNonAlloc(origin, forward, _rayResults, range, CombatLayerMasks.EnemyHurtboxMask);
+        int   n        = Physics.RaycastNonAlloc(origin, forward, _rayResults, range, mask);
         float bestDist = float.MaxValue;
         enemy = null;
+        ally  = null;
         hurtboxCenter = default;
 
         for (int i = 0; i < n; i++)
         {
-            var e = _rayResults[i].collider.GetComponent<IEnemyPD>();
-            if (e == null || e._isDead || _hitCooldowns.ContainsKey(e)) continue;
             if (_rayResults[i].distance >= bestDist) continue;
+            var collider = _rayResults[i].collider;
 
+            var e = collider.GetComponent<IEnemyPD>();
+            if (e != null)
+            {
+                if (e._isDead || _hitCooldowns.ContainsKey(e)) continue;
+                bestDist      = _rayResults[i].distance;
+                enemy         = e;
+                ally          = null;
+                hurtboxCenter = collider.bounds.center;
+                continue;
+            }
+
+            if (!detectAllies) continue;
+            var a = collider.GetComponent<CharacterStatsPD>();
+            if (a == null || a == _stats || a.IsDead || _allyHitCooldowns.ContainsKey(a)) continue;
             bestDist      = _rayResults[i].distance;
-            enemy         = e;
-            hurtboxCenter = _rayResults[i].collider.bounds.center;
+            enemy         = null;
+            ally          = a;
+            hurtboxCenter = collider.bounds.center;
         }
-        return enemy != null;
+        return enemy != null || ally != null;
     }
 
     // ── Fire ──────────────────────────────────────────────────────────────────
@@ -170,8 +213,8 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
         Vector3 origin = transform.position;
         Vector3 baseDir = (targetPosition - origin).normalized;
-        float startAngle = multishot > 1 ? -_stats.multishotSpreadAngle / 2f : 0f;
-        float angleStep = multishot > 1 ? _stats.multishotSpreadAngle / (multishot - 1) : 0f;
+        float startAngle = multishot > 1 ? -_stats.MultishotSpreadAngle / 2f : 0f;
+        float angleStep = multishot > 1 ? _stats.MultishotSpreadAngle / (multishot - 1) : 0f;
 
         for (int i = 0; i < multishot; i++)
         {

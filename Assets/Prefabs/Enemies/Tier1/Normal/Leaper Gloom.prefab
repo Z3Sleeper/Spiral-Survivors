@@ -602,7 +602,8 @@ MonoBehaviour:
   stunResistant: 0
   knockbackResistance: 0
   showDamageNumbers: 1
-  _damageNumberPlayerOffset: 0.625
+  sizeYOffset: 0
+  sizeZOffset: 0.5
   enrageTimer: 0
   isStunnable: 1
   _renderers:

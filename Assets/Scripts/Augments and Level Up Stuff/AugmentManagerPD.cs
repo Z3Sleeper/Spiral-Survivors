@@ -370,22 +370,58 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         return false;
     }
 
-    // requiredCount of augment.requiredAugments must already be picked — not necessarily all of them.
-    // Clamped here (not just trusted from the data asset) so an unset requiredCount (defaults to
-    // int.MaxValue) naturally resolves to "all required" rather than needing a separate sentinel check.
+    // Both the specific-augment requirement (requiredCount/requiredAugments — use when THIS SPECIFIC
+    // augment is required) and the tag-based requirement (requiredTags — use when "any augment with this
+    // general capability" is required, e.g. "any OnHit-effect augment") must independently pass.
     private bool ArePrerequisitesMet(AugmentData augment, PlayerID player)
     {
-        if (augment.requiredAugments == null || augment.requiredAugments.Length == 0) return true;
+        if (!IsRequirementGroupSatisfied(augment.requiredAugments, augment.requiredCount, player)) return false;
+        if (!HasPickedAugmentForEachTag(augment.requiredTags, player)) return false;
+        return true;
+    }
+
+    // requiredCount of requiredAugments must already be picked — not necessarily all of them. Clamped here
+    // (not just trusted from the data asset) so an unset requiredCount (defaults to int.MaxValue) naturally
+    // resolves to "all required" rather than needing a separate sentinel check.
+    private bool IsRequirementGroupSatisfied(AugmentData[] requiredAugments, int requiredCount, PlayerID player)
+    {
+        if (requiredAugments == null || requiredAugments.Length == 0) return true;
 
         int metCount = 0;
-        foreach (var req in augment.requiredAugments)
+        foreach (var req in requiredAugments)
         {
             int reqIdx = augmentDatabase.augments.IndexOf(req);
             if (reqIdx >= 0 && HasPickedAugment(player, reqIdx)) metCount++;
         }
 
-        int needed = Mathf.Clamp(augment.requiredCount, 0, augment.requiredAugments.Length);
+        int needed = Mathf.Clamp(requiredCount, 0, requiredAugments.Length);
         return metCount >= needed;
+    }
+
+    // Every tag must have at least one already-picked augment carrying it — matched by exact string
+    // equality against AugmentData.tags, not tied to any specific augment by name, so a new augment
+    // carrying an existing tag automatically satisfies any requirement for that tag without needing to be
+    // individually added anywhere.
+    private bool HasPickedAugmentForEachTag(string[] requiredTags, PlayerID player)
+    {
+        if (requiredTags == null || requiredTags.Length == 0) return true;
+
+        foreach (var tag in requiredTags)
+        {
+            bool found = false;
+            for (int i = 0; i < currentState.pickedAugments.Count && !found; i++)
+            {
+                var rec = currentState.pickedAugments[i];
+                if (rec.player != player) continue;
+                if (rec.augmentIndex < 0 || rec.augmentIndex >= augmentDatabase.augments.Count) continue;
+
+                var picked = augmentDatabase.augments[rec.augmentIndex];
+                if (picked.tags != null && System.Array.IndexOf(picked.tags, tag) >= 0) found = true;
+            }
+            if (!found) return false;
+        }
+
+        return true;
     }
 
     private bool IsIncompatibleWithPicked(AugmentData augment, PlayerID player)

@@ -92,10 +92,6 @@ PrefabInstance:
       propertyPath: betweenStabPause
       value: 0.225
       objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: knockbackResistance
-      value: 0.25
-      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

@@ -20,6 +20,7 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private Image energyImage;
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private GameObject statsUI;
+    [SerializeField] private TextMeshProUGUI statsDamageText;
     [SerializeField] private TextMeshProUGUI statsNumbersText;
     [SerializeField] private GameObject statsUIExpanded;
     [SerializeField] private TextMeshProUGUI statsWordsTextExpanded;
@@ -179,8 +180,8 @@ public class LocalUIManagerPD : MonoBehaviour
         _controller = stats.GetComponent<PlayerControllerPD>();
         _isRanged = stats.GetComponent<WeaponManagerPD>().IsRanged;
         statsWordsTextExpanded.text = _isRanged
-            ? "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nLuck Variance:\nHighroll Bonus:\nRicochet:\nMultishot:"
-            : "Damage %:\nAttack Speed %:\nEnergy Regen %:\nRange %:\nMove Speed %:\nDash Cooldown:\nLuck Variance:\nHighroll Bonus:";
+            ? "Dash Cooldown:\nLuck Variance:\nHighroll Bonus:\nRicochet:\nMultishot:"
+            : "Dash Cooldown:\nLuck Variance:\nHighroll Bonus:";
         healthBar.value = 1f;
         shieldBar.value = 1f;
         shieldRegenBar.value = 1f;
@@ -454,16 +455,18 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private void UpdateStats()
     {
+        SetText(statsDamageText, $" {FormatStat(_stats.WeaponDamage, 1)} ({FormatStat(_stats.WeaponDamage * _stats.EffectiveLuckFloor, 1)} - {FormatStat(_stats.WeaponDamage * _stats.LuckCeiling, 1)})");
+
         _statsSB.Clear();
-        _statsSB.AppendLine($" {_stats.WeaponDamage:G4}");
         _statsSB.AppendLine($" {_stats.AttackSpeed:G4}");
         _statsSB.AppendLine($" {_stats.EnergyRegen:G4}");
         _statsSB.AppendLine($" {_stats.WeaponRange * 5f:G4}");
         _statsSB.AppendLine($" {_stats.MoveSpeed:G4}");
-        _statsSB.AppendLine($" {_stats.dashHaste:G4}");
+        _statsSB.AppendLine($" {_stats.EffectiveDashHaste:G4}");
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
         _statsSB.AppendLine($" {_stats.Luck:G4}");
+        _statsSB.AppendLine($" {Mathf.Min(_stats.HighrollChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.OnHitPower * 100f:G4}%");
         SetText(statsNumbersText, _statsSB.ToString());
     }
@@ -471,13 +474,8 @@ public class LocalUIManagerPD : MonoBehaviour
     private void UpdateStatsExpanded()
     {
         _statsExpandedSB.Clear();
-        _statsExpandedSB.AppendLine($" {_stats.bonusWeaponDamagePercent * _stats.bonusWeaponDamagePenalty * 100f - 100f:+0.0;-0.0}%");
-        _statsExpandedSB.AppendLine($" {_stats.attackSpeedTotalPercent * _stats.attackSpeedPenalty * 100f - 100f:+0.0;-0.0}%");
-        _statsExpandedSB.AppendLine($" {_stats.bonusEnergyRegenPercent * _stats.energyRegenPenalty * 100f - 100f:+0.0;-0.0}%");
-        _statsExpandedSB.AppendLine($" {_stats.bonusWeaponRangePercent * _stats.weaponRangePenalty * 100f - 100f:+0.0;-0.0}%");
-        _statsExpandedSB.AppendLine($" {_stats.bonusMoveSpeedPercent * _stats.moveSpeedPenalty * 100f - 100f:+0.0;-0.0}%");
         _statsExpandedSB.AppendLine($" {_stats.DashCooldown:F1}s");
-        _statsExpandedSB.AppendLine($" {(_stats.LuckFloor - 1f) * 100f:+0.0;-0.0}% | {(_stats.LuckCeiling - 1f) * 100f:+0.0;-0.0}%");
+        _statsExpandedSB.AppendLine($" {(_stats.EffectiveLuckFloor - 1f) * 100f:+0.0;-0.0}% | {(_stats.LuckCeiling - 1f) * 100f:+0.0;-0.0}%");
         _statsExpandedSB.AppendLine($" {_stats.HighrollBonus * 100f:+0.0;-0.0}%");
         if (_isRanged)
         {

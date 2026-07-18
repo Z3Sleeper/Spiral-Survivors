@@ -69,14 +69,23 @@ public interface IEnemyPD
     // enemies). Same generic-regardless-of-TState reasoning as every other member here.
     float EnrageProgress { get; }
     Transform transform { get; }
+    // The smoothly render-frame-interpolated visuals child — see EnemyBasePD.Visuals's own doc comment.
+    Transform Visuals { get; }
     // Stable, rollback-safe reference to this enemy — safe to store in predicted state (e.g. a
     // PredictedEvent payload), unlike a raw IEnemyPD/Transform reference, since enemies are pooled and
     // reused for new spawns. Trivial passthrough — every PredictedIdentity already carries this.
     PredictedObjectID ObjectId { get; }
+    // Increments every time this pooled slot starts a new logical enemy life (see EnemyBasePD.Simulate's
+    // !b.initialized block). A raw Transform/IEnemyPD reference alone can't tell you whether the enemy it
+    // originally pointed at is still alive — pooling means the same GameObject can get silently reused for
+    // a completely different spawn, so anything that needs to track "is this SPECIFIC enemy still the one
+    // I started tracking" (e.g. DamageNumber following an enemy that dies) must compare a captured
+    // SpawnGeneration snapshot against this live value, not just null/active-check the Transform.
+    int SpawnGeneration { get; }
     void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
-    void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker);
+    void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false);
 
     // Lets a spawner mark a freshly hierarchy.Create()'d enemy with which category spawned it (deciding
     // which Active*Count bucket it counts against) and apply co-op/elite stat scaling, generically,
@@ -125,6 +134,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected Collider _physicsCollider;
     protected Collider _contactDamageCollider;
     protected Animator _animator;
+    private PredictedTransform _predictedTransform;
+
+    // The smoothly render-frame-interpolated "Visuals" child PredictedTransform continuously tracks toward
+    // this enemy's tick-accurate physics root (see KingSpikePD's own comments on chargeWindupIndicator for
+    // the same reasoning) — falls back to the raw root transform if this enemy has no PredictedTransform,
+    // rather than anything that visually follows this enemy jittering between discrete simulation ticks.
+    public Transform Visuals => _predictedTransform != null && _predictedTransform.graphics != null
+        ? _predictedTransform.graphics
+        : transform;
+
+    // Incremented once per real pooled reuse/first spawn (see the !b.initialized block in Simulate()) —
+    // see IEnemyPD.SpawnGeneration's own doc comment for why this exists.
+    private int _spawnGeneration;
+    public int SpawnGeneration => _spawnGeneration;
 
     [Header("Identity")]
     public string enemyName = "Enemy";
@@ -147,9 +170,16 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public bool contactColliderEnabled = true;
     public float contactCooldown = 0.5f;
     public bool stunResistant = false;
-    [Range(0f, 1f)] public float knockbackResistance = 0f;
+    // Dual-purpose: reduces knockback velocity (AddKnockbackVelocity) AND reduces the duration of any
+    // other stun source (Stun()) — except the stun knockback itself produces, which is deliberately exempt
+    // since that duration is already derived from the already-reduced knockback velocity; applying this
+    // resist a second time on top of that would double-dip the same resistance against the same hit.
+    [Range(0f, 1f)] public float crowdControlResist = 0f;
     public bool showDamageNumbers = true;
-    [SerializeField] private float _damageNumberPlayerOffset = 0f;
+    // Nudges damage number spawn points along world-space +Y/+Z (not this enemy's own orientation) by
+    // this many units, so they spawn off the model instead of centered inside it.
+    [SerializeField] private float sizeYOffset = 0f;
+    [SerializeField] private float sizeZOffset = 0f;
 
     [Header("Enrage")]
     // 0 = no enrage at all (the default, opt-in only) — anything <= 0 is treated as "not configured" and
@@ -210,6 +240,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     [SerializeField] private Renderer[] _renderers;
     private Color[] _originalColors;
     private bool  _wasDeadLastFrame;
+    // Plain view-layer bookkeeping, not predicted state — guards the instant predicted-hide below from
+    // running every frame once already hidden, same pattern as PhantomBladePD/WeaponRangedProjectilePD's
+    // _hiddenOnExpire.
+    private bool  _hiddenOnDeath;
     private float _verifiedHealth;
     private float _verifiedEnrageCountdown;
 
@@ -257,6 +291,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // shallow, but this is checked on every physics-hit-result, every tick, across every active
         // weapon/projectile, so avoiding the wasted extra hop adds up.
         _hurtbox = GetComponent<Collider>();
+        _predictedTransform = GetComponent<PredictedTransform>();
 
         var physicsChild = transform.Find("PhysicsCollider");
         if (physicsChild != null) _physicsCollider = physicsChild.GetComponent<Collider>();
@@ -356,8 +391,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             if (!gameObject.activeInHierarchy) return;
 
             b.initialized = true;
+            _spawnGeneration++;
             _target = null;
             _wasDeadLastFrame = false;
+            _hiddenOnDeath    = false;
             _verifiedHealth   = maxHealth;
 
             if (_rigidbody != null && !_rigidbody.isKinematic)
@@ -442,6 +479,28 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (_animator != null)
             UpdateAnimator(viewState);
 
+        // Instant, predicted hide — doesn't wait for server verification, unlike the state-critical
+        // one-shot side effects below. Same fix as PhantomBladePD/WeaponRangedProjectilePD: viewState is
+        // this machine's own already-simulated prediction (identical deterministic simulation runs on
+        // every machine), available immediately, whereas verified only populates for non-owner clients
+        // after a network round-trip — that round-trip was the visible "corpse lingers, still visible and
+        // still hittable, after it should already be dead" delay. One-way (never un-hides here) since
+        // enemy health only ever decreases (TakeDamage's `b.health -= damage`, no enemy-side regen), so a
+        // resimulation flipping isDead back to false isn't a real scenario — a fresh pooled reuse (the
+        // `!b.initialized` block above) is what resets this for a later spawn.
+        ref var viewB = ref GetBase(ref viewState);
+        if (viewB.isDead && !_hiddenOnDeath)
+        {
+            _hiddenOnDeath = true;
+            OnHideOnDeath();
+            if (_renderers != null)
+                foreach (var r in _renderers)
+                    if (r != null) r.enabled = false;
+            if (_hurtbox != null) _hurtbox.enabled = false;
+            if (_physicsCollider != null) _physicsCollider.enabled = false;
+            if (_contactDamageCollider != null) _contactDamageCollider.enabled = false;
+        }
+
         // Death is state-critical — only act on server-confirmed dead.
         if (verified.HasValue)
         {
@@ -450,8 +509,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
             if (vb.isDead && !_wasDeadLastFrame)
             {
-                OnHideOnDeath();
-
                 CharacterStatsPD.All.TryGetValue(vb.killerOwner, out var killer);
                 CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
                 if (killer != null && killer.isOwner) CharacterStatsPD.RaiseOnEnemyKill(killer, this);
@@ -623,7 +680,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
     }
 
-    public void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker)
+    // isPriority: true from actual weapon hits, false (default) from onhit-effect/Phantom Blade sources —
+    // jumps this hit's damage number to the front of DamageNumberManager's queue for this enemy+attacker
+    // ahead of whatever's already waiting, so real weapon damage always reads first regardless of how many
+    // onhit effects also fired off the same hit.
+    public void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false)
     {
         // PD weapons (WeaponMeleePD, WeaponRangedProjectilePD) queue hit feedback in Simulate()/
         // LateSimulate() but only drain and fire it here in UpdateView(), at render rate — by the time it
@@ -631,7 +692,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // false) while transiently still inactive, same as the respawn-reset/animator cases elsewhere in
         // this class.
         if (!B.isDead && gameObject.activeInHierarchy) StartCoroutine(FlashCoroutine());
-        if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit, isHighroll);
+        if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit, isHighroll, isPriority);
         if (attacker.isOwner && SFXManager.instance != null)
             SFXManager.instance.Play(attacker.hitSfx, transform.position, 1f, 0.05f);
     }
@@ -646,7 +707,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             XPOrbManagerPD.instance.SpawnOrbs(hierarchy, transform.position, xpValue);
     }
 
-    public void Stun(float duration)
+    // Public stun entry point — every caller outside this class goes through here, so crowdControlResist
+    // applies uniformly to any non-knockback CC source. AddKnockbackVelocity below calls ApplyStun()
+    // directly instead, bypassing this reduction (see crowdControlResist's own doc comment for why).
+    public void Stun(float duration) => ApplyStun(duration * (1f - crowdControlResist));
+
+    private void ApplyStun(float duration)
     {
         if (_isDead || stunResistant || !isStunnable) return;
         if (IsReadyToAttack) return;
@@ -703,7 +769,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public void AddKnockbackVelocity(Vector3 impulse)
     {
         if (!isStunnable || _isDead) return;
-        float effectiveSpeed = impulse.magnitude * (1f - knockbackResistance);
+        float effectiveSpeed = impulse.magnitude * (1f - crowdControlResist);
         // Zeroed first rather than added to, so knockback doesn't have to fight whatever velocity the
         // enemy's own movement AddForce was already carrying that tick.
         _rigidbody.velocity = impulse.normalized * effectiveSpeed;
@@ -712,7 +778,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         float stunDuration = effectiveSpeed > threshold
             ? Mathf.Log(effectiveSpeed / threshold) / drag
             : 0f;
-        Stun(stunDuration);
+        // ApplyStun, not Stun — this duration is already derived from effectiveSpeed above (itself already
+        // reduced by crowdControlResist), so routing it back through Stun()'s own resist multiplier would
+        // apply the same resistance twice against the same knockback hit.
+        ApplyStun(stunDuration);
     }
 
     // ── Visuals ────────────────────────────────────────────────────────────
@@ -724,23 +793,16 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // should reset it here instead of OnRemovedFromPool(), which never fires for pooled reuse.
     protected virtual void OnRespawnReset() { }
 
-    private void ShowDamageNumber(float amount, PlayerID attackerOwner, bool isCrit = false, bool isHighroll = false)
+    private void ShowDamageNumber(float amount, PlayerID attackerOwner, bool isCrit = false, bool isHighroll = false, bool isPriority = false)
     {
-        Vector3 pos = transform.position;
-        if (_damageNumberPlayerOffset != 0f)
-        {
-            foreach (var kv in CharacterStatsPD.All)
-            {
-                if (!kv.Value.isOwner) continue;
-                Vector3 toPlayer = kv.Value.transform.position - pos;
-                toPlayer.y = 0f;
-                if (toPlayer.sqrMagnitude > 0.001f)
-                    pos += toPlayer.normalized * _damageNumberPlayerOffset;
-                break;
-            }
-        }
+        // Passes this (IEnemyPD), not a bare Transform — DamageNumberManager/DamageNumber read .Visuals off
+        // it for position (smoothly interpolated PredictedTransform graphics child, not the raw tick-
+        // stepped physics root) and .SpawnGeneration to detect pooled reuse: a raw Transform reference
+        // alone can't tell a still-alive enemy apart from this same pooled GameObject having since been
+        // reused for a completely different spawn, which was causing already-tracking numbers to snap
+        // away/disappear when their original enemy died and got recycled before their animation finished.
         if (DamageNumberManager.instance != null)
-            DamageNumberManager.instance.Spawn(amount, pos, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), isCrit, isHighroll, attackerOwner);
+            DamageNumberManager.instance.Spawn(amount, this, sizeYOffset, sizeZOffset, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), isCrit, isHighroll, attackerOwner, isPriority);
     }
 
     private IEnumerator FlashCoroutine()

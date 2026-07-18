@@ -18,16 +18,35 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         public void Dispose() { }
     }
 
-    private const float BaseSpeed    = 10f;
-    private const float BaseMaxRange = 6f;
+    // Flat base spawn distance from the target — every Phantom Blade summoning augment scales this by its
+    // own sizeMultiplier (Summon() does the same internally to derive maxRange), so this single constant
+    // is the one source of truth for "how far away from the target" rather than each augment tracking its
+    // own copy.
+    public const float BaseSpawnRadius = 5f;
+
+    // Every blade travels for exactly this long, regardless of size — larger blades cover more distance
+    // (radius scales with sizeMultiplier, see Summon()) so their speed scales up to match, rather than
+    // taking longer to arrive.
+    [SerializeField] private float travelTime = 0.5f;
 
     [SerializeField] private Vector3 bladeHalfExtents = new(0.1f, 0.1f, 0.5f);
+    [SerializeField] private Renderer[] _renderers;
 
     private CharacterStatsPD _owner;
     private Vector3 _baseScale;
     private float _damage;
     private float _speed;
     private float _maxRange;
+    // Baked in at Summon() time from CharacterStatsPD.phantomBladeOnHitEnabled/OnHitPowerPercent, same
+    // "one-shot bonus baked in at spawn" pattern as _damage/size — false/0 unless PhantomBladeOnHitAugment
+    // (or a future family member) has granted it, in which case this blade fires OnHit for every enemy it
+    // strikes. Kept as a separate bool rather than gating off _onHitPowerPercent > 0 (see
+    // CharacterStatsPD.phantomBladeOnHitEnabled's own doc comment for why).
+    private bool  _onHitEnabled;
+    private float _onHitPowerPercent;
+    // Plain view-layer bookkeeping, not predicted state — guards SetRenderersEnabled(false) from running
+    // every single frame once already hidden (harmless either way, just avoids redundant work).
+    private bool _hiddenOnExpire;
 
     // Plain (not predicted State) — same "soft" tracking pattern as WeaponRangedProjectilePD._hitTargets.
     private readonly HashSet<IEnemyPD> _hitTargets = new();
@@ -46,17 +65,33 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // returns — synchronous and deterministic, same "mutate currentState right after Create()" pattern as
     // WeaponRangedProjectilePD.Launch(). damage/sizeMultiplier are captured once here, not re-read live
     // later, matching old's Init()/ApplySize() baking size into speed/range once at spawn.
-    public void Launch(CharacterStatsPD owner, float damage, float sizeMultiplier)
+    //
+    // BaseSpawnRadius * sizeMultiplier is the same distance the caller used (or should use, via
+    // BaseSpawnRadius directly) to place the spawn point away from the target, along the straight line the
+    // blade flies — the blade travels exactly 2x that (radius to reach the target, then the same distance
+    // again to end up radius past it on the opposite side). Speed is derived from that distance and the
+    // fixed travelTime, rather than travelTime being derived from a fixed speed, so every blade takes the
+    // same time to finish its flight regardless of size.
+    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier)
     {
+        float radius = BaseSpawnRadius * sizeMultiplier;
+
         _owner = owner;
         _damage = damage;
-        _speed = BaseSpeed * sizeMultiplier;
-        _maxRange = BaseMaxRange * sizeMultiplier;
+        _maxRange = radius * 2f;
+        _speed = _maxRange / travelTime;
+        _onHitEnabled = owner.phantomBladeOnHitEnabled;
+        _onHitPowerPercent = owner.phantomBladeOnHitPowerPercent;
 
         transform.localScale = _baseScale * sizeMultiplier;
 
         currentState.distanceTravelled = 0f;
         currentState.expired = false;
+
+        // A pooled instance's previous life ends hidden (see UpdateView()'s predicted-hide below) — a
+        // fresh summon needs to be visible again.
+        _hiddenOnExpire = false;
+        SetRenderersEnabled(true);
 
         _hitTargets.Clear();
         _hitFeedbackQueue.Clear();
@@ -114,14 +149,47 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         // crit involved at all.
         enemy.TakeDamage(_damage, isCrit: false, _owner.owner ?? default);
         _hitFeedbackQueue.Add((enemy, _damage));
+
+        // Only fires if some Phantom Blade augment actually enabled it — most blades never touch the OnHit
+        // chain at all. weaponDamage uses this blade's own already-rolled damage (the closest available
+        // analog to "this hit's damage" for a non-weapon hit source); onHitPower is read live off the
+        // owner's current stat, same as weapons do, scaled by the percent baked in at spawn.
+        if (_onHitEnabled)
+        {
+            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _damage, onHitPower = _owner.OnHitPower * _onHitPowerPercent };
+            _owner.NotifyHit(hitData);
+        }
     }
 
     // ── View ──────────────────────────────────────────────────────────────────
 
+    private void SetRenderersEnabled(bool value)
+    {
+        if (_renderers == null) return;
+        for (int i = 0; i < _renderers.Length; i++)
+            if (_renderers[i] != null) _renderers[i].enabled = value;
+    }
+
     protected override void UpdateView(State viewState, State? verified)
     {
+        // Instant, predicted hide — doesn't wait for server verification, unlike the actual pooled-object
+        // deletion below. viewState reflects this machine's own already-simulated prediction (the same
+        // deterministic movement/expiry math runs on every machine, owner and non-owners alike), so it's
+        // available immediately — verified only becomes populated for non-owner clients after a network
+        // round-trip, which was the visible "disappearance is delayed" symptom. Only ever hides
+        // (never un-hides on its own) since a resimulation correcting expired back to false mid-flight
+        // isn't a real scenario here (distanceTravelled only counts up); Launch() is what re-shows it for
+        // a fresh pooled reuse.
+        if (viewState.expired && !_hiddenOnExpire)
+        {
+            _hiddenOnExpire = true;
+            SetRenderersEnabled(false);
+        }
+
         // State-critical — only act on server-confirmed expiry, same reasoning as
-        // WeaponRangedProjectilePD/EnemyBasePD's death handling.
+        // WeaponRangedProjectilePD/EnemyBasePD's death handling. A misprediction here would otherwise risk
+        // a delete/undelete oscillation, which the instant hide above deliberately avoids by never
+        // touching the actual pooled object.
         if (verified.HasValue && verified.Value.expired)
         {
             hierarchy.Delete(this);
@@ -131,9 +199,11 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         if (_owner == null) return;
 
         // Fire hit feedback immediately at render rate — bypasses state propagation delay, same split as
-        // WeaponRangedProjectilePD.
+        // WeaponRangedProjectilePD. Priority, like real weapon hits — this is the blade's own direct
+        // damage, not an onhit effect it procs (those stay non-priority, e.g. CritTriggerOnHitAugment/
+        // PhantomBladeOnHitAugment's own bonus-damage numbers).
         foreach (var (enemy, dmg) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit: false, isHighroll: false, _owner);
+            enemy.TriggerHitFeedback(dmg, isCrit: false, isHighroll: false, _owner, isPriority: true);
         _hitFeedbackQueue.Clear();
     }
 }

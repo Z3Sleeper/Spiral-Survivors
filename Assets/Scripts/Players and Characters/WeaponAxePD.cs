@@ -30,6 +30,8 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     [Header("Handle Damage")]
     [SerializeField] private float innerDamageMultiplier = 0.5f;
+    // Handle (inner) hits carry innately weaker on-hit-power in addition to their reduced damage.
+    [SerializeField] private float innerOnHitPowerMultiplier = 0.25f;
 
     private bool _initialized;
     private float _baseOuterBladeLocalScaleX;
@@ -44,6 +46,15 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private readonly HashSet<IEnemyPD>            _touchedThisTick  = new();
     private readonly HashSet<IEnemyPD>            _outerHitsThisTick = new();
     private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
+
+    // Ally-strike detection (HealAllyOnStrikeAugment, real friendly fire) — only populated/queried when
+    // _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true. _outerAlliesThisTick mirrors
+    // _outerHitsThisTick's tie-break (an ally touching both zones counts as outer) so handle touches still
+    // heal/damage for less, matching Hit()'s own innerOnHitPowerMultiplier/innerDamageMultiplier treatment.
+    private readonly Dictionary<CharacterStatsPD, float> _allyHitCooldowns      = new();
+    private readonly List<CharacterStatsPD>              _allyCooldownBuffer   = new();
+    private readonly HashSet<CharacterStatsPD>           _touchedAlliesThisTick = new();
+    private readonly HashSet<CharacterStatsPD>           _outerAlliesThisTick   = new();
 
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
 
@@ -103,6 +114,9 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
         _touchedThisTick.Clear();
         _outerHitsThisTick.Clear();
+        _touchedAlliesThisTick.Clear();
+        _outerAlliesThisTick.Clear();
+        bool detectAllies = _stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled;
 
         (Vector3 innerCenter, Vector3 innerExt, Vector3 outerPoint1, Vector3 outerPoint2, float capsuleRadius, Quaternion rot) zones;
 
@@ -144,6 +158,17 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                         var e = _innerSweep[i].collider.GetComponent<IEnemyPD>();
                         if (e != null) _touchedThisTick.Add(e);
                     }
+
+                    if (detectAllies)
+                    {
+                        int ac = Physics.BoxCastNonAlloc(segZones.innerCenter, newSegZones.innerExt, innerDelta / id,
+                            _innerSweep, newSegZones.rot, id, CombatLayerMasks.PlayerHurtboxMask);
+                        for (int i = 0; i < ac; i++)
+                        {
+                            var a = _innerSweep[i].collider.GetComponent<CharacterStatsPD>();
+                            if (a != null) _touchedAlliesThisTick.Add(a);
+                        }
+                    }
                 }
 
                 Vector3 p1Delta = newSegZones.outerPoint1 - segZones.outerPoint1;
@@ -156,6 +181,17 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                     {
                         var e = _outerSweep[i].collider.GetComponent<IEnemyPD>();
                         if (e != null) { _touchedThisTick.Add(e); _outerHitsThisTick.Add(e); }
+                    }
+
+                    if (detectAllies)
+                    {
+                        int ac = Physics.CapsuleCastNonAlloc(segZones.outerPoint1, segZones.outerPoint2, newSegZones.capsuleRadius,
+                            p1Delta / od, _outerSweep, od, CombatLayerMasks.PlayerHurtboxMask);
+                        for (int i = 0; i < ac; i++)
+                        {
+                            var a = _outerSweep[i].collider.GetComponent<CharacterStatsPD>();
+                            if (a != null) { _touchedAlliesThisTick.Add(a); _outerAlliesThisTick.Add(a); }
+                        }
                     }
                 }
 
@@ -184,15 +220,43 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
             if (e != null) { _touchedThisTick.Add(e); _outerHitsThisTick.Add(e); }
         }
 
-        // Same "must separate then re-contact to re-hit" gate as WeaponMeleePD — see WeaponBasePD.IsFreshHit().
-        // An enemy overlapping both zones this tick counts as an outer hit (outer wins the tie-break).
+        if (detectAllies)
+        {
+            int aic = Physics.OverlapBoxNonAlloc(zones.innerCenter, zones.innerExt, _innerOverlap, zones.rot, CombatLayerMasks.PlayerHurtboxMask);
+            for (int i = 0; i < aic; i++)
+            {
+                var a = _innerOverlap[i].GetComponent<CharacterStatsPD>();
+                if (a != null) _touchedAlliesThisTick.Add(a);
+            }
+
+            int aoc = Physics.OverlapCapsuleNonAlloc(zones.outerPoint1, zones.outerPoint2, zones.capsuleRadius, _outerOverlap, CombatLayerMasks.PlayerHurtboxMask);
+            for (int i = 0; i < aoc; i++)
+            {
+                var a = _outerOverlap[i].GetComponent<CharacterStatsPD>();
+                if (a != null) { _touchedAlliesThisTick.Add(a); _outerAlliesThisTick.Add(a); }
+            }
+        }
+
+        // Pure cooldown gate — an enemy standing continuously inside a zone gets rehit as soon as its
+        // cooldown clears, no need to actually separate first. HitCooldown is a fraction of a full weapon
+        // rotation, which is enough on its own to handle continuous-overlap cases sanely. An enemy
+        // overlapping both zones this tick still counts as an outer hit (outer wins the tie-break).
         foreach (var enemy in _touchedThisTick)
         {
-            if (!IsFreshHit(enemy, _hitCooldowns)) continue;
+            if (_hitCooldowns.ContainsKey(enemy)) continue;
             _hitCooldowns[enemy] = HitCooldown;
             Hit(enemy, _outerHitsThisTick.Contains(enemy));
         }
-        CommitOverlapFrame(_touchedThisTick);
+
+        if (detectAllies)
+        {
+            foreach (var ally in _touchedAlliesThisTick)
+            {
+                if (_allyHitCooldowns.ContainsKey(ally)) continue;
+                _allyHitCooldowns[ally] = HitCooldown;
+                HitAlly(ally, _outerAlliesThisTick.Contains(ally));
+            }
+        }
 
         state.prevSet = true;
     }
@@ -238,6 +302,14 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
             if (_hitCooldowns[e] <= 0f) _hitCooldowns.Remove(e);
         }
 
+        _allyCooldownBuffer.Clear();
+        _allyCooldownBuffer.AddRange(_allyHitCooldowns.Keys);
+        foreach (var a in _allyCooldownBuffer)
+        {
+            _allyHitCooldowns[a] -= Time.deltaTime;
+            if (_allyHitCooldowns[a] <= 0f) _allyHitCooldowns.Remove(a);
+        }
+
         // Purely cosmetic (outer blade visual width) — render rate, not simulation, since it has no
         // gameplay effect and doesn't need to be replay-consistent.
         if (outerXScalesWithRange && outerBladeVisual != null && _stats != null)
@@ -247,7 +319,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         if (_stats != null)
         {
             foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
-                enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, _stats);
+                enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, _stats, isPriority: true);
         }
         _hitFeedbackQueue.Clear();
     }
@@ -280,11 +352,43 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         bool  isCrit = isOuter && GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
         if (isHighroll) _onHighroll.Invoke(damage);
-        if (isCrit) _onCritStrike.Invoke(enemy.ObjectId);
+        // baseDamage already accounts for innerDamageMultiplier on handle (inner) hits, and onHitPower gets
+        // the equivalent innerOnHitPowerMultiplier treatment — downstream on-hit effects see the actual
+        // per-hit damage/power this hit represented, not a flat re-read of WeaponDamage/OnHitPower.
+        float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = onHitPower };
+        _onHit.Invoke(hitData);
+        if (isCrit) _onCritStrike.Invoke(hitData);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
-        enemy.AddKnockbackVelocity(knockDir * _stats.Knockback);
+        enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * onHitPower);
         _hitFeedbackQueue.Add((enemy, damage, isCrit, isHighroll));
+    }
+
+    // allyStrikeHitEnabled and allyStrikeDamageEnabled are independent, same as WeaponMeleePD.HitAlly.
+    // Real friendly fire mirrors Hit()'s own inner/outer damage split (handle hits deal less) but never
+    // crits/knocks back — CharacterStatsPD.TakeDamage doesn't support either for players.
+    private void HitAlly(CharacterStatsPD ally, bool isOuter)
+    {
+        // Self-exclusion lives here, not just in NotifyAllyStrike — the direct TakeDamage call below
+        // bypasses that guard entirely, so without this a weapon whose own overlap query happens to catch
+        // its wielder's own collider (plausible for anything spawning/orbiting close to the caster) could
+        // deal real friendly-fire damage to itself.
+        if (ally == _stats || ally.IsDead) return;
+
+        if (_stats.allyStrikeDamageEnabled)
+        {
+            float baseDamage = isOuter ? _stats.WeaponDamage : _stats.WeaponDamage * innerDamageMultiplier;
+            float damage = RollDamage(baseDamage, out bool isHighroll);
+            if (isHighroll) damage *= 1f + _stats.HighrollBonus;
+            ally.TakeDamage(damage);
+        }
+
+        if (_stats.allyStrikeHitEnabled)
+        {
+            float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
+            _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = onHitPower });
+        }
     }
 
     // ── Gizmos ────────────────────────────────────────────────────────────────

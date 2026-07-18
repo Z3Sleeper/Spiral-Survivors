@@ -196,10 +196,19 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
     // ── State transitions ────────────────────────────────────────────────────
 
+    // Plain (not predicted State) shadow of state.chargeDirection, written in lockstep inside
+    // EnterChargeWindup() — the same deterministic Simulate() call that decides chargeDirection itself, so
+    // it's available instantly on every machine with no network round-trip. Same reasoning as
+    // LeaperGloomPD._leapTargetSnapshot: viewState wouldn't work either, since PurrDiction linearly
+    // interpolates every State field (including plain Vector3s) between ticks, and this is a discrete
+    // "decided once" value that shouldn't blend.
+    private Vector3 _chargeDirectionSnapshot;
+
     private void EnterChargeWindup(ref State state)
     {
         var snapDir = SnapFaceTarget(ref state);
         if (snapDir != Vector3.zero) state.chargeDirection = snapDir;
+        _chargeDirectionSnapshot = state.chargeDirection;
         state.stateTimer = chargeWindupDuration;
         SetSpikeState(ref state, KingSpikeState.ChargeWindup);
     }
@@ -294,15 +303,14 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
         var ss = (KingSpikeState)viewState.stateId;
 
-        // Sourced from verified, not viewState — per PurrDiction's docs, viewState linearly interpolates
-        // every STATE field by default (including plain Vector3s like chargeDirection) to produce a
-        // smooth render-frame blend between simulated ticks. chargeDirection is a discrete "decided once"
-        // value, not something that should ever blend, so reading it off viewState right after
-        // EnterChargeWindup() locks in a new direction would show a gradually-approaching blended value
-        // instead of an instant snap. verified is the exact, non-interpolated snapshot.
+        // Sourced from _chargeDirectionSnapshot (a plain field, not predicted State) — instantly available
+        // on every machine the moment EnterChargeWindup() decides it, with no network round-trip and no
+        // interpolation blend (see the field's own doc comment; this used to read off `verified`, which
+        // only populates for non-owner clients after a round-trip — the same class of visible-desync bug
+        // fixed for LeaperGloomPD's leap indicator).
         //
-        // Also tracked every frame, NOT gated behind the one-shot _lastVisualState transition guard below
-        // — chargeWindupIndicator is a child of "Visuals", the transform PredictedTransform's _graphics
+        // Tracked every frame, NOT gated behind the one-shot _lastVisualState transition guard below —
+        // chargeWindupIndicator is a child of "Visuals", the transform PredictedTransform's _graphics
         // field points at and continuously interpolates every render frame (toward the physics root's
         // tick-accurate rotation), independent of anything else touching it. Setting an absolute world
         // rotation on one of its children only once would get visually dragged along as Visuals keeps
@@ -311,10 +319,9 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         //
         // EnterCharging()'s actual dash direction reads the authoritative ref State directly — no
         // interpolation involved at all — so it's always exactly correct; only the indicator needed this.
-        if (chargeWindupIndicator != null && verified.HasValue &&
-            (KingSpikeState)verified.Value.stateId == KingSpikeState.ChargeWindup)
+        if (chargeWindupIndicator != null && ss == KingSpikeState.ChargeWindup)
         {
-            chargeWindupIndicator.transform.rotation = Quaternion.LookRotation(verified.Value.chargeDirection);
+            chargeWindupIndicator.transform.rotation = Quaternion.LookRotation(_chargeDirectionSnapshot);
         }
 
         if (ss == _lastVisualState) return;

@@ -13,6 +13,13 @@ using UnityEngine;
 // from inside the PredictedEvent callback (itself guaranteed to fire exactly once per logical crit,
 // deterministically, on every machine — same reasoning that already makes _onHighroll/_onHeal safe
 // elsewhere in this codebase).
+//
+// Targeting deliberately does NOT use the crit event's own target payload (which enemy actually got hit)
+// — per the user's call, this targets the closest enemies instead, same convention as
+// PhantomBladePassiveAugment/PhantomBladeOnDashAugment, with bladeCount exposed the same way. The crit
+// event still carries a PredictedObjectID (WeaponBasePD/CharacterStatsPD's _onCritStrike) since other
+// Phantom Blade augments further down the family may still want the actual hit target — this one just
+// ignores it.
 public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -20,14 +27,16 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
         public void Dispose() { }
     }
 
+    // Large enough to reliably reach enemies out at EnemySpawnerPD's own max spawn distance (40) with room
+    // to spare — not exposed as its own tunable, matching PhantomBladePassiveAugment/PhantomBladeOnDashAugment.
+    private const float TargetSearchRadius = 50f;
+
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private float bonusCritChance = 0.1f;
     [SerializeField] private float bladeDamageBonus = 0.1f;
     [SerializeField] private int   critsPerBlade = 3;
+    [SerializeField] private int   bladeCount = 1;
     [SerializeField] private float baseDamageMultiplier = 0.75f;
-    // Matches old PhantomBlade.spawnRadius (a hardcoded const there) — exposed as a tunable field here
-    // since PhantomBladePD doesn't carry the same hardcoded-constants block old's did.
-    [SerializeField] private float spawnRadius = 3f;
 
     private int _critCount;
 
@@ -36,8 +45,8 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
         Stats.AddCritChanceFlat(bonusCritChance);
         // Matches old's exact size += 0.5f * bladeDamageBonus ratio (OnSummon handler in both
         // PhantomBladePassiveAugment and PhantomBladeOnCritAugment).
-        Stats.AddPhantomBladeDamageBonusPercent(bladeDamageBonus);
-        Stats.AddPhantomBladeSizeBonusPercent(0.5f * bladeDamageBonus);
+        Stats.AddPhantomBladeDamageBonus(bladeDamageBonus);
+        Stats.AddPhantomBladeSizeBonus(0.5f * bladeDamageBonus);
         Stats.AddCritStrikeListener(OnCritStrike);
     }
 
@@ -47,31 +56,14 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
         if (Stats != null) Stats.RemoveCritStrikeListener(OnCritStrike);
     }
 
-    private void OnCritStrike(PredictedObjectID target)
+    private void OnCritStrike(WeaponHitData data)
     {
         if (++_critCount < critsPerBlade) return;
         _critCount = 0;
 
         if (phantomBladePrefab == null) return;
-        if (!target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy) || enemy._isDead) return;
 
-        // Fixed-radius, random-angle offset — matches old (Random.insideUnitCircle.normalized *
-        // spawnRadius, a uniform random angle at a FIXED distance), ported to GameRandom for determinism,
-        // same convention as KingSpikePD's remote-burst offset.
-        float angle = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
-        Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * spawnRadius;
-        Vector3 spawnPos = enemy.transform.position + offset;
-        Vector3 forward = (enemy.transform.position - spawnPos).normalized;
-
-        float rolled = WeaponDamageMath.RollDamage(baseDamageMultiplier, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
-        if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
-        float damage = rolled * Stats.UnpenalizedWeaponDamage * (1f + Stats.phantomBladeDamageBonusPercent);
-        float size   = 1f + Stats.phantomBladeSizeBonusPercent;
-
-        var id = hierarchy.Create(phantomBladePrefab, spawnPos, Quaternion.LookRotation(forward));
-        if (!id.HasValue) return;
-        var go = hierarchy.GetGameObject(id.Value);
-        if (go != null && go.TryGetComponent(out PhantomBladePD blade))
-            blade.Launch(Stats, damage, size);
+        PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
+            Stats.transform.position, TargetSearchRadius, bladeCount, baseDamageMultiplier);
     }
 }

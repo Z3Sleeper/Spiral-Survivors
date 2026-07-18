@@ -10,6 +10,7 @@ using UnityEngine;
 public class AugmentDataEditor : Editor
 {
     private RichTextColorPalette _palette;
+    private AbilityTagDatabase _tagDatabase;
     private SerializedProperty _displayNameProp;
     private SerializedProperty _descriptionProp;
     private GUIStyle _previewStyle;
@@ -23,6 +24,7 @@ public class AugmentDataEditor : Editor
         _displayNameProp = serializedObject.FindProperty("displayName");
         _descriptionProp = serializedObject.FindProperty("description");
         _palette = FindPalette();
+        _tagDatabase = FindTagDatabase();
     }
 
     private static RichTextColorPalette FindPalette()
@@ -30,6 +32,13 @@ public class AugmentDataEditor : Editor
         var guids = AssetDatabase.FindAssets("t:RichTextColorPalette");
         if (guids.Length == 0) return null;
         return AssetDatabase.LoadAssetAtPath<RichTextColorPalette>(AssetDatabase.GUIDToAssetPath(guids[0]));
+    }
+
+    private static AbilityTagDatabase FindTagDatabase()
+    {
+        var guids = AssetDatabase.FindAssets("t:AbilityTagDatabase");
+        if (guids.Length == 0) return null;
+        return AssetDatabase.LoadAssetAtPath<AbilityTagDatabase>(AssetDatabase.GUIDToAssetPath(guids[0]));
     }
 
     public override void OnInspectorGUI()
@@ -52,15 +61,86 @@ public class AugmentDataEditor : Editor
         DrawColoredTextField("Description", _descriptionProp, DescriptionControl, 160f);
         EditorGUILayout.Space();
 
-        // requiredCount/requiredAugments excluded here and drawn manually right after, so the clamped
-        // count field lands directly above the list it's clamped against instead of wherever the
-        // default draw order would otherwise put it.
-        DrawPropertiesExcluding(serializedObject, "m_Script", "displayName", "description", "requiredCount", "requiredAugments");
+        // requiredCount/requiredAugments/tags/requiredTags excluded here and drawn manually right after, so
+        // the clamped count field lands directly above the list it's clamped against, and the tag pickers
+        // get their toggle-button rows, instead of wherever the default draw order would otherwise put them.
+        DrawPropertiesExcluding(serializedObject, "m_Script", "displayName", "description",
+            "requiredCount", "requiredAugments", "tags", "requiredTags");
 
         var requiredAugmentsProp = serializedObject.FindProperty("requiredAugments");
         DrawRequiredCount(serializedObject.FindProperty("requiredCount"), requiredAugmentsProp);
         EditorGUILayout.PropertyField(requiredAugmentsProp, true);
 
+        EditorGUILayout.Space();
+        if (_tagDatabase == null)
+        {
+            EditorGUILayout.HelpBox(
+                "No AbilityTagDatabase asset found. Create one via Assets > Create > Spiral Survivors > " +
+                "Ability Tag Database, register your tags on it, and the toggle buttons below will appear.",
+                MessageType.Info);
+        }
+        DrawTagPicker("Tags", serializedObject.FindProperty("tags"));
+        EditorGUILayout.Space();
+        DrawTagPicker("Required Tags", serializedObject.FindProperty("requiredTags"));
+
+        serializedObject.ApplyModifiedProperties();
+    }
+
+    // Draws the raw string array (so entries can still be manually reordered/removed) plus a row of
+    // toggle buttons — one per AbilityTagDatabase entry — that add/remove that tag from the array on
+    // click. Same "find registered asset, render a button per entry" shape as DrawPalette below, but
+    // toggling array membership instead of inserting a color tag into text.
+    private void DrawTagPicker(string label, SerializedProperty tagsProp)
+    {
+        EditorGUILayout.PropertyField(tagsProp, new GUIContent(label), true);
+
+        if (_tagDatabase == null || _tagDatabase.tags == null || _tagDatabase.tags.Count == 0) return;
+
+        float maxWidth = EditorGUIUtility.currentViewWidth - 40f;
+        float rowWidth = 0f;
+        EditorGUILayout.BeginHorizontal();
+        foreach (var tag in _tagDatabase.tags)
+        {
+            int existingIndex = FindTagIndex(tagsProp, tag);
+            bool isActive = existingIndex >= 0;
+
+            float btnWidth = GUI.skin.button.CalcSize(new GUIContent(tag)).x + 10f;
+            if (rowWidth > 0f && rowWidth + btnWidth > maxWidth)
+            {
+                EditorGUILayout.EndHorizontal();
+                EditorGUILayout.BeginHorizontal();
+                rowWidth = 0f;
+            }
+
+            var prevColor = GUI.backgroundColor;
+            if (isActive) GUI.backgroundColor = Color.green;
+            if (GUILayout.Button(tag, GUILayout.Width(btnWidth), GUILayout.Height(20)))
+                ToggleTag(tagsProp, tag, existingIndex);
+            GUI.backgroundColor = prevColor;
+
+            rowWidth += btnWidth + 2f;
+        }
+        EditorGUILayout.EndHorizontal();
+    }
+
+    private static int FindTagIndex(SerializedProperty tagsProp, string tag)
+    {
+        for (int i = 0; i < tagsProp.arraySize; i++)
+            if (tagsProp.GetArrayElementAtIndex(i).stringValue == tag) return i;
+        return -1;
+    }
+
+    private void ToggleTag(SerializedProperty tagsProp, string tag, int existingIndex)
+    {
+        if (existingIndex >= 0)
+        {
+            tagsProp.DeleteArrayElementAtIndex(existingIndex);
+        }
+        else
+        {
+            tagsProp.InsertArrayElementAtIndex(tagsProp.arraySize);
+            tagsProp.GetArrayElementAtIndex(tagsProp.arraySize - 1).stringValue = tag;
+        }
         serializedObject.ApplyModifiedProperties();
     }
 

@@ -447,14 +447,16 @@ MonoBehaviour:
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 10
+  damage: 5
   xpValue: 1
   contactColliderEnabled: 1
   contactCooldown: 0.5
   stunResistant: 0
   knockbackResistance: 0
   showDamageNumbers: 1
-  _damageNumberPlayerOffset: 0.625
+  sizeYOffset: 0
+  sizeZOffset: 1
+  enrageTimer: 0
   isStunnable: 1
   _renderers:
   - {fileID: 3448404629509916890}

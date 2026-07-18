@@ -53,6 +53,16 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
     private Vector3 _modelRestPosition;
 
+    // Plain (not predicted State) shadow of state.leapTarget, written in lockstep inside EnterWindup() —
+    // the same deterministic Simulate() call that decides leapTarget itself, so this is available
+    // instantly on every machine with no network round-trip, unlike reading it back off `verified`.
+    // Reading it off `viewState` instead wouldn't work either: PurrDiction linearly interpolates every
+    // State field (including plain Vector3s) between simulated ticks for smooth rendering, and leapTarget
+    // is a discrete "decided once" value — viewState would show it sliding in from whatever it was
+    // previously rather than snapping instantly. A plain field isn't part of State, so it isn't subject to
+    // that interpolation at all.
+    private Vector3 _leapTargetSnapshot;
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     private Transform _windupIndicatorParent;
@@ -186,6 +196,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         float   angle  = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
         Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * leapOffsetRadius;
         state.leapTarget = _target.position + offset;
+        _leapTargetSnapshot = state.leapTarget;
 
         SnapFaceTarget(ref state);
         state.stateTimer = windupDuration;
@@ -264,19 +275,14 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // bug. Bailing here preserves whatever OnHideOnDeath() already did.
         if (viewState.b.isDead) return;
 
-        // Sourced from verified, not viewState — leapTarget is a discrete "decided once" value (locked in
-        // at EnterWindup), same category as KingSpikePD.chargeDirection, so it needs the exact
-        // non-interpolated snapshot rather than viewState's default per-field linear blend. Re-applied
-        // every frame the state is Windup/Leaping so the indicator always tracks whatever the current
-        // leapTarget is, rather than snapshotting once on entry.
+        // Sourced from _leapTargetSnapshot (a plain field, not predicted State) — instantly available on
+        // every machine the moment EnterWindup() decides it, with no network round-trip and no
+        // interpolation blend (see the field's own doc comment). Re-applied every frame the state is
+        // Windup/Leaping so the indicator always tracks whatever the current leapTarget is, rather than
+        // snapshotting once on entry.
         var ss = (LeapState)viewState.stateId;
-        if (_windupIndicator != null && verified.HasValue)
-        {
-            var vs = verified.Value;
-            var vss = (LeapState)vs.stateId;
-            if (vss == LeapState.Windup || vss == LeapState.Leaping)
-                _windupIndicator.transform.position = new Vector3(vs.leapTarget.x, 0.05f, vs.leapTarget.z);
-        }
+        if (_windupIndicator != null && (ss == LeapState.Windup || ss == LeapState.Leaping))
+            _windupIndicator.transform.position = new Vector3(_leapTargetSnapshot.x, 0.05f, _leapTargetSnapshot.z);
         if (_windupIndicator != null) IndicatorMath.ApplyRadialTransform(_windupIndicator.transform, landRadius);
 
         // Purely cosmetic arc bob — safe off viewState (a transient misprediction here is an imperceptible
@@ -317,10 +323,15 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
             _windupIndicator.SetActive(ss == LeapState.Windup || ss == LeapState.Leaping);
         if (_windupFill != null)
         {
-            // Represents the FULL time until landing (windup + leap), not just the windup phase — matches
-            // old Leaper's windupFill.StartFill(windupDuration + leapDuration).
-            if (ss == LeapState.Windup) _windupFill.StartFill(windupDuration + leapDuration);
-            else                         _windupFill.ResetFill();
+            // Spans both Windup and Leaping (windup + leap duration), not just the windup phase — matches
+            // old Leaper's windupFill.StartFill(windupDuration + leapDuration). Only (re)started on the
+            // Moving->Windup entering edge and only reset once the whole span is over (isWindupOrLeap goes
+            // false, i.e. Leaping->Landing) — checking `ss == LeapState.Windup` directly instead would
+            // reset it right as Windup->Leaping happens (ss is no longer Windup at that transition), wiping
+            // the fill back to zero the instant the leap actually begins instead of letting it keep
+            // counting toward landing. This was the "windup fill is wonky" bug.
+            if (isWindupOrLeap && !wasWindupOrLeap) _windupFill.StartFill(windupDuration + leapDuration);
+            else if (!isWindupOrLeap)                _windupFill.ResetFill();
         }
 
         if (_animator == null) return;

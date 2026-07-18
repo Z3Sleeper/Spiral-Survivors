@@ -13,14 +13,12 @@ MonoBehaviour:
   m_Name: GremlinAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF0050>Gremlin</color>
-  description: '-15% Size
+  description: '-10% Size
 
-    <color=#FF0050>+15% Total Attack Speed</color>
+    <color=#FF0050>+10% Total Attack Speed</color>
 
-    <color=#FFFFFF>+15%
-    Movement Speed</color>
-
-    "Smol"'
+    <color=#FFFFFF>+10%
+    Movement Speed</color>'
   icon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}
   effectPrefab: {fileID: 2327608455528558355, guid: 62649fc437bc4cf4c992b45bf5480be8, type: 3}
   multiplayerOnly: 0
@@ -30,3 +28,4 @@ MonoBehaviour:
   - {fileID: 11400000, guid: bf2241429c981b6469a2169a0374df25, type: 2}
   requiredCount: 2147483647
   requiredAugments: []
+  additionalRequirementGroups: []

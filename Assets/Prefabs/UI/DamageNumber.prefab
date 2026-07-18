@@ -133,8 +133,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 6
-  m_fontSizeBase: 6
+  m_fontSize: 8
+  m_fontSizeBase: 8
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -227,9 +227,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DamageNumber
   _text: {fileID: 5872084163197778109}
-  _floatSpeed: 0.75
-  _duration: 0.75
+  _maxHeight: 2
+  _duration: 1
+  _zDrift: 0.05
+  _fontSize: 6
+  _nonPrioritySize: 4
   _normalColor: {r: 1, g: 1, b: 1, a: 1}
   _critColor: {r: 1, g: 0, b: 0, a: 1}
   _highrollColor: {r: 0, g: 1, b: 0.5294118, a: 1}
-  _critHighrollColor: {r: 1, g: 0, b: 1, a: 1}
+  _critHighrollColor: {r: 1, g: 0.3137255, b: 1, a: 1}

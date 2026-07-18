@@ -112,10 +112,6 @@ PrefabInstance:
       propertyPath: betweenSpinPause
       value: 0.225
       objectReference: {fileID: 0}
-    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: knockbackResistance
-      value: 0.25
-      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

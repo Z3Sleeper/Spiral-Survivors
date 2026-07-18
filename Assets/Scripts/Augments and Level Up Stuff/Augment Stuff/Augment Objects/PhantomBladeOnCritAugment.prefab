@@ -48,5 +48,5 @@ MonoBehaviour:
   bonusCritChance: 0.1
   bladeDamageBonus: 0.1
   critsPerBlade: 3
-  baseDamageMultiplier: 0.75
-  spawnRadius: 3
+  bladeCount: 1
+  baseDamageMultiplier: 0.9

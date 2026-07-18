@@ -22,19 +22,27 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: landRadius
-      value: 6
+      value: 4.5
+      objectReference: {fileID: 0}
+    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
+      propertyPath: sizeYOffset
+      value: 0.625
+      objectReference: {fileID: 0}
+    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
+      propertyPath: sizeZOffset
+      value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: preferredRange
-      value: 10
+      value: 7.5
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: leapOffsetRadius
-      value: 2
+      value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: rangeToleranceFar
-      value: 2
+      value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: knockbackResistance
@@ -42,11 +50,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: rangeToleranceClose
-      value: 0.6
+      value: 0.45
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: _damageNumberPlayerOffset
-      value: 1.125
+      value: 1.25
       objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_Name
@@ -54,19 +62,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 1941521250190179741, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_Radius
-      value: 1
+      value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: 2215966185884811423, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_LocalScale.x
-      value: 2
+      value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: 2215966185884811423, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_LocalScale.y
-      value: 2
+      value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: 2215966185884811423, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_LocalScale.z
-      value: 2
+      value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: 2215966185884811423, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_ConstrainProportionsScale
@@ -74,7 +82,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3528644101431230945, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_Radius
-      value: 0.8
+      value: 0.6
       objectReference: {fileID: 0}
     - target: {fileID: 3812485605274019885, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_AnchorMax.x
@@ -86,11 +94,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4534147896782296280, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_Radius
-      value: 1
+      value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: 4712845747976353988, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 5
+      value: 7.5
       objectReference: {fileID: 0}
     - target: {fileID: 7839943648137112170, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_LocalPosition.x

@@ -12,13 +12,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: PhantomBladeOnCritAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#8C8C8C>Phantom Crit</color>
-  description: '<color=#FFA000>Every third Crit Strike:</color> <color=#8C8C8C>Summon
-    a Phantom Blade</color> piercing the last <color=#FF0000>Critically Struck</color>
-    enemy for <color=#FF5000>75%<color=#00FF87>*</color> Damage</color>.
+  displayName: <color=#8C8C8C>Phantom</color> <color=#FF0000>Crit</color>
+  description: '<color=#FFA000>Every third <color=#FF0000>Crit Strike</color>:</color>
+    <color=#FFA000>Summon</color> a <color=#8C8C8C>Phantom Blade</color> piercing
+    the nearest enemy for <color=#FF5000>90%<color=#00FF87>*</color> Unpenalized
+    Damage</color>.
 
-    <color=#00FF87>*Affected
-    by Luck*</color>'
+    <color=#FF0000>+10% Crit Chance</color>
+
+    <color=#8C8C8C>+10%
+    Phantom Blade Damage</color>
+
+    <color=#00FF87>*Affected by Luck*</color>'
   icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   effectPrefab: {fileID: 5535341184026080922, guid: d1a0e5aea57cad3459af3cf6a77645c1, type: 3}
   multiplayerOnly: 0
@@ -27,3 +32,6 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
+  tags:
+  - Phantom Blade Generator
+  requiredTags: []

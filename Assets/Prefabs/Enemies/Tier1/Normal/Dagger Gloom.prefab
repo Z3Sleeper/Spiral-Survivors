@@ -652,9 +652,9 @@ MonoBehaviour:
   stunResistant: 0
   knockbackResistance: 0
   showDamageNumbers: 1
-  _damageNumberPlayerOffset: 0.625
+  sizeYOffset: 0
+  sizeZOffset: 0.5
   enrageTimer: 0
-  enrageAttackCooldown: 3
   isStunnable: 1
   _renderers:
   - {fileID: 3448404629509916890}
@@ -666,7 +666,7 @@ MonoBehaviour:
   postSpinPause: 0.6
   attackCooldown: 3
   attacksPerAttack: 1
-  dashSpeedMultiplier: 2
+  dashSpeedMultiplier: 3
   _windupIndicator: {fileID: 6342366828183147542}
   _windupFill: {fileID: 4055024519841560194}
 --- !u!135 &5387227330093086761

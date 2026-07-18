@@ -47,7 +47,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [Header("Ranged Weapons")]
     public float baseRicochet = 0f;
     public float baseMultishot = 0f;
-    public float multishotSpreadAngle = 75f;
+    public float baseMultishotSpreadAngle = 75f;
     public float baseProjectileDamageDropoff = 0.1f;
     public float baseProjectileOnHitDropoff = 0.1f;
 
@@ -149,11 +149,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // — see its own comment for why.
     [HideInInspector] public float bonusSizePercent = 1f;
 
-    [HideInInspector] public bool canContactAllies = false;
-    [HideInInspector] public bool canDamageAllies = false;
-
     [HideInInspector] public float bonusCritChanceFlat = 0f;
     [HideInInspector] public float bonusCritChancePercent = 1f;
+    // False by default — onhit-triggered damage effects don't crit at all unless OnHitCritAugment turns
+    // this on. Future onhit-damage-dealing augments should check this before rolling their own crit
+    // chance/multiplier, same "capability is off until an augment turns it on" shape as
+    // phantomBladeOnHitEnabled.
+    [HideInInspector] public bool onHitCanCrit = false;
 
     [HideInInspector] public float bonusCritDamageFlat = 0f;
     [HideInInspector] public float bonusCritDamagePercent = 1f;
@@ -163,6 +165,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     [HideInInspector] public float bonusMultishotFlat = 0f;
     [HideInInspector] public float bonusMultishotPercent = 1f;
+    [HideInInspector] public float bonusMultishotSpreadPercent = 1f;
 
     [HideInInspector] public float projectileDamageDropoffReduction = 1f;
     [HideInInspector] public float projectileOnHitDropoffReduction = 1f;
@@ -190,6 +193,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [HideInInspector] public float surgeAttackSpeedPenalty = 1f;
 
     [HideInInspector] public float dashHaste = 0f;
+    // Multiplicative on top of dashHaste (see DashCooldown) — same "additive against a 1f baseline"
+    // pattern as bonusWeaponRangePercent/bonusCritChancePercent, added alongside dashHaste's existing flat
+    // grant so DashHaste-family augments can have the same flat+percent dual structure Range/CritChance do.
+    [HideInInspector] public float bonusDashHastePercent = 1f;
 
     [HideInInspector] public float bonusMaxSPFlat = 0f;
     [HideInInspector] public float bonusMaxSPPercent = 1f;
@@ -253,6 +260,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public float Ricochet => (baseRicochet + bonusRicochetFlat) * bonusRicochetPercent;
     public float Multishot => (baseMultishot + bonusMultishotFlat) * bonusMultishotPercent;
+    public float MultishotSpreadAngle => baseMultishotSpreadAngle * bonusMultishotSpreadPercent;
     public float ProjectileDamageDropoff => baseProjectileDamageDropoff * projectileDamageDropoffReduction;
     public float ProjectileOnHitDropoff => baseProjectileOnHitDropoff * projectileOnHitDropoffReduction;
 
@@ -271,7 +279,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty * SurgeEffectiveness;
     public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty * SurgeEffectiveness;
 
-    public float DashCooldown => baseDashCooldown / (1f + dashHaste / 100f);
+    // The actual effective dash haste value DashCooldown's formula uses — exposed separately so UI (or
+    // anything else) can display the real number instead of the pre-multiplier raw dashHaste field.
+    public float EffectiveDashHaste => dashHaste * bonusDashHastePercent;
+    public float DashCooldown => baseDashCooldown / (1f + EffectiveDashHaste / 100f);
 
     public float MaxSP => (baseMaxSP + bonusMaxSPFlat) * bonusMaxSPPercent;
 
@@ -282,10 +293,25 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // clamp on the ceiling; an arbitrarily high one is just a bigger reward, not a bug.
     public float LuckFloor   => Mathf.Max(0f, baseLuckFloor * bonusLuckFloorPercent * luckFloorPenalty);
     public float LuckCeiling => Mathf.Max(0f, baseLuckCeiling * bonusLuckCeilingPercent * luckCeilingPenalty);
+    // The floor a roll is actually bounded by once LuckChance has raised it off the raw LuckFloor — same
+    // Lerp(rawMin, max, LuckChance) WeaponDamageMath.RollDamage itself uses, just expressed in the
+    // [LuckFloor, LuckCeiling] multiplier space instead of actual damage numbers so UI can display it
+    // without a damage value on hand. LuckCeiling is untouched here — LuckChance only raises the floor
+    // toward the ceiling, it never moves the ceiling itself.
+    public float EffectiveLuckFloor => Mathf.Lerp(LuckFloor, LuckCeiling, LuckChance);
     // Clamped to [0,1] here — it's a Mathf.Lerp t-value downstream (WeaponDamageMath.RollDamage), which
     // would clamp it internally anyway, but keeping the source itself sane means anything else that reads
     // Highroll directly later doesn't have to know that.
     public float Highroll => Mathf.Clamp01(baseHighroll * bonusHighrollPercent * highrollPenalty);
+    // Derived from WeaponDamageMath.RollDamage's own uniform-roll math: a roll is uniform across
+    // [min, max] where min = Lerp(rawMin, max, LuckChance) and the highroll threshold =
+    // Lerp(rawMin, max, Highroll) — both lerps share the same [rawMin, max] window, so the "chance the
+    // roll lands at/above the threshold" reduces to (1 - Highroll) / (1 - LuckChance), independent of the
+    // actual damage/rawMin/max values. Once LuckChance has caught up to (or passed) Highroll, min is
+    // already at or above the threshold, so every roll highrolls (100%) — matches RollDamage's own
+    // "as luckChance climbs... every roll highrolls" comment. Clamped defensively in case LuckChance ever
+    // gets close enough to 1 to make the division blow up past 100%.
+    public float HighrollChance => LuckChance >= Highroll ? 1f : Mathf.Clamp01((1f - Highroll) / (1f - LuckChance));
     // Clamped to >= 0 — same reasoning as LuckFloor/LuckCeiling: a highroll should never actively reduce
     // damage below its already-rolled value, worst case is +0%.
     public float HighrollBonus => Mathf.Max(0f, baseHighrollBonus * bonusHighrollBonusPercent * highrollBonusPenalty);
@@ -365,7 +391,25 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // PhantomBladeOnCritAugment subscribe to, instead of each augment needing to know about individual
     // weapons at all. Deliberately per-instance like every other event here, not static — this is what
     // makes cross-player interaction structurally impossible rather than just filtered against.
-    private PredictedEvent<PredictedObjectID> _onCritStrike;
+    private PredictedEvent<WeaponHitData> _onCritStrike;
+    // Same relay shape as _onCritStrike, but fires for every weapon hit (crit or not) — e.g.
+    // CritTriggerOnHitAugment subscribes to both and calls NotifyHit again from its own crit listener to
+    // make a crit count as two hits.
+    private PredictedEvent<WeaponHitData> _onHit;
+    // Fires whenever any of this player's weapons touches (not damages) an ally — called directly by each
+    // weapon (no WeaponManagerPD relay hop needed, unlike _onHit/_onCritStrike, since "touched an ally"
+    // isn't a per-weapon-type concept anything else needs to distinguish). Generic on purpose: multiple
+    // "hit ally, do something" augments (HealAllyOnStrikeAugment and future family members) can each
+    // subscribe independently and decide what to do with the touch themselves, rather than this class
+    // baking in any one specific effect.
+    private PredictedEvent<AllyStrikeData> _onAllyStrike;
+    // Fires once per "primary" Phantom Blade summon (every SummonAtTarget call whose notifySummon param is
+    // left true — i.e. every real trigger: crit, passive tick, dash, onhit), carrying the already-fully-
+    // resolved damage/size so a listener like PhantomBladeCarnivalAugment can spawn an exact duplicate
+    // without re-rolling luck variance. Never fires for a copy spawned in reaction to this same event —
+    // SummonCopyAtTarget doesn't call SummonAtTarget at all, so there's no path back into this event from
+    // the copy itself, structurally ruling out recursion rather than needing a guard flag to prevent it.
+    private PredictedEvent<PhantomBladeSummonData> _onPhantomBladeSummon;
 
     public void AddHealListener(Action<float> listener) => _onHeal.AddListener(listener);
     public void RemoveHealListener(Action<float> listener) => _onHeal.RemoveListener(listener);
@@ -373,9 +417,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void RemoveSurgeStartedListener(Action listener) => _onSurgeStarted.RemoveListener(listener);
     public void AddSurgeEndedListener(Action listener) => _onSurgeEnded.AddListener(listener);
     public void RemoveSurgeEndedListener(Action listener) => _onSurgeEnded.RemoveListener(listener);
-    public void AddCritStrikeListener(Action<PredictedObjectID> listener) => _onCritStrike.AddListener(listener);
-    public void RemoveCritStrikeListener(Action<PredictedObjectID> listener) => _onCritStrike.RemoveListener(listener);
-    public void NotifyCritStrike(PredictedObjectID target) => _onCritStrike.Invoke(target);
+    public void AddCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.AddListener(listener);
+    public void RemoveCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.RemoveListener(listener);
+    public void NotifyCritStrike(WeaponHitData data) => _onCritStrike.Invoke(data);
+    public void AddHitListener(Action<WeaponHitData> listener) => _onHit.AddListener(listener);
+    public void RemoveHitListener(Action<WeaponHitData> listener) => _onHit.RemoveListener(listener);
+    public void NotifyHit(WeaponHitData data) => _onHit.Invoke(data);
+    public void AddAllyStrikeListener(Action<AllyStrikeData> listener) => _onAllyStrike.AddListener(listener);
+    public void RemoveAllyStrikeListener(Action<AllyStrikeData> listener) => _onAllyStrike.RemoveListener(listener);
+    public void AddPhantomBladeSummonListener(Action<PhantomBladeSummonData> listener) => _onPhantomBladeSummon.AddListener(listener);
+    public void RemovePhantomBladeSummonListener(Action<PhantomBladeSummonData> listener) => _onPhantomBladeSummon.RemoveListener(listener);
+    public void NotifyPhantomBladeSummon(PhantomBladeSummonData data) => _onPhantomBladeSummon.Invoke(data);
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
     protected override void LateAwake()
@@ -383,7 +435,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onHeal          = new PredictedEvent<float>(predictionManager, this);
         _onSurgeStarted  = new PredictedEvent(predictionManager, this);
         _onSurgeEnded    = new PredictedEvent(predictionManager, this);
-        _onCritStrike    = new PredictedEvent<PredictedObjectID>(predictionManager, this);
+        _onCritStrike    = new PredictedEvent<WeaponHitData>(predictionManager, this);
+        _onHit           = new PredictedEvent<WeaponHitData>(predictionManager, this);
+        _onAllyStrike    = new PredictedEvent<AllyStrikeData>(predictionManager, this);
+        _onPhantomBladeSummon = new PredictedEvent<PhantomBladeSummonData>(predictionManager, this);
 
         // bonuses applied by PlayerDataPD.Simulate after spawn
         GetComponent<WeaponManagerPD>()?.Init(this);
@@ -559,11 +614,47 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Same pattern as AddMaxHealthFlat, for augments that grant a percentage bonus instead (additive
     // against the 1f baseline, e.g. +0.2 = +20% total).
     public void AddMaxHealthPercent(float amount) => ApplyStatChange(() => bonusMaxHealthPercent += amount);
+    public void AddWeaponRangeFlat(float amount) => ApplyStatChange(() => bonusWeaponRangeFlat += amount);
     public void AddWeaponRangePercent(float amount) => ApplyStatChange(() => bonusWeaponRangePercent += amount);
     public void AddAttackSpeedTotalPercent(float amount) => ApplyStatChange(() => attackSpeedTotalPercent += amount);
+    // attackSpeedPercent (despite the name) is added directly in the same units as baseAttackSpeed, not a
+    // raw fraction — matches the progression system's own conversion (entry.value * 0.01f * baseAttackSpeed)
+    // so a caller here can pass an intuitive fraction (e.g. 0.25 for +25%) same as every other percent Add.
+    public void AddAttackSpeedPercent(float amount) => ApplyStatChange(() => attackSpeedPercent += amount * baseAttackSpeed);
+    public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => bonusMoveSpeedFlat += amount);
     public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => bonusMoveSpeedPercent += amount);
     public void AddHealthRegenFlat(float amount) => ApplyStatChange(() => bonusHealthRegenFlat += amount);
+    public void AddHealthRegenPercent(float amount) => ApplyStatChange(() => bonusHealthRegenPercent += amount);
+    public void AddEnergyRegenFlat(float amount) => ApplyStatChange(() => bonusEnergyRegenFlat += amount);
+    public void AddEnergyRegenPercent(float amount) => ApplyStatChange(() => bonusEnergyRegenPercent += amount);
+    public void AddLuckFlat(float amount) => ApplyStatChange(() => bonusLuckFlat += amount);
+    public void AddLuckPercent(float amount) => ApplyStatChange(() => bonusLuckPercent += amount);
     public void AddCritChanceFlat(float amount) => ApplyStatChange(() => bonusCritChanceFlat += amount);
+    // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent, for CritChance's own percent
+    // multiplier (bonusCritChancePercent starts at 1f, e.g. +0.25 = +25% total crit chance).
+    public void AddCritChancePercent(float amount) => ApplyStatChange(() => bonusCritChancePercent += amount);
+    public void AddDashHaste(float amount) => ApplyStatChange(() => dashHaste += amount);
+    // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent/AddCritChancePercent, for
+    // DashHaste's own percent multiplier (bonusDashHastePercent starts at 1f, e.g. +0.15 = +15% total).
+    public void AddDashHastePercent(float amount) => ApplyStatChange(() => bonusDashHastePercent += amount);
+    public void AddWeaponCountFlat(int amount) => ApplyStatChange(() => bonusWeaponCountFlat += amount);
+    // Multiplicative, not additive — bonusWeaponDamagePenalty/bonusOnHitPowerPenalty both start at 1f and
+    // apply as straight multipliers (WeaponDamage/OnHitPower), so stacking two -40% penalties correctly
+    // compounds to 0.6 * 0.6 = 0.36 rather than clamping at 1 - 0.8 = 0.2. factor is what the penalty gets
+    // multiplied by (e.g. 1f - 0.4f for a -40% penalty), matching the old system's identical
+    // `bonusWeaponDamagePenalty *= 1f - damagePenalty` call.
+    public void MultiplyWeaponDamagePenalty(float factor) => ApplyStatChange(() => bonusWeaponDamagePenalty *= factor);
+    public void MultiplyOnHitPowerPenalty(float factor) => ApplyStatChange(() => bonusOnHitPowerPenalty *= factor);
+    public void AddRicochetFlat(float amount) => ApplyStatChange(() => bonusRicochetFlat += amount);
+    public void AddMultishotFlat(float amount) => ApplyStatChange(() => bonusMultishotFlat += amount);
+    // Same MultiplyWeaponDamagePenalty-style compounding convention — multiple spread-reducing sources
+    // multiply together rather than summing (two -80% reductions compound to 0.2 * 0.2 = 0.04, not clamp
+    // at 1 - 1.6). factor is what bonusMultishotSpreadPercent gets multiplied by (e.g. 1f - 0.8f for
+    // MultiShotSpreadAugment's -80% reduction).
+    public void MultiplyMultishotSpreadPercent(float factor) => ApplyStatChange(() => bonusMultishotSpreadPercent *= factor);
+    // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — knockbackMultiplier starts
+    // at 1f (also aggregated multiplicatively by ClassPassiveData separately), e.g. +0.5 = +50% knockback.
+    public void AddKnockbackPercent(float amount) => ApplyStatChange(() => knockbackMultiplier += amount);
 
     // Shared "stacking bonus" scaffold for the whole Phantom Blade augment family — each Phantom Blade
     // augment the player has picked contributes its own delta here (matching old system's per-augment
@@ -572,10 +663,74 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // once at spawn time rather than each blade needing to know which augments exist. Plain += (not
     // ApplyStatChange) — doesn't affect Max Health/Energy, and nothing else reads these live the way
     // WeaponDamage/MoveSpeed etc. do.
-    [HideInInspector] public float phantomBladeDamageBonusPercent = 0f;
-    [HideInInspector] public float phantomBladeSizeBonusPercent = 0f;
+    [HideInInspector] public float phantomBladeDamageBonus = 0f;
+    [HideInInspector] public float phantomBladeSizeBonus = 0f;
+    // Second, separate multiplicative layer for each of the two above — PhantomBladeSizeAugment's own
+    // damage/size bonuses are meant to scale the blade's ALREADY-combined additive total (every other
+    // Phantom Blade augment's own +damage%/+size% summed together), not just join those same additive
+    // pools. Both start at 1f and are added to directly, same "additive against the 1f baseline"
+    // convention as bonusMaxHealthPercent/bonusCritChancePercent (+0.5 = +50% on top of the additive
+    // total). PhantomBladeSummonHelper applies each pair as
+    // `(1 + phantomBladeDamageBonus) * phantomBladeDamageBonusPercent` and
+    // `(1 + phantomBladeSizeBonus) * phantomBladeSizeBonusPercent`.
+    [HideInInspector] public float phantomBladeDamageBonusPercent = 1f;
+    [HideInInspector] public float phantomBladeSizeBonusPercent = 1f;
+    // Third layer, multiplicative like the "Percent" pair above but for PENALTIES rather than bonuses —
+    // e.g. PhantomBladeCarnivalAugment's own -35% total damage/size tradeoff for its extra-blade-per-summon
+    // effect. Same MultiplyWeaponDamagePenalty-style compounding convention as bonusWeaponDamagePenalty
+    // (multiple penalty sources compound multiplicatively rather than summing, so two -35% penalties would
+    // compound to 0.65 * 0.65 = 0.4225, not clamp at 1 - 0.7 = 0.3). Plain *= (not ApplyStatChange), same
+    // reasoning as the rest of this scaffold.
+    [HideInInspector] public float phantomBladeDamagePenalty = 1f;
+    [HideInInspector] public float phantomBladeSizePenalty = 1f;
+    // False by default — Phantom Blades don't trigger OnHit at all unless PhantomBladeOnHitAugment (or a
+    // future family member) turns it on. Kept as its own bool rather than gating off
+    // phantomBladeOnHitPowerPercent > 0 — that would conflate "how strong is the onhit trigger" (a
+    // magnitude) with "does this blade attempt to trigger onhit at all" (a binary capability), which
+    // would silently break if anything ever reduced the percent without meaning to disable the feature.
+    // Both are read once at Summon() time like the other two, baked into that blade's lifetime rather
+    // than reacting live to later picks.
+    [HideInInspector] public bool  phantomBladeOnHitEnabled = false;
+    [HideInInspector] public float phantomBladeOnHitPowerPercent = 0f;
+    public void AddPhantomBladeDamageBonus(float amount) => phantomBladeDamageBonus += amount;
+    public void AddPhantomBladeSizeBonus(float amount) => phantomBladeSizeBonus += amount;
     public void AddPhantomBladeDamageBonusPercent(float amount) => phantomBladeDamageBonusPercent += amount;
     public void AddPhantomBladeSizeBonusPercent(float amount) => phantomBladeSizeBonusPercent += amount;
+    public void MultiplyPhantomBladeDamagePenalty(float factor) => phantomBladeDamagePenalty *= factor;
+    public void MultiplyPhantomBladeSizePenalty(float factor) => phantomBladeSizePenalty *= factor;
+    public void EnablePhantomBladeOnHit() => phantomBladeOnHitEnabled = true;
+    public void EnableOnHitCrit() => onHitCanCrit = true;
+    public void AddPhantomBladeOnHitPowerPercent(float amount) => phantomBladeOnHitPowerPercent += amount;
+
+    // Same enable-bool shape as phantomBladeOnHitEnabled above, but generic (no attached magnitude here) —
+    // weapons only pay for the extra ally-hurtbox overlap query when this (or allyStrikeDamageEnabled
+    // below) is true, and ANY "hit ally, do something" augment (HealAllyOnStrikeAugment, future family
+    // members) turns it on the same way via EnableAllyStrikeHit(). Multiple such augments picked at once
+    // just each call it — idempotent, no conflict — and all react independently to the same underlying
+    // _onAllyStrike notifications below. Consolidated from the old system's canContactAllies (same role,
+    // dormant/unused in this project until now).
+    [HideInInspector] public bool allyStrikeHitEnabled = false;
+    public void EnableAllyStrikeHit() => allyStrikeHitEnabled = true;
+
+    // Separate gate for actually DAMAGING a touched ally (real friendly fire) — a weapon only applies
+    // TakeDamage to an ally it touches if this is true, independent of allyStrikeHitEnabled above (a
+    // weapon can heal-touch without damaging, or vice versa; detection itself runs if EITHER is true).
+    // Consolidated from the old system's canDamageAllies. Nothing sets this yet — no augment/class passive
+    // currently turns it on — but weapons already check it, so it's a real, working gate the moment
+    // something eventually does.
+    [HideInInspector] public bool allyStrikeDamageEnabled = false;
+    public void EnableAllyStrikeDamage() => allyStrikeDamageEnabled = true;
+
+    // Called by a weapon (melee/axe/ranged) once it's confirmed touching an ally's hurtbox — a plain touch,
+    // not a damage hit, so this never goes through TakeDamage/RollDamage's damage path (a weapon's own
+    // friendly-fire branch, gated on allyStrikeDamageEnabled, handles that separately). Self- and
+    // dead-ally exclusion live here (not in each weapon's detection loop) so every current and future
+    // _onAllyStrike listener gets that guard for free rather than each needing to re-check it.
+    public void NotifyAllyStrike(AllyStrikeData data)
+    {
+        if (data.ally == null || data.ally == this || data.ally.IsDead) return;
+        _onAllyStrike.Invoke(data);
+    }
 
     // These children stay visually the same size regardless of the character's own scale — a revive
     // trigger volume and worldspace/minimap UI markers shouldn't grow along with the player.
@@ -692,9 +847,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             bonusWeaponSizePercent          += p.bonusWeaponSizePercent;
 
             if (p.bonusSizePercent != 0f) AddSizePercent(p.bonusSizePercent);
-
-            canContactAllies                |= p.canContactAllies;
-            canDamageAllies                 |= p.canDamageAllies;
 
             bonusCritChanceFlat             += p.bonusCritChanceFlat;
             bonusCritChancePercent          += p.bonusCritChancePercent;
@@ -869,6 +1021,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         if (healed <= 0f) return;
         currentState.health += healed;
         _onHeal.Invoke(healed);
+    }
+
+    // Same as Heal(), minus the _onHeal invocation — for effects that react to a heal already in progress
+    // (e.g. CriticalHealingAugment topping up a heal it just observed via AddHealListener) and would
+    // otherwise re-trigger their own listener by calling Heal() again, cascading indefinitely on repeated
+    // crits. Same "must not re-notify its own trigger" shape as OnHitDamageAugment/OnHitCritAugment.
+    public void HealSilent(float amount)
+    {
+        if (currentState.isDead) return;
+        float healed = Mathf.Min(amount, MaxHealth - currentState.health);
+        if (healed <= 0f) return;
+        currentState.health += healed;
     }
 
     public void Revive(float healthPercent = 0.5f)

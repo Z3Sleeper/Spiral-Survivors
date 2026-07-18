@@ -329,7 +329,8 @@ MonoBehaviour:
   stunResistant: 0
   knockbackResistance: 0
   showDamageNumbers: 1
-  _damageNumberPlayerOffset: 0.625
+  sizeYOffset: 0
+  sizeZOffset: 0.5
   enrageTimer: 0
   isStunnable: 1
   _renderers:
@@ -338,7 +339,7 @@ MonoBehaviour:
   postBlitzPause: 0.5
   attackCooldown: 3
   blitzDistance: 12
-  blitzSpeedMultiplier: 5
+  blitzSpeedMultiplier: 4
   blitzesPerAttack: 1
   windupIndicator: {fileID: 1078640085709494109}
   windupFill: {fileID: 519605576584556137}

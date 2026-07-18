@@ -55,10 +55,6 @@ public class ClassPassiveData : ScriptableObject
     // Additive stacking (matches CharacterStatsPD.AddSizePercent) — e.g. +0.25 = +25%.
     public float bonusSizePercent = 0f;
 
-    [Header("Contact")]
-    public bool canContactAllies = false;
-    public bool canDamageAllies = false;
-
     [Header("Crit Chance")]
     public float bonusCritChanceFlat = 0f;
     public float bonusCritChancePercent = 0f;

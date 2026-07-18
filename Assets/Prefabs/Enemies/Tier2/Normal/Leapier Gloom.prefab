@@ -40,10 +40,6 @@ PrefabInstance:
       propertyPath: windupDuration
       value: 0.6
       objectReference: {fileID: 0}
-    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
-      propertyPath: knockbackResistance
-      value: 0.25
-      objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_Name
       value: Leapier Gloom

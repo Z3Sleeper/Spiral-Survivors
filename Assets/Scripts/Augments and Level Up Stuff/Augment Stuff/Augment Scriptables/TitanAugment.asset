@@ -13,14 +13,12 @@ MonoBehaviour:
   m_Name: TitanAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FF00>Titan</color>
-  description: '<color=#FFA000>+15% Size</color>
+  description: '<color=#FFA000>+10% Size</color>
 
-    <color=#00FF00>+15% Max Health</color>
+    <color=#00FF00>+10% Max Health</color>
 
-    <color=#3278FF>+15%
-    Range</color>
-
-    "You stand at the peak"'
+    <color=#3278FF>+10%
+    Range</color>'
   icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}
   effectPrefab: {fileID: 1024037519198458874, guid: 305cc40fa1904f949a09fd6d9690aacd, type: 3}
   multiplayerOnly: 0

@@ -14,10 +14,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   useInterpolation: 1
   positionInterpolation:
-    correctionRateMinMax: {x: 4.95, y: 15}
+    correctionRateMinMax: {x: 6.6, y: 20}
     correctionBlendMinMax: {x: 0, y: 4}
     teleportThresholdMinMax: {x: 0.0025, y: 5}
   rotationInterpolation:
-    correctionRateMinMax: {x: 4.95, y: 15}
+    correctionRateMinMax: {x: 6.6, y: 20}
     correctionBlendMinMax: {x: 5, y: 30}
     teleportThresholdMinMax: {x: 1.5, y: 52}

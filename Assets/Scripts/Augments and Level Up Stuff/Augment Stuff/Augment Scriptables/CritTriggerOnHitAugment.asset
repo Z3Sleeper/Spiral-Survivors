@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: CritTriggerOnHitAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#FF0000>Critically Efficient</color>
+  description: '<color=#FFA000>On Strike <color=#FF0000>Crit</color>:</color> <color=#FFA000>Trigger</color>
+    <color=#FF0050>On-Hit Effects</color> a second time with <color=#FF0050>50% reduced
+    On-Hit Power</color>.
+
+    <color=#FF0000>+10% Crit Chance</color>'
+  icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
+  effectPrefab: {fileID: 7810193742191263982, guid: e3b176efd0871864b919b679b614c54c, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 1
+  requiredAugments: []
+  tags: []
+  requiredTags:
+  - On-Hit Effect
