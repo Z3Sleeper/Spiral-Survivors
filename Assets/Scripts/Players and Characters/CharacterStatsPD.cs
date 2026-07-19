@@ -728,9 +728,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Direct override, not additive — surgeMoveSpeedPenalty (default 0.5f) is the actual reduction
     // multiplier itself (SurgeMoveSpeedMulti = surgeMoveSpeedMulti * surgeMoveSpeedPenalty * ...), not a
     // bonus-stacking pool, so "half the penalty"/"no penalty" augments each set it to their own fixed
-    // absolute target (0.75f/1f) rather than accumulating a delta off the current value. Same "Set" shape
-    // as SetInvincible — also makes picking both of a mutually-exclusive pair harmless (whichever applies
-    // last simply wins) rather than compounding into a nonsensical value.
+    // absolute target (0.75f/1f) rather than accumulating a delta off the current value. This also makes
+    // picking both of a mutually-exclusive pair harmless (whichever applies last simply wins) rather than
+    // compounding into a nonsensical value.
     public void SetSurgeMoveSpeedPenalty(float value) => ApplyStatChange(() => surgeMoveSpeedPenalty = value);
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — stackPowerPercent starts at
     // 1f (StackPower = stackPowerPercent * stackPowerPenalty), just had no augment-facing wrapper until now.
@@ -1121,11 +1121,20 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onSurgeEnded.Invoke();
     }
 
-    public void SetInvincible(float duration)
+    // Grants (or extends) invincibility for `duration` seconds. Always MAXES against whatever time is
+    // already remaining rather than overwriting it, and a non-positive duration is simply a no-op — nothing
+    // ever explicitly turns invincibility off "for" another source anymore. This is deliberate: dash,
+    // ShieldBreakBurstAugment, ShieldDamageReductionAugment's death save, and Revive() all call this
+    // independently, and previously (when this was a plain setter) whichever one fired LAST would win,
+    // including a dash ending early and wiping out a still-active augment-granted window. Now every source
+    // just contributes its own floor, the longest one currently active always wins, and each source's own
+    // contribution is left to expire naturally via the invincibleTimer countdown in Simulate() — nobody
+    // needs (or is able) to force it off early.
+    public void GrantInvincibility(float duration)
     {
-        if (duration <= 0f) { currentState.invincible = false; currentState.invincibleTimer = 0f; return; }
+        if (duration <= 0f) return;
         currentState.invincible = true;
-        currentState.invincibleTimer = duration;
+        currentState.invincibleTimer = Mathf.Max(currentState.invincibleTimer, duration);
     }
 
     // Plain, not State — reset to false right before every _onLethalDamageTaken.Invoke() call and read
@@ -1239,6 +1248,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         currentState.shield = MaxShield;
         currentState.energy = MaxEnergy;
         currentState.currentReviveTime += ReviveTimePenalty;
-        SetInvincible(2f);
+        GrantInvincibility(2f);
     }
 }

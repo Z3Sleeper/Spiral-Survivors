@@ -371,7 +371,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (state.chargeRegenTimer <= 0f)
             state.chargeRegenTimer = _stats.DashCooldown;
 
-        _stats.SetInvincible(state.dashTimer);
+        _stats.GrantInvincibility(state.dashTimer);
         if (_physicsCollider != null) _physicsCollider.enabled = false;
         _rigidbody.velocity = Vector3.zero;
         _onDashStarted.Invoke();
@@ -380,7 +380,11 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     private void EndDash(ref State state)
     {
         state.isDashing = false;
-        _stats.SetInvincible(0f);
+        // Deliberately NOT cancelling invincibility here anymore — GrantInvincibility no longer supports an
+        // explicit "turn it off" call from any one source (see its own doc comment). Dash's own contribution
+        // just expires naturally via the invincibleTimer countdown; if some other source (e.g.
+        // ShieldBreakBurstAugment) extended it further, that time is left intact instead of being wiped out
+        // by the dash ending.
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         _rigidbody.velocity = Vector3.zero;
         _onDashEnded.Invoke();

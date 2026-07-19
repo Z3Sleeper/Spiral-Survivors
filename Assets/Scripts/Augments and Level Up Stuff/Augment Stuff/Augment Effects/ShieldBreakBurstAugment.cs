@@ -59,7 +59,7 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
     {
         if (Stats == null || Stats.IsDead) return;
 
-        Stats.SetInvincible(invincibilityDuration);
+        Stats.GrantInvincibility(invincibilityDuration);
 
         float knockback = baseKnockback * Stats.knockbackMultiplier;
 

@@ -73,7 +73,7 @@ public class ShieldDamageReductionAugment : AugmentEffectPD<ShieldDamageReductio
         currentState.cooldownTimer = saveCooldown;
 
         Stats.PreventLethalDamage();
-        Stats.SetInvincible(saveInvincibilityDuration);
+        Stats.GrantInvincibility(saveInvincibilityDuration);
         Stats.RechargeShield();
     }
 
