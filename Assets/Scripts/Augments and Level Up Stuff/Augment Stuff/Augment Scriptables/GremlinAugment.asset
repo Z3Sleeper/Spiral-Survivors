@@ -24,8 +24,11 @@ MonoBehaviour:
   multiplayerOnly: 0
   classRestrictionMode: 0
   characterClasses: 
-  incompatibleAugments:
-  - {fileID: 11400000, guid: bf2241429c981b6469a2169a0374df25, type: 2}
+  incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  additionalRequirementGroups: []
+  tags:
+  - Size Decrease
+  requiredTags: []
+  incompatibleTags:
+  - Size Increase

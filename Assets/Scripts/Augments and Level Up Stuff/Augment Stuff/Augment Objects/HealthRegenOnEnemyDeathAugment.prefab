@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthRegenOnEnemyDeathAugment
   regenMultiplier: 0.2
-  flatRegenBonus: 0.5
+  flatRegenBonus: 0

@@ -16,8 +16,8 @@ MonoBehaviour:
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0
   bonusWeaponDamageFlat: 0
-  bonusWeaponDamagePercent: 0
-  bonusWeaponDamagePenalty: -0.5
+  bonusWeaponDamagePercent: 0.3
+  bonusWeaponDamagePenalty: 0
   bonusWeaponRadiusFlat: 3
   bonusWeaponRadiusPercent: 0
   attackSpeedPercent: 0
@@ -30,8 +30,6 @@ MonoBehaviour:
   weaponRangePenalty: -0.5
   bonusWeaponSizePercent: 0
   bonusSizePercent: 0
-  canContactAllies: 0
-  canDamageAllies: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 0
   bonusCritDamageFlat: 0
@@ -64,10 +62,18 @@ MonoBehaviour:
   bonusLuckFlat: 0
   bonusLuckPercent: 0
   luckPenalty: 0
+  bonusLuckFloorPercent: 0
+  luckFloorPenalty: 0
+  bonusLuckCeilingPercent: 0
+  luckCeilingPenalty: 0
+  bonusHighrollPercent: 0
+  highrollPenalty: 0
+  bonusHighrollBonusPercent: 0
+  highrollBonusPenalty: 0
   knockbackMultiplier: 1
   knockbackPenalty: 0
   bonusOnHitPowerMultiplier: 1
-  bonusOnHitPowerPenalty: 0.5
+  bonusOnHitPowerPenalty: 0
   stackPowerPercent: 0
   stackPowerPenalty: 0
   xpMultiplier: 0
@@ -79,4 +85,4 @@ MonoBehaviour:
   revivePower: 0
   damageReductionPercent: 0
   damageReductionPenalty: 0
-  effectPrefabs: []
+  passiveAugments: []

@@ -5,8 +5,9 @@ using UnityEngine;
 // Loosely based on _OldSystemArchive/Augment Effects/HealthRegenOnHitAugment.cs, restructured for the new
 // WeaponHitData/OnHit event pipeline. Deals bonus damage scaled off the player's OWN HealthRegen stat (not
 // weapon damage) on every OnHit firing, plus a flat +0.5 HealthRegen grant. Rolls luck variance (the "*"
-// annotation) and optionally crits if Stats.onHitCanCrit — see OnHitDamageAugment's own doc comment for
-// why this deliberately doesn't call Stats.NotifyCritStrike on its own crit.
+// annotation) and inherits data.isCrit from the triggering hit instead of rolling its own — see
+// OnHitDamageAugment's own doc comment for the full reasoning, including why this deliberately doesn't
+// call Stats.NotifyCritStrike on its own crit.
 public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRegenAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -41,11 +42,10 @@ public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRe
         float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
 
-        bool isCrit = Stats.onHitCanCrit && GameRandom.instance.NextFloat() < Stats.CritChance;
-        if (isCrit) rolled *= Stats.CritDamage;
+        if (data.isCrit) rolled *= Stats.CritDamage;
 
-        enemy.TakeDamage(rolled, isCrit, Stats.owner ?? default);
-        _hitFeedbackQueue.Add((enemy, rolled, isCrit, isHighroll));
+        enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
+        _hitFeedbackQueue.Add((enemy, rolled, data.isCrit, isHighroll));
     }
 
     protected override void UpdateView(State viewState, State? verified)

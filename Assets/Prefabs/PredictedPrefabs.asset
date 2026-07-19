@@ -33,48 +33,48 @@ MonoBehaviour:
       initialSize: 0
   - prefab: {fileID: 2942187867930129664, guid: b811a8e03d9fe404390c8122d89cef4d, type: 3}
     pooling:
-      usePooling: 0
-      initialSize: 0
+      usePooling: 1
+      initialSize: 10
   - prefab: {fileID: 2942187867930129664, guid: 2d918d54e127e5444b6e0a0f3407f294, type: 3}
     pooling:
       usePooling: 1
-      initialSize: 0
+      initialSize: 10
   - prefab: {fileID: 6892742767279467393, guid: 3ab13fb687135614f8719caf0650670b, type: 3}
     pooling:
       usePooling: 0
       initialSize: 0
   - prefab: {fileID: 2942187867930129664, guid: d3d7e865e3672834280ffac23466fd13, type: 3}
     pooling:
-      usePooling: 0
-      initialSize: 0
+      usePooling: 1
+      initialSize: 10
   - prefab: {fileID: 3384548716234012153, guid: b766f1c7e33e6ad45bf35cba85f451d9, type: 3}
     pooling:
       usePooling: 0
       initialSize: 0
   - prefab: {fileID: 2942187867930129664, guid: e465cb0b11f85b4458591525101dc6e3, type: 3}
     pooling:
-      usePooling: 0
-      initialSize: 0
+      usePooling: 1
+      initialSize: 10
   - prefab: {fileID: 8058231238311545800, guid: a1f59c22e0d70734fb7a9f1355342de2, type: 3}
     pooling:
       usePooling: 0
       initialSize: 0
   - prefab: {fileID: 2942187867930129664, guid: c2522599a7ce86843a28389dd9424ed3, type: 3}
     pooling:
-      usePooling: 0
-      initialSize: 0
+      usePooling: 1
+      initialSize: 10
   - prefab: {fileID: 3529459938880667348, guid: 06a6e40a820ff5e4c9f8e9f0e17f4010, type: 3}
     pooling:
       usePooling: 0
       initialSize: 0
   - prefab: {fileID: 2942187867930129664, guid: 56a521b14c2adcc4fa610a1ef89f0310, type: 3}
     pooling:
-      usePooling: 0
+      usePooling: 1
       initialSize: 0
   - prefab: {fileID: 2942187867930129664, guid: 9123ce90c4dafb44cb96c2ca62f56ace, type: 3}
     pooling:
       usePooling: 1
-      initialSize: 10
+      initialSize: 100
   - prefab: {fileID: 476323272898777100, guid: 407489e301dbd3047a4bf4a3608d5c61, type: 3}
     pooling:
       usePooling: 1
@@ -263,10 +263,6 @@ MonoBehaviour:
     pooling:
       usePooling: 0
       initialSize: 0
-  - prefab: {fileID: 5785707983039645292, guid: 06cdd70f429fec6408ec524a2e8ee64d, type: 3}
-    pooling:
-      usePooling: 0
-      initialSize: 0
   - prefab: {fileID: 4308514868733512369, guid: 93c5e1b6dec8a4249b038f939391ca8e, type: 3}
     pooling:
       usePooling: 0
@@ -307,7 +303,51 @@ MonoBehaviour:
     pooling:
       usePooling: 0
       initialSize: 0
-  - prefab: {fileID: 6483867270994032260, guid: c392f6cd904de504e89c0780b357811e, type: 3}
+  - prefab: {fileID: 5489089648639806987, guid: 9450586d5b1b20f49be8db9a16ea0e19, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 5018902914309057986, guid: 608a1a1c7753c0f4f8f363a15955b060, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 3922366251959986115, guid: a6f2b8790a9fdc0459a00805e92228f8, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 5351432771132445161, guid: 51d1225411f343943a91a434cbf2f2dd, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 3352971506339463653, guid: a3ba840aa57acab4195ef6e098701b1d, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 3310022117534731454, guid: a44f3317e8aaa1c4ca54240822ef712d, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 6240223812373983933, guid: 2ba6f15d6785a4b4eab15340e61a6a5c, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 128303859756713544, guid: ec614b706e5c1494f86d50803dc8c147, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 8213114867181440136, guid: b3a77f66cf99c6d4fb2c7a99801ddff0, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 6351023823260514728, guid: 25af56176c71d1f4b876849b33d87247, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 2849589214751653731, guid: 9717396f46b52a64384661412fb91029, type: 3}
     pooling:
       usePooling: 0
       initialSize: 0

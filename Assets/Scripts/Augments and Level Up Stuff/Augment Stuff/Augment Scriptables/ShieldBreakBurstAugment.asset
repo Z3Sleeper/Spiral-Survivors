@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: ShieldBreakBurstAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#FF00FF>Break Burst</color>
+  description: '<color=#FFA000>On <color=#FF00FF>Shield</color> Break:</color> Become
+    <color=#FFA000>Invulnerable</color> for 1 second and deal <color=#FF5000>200%<color=#00FF87>*</color>
+    Damage</color> to all surrounding enemies, knocking them back and <color=#FFA000>Stunning</color>
+    them for 1 second.
+
+    <color=#00FF87>*Affected by Luck*</color>'
+  icon: {fileID: 21300000, guid: 37a9507e367a9dc4e964a6b2fa3a1d43, type: 3}
+  effectPrefab: {fileID: 3310022117534731454, guid: a44f3317e8aaa1c4ca54240822ef712d, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags: []
+  requiredTags: []
+  incompatibleTags: []

@@ -14,7 +14,6 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 {
     public struct State : IPredictedData<State>
     {
-        public float angle;
         public float fireTimer;
         public void Dispose() { }
     }
@@ -101,13 +100,10 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
     // ── Simulation ────────────────────────────────────────────────────────────
 
-    protected override void Simulate(ref State state, float delta)
-    {
-        if (!_initialized || _stats == null || _stats.IsDead) return;
-        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
-
-        state.angle -= _stats.WeaponSpeed * delta;
-    }
+    // Empty — orbit angle is now ticked once, shared, on CharacterStatsPD (see
+    // CharacterStatsPD.State.weaponOrbitAngle's own doc comment); this weapon just reads _stats.WeaponOrbitAngle
+    // in LateSimulate() instead of maintaining its own copy.
+    protected override void Simulate(ref State state, float delta) { }
 
     // Same post-physics-pass timing reasoning as WeaponMeleePD.LateSimulate() — _stats.transform.position
     // (and therefore this weapon's own orbital position) needs to reflect the player's current-tick,
@@ -117,8 +113,12 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         if (!_initialized || _stats == null || _stats.IsDead) return;
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
+        // Outer-track weapons (OuterTrackAugment) spin the opposite direction — see
+        // WeaponMeleePD.LateSimulate's own angleSign comment for the full reasoning. No sub-arc sweep here
+        // (ranged just fires at whatever's in front of it), so no startAngle reconstruction needed.
+        float   currentAngle = (IsOuterTrack ? -1f : 1f) * _stats.WeaponOrbitAngle;
         Vector3 origin = _stats.transform.position;
-        Vector3 orbitPos = OrbitalPosition(state.angle, origin);
+        Vector3 orbitPos = OrbitalPosition(currentAngle, origin);
         Vector3 outward  = orbitPos - origin;
         if (outward == Vector3.zero) return;
 

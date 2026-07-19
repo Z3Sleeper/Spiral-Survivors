@@ -572,7 +572,7 @@ MonoBehaviour:
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
-  damage: 20
+  damage: 10
   xpValue: 250
   contactColliderEnabled: 1
   contactCooldown: 0.5
@@ -589,8 +589,8 @@ MonoBehaviour:
   spikeBurstDamageMultiplier: 4
   remoteBurstDamageMultiplier: 2.5
   chargeWindupDuration: 0.5
-  chargeSpeedMultiplier: 4
-  chargeDistance: 25
+  chargeSpeedMultiplier: 3
+  chargeDistance: 20
   attackCooldown: 8
   chargesPerAttack: 3
   betweenChargePause: 0.1

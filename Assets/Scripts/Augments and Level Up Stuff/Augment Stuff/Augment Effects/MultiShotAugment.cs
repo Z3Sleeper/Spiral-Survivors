@@ -2,21 +2,21 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Ported from _OldSystemArchive/Augment Effects/MultiShotAugment.cs (the x2 variant is deliberately not
-// ported). Grants extra shots per volley at a damage/on-hit-power tradeoff — WeaponRangedPD.Fire() already
-// reads Stats.Multishot/bonusWeaponDamagePenalty/bonusOnHitPowerPenalty directly, so this is a pure stat
-// grant with no other wiring needed.
+// ported). Used to hand-tune a damage/on-hit-power PENALTY to offset the extra shots this grants — now
+// that WeaponDamage/OnHitPower both auto-divide by (1f + Multishot) themselves, that offset is structural,
+// so this instead grants a straight BONUS on top (default +20% each).
 public class MultiShotAugment : AugmentEffectPD<MultiShotAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float bonusShots    = 2f;
-    [SerializeField] private float damagePenalty = 0.6f;
-    [SerializeField] private float onHitPenalty  = 0.3f;
+    [SerializeField] private float bonusShots      = 2f;
+    [SerializeField] private float damageBonus     = 0.2f;
+    [SerializeField] private float onHitPowerBonus = 0.2f;
 
     protected override void OnApply()
     {
         Stats.AddMultishotFlat(bonusShots);
-        Stats.MultiplyWeaponDamagePenalty(1f - damagePenalty);
-        Stats.MultiplyOnHitPowerPenalty(1f - onHitPenalty);
+        Stats.AddWeaponDamagePercent(damageBonus);
+        Stats.MultiplyOnHitPowerMultiplier(1f + onHitPowerBonus);
     }
 }

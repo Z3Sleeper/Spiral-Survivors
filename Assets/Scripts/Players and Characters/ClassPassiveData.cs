@@ -153,9 +153,15 @@ public class ClassPassiveData : ScriptableObject
     public float damageReductionPercent = 0f;
     public float damageReductionPenalty = 0f;
 
-    // The escape hatch for a passive that needs actual behavior, not just numbers — same
-    // AugmentEffectPD<TState> spawn-once-and-apply base class/pattern as augment effects (HealthAugment,
-    // TitanAugment), just never offered as a level-up pick. Supports multiple simultaneous effects.
+    // The escape hatch for a passive that needs actual behavior, not just numbers — a real AugmentData,
+    // the same kind offered as a level-up pick, just granted directly instead of drawn from the pool.
+    // AugmentManagerPD registers each of these as a genuine PlayerAugmentRecord the moment this player's
+    // CharacterStatsPD becomes available (see AugmentManagerPD.RegisterClassPassiveAugments), which is what
+    // lets the normal pick-pool machinery treat it exactly like a real pick: it won't be re-offered, and
+    // any augment listing it (or a class passive's augment) in incompatibleAugments is automatically
+    // excluded too — e.g. a class passive using GremlinAugment would make TitanAugment unavailable to that
+    // player for free, no class-passive-specific exclusion logic needed. Supports multiple simultaneous
+    // effects, same as the old effectPrefabs[] this replaces.
     [Header("Unique Behavior")]
-    public GameObject[] effectPrefabs;
+    public AugmentData[] passiveAugments;
 }

@@ -162,16 +162,22 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
                 stats.ApplyClassPassives();
                 _classPassivesApplied = true;
             }
-        }
 
-        // _classPassivesApplied can only become true after _registeredInAll (and everything that gates it)
-        // already did, so it alone is sufficient here — no need to re-check those conditions.
-        if (!_allReady && _classPassivesApplied)
-        {
-            _allReady = true;
-            _localSetupComplete = true;
-            if (isOwner && character.TryGetComponent(out PlayerControllerPD ctrl))
-                ctrl.EnableInput();
+            // _classPassivesApplied can only become true after _registeredInAll (and everything that gates
+            // it) already did. Also waits on ClassPassiveAugmentsReady — ApplyClassPassives() above only
+            // covers ClassPassiveData's plain stat fields; the passiveAugments[] escape hatch (unique-effect
+            // augments like a class-passive stat bonus granted via its own OnApply()) resolves separately
+            // and asynchronously through AugmentManagerPD, and defaults to "not ready" (-1 sentinel) until
+            // that system has actually registered a real count — see ClassPassiveAugmentsReady's own doc
+            // comment. Without this, the loading screen could drop a frame or two before those stats are
+            // actually live, producing a visible "stat pops in after load" flash.
+            if (!_allReady && _classPassivesApplied && stats.ClassPassiveAugmentsReady)
+            {
+                _allReady = true;
+                _localSetupComplete = true;
+                if (isOwner && character.TryGetComponent(out PlayerControllerPD ctrl))
+                    ctrl.EnableInput();
+            }
         }
     }
 

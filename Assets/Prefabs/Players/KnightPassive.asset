@@ -12,7 +12,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 009657d7a5a7e3844b9ada055b0289d0, type: 3}
   m_Name: KnightPassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
-  characterClass: 0
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0
@@ -26,13 +25,11 @@ MonoBehaviour:
   attackSpeedPenalty: 0
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
-  bonusWeaponRangeFlat: 2
+  bonusWeaponRangeFlat: 0
   bonusWeaponRangePercent: 0
   weaponRangePenalty: 0
   bonusWeaponSizePercent: 0
   bonusSizePercent: 0
-  canContactAllies: 0
-  canDamageAllies: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 0
   bonusCritDamageFlat: 0
@@ -43,8 +40,8 @@ MonoBehaviour:
   bonusMultishotPercent: 0
   projectileDamageDropoffReduction: 0
   projectileOnHitDropoffReduction: 0
-  bonusMaxHealthFlat: 30
-  bonusMaxHealthPercent: 0.5
+  bonusMaxHealthFlat: 0
+  bonusMaxHealthPercent: 0
   bonusHealthRegenFlat: 0
   bonusHealthRegenPercent: 0
   bonusMaxShieldFlat: 0
@@ -65,6 +62,14 @@ MonoBehaviour:
   bonusLuckFlat: 0
   bonusLuckPercent: 0
   luckPenalty: 0
+  bonusLuckFloorPercent: 0
+  luckFloorPenalty: 0
+  bonusLuckCeilingPercent: 0
+  luckCeilingPenalty: 0
+  bonusHighrollPercent: 0
+  highrollPenalty: 0
+  bonusHighrollBonusPercent: 0
+  highrollBonusPenalty: 0
   knockbackMultiplier: 1
   knockbackPenalty: 0
   bonusOnHitPowerMultiplier: 1
@@ -80,4 +85,6 @@ MonoBehaviour:
   revivePower: 0
   damageReductionPercent: 0
   damageReductionPenalty: 0
-  effectPrefabs: []
+  passiveAugments:
+  - {fileID: 11400000, guid: 1f6c1d411ebfa0343b0bdab424024678, type: 2}
+  - {fileID: 11400000, guid: 08bca29a0c0a6414892598ad2c0c7a7a, type: 2}

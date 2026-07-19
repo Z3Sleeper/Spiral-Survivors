@@ -29,6 +29,12 @@ public abstract class AugmentEffectPD<TState> : PredictedIdentity<TState> where 
         if (Stats == null || !verified.HasValue || _applied) return;
         _applied = true;
         OnApply();
+        // Every augment effect reports here once its own OnApply() has actually run — see
+        // CharacterStatsPD.NotifyAugmentApplied's own doc comment for what this gates (class passives).
+        Stats.NotifyAugmentApplied();
+        // Also reports to the manager, which uses this for the analogous level-up-pick gate — see
+        // AugmentManagerPD.NotifyAugmentEffectApplied's own doc comment.
+        if (AugmentManagerPD.instance != null) AugmentManagerPD.instance.NotifyAugmentEffectApplied();
     }
 
     // Called exactly once, off verified state — override for one-shot grants (flat stat bonuses, etc.).

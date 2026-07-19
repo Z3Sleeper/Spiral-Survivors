@@ -10,6 +10,12 @@ using UnityEngine;
 public interface IWeaponPD
 {
     int SlotIndex { get; set; }
+    // True for a weapon spawned onto OuterTrackAugment's second ring — set once by WeaponManagerPD at
+    // registration time (see its own RegisterWeapon/_spawningOuter), never changes after. Read by
+    // OrbitalPosition to orbit from just past the main track's own reach instead of from the player
+    // directly, using a separate slot-count space, and by each weapon's own LateSimulate to spin the
+    // opposite direction (see WeaponMeleePD.LateSimulate's own angleSign comment).
+    bool IsOuterTrack { get; set; }
     bool IsMelee { get; }
     Transform transform { get; }
     Transform hitboxTarget { get; }
@@ -40,6 +46,11 @@ public struct WeaponHitData
     public PredictedObjectID target;
     public float weaponDamage;
     public float onHitPower;
+    // Whether the hit that fired this event was itself a crit — onhit-triggered damage effects
+    // (OnHitDamageAugment, OnHitDamageHealthRegenAugment) read this directly and crit in lockstep with the
+    // original hit instead of rolling their own independent chance, same "if it crits, crit on all hits"
+    // reasoning PhantomBladePD now uses.
+    public bool isCrit;
 }
 
 // Shared payload for CharacterStatsPD._onAllyStrike — fired whenever any of this player's weapons touches
@@ -133,11 +144,23 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     private float[]   _baseYScales;
     private Vector2[] _baseXZScales;
     private float[]   _baseXScales;
+    // Guards InitModelVisuals() below to a single real capture per GameObject instance — WeaponManagerPD
+    // calls InitModelVisuals() from RegisterWeapon() on every logical spawn, including pooled reuse (since
+    // LateAwake() re-fires then too). Without this, a reused instance would re-capture the "base" values
+    // from wherever ScaleModel() left the visual transforms scaled to at the END of its PREVIOUS life,
+    // instead of the prefab's true untouched default — corrupting designOrbit/_hiltEdgeLocal/
+    // _baseRangeScaleX/etc. and producing a wrong (usually tiny, badly offset) scale on every reuse after
+    // the first. Same "cache once in a hook that re-fires on pooled reuse" bug class as
+    // WeaponRangedProjectilePD/PhantomBladePD's own _baseScale, just here fixed with a guard flag instead
+    // of moving the capture into Awake() (RegisterWeapon/InitModelVisuals is called well after Awake(), so
+    // there's no earlier hook available to move it to).
+    private bool _modelVisualsInitialized;
 
     [System.NonSerialized] public float designOrbit;
     public float   RangeValue { get; set; }
     public Vector3 RootScale  { get; set; } = Vector3.one;
     public int     SlotIndex  { get; set; }
+    public bool    IsOuterTrack { get; set; }
 
     // Every weapon (melee or ranged) registers with its owner's WeaponManagerPD the same way — see
     // WeaponMeleePD.TryInit()/WeaponRangedPD's equivalent — and OrbitalPosition() below needs WeaponCount
@@ -149,6 +172,9 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
 
     public void InitModelVisuals()
     {
+        if (_modelVisualsInitialized) return;
+        _modelVisualsInitialized = true;
+
         if (rangeScaleTarget != null)
         {
             float basePos    = rangeScaleTarget.localPosition.z;
@@ -282,18 +308,28 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         _onHit = new PredictedEvent<WeaponHitData>(predictionManager, this);
     }
 
-    // Shared orbital-position formula — both WeaponMeleePD (swept hitbox) and WeaponRangedPD (fires at
-    // whatever it has line-of-sight to) orbit their owner identically, only what happens once they're
+    // Shared orbital-position formula — WeaponMeleePD/WeaponAxePD (swept hitbox) and WeaponRangedPD (fires
+    // at whatever it has line-of-sight to) orbit their owner identically, only what happens once they're
     // positioned differs. WeaponCount comes from _manager so multiple simultaneous weapons space evenly
-    // around the circle regardless of which weapon type(s) they are.
+    // around the circle regardless of which weapon type(s) they are — an outer-track weapon (IsOuterTrack)
+    // uses the manager's separate OuterWeaponCount/slot-space instead, so the two rings' spacing math never
+    // interferes with each other. baseAngle is always ±_stats.WeaponOrbitAngle in practice — a single value
+    // shared by every weapon this player owns, negated by outer-track weapons for the opposite spin
+    // direction (see WeaponMeleePD.LateSimulate's own angleSign comment for why the sign has to be applied
+    // at the call site, not in here) — so only the SlotIndex-based offset term below actually varies
+    // between weapons on the SAME ring.
     protected Vector3 OrbitalPosition(float baseAngle, Vector3 origin)
     {
-        int   total     = _manager != null ? Mathf.Max(1, _manager.WeaponCount) : 1;
+        int   total     = _manager != null ? Mathf.Max(1, IsOuterTrack ? _manager.OuterWeaponCount : _manager.WeaponCount) : 1;
         float rad       = (baseAngle + 360f / total * SlotIndex) * Mathf.Deg2Rad;
         float halfRange = rangeScaleTarget != null
             ? designOrbit * RootScale.z
             : (IsMelee ? RangeValue / 2f : 0.25f);
-        float radius = _stats.WeaponRadius + _stats.transform.lossyScale.x * 0.5f + halfRange;
+        // Outer-track weapons start their own orbit from just past the main track's full reach
+        // (WeaponRadius + WeaponRange) instead of straight from the player — dynamically rescales with
+        // range automatically since both are live stats, recomputed every frame this runs.
+        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
+        float radius = weaponRadiusOffset + _stats.transform.lossyScale.x * 0.5f + halfRange;
         return origin + new Vector3(Mathf.Cos(rad) * radius, 0f, Mathf.Sin(rad) * radius);
     }
 

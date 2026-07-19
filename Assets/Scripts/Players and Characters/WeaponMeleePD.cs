@@ -6,7 +6,6 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 {
     public struct State : IPredictedData<State>
     {
-        public float angle;
         public bool  prevSet;
         public void Dispose() { }
     }
@@ -62,13 +61,10 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
     // ── Simulation ────────────────────────────────────────────────────────────
 
-    protected override void Simulate(ref State state, float delta)
-    {
-        if (!_initialized || _stats == null || _stats.IsDead) return;
-        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
-
-        state.angle -= _stats.WeaponSpeed * delta;
-    }
+    // Empty — orbit angle is now ticked once, shared, on CharacterStatsPD (see
+    // CharacterStatsPD.State.weaponOrbitAngle's own doc comment); this weapon just reads _stats.WeaponOrbitAngle
+    // in LateSimulate() instead of maintaining its own copy.
+    protected override void Simulate(ref State state, float delta) { }
 
     // Runs after the framework's DoPhysicsPass() for this tick (Simulate() on every identity happens
     // first, then physics integrates, then LateSimulate() on every identity) — so _stats.transform.position
@@ -82,8 +78,15 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
         // Compute orbital position and apply to transform.
         // PredictedTransform records these tick-positions and interpolates the Visuals child for rendering.
+        // Outer-track weapons (OuterTrackAugment) spin the opposite direction from the shared angle: the
+        // main track's WeaponOrbitAngle monotonically decreases each tick, so negating it produces a value
+        // that monotonically increases at the same rate — a pure, deterministic mirror requiring no extra
+        // predicted state of its own. angleSign threads that same flip through the "previous tick's angle"
+        // reconstruction below (startAngle), which otherwise assumes the angle is decreasing.
+        float   angleSign   = IsOuterTrack ? -1f : 1f;
+        float   currentAngle = angleSign * _stats.WeaponOrbitAngle;
         Vector3 origin = _stats.transform.position;
-        Vector3 orbitPos = OrbitalPosition(state.angle, origin);
+        Vector3 orbitPos = OrbitalPosition(currentAngle, origin);
         Vector3 outward  = orbitPos - origin;
         if (outward == Vector3.zero) return;
 
@@ -119,7 +122,10 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             // (see WeaponBasePD.ComputeSubArcCount()) — at normal speeds this is always exactly 1 segment,
             // identical to a plain single sweep straight to the final position.
             float angleDelta = _stats.WeaponSpeed * delta;
-            float startAngle = state.angle + angleDelta; // angle before this tick's Simulate() decrement
+            // angle before this tick's movement — main track's angle decreases (so previous = current +
+            // delta); outer track's mirrored angle increases instead (so previous = current - delta). Same
+            // angleSign flip as currentAngle above.
+            float startAngle = currentAngle + angleSign * angleDelta;
             int   subArcs    = ComputeSubArcCount(angleDelta);
 
             Vector3    segStart  = prevCenter;
@@ -131,7 +137,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
                 bool    isLastStep = step == subArcs;
                 Vector3 stepPos = isLastStep
                     ? orbitPos
-                    : OrbitalPosition(Mathf.Lerp(startAngle, state.angle, step / (float)subArcs), origin);
+                    : OrbitalPosition(Mathf.Lerp(startAngle, currentAngle, step / (float)subArcs), origin);
                 Vector3 stepOutward = stepPos - origin;
                 if (stepOutward == Vector3.zero) continue;
 
@@ -255,7 +261,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
         if (isHighroll) _onHighroll.Invoke(damage);
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.WeaponDamage, onHitPower = _stats.OnHitPower };
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.WeaponDamage, onHitPower = _stats.OnHitPower, isCrit = isCrit };
         _onHit.Invoke(hitData);
         if (isCrit) _onCritStrike.Invoke(hitData);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);

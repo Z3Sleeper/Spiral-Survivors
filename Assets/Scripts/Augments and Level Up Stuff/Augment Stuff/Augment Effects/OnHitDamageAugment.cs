@@ -3,11 +3,13 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Not a port. Deals bonus weapon-damage-scaled damage on every OnHit firing. Rolls luck variance (the "*"
-// annotation) same as every other damage source, and optionally crits if Stats.onHitCanCrit has been
-// turned on (e.g. by OnHitCritAugment) — deliberately does NOT call Stats.NotifyCritStrike on its own crit
-// though, since that would feed back into CritTriggerOnHitAugment's "crit triggers another onhit" chain
-// and cascade indefinitely (onhit crits -> notifies crit -> triggers another onhit -> could crit again ->
-// ...). isCrit here only affects this hit's own damage/feedback, nothing else.
+// annotation) same as every other damage source. Inherits data.isCrit from the hit that triggered this
+// (WeaponHitData.isCrit, set by the weapon at the moment it rolled its own crit) instead of rolling an
+// independent crit chance — same "if the trigger crit, this crits too" reasoning PhantomBladePD uses.
+// Deliberately does NOT call Stats.NotifyCritStrike on its own crit though, since that would feed back into
+// CritTriggerOnHitAugment's "crit triggers another onhit" chain and cascade indefinitely (onhit crits ->
+// notifies crit -> triggers another onhit -> could crit again -> ...). isCrit here only affects this hit's
+// own damage/feedback, nothing else.
 public class OnHitDamageAugment : AugmentEffectPD<OnHitDamageAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -42,11 +44,10 @@ public class OnHitDamageAugment : AugmentEffectPD<OnHitDamageAugment.State>
         float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
 
-        bool isCrit = Stats.onHitCanCrit && GameRandom.instance.NextFloat() < Stats.CritChance;
-        if (isCrit) rolled *= Stats.CritDamage;
+        if (data.isCrit) rolled *= Stats.CritDamage;
 
-        enemy.TakeDamage(rolled, isCrit, Stats.owner ?? default);
-        _hitFeedbackQueue.Add((enemy, rolled, isCrit, isHighroll));
+        enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
+        _hitFeedbackQueue.Add((enemy, rolled, data.isCrit, isHighroll));
     }
 
     protected override void UpdateView(State viewState, State? verified)

@@ -41,6 +41,12 @@ public class AugmentData : ScriptableObject
     // one augment tagged "OnHit" AND any one augment tagged "PhantomBlade", regardless of which specific
     // augments those are or how many more get added to either tag later.
     public string[] requiredTags;
+    // Tag-based counterpart to incompatibleAugments above — excludes (and is excluded by) any augment
+    // carrying one of these tags via its own "tags" list above, without needing to name every such augment
+    // individually (same non-enumeration rationale as requiredTags). Checked symmetrically, same as
+    // incompatibleAugments: it doesn't matter which side (this augment's incompatibleTags, or an already-
+    // picked augment's incompatibleTags) declares the link.
+    public string[] incompatibleTags;
 
     public bool IsAvailableForClass(CharacterClassID characterClass)
     {

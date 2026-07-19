@@ -27,6 +27,8 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  tags: []
+  tags:
+  - Phantom Blade Generator
   requiredTags:
   - Phantom Blade Generator
+  incompatibleTags: []

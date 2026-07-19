@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: AttackSpeedAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FF0050>Feeling Dizzy</color>
+  displayName: <color=#FF0050>Revved Up</color>
   description: '<color=#FF0050>+25% Attack Speed
 
     +15% Total Attack Speed</color>'
@@ -24,3 +24,5 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
+  tags: []
+  requiredTags: []

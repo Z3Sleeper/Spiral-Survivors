@@ -10,21 +10,19 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
-  m_Name: OnHitCritAugment
+  m_Name: SurgeNoMoveSpeedPenaltyAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FF0000>Lethality</color>
-  description: '<color=#FF0050>On-Hit Effects</color> can <color=#FF0000>Crit</color>.
-
-    <color=#FF0000>+10%
-    Crit Chance</color>'
-  icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
-  effectPrefab: {fileID: 5785707983039645292, guid: 06cdd70f429fec6408ec524a2e8ee64d, type: 3}
+  displayName: <color=#FFFF00>Surge Mastery</color>
+  description: <color=#FFFF00>Surge</color> no longer reduces <color=#FFFFFF>Move
+    Speed</color>.
+  icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
+  effectPrefab: {fileID: 6240223812373983933, guid: 2ba6f15d6785a4b4eab15340e61a6a5c, type: 3}
   multiplayerOnly: 0
   classRestrictionMode: 0
   characterClasses: 
   incompatibleAugments: []
-  requiredCount: 1
+  requiredCount: 2147483647
   requiredAugments: []
   tags: []
-  requiredTags:
-  - On-Hit Effect
+  requiredTags: []
+  incompatibleTags: []

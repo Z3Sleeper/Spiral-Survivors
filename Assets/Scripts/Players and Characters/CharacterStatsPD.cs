@@ -24,6 +24,43 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public CharacterClass characterClass;
 
     [SerializeField] private ClassPassiveData classPassive;
+    // Read by AugmentManagerPD.RegisterClassPassiveAugments — see ClassPassiveData.passiveAugments' own
+    // doc comment for why this is registered as a real pick rather than spawned directly here.
+    public AugmentData[] ClassPassiveAugments => classPassive != null ? classPassive.passiveAugments : null;
+
+    // -1 = AugmentManagerPD.RegisterClassPassiveAugments() hasn't run for this player yet, so the real
+    // count isn't known — deliberately NOT "ready" in this state (unlike 0), so PlayerDataPD's readiness
+    // gate can't slip through during the one-tick lag between this player existing and that registration
+    // pass actually running (see RegisterClassPassiveAugments' own doc comment on that lag). Once it calls
+    // BeginWaitingForClassPassiveAugments with the real spawned count (0 if this class has no unique-effect
+    // passives at all), this only ever counts down as each spawned effect confirms via NotifyAugmentApplied.
+    private int _pendingClassPassiveAugments = -1;
+
+    // True once every class-passive augment this player was granted has actually applied its OnApply()
+    // effect — not just been spawned. Distinct from the plain-stat block ApplyClassPassives() already
+    // applies synchronously; this covers the passiveAugments[] escape hatch specifically, whose effects
+    // resolve asynchronously (spawn -> verified state -> OnApply). Used to hold PlayerDataPD's "player
+    // ready" gate open long enough that the loading screen can't drop before those stats are actually live
+    // (fixes a visible "stat pops in after load" flash, e.g. a class-passive max-health bonus).
+    public bool ClassPassiveAugmentsReady => _pendingClassPassiveAugments == 0;
+
+    // Called once by AugmentManagerPD.RegisterClassPassiveAugments() with the exact number of this
+    // player's class-passive augment effects it actually spawned this pass — the one place that knows
+    // that count for certain (SpawnAugmentEffect can silently no-op, e.g. a database-only augment with no
+    // effectPrefab, so the count must come from confirmed spawns, not just array length).
+    public void BeginWaitingForClassPassiveAugments(int count)
+    {
+        _pendingClassPassiveAugments = count;
+    }
+
+    // Called by AugmentEffectPD once its own OnApply() has actually run (confirmed off verified state) —
+    // every augment effect reports here, not just class-passive ones, but the guard means a normal
+    // level-up pick's effect (always well after game start, once this is already at 0) is a harmless
+    // no-op.
+    public void NotifyAugmentApplied()
+    {
+        if (_pendingClassPassiveAugments > 0) _pendingClassPassiveAugments--;
+    }
 
     // ── Serialized base values ─────────────────────────────────────────────
 
@@ -36,6 +73,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float baseWeaponRadius = 0f;
     public float baseAttackSpeed = 0.5f;
     public int baseWeaponCount = 1;
+    // Extra weapon "tracks" (e.g. the planned OuterWeaponTrackAugment), feeding into WeaponDamage's own
+    // auto-divide below. Deliberately a single plain int, not a base/flat/multiplier scaffold like
+    // baseWeaponCount — this is intentionally-unused-elsewhere bookkeeping, directly += a small integer
+    // whenever tracks are added or removed (see AddWeaponTracks), never multiplied.
+    public int weaponTracks = 1;
     public float baseWeaponRange = 10f;
     public float baseWeaponSize = 1f;
     public bool continuousFire = false;
@@ -91,7 +133,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // — see WeaponBasePD<TState>._onHighroll / WeaponRangedProjectilePD._onHighroll). Same base+bonus+penalty
     // convention as every other stat here, so a future augment/passive can push it (e.g. toward 1.0 = never
     // highrolls, or lower = highrolls more often) without touching WeaponDamageMath itself.
-    public float baseHighroll = 0.99f;
+    public float baseHighroll = 0.95f;
     // Bonus damage applied WHEN a hit highrolls — separate from baseHighroll (which only decides whether a
     // roll counts as one). Applies as (1 + HighrollBonus) before crit, so the two stack multiplicatively
     // rather than either replacing the other.
@@ -151,11 +193,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     [HideInInspector] public float bonusCritChanceFlat = 0f;
     [HideInInspector] public float bonusCritChancePercent = 1f;
-    // False by default — onhit-triggered damage effects don't crit at all unless OnHitCritAugment turns
-    // this on. Future onhit-damage-dealing augments should check this before rolling their own crit
-    // chance/multiplier, same "capability is off until an augment turns it on" shape as
-    // phantomBladeOnHitEnabled.
-    [HideInInspector] public bool onHitCanCrit = false;
 
     [HideInInspector] public float bonusCritDamageFlat = 0f;
     [HideInInspector] public float bonusCritDamagePercent = 1f;
@@ -239,7 +276,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent * moveSpeedPenalty * (currentState.isSurging ? SurgeMoveSpeedMulti : 1f);
 
-    public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent * bonusWeaponDamagePenalty;
+    // Auto-divided by total simultaneous damage instances (weapon tracks * weapon copies * shots per
+    // attack) so picking up more weapons/multishot no longer needs its own hand-tuned damage penalty per
+    // augment — total output stays roughly constant and augments granting more copies can just give a
+    // straight damage bonus on top instead. (1f + Multishot) because Multishot itself is "bonus shots
+    // beyond the first" (base 0), matching the same "+1" WeaponRangedPD.Fire() already applies when turning
+    // it into an actual shot count — dividing by raw Multishot would divide by zero for anyone without it.
+    // UnpenalizedWeaponDamage deliberately excludes this divide, same as it already excludes
+    // bonusWeaponDamagePenalty — Phantom Blade damage reads this baseline and isn't one of the "extra
+    // simultaneous copies" this divide exists to counterbalance.
+    public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent * bonusWeaponDamagePenalty
+        / (weaponTracks * WeaponCount * (1f + Multishot));
     public float UnpenalizedWeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent;
     // Deliberately doesn't factor in bonusSizePercent, unlike WeaponSize — Bladeweaver is the only class
     // that uses this for actual orbit distance (hovering blades), and a size augment pushing that
@@ -249,6 +296,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public float AttackSpeed => (baseAttackSpeed + attackSpeedPercent) * attackSpeedTotalPercent * attackSpeedPenalty * (currentState.isSurging ? SurgeAttackSpeedMultiplier : 1f);
     public float WeaponSpeed => AttackSpeed * 360f;
+    // Public read access to the shared orbit angle (see State.weaponOrbitAngle's own doc comment) — every
+    // weapon (WeaponMeleePD/WeaponAxePD/WeaponRangedPD) reads this instead of ticking its own copy.
+    public float WeaponOrbitAngle => currentState.weaponOrbitAngle;
     public float AttackSpeedPercent => attackSpeedTotalPercent * attackSpeedPenalty;
 
     public int WeaponCount => (baseWeaponCount + bonusWeaponCountFlat) * bonusWeaponCountMultiplier;
@@ -318,7 +368,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public float Knockback => baseKnockback * knockbackMultiplier * knockbackPenalty;
 
-    public float OnHitPower => baseOnHitPower * bonusOnHitPowerMultiplier * bonusOnHitPowerPenalty;
+    // Same auto-divide as WeaponDamage and for the same reason — onHitPower feeds every onhit-triggered
+    // effect (OnHitDamageAugment, PhantomBladeOnHitAugment, HealAllyOnStrikeAugment, etc.), so without this
+    // an augment that grants more simultaneous weapons/multishot would silently multiply every one of
+    // those effects' output too, blowing past the 20/30-point budget guideline those augments were tuned
+    // against. No "Unpenalized" variant here (unlike WeaponDamage) — nothing currently reads a pre-divide
+    // baseline the way Phantom Blade damage does.
+    public float OnHitPower => baseOnHitPower * bonusOnHitPowerMultiplier * bonusOnHitPowerPenalty
+        / (weaponTracks * WeaponCount * (1f + Multishot));
     public float StackPower => stackPowerPercent * stackPowerPenalty;
     public float XPModifier => xpMultiplier * xpPenalty;
     public float XPRadius => (baseXPRadius + bonusXPRadiusFlat) * bonusXPRadiusPercent;
@@ -364,6 +421,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         public float shieldRechargeTimer;
         public uint damageEventId;
         public float currentReviveTime;
+        // Single shared orbit angle for EVERY weapon this player owns (melee, axe, ranged alike) — ticked
+        // once here instead of each weapon independently decrementing its own copy. A weapon's own SlotIndex
+        // * (360/WeaponCount) offset (see WeaponBasePD.OrbitalPosition) only produces evenly-spaced
+        // positions if every weapon reads the exact same base angle; when each weapon tracked its own
+        // independently-ticking copy, a newly spawned weapon started fresh at 0 while existing weapons had
+        // already drifted from spawn, so the two were never actually 360/count degrees apart — this fixes
+        // that by construction, since there's only one angle value for every weapon to ever read.
+        public float weaponOrbitAngle;
         public void Dispose() { }
     }
 
@@ -386,6 +451,22 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     private PredictedEvent<float> _onHeal;
     private PredictedEvent _onSurgeStarted;
     private PredictedEvent _onSurgeEnded;
+    // Fires the tick shield crosses from >0 to <=0 inside TakeDamage — see that method's own 0-crossing
+    // check. No payload (matches _onSurgeStarted/_onSurgeEnded) since "which player" is already implicit
+    // per-instance and there's no other useful data to carry (overflow damage already went to health in
+    // the same call, before this fires).
+    private PredictedEvent _onShieldBreak;
+    // Fires the tick shield crosses from <=0 back up to >0 — the natural Simulate()-driven regen (see that
+    // method's own shield-regen block) and the instant RechargeShield() both funnel through this same
+    // detection so "reapply while shielded"-style effects (e.g. ShieldDamageReductionAugment) never need to
+    // care which path actually refilled the shield.
+    private PredictedEvent _onShieldRecharge;
+    // Fires from inside TakeDamage the moment it determines the incoming hit WOULD reduce health to <=0,
+    // before that reduction is actually applied — gives a death-prevention effect a chance to call
+    // PreventLethalDamage() synchronously (see that method's own doc comment) before TakeDamage finalizes
+    // the outcome. No payload — a listener that wants to react conditionally (e.g. a cooldown) tracks that
+    // itself; the incoming damage amount isn't needed to decide whether to intervene.
+    private PredictedEvent _onLethalDamageTaken;
     // Relayed here from WeaponManagerPD (which subscribes to every one of this player's own registered
     // weapons' own crit events) — the one channel downstream per-player systems like
     // PhantomBladeOnCritAugment subscribe to, instead of each augment needing to know about individual
@@ -417,6 +498,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void RemoveSurgeStartedListener(Action listener) => _onSurgeStarted.RemoveListener(listener);
     public void AddSurgeEndedListener(Action listener) => _onSurgeEnded.AddListener(listener);
     public void RemoveSurgeEndedListener(Action listener) => _onSurgeEnded.RemoveListener(listener);
+    public void AddShieldBreakListener(Action listener) => _onShieldBreak.AddListener(listener);
+    public void RemoveShieldBreakListener(Action listener) => _onShieldBreak.RemoveListener(listener);
+    public void AddShieldRechargeListener(Action listener) => _onShieldRecharge.AddListener(listener);
+    public void RemoveShieldRechargeListener(Action listener) => _onShieldRecharge.RemoveListener(listener);
+    public void AddLethalDamageTakenListener(Action listener) => _onLethalDamageTaken.AddListener(listener);
+    public void RemoveLethalDamageTakenListener(Action listener) => _onLethalDamageTaken.RemoveListener(listener);
     public void AddCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.AddListener(listener);
     public void RemoveCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.RemoveListener(listener);
     public void NotifyCritStrike(WeaponHitData data) => _onCritStrike.Invoke(data);
@@ -435,6 +522,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onHeal          = new PredictedEvent<float>(predictionManager, this);
         _onSurgeStarted  = new PredictedEvent(predictionManager, this);
         _onSurgeEnded    = new PredictedEvent(predictionManager, this);
+        _onShieldBreak   = new PredictedEvent(predictionManager, this);
+        _onShieldRecharge = new PredictedEvent(predictionManager, this);
+        _onLethalDamageTaken = new PredictedEvent(predictionManager, this);
         _onCritStrike    = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onHit           = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onAllyStrike    = new PredictedEvent<AllyStrikeData>(predictionManager, this);
@@ -464,6 +554,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
         if (state.isDead) return;
 
+        // Weapon orbit — same "don't rotate while dead" gating the individual weapons used to apply
+        // themselves before this became a shared value.
+        state.weaponOrbitAngle -= WeaponSpeed * delta;
+
         // Invincibility timer
         if (state.invincible && state.invincibleTimer > 0f)
         {
@@ -490,7 +584,15 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         {
             state.shieldRechargeTimer -= delta;
             if (state.shieldRechargeTimer <= 0f)
+            {
+                bool wasBroken = state.shield <= 0f;
                 state.shield = MaxShield;
+                // Safe to invoke directly from Simulate() — PredictedEvent fires exactly once per real
+                // occurrence regardless of resimulation, same reasoning as _onHighroll being invoked
+                // directly from weapon Hit() methods.
+                if (wasBroken && state.shield > 0f)
+                    _onShieldRecharge.Invoke();
+            }
         }
 
         // Surge energy drain (can't be surging while dead, so this block is alive-only)
@@ -623,21 +725,51 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void AddAttackSpeedPercent(float amount) => ApplyStatChange(() => attackSpeedPercent += amount * baseAttackSpeed);
     public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => bonusMoveSpeedFlat += amount);
     public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => bonusMoveSpeedPercent += amount);
+    // Direct override, not additive — surgeMoveSpeedPenalty (default 0.5f) is the actual reduction
+    // multiplier itself (SurgeMoveSpeedMulti = surgeMoveSpeedMulti * surgeMoveSpeedPenalty * ...), not a
+    // bonus-stacking pool, so "half the penalty"/"no penalty" augments each set it to their own fixed
+    // absolute target (0.75f/1f) rather than accumulating a delta off the current value. Same "Set" shape
+    // as SetInvincible — also makes picking both of a mutually-exclusive pair harmless (whichever applies
+    // last simply wins) rather than compounding into a nonsensical value.
+    public void SetSurgeMoveSpeedPenalty(float value) => ApplyStatChange(() => surgeMoveSpeedPenalty = value);
+    // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — stackPowerPercent starts at
+    // 1f (StackPower = stackPowerPercent * stackPowerPenalty), just had no augment-facing wrapper until now.
+    public void AddStackPowerPercent(float amount) => ApplyStatChange(() => stackPowerPercent += amount);
     public void AddHealthRegenFlat(float amount) => ApplyStatChange(() => bonusHealthRegenFlat += amount);
     public void AddHealthRegenPercent(float amount) => ApplyStatChange(() => bonusHealthRegenPercent += amount);
     public void AddEnergyRegenFlat(float amount) => ApplyStatChange(() => bonusEnergyRegenFlat += amount);
     public void AddEnergyRegenPercent(float amount) => ApplyStatChange(() => bonusEnergyRegenPercent += amount);
     public void AddLuckFlat(float amount) => ApplyStatChange(() => bonusLuckFlat += amount);
     public void AddLuckPercent(float amount) => ApplyStatChange(() => bonusLuckPercent += amount);
+    // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — bonusLuckCeilingPercent
+    // starts at 1f (LuckCeiling = baseLuckCeiling * bonusLuckCeilingPercent * luckCeilingPenalty), just had
+    // no augment-facing wrapper until now.
+    public void AddLuckCeilingPercent(float amount) => ApplyStatChange(() => bonusLuckCeilingPercent += amount);
+    // Inverted, same reasoning as AddDamageReductionPercent: Highroll = baseHighroll * bonusHighrollPercent
+    // * highrollPenalty, and a LOWER Highroll threshold means MORE of a roll's window counts as a highroll
+    // (see WeaponDamageMath.RollDamage's own doc comment) — so a lower highrollPenalty is better for the
+    // player here. The parameter keeps this class's usual "positive = better for the player" convention
+    // (e.g. 0.05 for a 5% easier highroll threshold); it's SUBTRACTED under the hood.
+    public void AddHighrollPenalty(float amount) => ApplyStatChange(() => highrollPenalty -= amount);
     public void AddCritChanceFlat(float amount) => ApplyStatChange(() => bonusCritChanceFlat += amount);
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent, for CritChance's own percent
     // multiplier (bonusCritChancePercent starts at 1f, e.g. +0.25 = +25% total crit chance).
     public void AddCritChancePercent(float amount) => ApplyStatChange(() => bonusCritChancePercent += amount);
+    // Inverted from every other "...Percent" wrapper above: damageReductionPercent starts at 1f and
+    // multiplies DIRECTLY into incoming damage (TakeDamage's own `damage *= DamageReduction`), so a LOWER
+    // value is better for the player here. The parameter still follows this class's usual "positive =
+    // better for the player" convention (e.g. 0.4 for -40% damage taken) — it's SUBTRACTED under the hood so
+    // the caller-facing sign stays consistent with every other Add*Percent method; pass a negative amount to
+    // revert a previously-granted reduction.
+    public void AddDamageReductionPercent(float amount) => ApplyStatChange(() => damageReductionPercent -= amount);
     public void AddDashHaste(float amount) => ApplyStatChange(() => dashHaste += amount);
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent/AddCritChancePercent, for
     // DashHaste's own percent multiplier (bonusDashHastePercent starts at 1f, e.g. +0.15 = +15% total).
     public void AddDashHastePercent(float amount) => ApplyStatChange(() => bonusDashHastePercent += amount);
     public void AddWeaponCountFlat(int amount) => ApplyStatChange(() => bonusWeaponCountFlat += amount);
+    // Unused for now — the planned OuterWeaponTrackAugment will call this. amount can be negative to
+    // remove tracks (nothing currently does, but the direct += supports it symmetrically for free).
+    public void AddWeaponTracks(int amount) => ApplyStatChange(() => weaponTracks += amount);
     // Multiplicative, not additive — bonusWeaponDamagePenalty/bonusOnHitPowerPenalty both start at 1f and
     // apply as straight multipliers (WeaponDamage/OnHitPower), so stacking two -40% penalties correctly
     // compounds to 0.6 * 0.6 = 0.36 rather than clamping at 1 - 0.8 = 0.2. factor is what the penalty gets
@@ -645,6 +777,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // `bonusWeaponDamagePenalty *= 1f - damagePenalty` call.
     public void MultiplyWeaponDamagePenalty(float factor) => ApplyStatChange(() => bonusWeaponDamagePenalty *= factor);
     public void MultiplyOnHitPowerPenalty(float factor) => ApplyStatChange(() => bonusOnHitPowerPenalty *= factor);
+    // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — bonusWeaponDamagePercent
+    // already sits in the WeaponDamage formula, just had no augment-facing wrapper until now. Formerly,
+    // augments granting extra weapons/multishot (BladeweaviestBladeweaverAugment, MultiShotAugment) papered
+    // over the resulting damage inflation with a hand-tuned MultiplyWeaponDamagePenalty call; now that
+    // WeaponDamage auto-divides by weaponTracks/WeaponCount/Multishot itself, those same augments call this
+    // instead to grant a straight bonus on top rather than a penalty underneath.
+    public void AddWeaponDamagePercent(float amount) => ApplyStatChange(() => bonusWeaponDamagePercent += amount);
+    // Multiplicative compounding, same convention as MultiplyWeaponDamagePenalty/MultiplyOnHitPowerPenalty
+    // — bonusOnHitPowerMultiplier already sits in the OnHitPower formula (previously only ever touched by
+    // ClassPassiveData aggregation), just had no augment-facing wrapper until now. Same
+    // penalty-to-bonus swap as AddWeaponDamagePercent above, for the same reason.
+    public void MultiplyOnHitPowerMultiplier(float factor) => ApplyStatChange(() => bonusOnHitPowerMultiplier *= factor);
     public void AddRicochetFlat(float amount) => ApplyStatChange(() => bonusRicochetFlat += amount);
     public void AddMultishotFlat(float amount) => ApplyStatChange(() => bonusMultishotFlat += amount);
     // Same MultiplyWeaponDamagePenalty-style compounding convention — multiple spread-reducing sources
@@ -699,7 +843,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void MultiplyPhantomBladeDamagePenalty(float factor) => phantomBladeDamagePenalty *= factor;
     public void MultiplyPhantomBladeSizePenalty(float factor) => phantomBladeSizePenalty *= factor;
     public void EnablePhantomBladeOnHit() => phantomBladeOnHitEnabled = true;
-    public void EnableOnHitCrit() => onHitCanCrit = true;
     public void AddPhantomBladeOnHitPowerPercent(float amount) => phantomBladeOnHitPowerPercent += amount;
 
     // Same enable-bool shape as phantomBladeOnHitEnabled above, but generic (no attached magnitude here) —
@@ -925,14 +1068,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             damageReductionPenalty          += p.damageReductionPenalty;
         });
 
-        if (classPassive.effectPrefabs != null)
-        {
-            foreach (var prefab in classPassive.effectPrefabs)
-            {
-                if (prefab != null)
-                    hierarchy.Create(prefab, transform.position, transform.rotation, owner);
-            }
-        }
+        // classPassive.passiveAugments is no longer spawned here — AugmentManagerPD.Simulate() registers
+        // them as real PlayerAugmentRecords (and spawns their effect prefabs itself via SpawnAugmentEffect)
+        // the moment this player's CharacterStatsPD becomes available, since that's the only place safe to
+        // mutate AugmentManagerPD's own predicted state. See RegisterClassPassiveAugments and
+        // ClassPassiveData.passiveAugments' own doc comments for the full reasoning.
     }
 
     private void ApplySingleStatEntry(StatAugmentEntry entry, float multiplier)
@@ -988,6 +1128,32 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         currentState.invincibleTimer = duration;
     }
 
+    // Plain, not State — reset to false right before every _onLethalDamageTaken.Invoke() call and read
+    // immediately after, all within the same synchronous TakeDamage() call. Never persists across separate
+    // calls, so this is a same-call communication channel, not an accumulating flag — safe regardless of
+    // resimulation.
+    private bool _lethalDamagePrevented;
+
+    // Called by a death-prevention listener (e.g. ShieldDamageReductionAugment), synchronously from inside
+    // its own _onLethalDamageTaken callback, to flag that the lethal hit currently being processed by
+    // TakeDamage should instead leave the player at 1 health. Calling this outside that callback (i.e. any
+    // time TakeDamage isn't mid-resolution of a lethal hit) has no effect — the flag is only ever read once,
+    // immediately after the event that gives it meaning.
+    public void PreventLethalDamage() => _lethalDamagePrevented = true;
+
+    // Instantly refills shield to full and fires the same recharge-edge event the natural Simulate()-driven
+    // regen does (only if it was actually broken) — used by effects like ShieldDamageReductionAugment's
+    // death save, so "reapply while shielded"-style effects correctly reapply immediately rather than
+    // waiting for the natural shieldRechargeTimer to also elapse.
+    public void RechargeShield()
+    {
+        bool wasBroken = currentState.shield <= 0f;
+        currentState.shield = MaxShield;
+        currentState.shieldRechargeTimer = 0f;
+        if (wasBroken && currentState.shield > 0f)
+            _onShieldRecharge.Invoke();
+    }
+
     public void TakeDamage(float damage)
     {
         if (currentState.isDead) return;
@@ -997,21 +1163,50 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         currentState.shieldRechargeTimer = shieldRechargeTime;
         damage *= DamageReduction;
 
+        // Break edge, not "shield is currently 0" — only true the tick it actually crosses down from >0,
+        // same reasoning as every other transition-detected event in this class. Invoking is deferred to
+        // the very end (see below) so a hit that also kills outright through shield+health+DamageReduction
+        // doesn't fire it.
+        bool shieldJustBroke = false;
+
         if (currentState.shield > 0f)
         {
             float shieldDamage = Mathf.Min(damage, currentState.shield);
             currentState.shield -= shieldDamage;
             damage -= shieldDamage;
+
+            if (currentState.shield <= 0f)
+                shieldJustBroke = true;
         }
 
         if (damage > 0f)
-            currentState.health -= damage;
+        {
+            bool wouldBeLethal = currentState.health - damage <= 0f;
+            if (wouldBeLethal)
+            {
+                // Gives any listener (e.g. a death-prevention augment) a chance to call
+                // PreventLethalDamage() synchronously, right here, before this damage is actually applied —
+                // see that method's own doc comment.
+                _lethalDamagePrevented = false;
+                _onLethalDamageTaken.Invoke();
+            }
+
+            if (wouldBeLethal && _lethalDamagePrevented)
+                currentState.health = 1f;
+            else
+                currentState.health -= damage;
+        }
 
         if (currentState.health <= 0f)
         {
             currentState.health = 0f;
             currentState.isDead = true;
         }
+
+        // Only fires if this same hit didn't also kill the player — a lethal hit shouldn't trigger a
+        // "shield broke" reaction (invincibility, an AOE burst, etc.) on a player who's already dead.
+        if (shieldJustBroke && !currentState.isDead)
+            _onShieldBreak.Invoke();
     }
 
     public void Heal(float amount)
@@ -1026,7 +1221,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Same as Heal(), minus the _onHeal invocation — for effects that react to a heal already in progress
     // (e.g. CriticalHealingAugment topping up a heal it just observed via AddHealListener) and would
     // otherwise re-trigger their own listener by calling Heal() again, cascading indefinitely on repeated
-    // crits. Same "must not re-notify its own trigger" shape as OnHitDamageAugment/OnHitCritAugment.
+    // crits. Same "must not re-notify its own trigger" shape as OnHitDamageAugment's own crit handling.
     public void HealSilent(float amount)
     {
         if (currentState.isDead) return;

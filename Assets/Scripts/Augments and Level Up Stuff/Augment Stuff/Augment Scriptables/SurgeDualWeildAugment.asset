@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: SurgeDualWeildAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#FFFF00>Secret Weapon</color>
+  description: <color=#FFA000>While <color=#FFFF00>Surging</color>:</color> <color=#FFA000>+1
+    Weapon</color> and <color=#FF5000>+40% Damage</color>.
+  icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
+  effectPrefab: {fileID: 5489089648639806987, guid: 9450586d5b1b20f49be8db9a16ea0e19, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags: []
+  requiredTags: []

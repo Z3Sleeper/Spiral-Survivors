@@ -48,4 +48,4 @@ MonoBehaviour:
   bladeCount: 3
   damageMultiplier: 1
   bladeDamageBonus: 0.1
-  dashHasteBonus: 20
+  dashHasteBonus: 0

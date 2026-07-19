@@ -318,6 +318,7 @@ MonoBehaviour:
   baseWeaponRadius: 0
   baseAttackSpeed: 0.5
   baseWeaponCount: 1
+  weaponTracks: 1
   baseWeaponRange: 10
   baseWeaponSize: 1
   continuousFire: 0
@@ -325,7 +326,7 @@ MonoBehaviour:
   baseCritDamage: 2
   baseRicochet: 0
   baseMultishot: 0
-  multishotSpreadAngle: 75
+  baseMultishotSpreadAngle: 75
   baseProjectileDamageDropoff: 0.1
   baseProjectileOnHitDropoff: 0.1
   baseMaxHealth: 50
@@ -345,7 +346,8 @@ MonoBehaviour:
   baseLuck: 0
   baseLuckFloor: 0.5
   baseLuckCeiling: 1.5
-  baseHighroll: 0.99
+  baseHighroll: 0.95
+  baseHighrollBonus: 0.5
   baseKnockback: 5
   baseOnHitPower: 1
   baseXPRadius: 5
@@ -372,8 +374,6 @@ MonoBehaviour:
   weaponRangePenalty: 1
   bonusWeaponSizePercent: 1
   bonusSizePercent: 1
-  canContactAllies: 0
-  canDamageAllies: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 1
   bonusCritDamageFlat: 0
@@ -382,6 +382,7 @@ MonoBehaviour:
   bonusRicochetPercent: 1
   bonusMultishotFlat: 0
   bonusMultishotPercent: 1
+  bonusMultishotSpreadPercent: 1
   projectileDamageDropoffReduction: 1
   projectileOnHitDropoffReduction: 1
   bonusMaxHealthFlat: 0
@@ -401,6 +402,7 @@ MonoBehaviour:
   surgeEffectivenessPenalty: 1
   surgeAttackSpeedPenalty: 1
   dashHaste: 0
+  bonusDashHastePercent: 1
   bonusMaxSPFlat: 0
   bonusMaxSPPercent: 1
   bonusLuckFlat: 0
@@ -412,6 +414,8 @@ MonoBehaviour:
   luckCeilingPenalty: 1
   bonusHighrollPercent: 1
   highrollPenalty: 1
+  bonusHighrollBonusPercent: 1
+  highrollBonusPenalty: 1
   knockbackMultiplier: 1
   knockbackPenalty: 1
   bonusOnHitPowerMultiplier: 1
@@ -427,6 +431,16 @@ MonoBehaviour:
   revivePower: 1
   damageReductionPercent: 1
   damageReductionPenalty: 1
+  phantomBladeDamageBonus: 0
+  phantomBladeSizeBonus: 0
+  phantomBladeDamageBonusPercent: 1
+  phantomBladeSizeBonusPercent: 1
+  phantomBladeDamagePenalty: 1
+  phantomBladeSizePenalty: 1
+  phantomBladeOnHitEnabled: 0
+  phantomBladeOnHitPowerPercent: 0
+  allyStrikeHitEnabled: 0
+  allyStrikeDamageEnabled: 0
 --- !u!114 &-3762473324914141039
 MonoBehaviour:
   m_ObjectHideFlags: 0

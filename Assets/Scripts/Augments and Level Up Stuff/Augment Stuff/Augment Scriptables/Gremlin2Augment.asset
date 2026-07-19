@@ -28,3 +28,9 @@ MonoBehaviour:
   requiredCount: 2147483647
   requiredAugments:
   - {fileID: 11400000, guid: 88bc0f2111c291f4ab9b8ca92f3547ad, type: 2}
+  tags:
+  - Size Decrease
+  requiredTags:
+  - Size Decrease
+  incompatibleTags:
+  - Size Increase

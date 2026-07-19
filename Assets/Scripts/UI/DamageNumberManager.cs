@@ -10,9 +10,13 @@ public class DamageNumberManager : MonoBehaviour
     [SerializeField] private DamageNumber _prefab;
     [SerializeField] private int _poolSize = 30;
     [SerializeField] private float _spawnYOffset = 1.5f;
-    // Not applied at spawn — rolled here, then handed to DamageNumber.Init() as the X distance to arc
-    // toward over its lifetime (see DamageNumber.Animate()), rather than an instant spawn-position offset.
-    [SerializeField] private float _spawnXJitter = 0.4f;
+    // Not applied at spawn — handed to DamageNumber.Init() as the X distance to arc toward over its
+    // lifetime (see DamageNumber.Animate()), rather than an instant spawn-position offset. Magnitude is
+    // randomized each spawn (Random.Range(min, max)), but the SIGN isn't random — it alternates
+    // left/right per pop (see DrainQueue), so consecutive numbers from the same queue always visibly
+    // separate instead of two randomly landing on the same side.
+    [SerializeField] private float _minSpawnXJitter = 1f;
+    [SerializeField] private float _maxSpawnXJitter = 1.5f;
     // Every number stays separate (never summed into one) — this just spaces out same-groupKey hits
     // landing in the same instant so they don't render as a single unreadable overlapping stack.
     [SerializeField] private float _staggerDelay = 0.05f;
@@ -87,7 +91,8 @@ public class DamageNumberManager : MonoBehaviour
 
         if (groupKey == 0)
         {
-            SpawnImmediate(amount, source, ResolvePosition(source, sizeYOffset, sizeZOffset), isCrit, isHighroll, isPriority);
+            // No queue to alternate within — always defaults right.
+            SpawnImmediate(amount, source, ResolvePosition(source, sizeYOffset, sizeZOffset), isCrit, isHighroll, isPriority, goRight: true);
             return;
         }
 
@@ -134,6 +139,11 @@ public class DamageNumberManager : MonoBehaviour
     private IEnumerator DrainQueue(int groupKey)
     {
         var wait = new WaitForSeconds(_staggerDelay);
+        // Local to this coroutine invocation, so it always starts back at right (true) on a fresh drain
+        // cycle — once the queue empties and this coroutine ends, the next Spawn() for this groupKey starts
+        // a brand new DrainQueue() call with its own fresh `goRight`, per the "default to the right again"
+        // reset requirement.
+        bool goRight = true;
         // Re-checks queue.Count every loop, so hits that arrive mid-drain (still within the same burst)
         // get picked up and staggered too, instead of only draining what existed at coroutine start.
         while (_queues.TryGetValue(groupKey, out var queue) && queue.Count > 0)
@@ -142,7 +152,8 @@ public class DamageNumberManager : MonoBehaviour
             queue.RemoveFirst();
             bool alive = IsStillTheSameEnemy(entry.source, entry.sourceGeneration);
             Vector3 pos = alive ? ResolvePosition(entry.source, entry.sizeYOffset, entry.sizeZOffset) : entry.fallbackPos;
-            SpawnImmediate(entry.damage, alive ? entry.source : null, pos, entry.isCrit, entry.isHighroll, entry.isPriority);
+            SpawnImmediate(entry.damage, alive ? entry.source : null, pos, entry.isCrit, entry.isHighroll, entry.isPriority, goRight);
+            goRight = !goRight;
             yield return wait;
         }
         _queues.Remove(groupKey);
@@ -156,11 +167,14 @@ public class DamageNumberManager : MonoBehaviour
 
     // pos is the already-resolved spawn position (live off source, or the queued fallback if source is no
     // longer the same enemy by drain time) — source is still passed through separately so DamageNumber can
-    // keep tracking it live for the rest of its own animation if it's still the same enemy.
-    private void SpawnImmediate(float amount, IEnemyPD source, Vector3 pos, bool isCrit, bool isHighroll, bool isPriority)
+    // keep tracking it live for the rest of its own animation if it's still the same enemy. goRight is
+    // resolved by the caller (always true for an ungrouped/immediate spawn, alternating per-pop for a
+    // drained queue — see DrainQueue); the magnitude itself is still randomized here every spawn.
+    private void SpawnImmediate(float amount, IEnemyPD source, Vector3 pos, bool isCrit, bool isHighroll, bool isPriority, bool goRight)
     {
         var num = _pool.Count > 0 ? _pool.Dequeue() : Instantiate(_prefab, transform);
-        float xOffset = Random.Range(-_spawnXJitter, _spawnXJitter);
+        float magnitude = Random.Range(_minSpawnXJitter, _maxSpawnXJitter);
+        float xOffset = goRight ? magnitude : -magnitude;
         num.Init(amount, pos + new Vector3(0f, _spawnYOffset, 0f), xOffset, source, this, isCrit, isHighroll, isPriority);
     }
 

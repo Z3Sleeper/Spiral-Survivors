@@ -132,10 +132,30 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     private readonly Dictionary<PlayerID, List<PendingOption>> _currentOptions = new();
     private readonly List<PlayerID> _sortedPlayers = new();
     private readonly List<int> _availableAugmentsBuffer = new();
+    // Local skip-cache only, not predicted state — RegisterClassPassiveAugments() below still checks
+    // HasPickedAugment() before ever adding a record, so even if this set ever diverges across machines
+    // (it shouldn't — every machine iterates CharacterStatsPD.All in the same sorted order, same
+    // determinism reasoning as GenerateOptionsForAllPlayers), the actual state mutation stays idempotent;
+    // worst case is a redundant re-scan of an already-fully-registered player.
+    private readonly HashSet<PlayerID> _registeredPassivePlayers = new();
 
     private bool _wasPresenting;
     private int _appliedPickCount;
     private int _prevTimerSecs = -1;
+
+    // How many of this round's picked-augment effects have confirmed OnApply() so far — reset to 0 only at
+    // round start (state.isPresenting false -> true, itself already rollback-safe), then only ever
+    // incremented, never decremented, by NotifyAugmentEffectApplied(). Deliberately NOT "precompute the
+    // expected count once, then count down" — that shape had a real race: a fast-confirming effect's
+    // UpdateView() can call NotifyAugmentEffectApplied() before AugmentManagerPD's own Simulate() has next
+    // run to even notice all picks are in (UpdateView() and Simulate() run on different cadences, and
+    // there's no guaranteed ordering between this identity's Simulate() and the identity that just called
+    // SubmitPick() within the same tick either) — so a confirmation could arrive while "expected" was still
+    // an unset sentinel and get silently dropped, permanently stalling the round below its true target.
+    // Always accumulating here instead, and comparing against a freshly re-derived expected count every
+    // tick (CountExpectedPickEffects), means there's no ordering dependency and no confirmation can ever be
+    // lost.
+    private int _confirmedPickEffectsThisRound;
 
     // Matches GetInitialState's levelBeingProcessed = 1, so this doesn't read as a 0 -> 1 "level up"
     // the moment the game starts.
@@ -158,6 +178,8 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     {
         if (GameManagerPD.instance == null) return;
 
+        RegisterClassPassiveAugments();
+
         if (!state.isPresenting)
         {
             if (GameManagerPD.instance.Level <= state.levelBeingProcessed) return;
@@ -166,6 +188,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             state.isPresenting = true;
             state.presentingTimer = PresentingDuration;
             state.picks.Clear();
+            _confirmedPickEffectsThisRound = 0;
             GenerateOptionsForAllPlayers();
             return;
         }
@@ -176,7 +199,97 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             return;
         }
 
+        // All picks are in — now make sure every picked augment that actually spawned an effect object has
+        // confirmed its OnApply() before ending the round, same "wait for confirmation, not just spawn"
+        // reasoning as RegisterClassPassiveAugments/CharacterStatsPD.ClassPassiveAugmentsReady. Without
+        // this, PausePD.IsPaused (which folds in isPresenting) could unpause a tick or more before a picked
+        // augment's stat bonus is actually live — the same visible "stat pops in after the fact" flash the
+        // class-passive fix addressed, just for level-ups instead of game start. Re-derived fresh every
+        // tick (cheap — a handful of picks at most) rather than cached, so there's nothing to get out of
+        // sync with _confirmedPickEffectsThisRound.
+        if (_confirmedPickEffectsThisRound < CountExpectedPickEffects(state.picks)) return;
+
         state.isPresenting = false;
+    }
+
+    // Pure, side-effect-free re-derivation from already-rolled-back-correct predicted state (state.picks)
+    // plus static augmentDatabase data — safe to (re)compute every tick, including under resimulation,
+    // since it never accumulates anything itself. Counts only picks that actually spawn a trackable effect
+    // object (a pure stat pick, or an augment with no effectPrefab, has nothing to wait on).
+    private int CountExpectedPickEffects(DisposableList<PlayerPick> picks)
+    {
+        if (augmentDatabase == null) return 0;
+
+        int count = 0;
+        for (int i = 0; i < picks.Count; i++)
+        {
+            var pick = picks[i];
+            if (!pick.isAugment) continue;
+            if (pick.augmentIndex < 0 || pick.augmentIndex >= augmentDatabase.augments.Count) continue;
+
+            var augment = augmentDatabase.augments[pick.augmentIndex];
+            if (augment != null && augment.effectPrefab != null) count++;
+        }
+        return count;
+    }
+
+    // Called by every AugmentEffectPD once its own OnApply() has actually run (confirmed off verified
+    // state) — mirrors CharacterStatsPD.NotifyAugmentApplied, just aggregated across all players for the
+    // shared presenting-round gate above instead of scoped per-player. Always increments — a class-passive
+    // confirmation (which always happens well before any round starts, and gets wiped by the next round's
+    // own reset) or a stray call once a round has already fully resolved just nudges a number nobody's
+    // comparing against anymore, harmless either way.
+    public void NotifyAugmentEffectApplied()
+    {
+        _confirmedPickEffectsThisRound++;
+    }
+
+    // Registers each player's class passive augment(s) (ClassPassiveData.passiveAugments) as real
+    // PlayerAugmentRecords the moment their CharacterStatsPD becomes available — same
+    // add-record-then-spawn-effect atomicity SubmitPick() uses for a manual pick, just triggered by "this
+    // player now exists with a resolved class passive" instead of "this player picked a card". This is
+    // what makes the pick-pool machinery (HasPickedAugment/IsIncompatibleWithPicked) treat a class passive
+    // exactly like a real pick for free — it won't be re-offered, and anything incompatible with it (or
+    // that it's incompatible with) gets excluded too.
+    //
+    // Sorted iteration, same determinism reasoning as GenerateOptionsForAllPlayers — every machine must
+    // process players in the same order since this calls hierarchy.Create() (via SpawnAugmentEffect).
+    // CharacterStatsPD.All is populated from PlayerDataPD.UpdateView(), which runs AFTER this tick's
+    // Simulate() pass — so a just-registered player is picked up starting next tick, a harmless one-tick
+    // lag (the exact same lag GenerateOptionsForAllPlayers already tolerates reading the same dictionary).
+    private void RegisterClassPassiveAugments()
+    {
+        if (augmentDatabase == null) return;
+
+        _sortedPlayers.Clear();
+        _sortedPlayers.AddRange(CharacterStatsPD.All.Keys);
+        _sortedPlayers.Sort((a, b) => a.id.value.CompareTo(b.id.value));
+
+        foreach (var player in _sortedPlayers)
+        {
+            if (_registeredPassivePlayers.Contains(player)) continue;
+
+            var stats = CharacterStatsPD.All[player];
+            var passives = stats.ClassPassiveAugments;
+            int spawnedCount = 0;
+            if (passives != null)
+            {
+                foreach (var augment in passives)
+                {
+                    if (augment == null) continue;
+                    int idx = augmentDatabase.augments.IndexOf(augment);
+                    if (idx < 0 || HasPickedAugment(player, idx)) continue;
+
+                    currentState.pickedAugments.Add(new PlayerAugmentRecord { player = player, augmentIndex = idx });
+                    if (SpawnAugmentEffect(player, idx)) spawnedCount++;
+                }
+            }
+            // Tells CharacterStatsPD exactly how many OnApply() confirmations to wait for before it
+            // reports ClassPassiveAugmentsReady — 0 immediately marks it ready if this class has none (or
+            // none actually spawned an effect object).
+            stats.BeginWaitingForClassPassiveAugments(spawnedCount);
+            _registeredPassivePlayers.Add(player);
+        }
     }
 
     // Called from PlayerControllerPD.Simulate() when that player's pickPressed input fires.
@@ -234,14 +347,18 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     // to the same physical instance if this tick ever gets re-simulated), the same reason enemies/orbs/
     // weapons all spawn this way. This is what actually makes it safe to call from Simulate()-context —
     // the effect's own one-shot bonus (AugmentEffectPD.OnApply) still only fires off its verified state.
-    private void SpawnAugmentEffect(PlayerID player, int augmentIndex)
+    // Returns whether a real effect object was actually spawned — RegisterClassPassiveAugments needs this
+    // to know exactly how many OnApply() confirmations to wait for (some augments have no effectPrefab at
+    // all, e.g. pure stat picks, and silently spawn nothing here).
+    private bool SpawnAugmentEffect(PlayerID player, int augmentIndex)
     {
-        if (augmentDatabase == null || augmentIndex < 0 || augmentIndex >= augmentDatabase.augments.Count) return;
+        if (augmentDatabase == null || augmentIndex < 0 || augmentIndex >= augmentDatabase.augments.Count) return false;
         var augment = augmentDatabase.augments[augmentIndex];
-        if (augment == null || augment.effectPrefab == null) return;
-        if (!CharacterStatsPD.All.TryGetValue(player, out var stats)) return;
+        if (augment == null || augment.effectPrefab == null) return false;
+        if (!CharacterStatsPD.All.TryGetValue(player, out var stats)) return false;
 
-        hierarchy.Create(augment.effectPrefab, stats.transform.position, stats.transform.rotation, player);
+        var id = hierarchy.Create(augment.effectPrefab, stats.transform.position, stats.transform.rotation, player);
+        return id.HasValue;
     }
 
     public bool HasPlayerPicked(PlayerID player)
@@ -343,7 +460,10 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     private void GetAvailableAugmentIndices(CharacterStatsPD.CharacterClass playerClass, PlayerID player, List<int> result)
     {
         result.Clear();
-        bool isMultiplayer = NetworkManager.main != null && NetworkManager.main.playerCount > 1;
+        // Fixed at game start, not NetworkManager's live playerCount — see
+        // GameManagerPD.State.fixedPlayerCount's own doc comment. A player disconnecting mid-run shouldn't
+        // suddenly hide multiplayerOnly augments from (or reshuffle the pool for) whoever remains.
+        bool isMultiplayer = GameManagerPD.instance != null && GameManagerPD.instance.FixedPlayerCount > 1;
         var classId = (CharacterClassID)(int)playerClass;
 
         for (int i = 0; i < augmentDatabase.augments.Count; i++)
@@ -441,10 +561,24 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             if (rec.player != player) continue;
 
             var pickedAugment = augmentDatabase.augments[rec.augmentIndex];
-            if (pickedAugment == null || pickedAugment.incompatibleAugments == null) continue;
-            if (System.Array.IndexOf(pickedAugment.incompatibleAugments, augment) >= 0) return true;
+            if (pickedAugment == null) continue;
+
+            if (pickedAugment.incompatibleAugments != null && System.Array.IndexOf(pickedAugment.incompatibleAugments, augment) >= 0) return true;
+
+            if (HasSharedTag(augment.incompatibleTags, pickedAugment.tags)) return true;
+            if (HasSharedTag(pickedAugment.incompatibleTags, augment.tags)) return true;
         }
 
+        return false;
+    }
+
+    // True if any entry of incompatibleTags exact-matches any entry of tags — the tag-based counterpart to
+    // the direct incompatibleAugments reference check above.
+    private bool HasSharedTag(string[] incompatibleTags, string[] tags)
+    {
+        if (incompatibleTags == null || tags == null) return false;
+        foreach (var t in incompatibleTags)
+            if (System.Array.IndexOf(tags, t) >= 0) return true;
         return false;
     }
 

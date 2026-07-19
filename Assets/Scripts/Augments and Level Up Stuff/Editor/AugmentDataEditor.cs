@@ -65,7 +65,7 @@ public class AugmentDataEditor : Editor
         // the clamped count field lands directly above the list it's clamped against, and the tag pickers
         // get their toggle-button rows, instead of wherever the default draw order would otherwise put them.
         DrawPropertiesExcluding(serializedObject, "m_Script", "displayName", "description",
-            "requiredCount", "requiredAugments", "tags", "requiredTags");
+            "requiredCount", "requiredAugments", "tags", "requiredTags", "incompatibleTags");
 
         var requiredAugmentsProp = serializedObject.FindProperty("requiredAugments");
         DrawRequiredCount(serializedObject.FindProperty("requiredCount"), requiredAugmentsProp);
@@ -82,6 +82,8 @@ public class AugmentDataEditor : Editor
         DrawTagPicker("Tags", serializedObject.FindProperty("tags"));
         EditorGUILayout.Space();
         DrawTagPicker("Required Tags", serializedObject.FindProperty("requiredTags"));
+        EditorGUILayout.Space();
+        DrawTagPicker("Incompatible Tags", serializedObject.FindProperty("incompatibleTags"));
 
         serializedObject.ApplyModifiedProperties();
     }

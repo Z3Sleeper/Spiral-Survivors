@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using PurrNet;
 using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
@@ -178,7 +177,11 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
         if (GameManagerPD.instance != null && (GameManagerPD.instance.HasWon || GameManagerPD.instance.IsGameOver)) return;
 
-        int playerCount = NetworkManager.main != null ? NetworkManager.main.playerCount : 1;
+        // Fixed at game start, not NetworkManager's live playerCount — see
+        // GameManagerPD.State.fixedPlayerCount's own doc comment. A player disconnecting mid-run shouldn't
+        // suddenly de-scale spawns/enemy toughness for whoever remains.
+        int playerCount = GameManagerPD.instance != null ? GameManagerPD.instance.FixedPlayerCount : 1;
+        if (playerCount <= 0) playerCount = 1;
         // Single shared "how much harder is co-op" multiplier — same value GameManagerPD divides earned
         // XP by. Applied here to spawn-rate acceleration and boss/elite health/damage/XP alike, so "more
         // spawns" and "tougher, more valuable enemies" always move together as one number.

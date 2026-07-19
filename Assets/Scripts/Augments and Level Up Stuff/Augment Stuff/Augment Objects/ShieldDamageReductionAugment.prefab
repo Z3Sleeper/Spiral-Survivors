@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &5785707983039645292
+--- !u!1 &128303859756713544
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,22 +8,22 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 2026289211119533183}
-  - component: {fileID: 5154218451809682405}
+  - component: {fileID: 3600907476709975748}
+  - component: {fileID: 3872337577397805179}
   m_Layer: 0
-  m_Name: OnHitCritAugment
+  m_Name: ShieldDamageReductionAugment
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &2026289211119533183
+--- !u!4 &3600907476709975748
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5785707983039645292}
+  m_GameObject: {fileID: 128303859756713544}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -32,16 +32,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &5154218451809682405
+--- !u!114 &3872337577397805179
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5785707983039645292}
+  m_GameObject: {fileID: 128303859756713544}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 0d2910f95ab8f9744a49f8f4b205d3d4, type: 3}
+  m_Script: {fileID: 11500000, guid: a85cd81e159121e4c919134e3ee4b8a8, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::OnHitCritAugment
-  critChanceBonus: 0.1
+  m_EditorClassIdentifier: Assembly-CSharp::ShieldDamageReductionAugment
+  damageReductionBonus: 0.4
+  saveInvincibilityDuration: 1
+  saveCooldown: 30

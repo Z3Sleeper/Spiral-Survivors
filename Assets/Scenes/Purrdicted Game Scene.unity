@@ -3464,7 +3464,8 @@ MonoBehaviour:
   _prefab: {fileID: 3582064587514324191, guid: dc94e52f7c701be448b617894e87135f, type: 3}
   _poolSize: 200
   _spawnYOffset: 1
-  _spawnXJitter: 2
+  _minSpawnXJitter: 1
+  _maxSpawnXJitter: 2
   _staggerDelay: 0.05
 --- !u!4 &484097095
 Transform:
@@ -8178,10 +8179,10 @@ MonoBehaviour:
   maxEliteEnemies: 100
   maxPlebEnemies: 300
   plebSpawnAmount: 5
-  plebSpawnIntervalQ1: 4
-  plebSpawnIntervalQ2: 3
-  plebSpawnIntervalQ3: 2
-  plebSpawnIntervalQ4: 1
+  plebSpawnIntervalQ1: 3
+  plebSpawnIntervalQ2: 2
+  plebSpawnIntervalQ3: 1
+  plebSpawnIntervalQ4: 0.5
 --- !u!1 &1131900761
 GameObject:
   m_ObjectHideFlags: 0

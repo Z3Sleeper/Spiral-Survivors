@@ -24,6 +24,13 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         // Reading that from Simulate() risked a replayed tick computing a different gameStarted result
         // than the tick's original live pass, the same category of bug already fixed for AwardXP.
         public DisposableList<PlayerID> readyPlayers;
+        // Snapshotted once, the exact tick gameStarted flips true — every mid-run co-op scaling system
+        // (enemy toughness, XP penalty, multiplayer-only augment availability, etc.) should read THIS, not
+        // NetworkManager/PredictionManager's live playerCount, so a player disconnecting mid-run doesn't
+        // suddenly rescale difficulty/rewards for whoever remains. Ready-checks (pause, augment presenting,
+        // end-screen) are the deliberate exception — those legitimately need to react to who's still
+        // actually connected, since they gate on every CURRENT player actively confirming something.
+        public int fixedPlayerCount;
         public bool hasWon;
         public bool isGameOver;
         // Ready-up gate for the win/game-over screen — same shape as readyPlayers above, kept separate
@@ -70,6 +77,8 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     public bool  VerifiedGameEnded  => verifiedState.HasValue && (verifiedState.Value.hasWon || verifiedState.Value.isGameOver);
     public float CoopToughnessScalar => coopToughnessScalar;
     public float ElapsedRunTime      => currentState.elapsedRunTime;
+    // See State.fixedPlayerCount's own doc comment — the number every co-op-scaling system should read.
+    public int   FixedPlayerCount    => currentState.fixedPlayerCount;
 
     private bool _wasGameStartedLastFrame;
     private bool _wasEndedLastFrame;
@@ -106,6 +115,7 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
             if (nm == null || nm.playerCount == 0) return;
             if (state.readyPlayers.Count < nm.playerCount) return;
 
+            state.fixedPlayerCount = nm.playerCount;
             state.gameStarted = true;
             return;
         }
@@ -177,15 +187,21 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     // machine applies the exact same XP/level result.
     public void AwardXP(float value)
     {
-        int playerCount = CharacterStatsPD.All.Count;
-        if (playerCount <= 0) return;
+        int liveCount = CharacterStatsPD.All.Count;
+        if (liveCount <= 0) return;
 
+        // Live count on purpose — this is averaging currently-connected players' own XPModifier stats, not
+        // a co-op difficulty scale, so a disconnected player correctly stops dragging the average down.
         float totalMod = 0f;
         foreach (var stats in CharacterStatsPD.All.Values)
             totalMod += stats.XPModifier;
-        float avgXPMod = totalMod / playerCount;
+        float avgXPMod = totalMod / liveCount;
 
-        float coopXPPenalty = 1f + (playerCount - 1) * coopToughnessScalar;
+        // Fixed at game start, not live — see State.fixedPlayerCount's own doc comment. A player
+        // disconnecting mid-run shouldn't suddenly relax this penalty for whoever remains. Falls back to
+        // liveCount only in the (shouldn't-happen-once-gameStarted) case fixedPlayerCount hasn't been set.
+        int coopPlayerCount = currentState.fixedPlayerCount > 0 ? currentState.fixedPlayerCount : liveCount;
+        float coopXPPenalty = 1f + (coopPlayerCount - 1) * coopToughnessScalar;
         if (coopXPPenalty <= 0f) coopXPPenalty = 1f;
 
         currentState.currentXP += value * avgXPMod / coopXPPenalty;

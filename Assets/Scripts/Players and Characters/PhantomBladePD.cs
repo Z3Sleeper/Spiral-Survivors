@@ -35,6 +35,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     private CharacterStatsPD _owner;
     private Vector3 _baseScale;
     private float _damage;
+    private bool  _isCrit;
     private float _speed;
     private float _maxRange;
     // Baked in at Summon() time from CharacterStatsPD.phantomBladeOnHitEnabled/OnHitPowerPercent, same
@@ -51,7 +52,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // Plain (not predicted State) — same "soft" tracking pattern as WeaponRangedProjectilePD._hitTargets.
     private readonly HashSet<IEnemyPD> _hitTargets = new();
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
-    private readonly List<(IEnemyPD enemy, float dmg)> _hitFeedbackQueue = new();
+    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit)> _hitFeedbackQueue = new();
 
     // Plain Unity Awake(), NOT LateAwake() — LateAwake() re-fires on every pooled reuse, which would
     // re-capture an already-scaled transform.localScale each reuse and compound indefinitely. Same
@@ -72,12 +73,13 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // again to end up radius past it on the opposite side). Speed is derived from that distance and the
     // fixed travelTime, rather than travelTime being derived from a fixed speed, so every blade takes the
     // same time to finish its flight regardless of size.
-    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier)
+    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit)
     {
         float radius = BaseSpawnRadius * sizeMultiplier;
 
         _owner = owner;
         _damage = damage;
+        _isCrit = isCrit;
         _maxRange = radius * 2f;
         _speed = _maxRange / travelTime;
         _onHitEnabled = owner.phantomBladeOnHitEnabled;
@@ -145,10 +147,11 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     {
         _hitTargets.Add(enemy);
 
-        // Blades don't crit themselves — matches old's plain enemy.TakeDamageRpc(damage) call with no
-        // crit involved at all.
-        enemy.TakeDamage(_damage, isCrit: false, _owner.owner ?? default);
-        _hitFeedbackQueue.Add((enemy, _damage));
+        // _isCrit was rolled once at Summon() time (see PhantomBladeSummonHelper.SummonAtTarget) and baked
+        // into _damage already — every enemy this blade hits sees the same crit status for its whole
+        // flight, not a fresh per-hit roll.
+        enemy.TakeDamage(_damage, _isCrit, _owner.owner ?? default);
+        _hitFeedbackQueue.Add((enemy, _damage, _isCrit));
 
         // Only fires if some Phantom Blade augment actually enabled it — most blades never touch the OnHit
         // chain at all. weaponDamage uses this blade's own already-rolled damage (the closest available
@@ -156,7 +159,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         // owner's current stat, same as weapons do, scaled by the percent baked in at spawn.
         if (_onHitEnabled)
         {
-            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _damage, onHitPower = _owner.OnHitPower * _onHitPowerPercent };
+            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _damage, onHitPower = _owner.OnHitPower * _onHitPowerPercent, isCrit = _isCrit };
             _owner.NotifyHit(hitData);
         }
     }
@@ -202,8 +205,8 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         // WeaponRangedProjectilePD. Priority, like real weapon hits — this is the blade's own direct
         // damage, not an onhit effect it procs (those stay non-priority, e.g. CritTriggerOnHitAugment/
         // PhantomBladeOnHitAugment's own bonus-damage numbers).
-        foreach (var (enemy, dmg) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit: false, isHighroll: false, _owner, isPriority: true);
+        foreach (var (enemy, dmg, isCrit) in _hitFeedbackQueue)
+            enemy.TriggerHitFeedback(dmg, isCrit, isHighroll: false, _owner, isPriority: true);
         _hitFeedbackQueue.Clear();
     }
 }

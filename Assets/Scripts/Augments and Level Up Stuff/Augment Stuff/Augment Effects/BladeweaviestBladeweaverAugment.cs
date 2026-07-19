@@ -1,9 +1,10 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Ported from _OldSystemArchive/Augment Effects/BladeweaviestBladeweaverAugment.cs. Pure one-shot stat
-// grant — defaults per user's call: -40% damage / -30% on-hit power (old used 45%/25%), not the old
-// system's exact numbers.
+// Ported from _OldSystemArchive/Augment Effects/BladeweaviestBladeweaverAugment.cs. Used to hand-tune a
+// damage/on-hit-power PENALTY to offset the extra weapons this grants — now that WeaponDamage/OnHitPower
+// both auto-divide by WeaponCount themselves, that offset is structural, so this instead grants a straight
+// BONUS on top (default +20% each).
 public class BladeweaviestBladeweaverAugment : AugmentEffectPD<BladeweaviestBladeweaverAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -11,14 +12,14 @@ public class BladeweaviestBladeweaverAugment : AugmentEffectPD<BladeweaviestBlad
         public void Dispose() { }
     }
 
-    [SerializeField] private int   bonusWeapons      = 3;
-    [SerializeField] private float damagePenalty     = 0.4f;
-    [SerializeField] private float onHitPowerPenalty = 0.3f;
+    [SerializeField] private int   bonusWeapons    = 3;
+    [SerializeField] private float damageBonus     = 0.2f;
+    [SerializeField] private float onHitPowerBonus = 0.2f;
 
     protected override void OnApply()
     {
         Stats.AddWeaponCountFlat(bonusWeapons);
-        Stats.MultiplyWeaponDamagePenalty(1f - damagePenalty);
-        Stats.MultiplyOnHitPowerPenalty(1f - onHitPowerPenalty);
+        Stats.AddWeaponDamagePercent(damageBonus);
+        Stats.MultiplyOnHitPowerMultiplier(1f + onHitPowerBonus);
     }
 }

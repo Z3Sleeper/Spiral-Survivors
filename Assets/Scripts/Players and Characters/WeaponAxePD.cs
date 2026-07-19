@@ -10,7 +10,6 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 {
     public struct State : IPredictedData<State>
     {
-        public float angle;
         public bool  prevSet;
         public void Dispose() { }
     }
@@ -92,21 +91,22 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     // ── Simulation ────────────────────────────────────────────────────────────
 
-    protected override void Simulate(ref State state, float delta)
-    {
-        if (!_initialized || _stats == null || _stats.IsDead) return;
-        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
-
-        state.angle -= _stats.WeaponSpeed * delta;
-    }
+    // Empty — orbit angle is now ticked once, shared, on CharacterStatsPD (see
+    // CharacterStatsPD.State.weaponOrbitAngle's own doc comment); this weapon just reads _stats.WeaponOrbitAngle
+    // in LateSimulate() instead of maintaining its own copy.
+    protected override void Simulate(ref State state, float delta) { }
 
     protected override void LateSimulate(ref State state, float delta)
     {
         if (!_initialized || _stats == null || _stats.IsDead) return;
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
+        // Outer-track weapons (OuterTrackAugment) spin the opposite direction — see
+        // WeaponMeleePD.LateSimulate's own angleSign comment for the full reasoning.
+        float   angleSign   = IsOuterTrack ? -1f : 1f;
+        float   currentAngle = angleSign * _stats.WeaponOrbitAngle;
         Vector3 origin = _stats.transform.position;
-        Vector3 orbitPos = OrbitalPosition(state.angle, origin);
+        Vector3 orbitPos = OrbitalPosition(currentAngle, origin);
         Vector3 outward  = orbitPos - origin;
         if (outward == Vector3.zero) return;
 
@@ -128,7 +128,8 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
             // intermediate stops along the true arc when needed (see WeaponBasePD.ComputeSubArcCount()) —
             // at normal speeds this is always exactly 1 segment, identical to a plain single sweep.
             float angleDelta = _stats.WeaponSpeed * delta;
-            float startAngle = state.angle + angleDelta; // angle before this tick's Simulate() decrement
+            // angle before this tick's movement — see WeaponMeleePD.LateSimulate's own startAngle comment.
+            float startAngle = currentAngle + angleSign * angleDelta;
             int   subArcs    = ComputeSubArcCount(angleDelta);
 
             // Last tick's final zone geometry, before any movement this tick — same trick as
@@ -140,7 +141,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                 bool    isLastStep = step == subArcs;
                 Vector3 stepPos = isLastStep
                     ? orbitPos
-                    : OrbitalPosition(Mathf.Lerp(startAngle, state.angle, step / (float)subArcs), origin);
+                    : OrbitalPosition(Mathf.Lerp(startAngle, currentAngle, step / (float)subArcs), origin);
                 Vector3 stepOutward = stepPos - origin;
                 if (stepOutward == Vector3.zero) continue;
 
@@ -356,7 +357,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         // the equivalent innerOnHitPowerMultiplier treatment — downstream on-hit effects see the actual
         // per-hit damage/power this hit represented, not a flat re-read of WeaponDamage/OnHitPower.
         float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = onHitPower };
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = onHitPower, isCrit = isCrit };
         _onHit.Invoke(hitData);
         if (isCrit) _onCritStrike.Invoke(hitData);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);

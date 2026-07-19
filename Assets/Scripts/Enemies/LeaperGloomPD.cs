@@ -52,6 +52,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     [SerializeField] private WindupFillPD _windupFill;
 
     private Vector3 _modelRestPosition;
+    private bool    _modelRestPositionCaptured;
 
     // Plain (not predicted State) shadow of state.leapTarget, written in lockstep inside EnterWindup() —
     // the same deterministic Simulate() call that decides leapTarget itself, so this is available
@@ -81,7 +82,18 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // enemy's _originalColors was never actually populated).
         if (_windupIndicator != null) _windupIndicatorParent ??= _windupIndicator.transform.parent;
 
-        if (_model != null) _modelRestPosition = _model.localPosition;
+        // Guarded to a single real capture per instance, same reasoning as _windupIndicatorParent above —
+        // UpdateView() bails out immediately on death (before it ever reaches the branch that resets
+        // _model back to rest), so a Leaper that dies mid-Leaping (model arc-bobbed up) gets pooled with
+        // its model still elevated. An unconditional recapture here would then bake that elevated position
+        // in as the new "rest" position for the rest of this instance's pooled life — OnRespawnReset()
+        // would keep dutifully "resetting" the model back to a wrong, floating baseline. This is what
+        // caused the "leaper stuck floating" bug.
+        if (!_modelRestPositionCaptured && _model != null)
+        {
+            _modelRestPosition = _model.localPosition;
+            _modelRestPositionCaptured = true;
+        }
 
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.leapsRemaining      = leapsPerAttack;

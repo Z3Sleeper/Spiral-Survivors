@@ -214,7 +214,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         // (e.g. the 3rd bounce) actually represented, not the shot's original full-power baseline.
         if (_launcher != null)
         {
-            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = state.currentDamage, onHitPower = state.currentOnHitPower };
+            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = state.currentDamage, onHitPower = state.currentOnHitPower, isCrit = isCrit };
             _launcher.NotifyHit(hitData);
             if (isCrit) _launcher.NotifyCritStrike(hitData);
         }

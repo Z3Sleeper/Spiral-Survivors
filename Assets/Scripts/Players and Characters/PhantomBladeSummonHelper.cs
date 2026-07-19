@@ -14,6 +14,7 @@ public struct PhantomBladeSummonData
     public PredictedObjectID target;
     public float damage;
     public float size;
+    public bool isCrit;
 }
 
 // Shared by every Phantom Blade summoning augment — PhantomBladeOnCritAugment already knows its single
@@ -70,6 +71,11 @@ public static class PhantomBladeSummonHelper
 
         float rolled = WeaponDamageMath.RollDamage(baseDamageMultiplier, stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, out bool isHighroll);
         if (isHighroll) rolled *= 1f + stats.HighrollBonus;
+        // Blades crit same as any other damage source — rolled once here (not per-enemy in ProcessHit),
+        // since a blade's damage is itself only ever rolled once and reused for every enemy it passes
+        // through, so whether it crits is a property of the blade for its whole flight, not a per-hit roll.
+        bool isCrit = GameRandom.instance.NextFloat() < stats.CritChance;
+        if (isCrit) rolled *= stats.CritDamage;
         // Every non-size Phantom Blade augment's own +damage% sums additively into phantomBladeDamageBonus
         // first, then phantomBladeDamageBonusPercent (PhantomBladeSizeAugment's own bonus) scales that
         // already-combined total on top, so e.g. three +10% augments plus a +50% size bonus yields
@@ -78,24 +84,24 @@ public static class PhantomBladeSummonHelper
         float damage = rolled * stats.UnpenalizedWeaponDamage
             * (1f + stats.phantomBladeDamageBonus) * stats.phantomBladeDamageBonusPercent * stats.phantomBladeDamagePenalty;
 
-        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size);
+        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit);
 
         // Structurally recursion-proof, not just guarded: SummonCopyAtTarget (below) never calls back into
         // SummonAtTarget, so there is no path from a copy back into this notify no matter how many
         // "hit summon, do something" listeners end up subscribed.
         if (notifySummon)
-            stats.NotifyPhantomBladeSummon(new PhantomBladeSummonData { target = target.ObjectId, damage = damage, size = size });
+            stats.NotifyPhantomBladeSummon(new PhantomBladeSummonData { target = target.ObjectId, damage = damage, size = size, isCrit = isCrit });
     }
 
-    // "Exact copy" of an already-resolved primary summon — same damage/size (no fresh roll), but a brand
-    // new random radial offset (via SpawnBlade below) so it visibly flies in from a different direction.
-    // Deliberately never notifies _onPhantomBladeSummon itself, and deliberately doesn't accept a
-    // baseDamageMultiplier to roll its own damage — PhantomBladeCarnivalAugment calls this specifically so
-    // its own secondary blade can't recursively trigger another copy.
+    // "Exact copy" of an already-resolved primary summon — same damage/size/crit status (no fresh roll),
+    // but a brand new random radial offset (via SpawnBlade below) so it visibly flies in from a different
+    // direction. Deliberately never notifies _onPhantomBladeSummon itself, and deliberately doesn't accept
+    // a baseDamageMultiplier to roll its own damage — PhantomBladeCarnivalAugment calls this specifically
+    // so its own secondary blade can't recursively trigger another copy.
     public static void SummonCopyAtTarget(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, IEnemyPD target, float damage, float size)
+        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit)
     {
-        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size);
+        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit);
     }
 
     // Fixed-radius, random-angle offset around the target — matches old (Random.insideUnitCircle.normalized
@@ -103,7 +109,7 @@ public static class PhantomBladeSummonHelper
     // convention as KingSpikePD's remote-burst offset. Shared by both the primary and copy paths, so every
     // call (including a Carnival copy of the same primary summon) independently rolls its own fresh angle.
     private static void SpawnBlade(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, IEnemyPD target, float damage, float size)
+        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit)
     {
         float radius = PhantomBladePD.BaseSpawnRadius * size;
         float angle     = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
@@ -115,6 +121,6 @@ public static class PhantomBladeSummonHelper
         if (!id.HasValue) return;
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out PhantomBladePD blade))
-            blade.Summon(stats, damage, size);
+            blade.Summon(stats, damage, size, isCrit);
     }
 }

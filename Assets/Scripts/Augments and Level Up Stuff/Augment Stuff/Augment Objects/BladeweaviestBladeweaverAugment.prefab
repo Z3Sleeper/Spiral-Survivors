@@ -45,5 +45,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BladeweaviestBladeweaverAugment
   bonusWeapons: 3
-  damagePenalty: 0.45
-  onHitPowerPenalty: 0.4
+  damageBonus: 0.2
+  onHitPowerBonus: 0.2
