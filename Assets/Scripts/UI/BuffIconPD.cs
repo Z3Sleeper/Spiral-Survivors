@@ -1,0 +1,23 @@
+using UnityEngine;
+using UnityEngine.UI;
+
+// A single icon in the buff bar. Plain, non-predicted UI — buffs are shown per-owning-client only, driven
+// by whatever augment/effect wants to display one, not part of the simulation itself. See BuffBarPD for
+// how one of these gets spawned.
+public class BuffIconPD : MonoBehaviour
+{
+    [SerializeField] private Image icon;
+    [SerializeField] private Image cooldownSweep;
+
+    public void SetIcon(Sprite sprite)
+    {
+        if (icon != null) icon.sprite = sprite;
+    }
+
+    // 0 = fully ready/available (sweep empty), 1 = just triggered/fully on cooldown (sweep full) — standard
+    // "radial cooldown overlay that empties as it becomes ready again" convention.
+    public void SetCooldownFill(float value01)
+    {
+        if (cooldownSweep != null) cooldownSweep.fillAmount = Mathf.Clamp01(value01);
+    }
+}

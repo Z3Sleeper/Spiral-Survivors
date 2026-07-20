@@ -24,10 +24,18 @@ public class ShieldDamageReductionAugment : AugmentEffectPD<ShieldDamageReductio
     [SerializeField] private float saveInvincibilityDuration  = 1f;
     [SerializeField] private float saveCooldown                = 30f;
 
+    [Header("Buff Bar")]
+    [SerializeField] private Sprite buffIcon;
+
     // Plain, not State — mutated only from PredictedEvent listener callbacks (OnShieldBreak/OnShieldRecharge
     // themselves guarantee exactly-once-per-real-occurrence, see CharacterStatsPD._onShieldBreak's own doc
     // comment), same toggle-tracking shape as ShieldBreakFrenzyAugment's own _grantedView.
     private bool _reductionActive;
+
+    // Spawned once, kept for the rest of the run as a persistent "death save ready" indicator (not just
+    // shown while on cooldown) — same "always visible, sweep only animates when actually cooling down"
+    // convention as a typical ability-cooldown icon.
+    private BuffIconPD _buffIconInstance;
 
     protected override void OnApply()
     {
@@ -42,15 +50,31 @@ public class ShieldDamageReductionAugment : AugmentEffectPD<ShieldDamageReductio
             _reductionActive = true;
             Stats.AddDamageReductionPercent(damageReductionBonus);
         }
+
+        // Owner-only — every player's own copy of this augment effect exists on every machine (see
+        // AugmentEffectPD's own doc comment), but the buff bar is this client's own local HUD, not
+        // something to show for other players' augments too.
+        if (isOwner && BuffBarPD.instance != null)
+            _buffIconInstance = BuffBarPD.instance.AddBuffIcon(buffIcon);
     }
 
     protected override void OnDestroy()
     {
         base.OnDestroy();
+        if (_buffIconInstance != null && BuffBarPD.instance != null)
+            BuffBarPD.instance.RemoveBuffIcon(_buffIconInstance);
         if (Stats == null) return;
         Stats.RemoveShieldBreakListener(OnShieldBreak);
         Stats.RemoveShieldRechargeListener(OnShieldRecharge);
         Stats.RemoveLethalDamageTakenListener(OnLethalDamageTaken);
+    }
+
+    protected override void UpdateView(State viewState, State? verified)
+    {
+        base.UpdateView(viewState, verified);
+
+        if (_buffIconInstance != null)
+            _buffIconInstance.SetCooldownFill(viewState.cooldownTimer / saveCooldown);
     }
 
     private void OnShieldBreak()

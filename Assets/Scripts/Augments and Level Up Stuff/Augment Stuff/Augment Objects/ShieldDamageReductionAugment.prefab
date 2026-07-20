@@ -47,3 +47,4 @@ MonoBehaviour:
   damageReductionBonus: 0.4
   saveInvincibilityDuration: 1
   saveCooldown: 30
+  buffIcon: {fileID: 21300000, guid: 4bd44dc4f90852d45925e682f60154e6, type: 3}

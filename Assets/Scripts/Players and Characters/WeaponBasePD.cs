@@ -101,6 +101,34 @@ public static class WeaponDamageMath
     }
 }
 
+// Shared multishot fan-angle formula — used by both WeaponRangedPD.Fire() (player) and ShooterGloomPD (enemy),
+// so "the same multishot behavior" holds for both without duplicating the math. One shot always goes
+// straight (0°); the rest ("extra") split between left (negative) and right (positive), left getting the
+// odd one out, each side's shots evenly spaced from near-center out to the full half-spread edge.
+// Reconstructed from spec examples: extra=3, spread=135 -> {0, -33.75, -67.5, +67.5} (left gets 2, right
+// gets 1; left's 2 shots sit at half*(1/2)=33.75 and half*(2/2)=67.5; right's 1 shot sits at half*(1/1)=67.5).
+public static class MultishotMath
+{
+    // Fills `angles` (cleared first) with 1 + extra angle offsets in degrees. Static shared scratch list
+    // pattern, not a fresh allocation per call — same "shared, immediately drained within one synchronous
+    // call" convention as PhantomBladeSummonHelper._overlapResults/DashExplosionAugment._overlapResults.
+    public static void ComputeAngles(int extra, float spread, List<float> angles)
+    {
+        angles.Clear();
+        angles.Add(0f);
+        if (extra <= 0) return;
+
+        float half = spread / 2f;
+        int leftCount = Mathf.CeilToInt(extra / 2f);
+        int rightCount = extra - leftCount;
+
+        for (int i = 1; i <= leftCount; i++)
+            angles.Add(-half * (i / (float)leftCount));
+        for (int i = 1; i <= rightCount; i++)
+            angles.Add(half * (i / (float)rightCount));
+    }
+}
+
 // LayerMask.GetMask() does a string lookup every call — cheap once, wasteful when called per-instance
 // (WeaponMeleePD/WeaponRangedPD registration) or worse, per-shot (WeaponRangedProjectilePD.Launch()). The
 // layer→index mapping is fixed at editor time and never changes at runtime, so a static field computed

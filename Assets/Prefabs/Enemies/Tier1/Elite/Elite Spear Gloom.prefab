@@ -8,6 +8,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: -6973549993052189348, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
+      propertyPath: m_Mass
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
       propertyPath: m_Name
       value: Elite Spear Gloom
@@ -121,20 +125,12 @@ PrefabInstance:
       value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: preferredRange
-      value: 7.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: rangeToleranceFar
-      value: 1.5
+      propertyPath: crowdControlResist
+      value: 0.25
       objectReference: {fileID: 0}
     - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
       propertyPath: knockbackResistance
       value: 0.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: rangeToleranceClose
-      value: 0.45
       objectReference: {fileID: 0}
     - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
       propertyPath: _damageNumberPlayerOffset

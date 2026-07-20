@@ -22,11 +22,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: maxHealth
-      value: 50000
+      value: 125000
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: moveSpeed
-      value: 18
+      value: 12.5
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: attackCooldown
@@ -34,11 +34,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: remoteChargeTime
-      value: 0.75
-      objectReference: {fileID: 0}
-    - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
-      propertyPath: spikeBurstRadius
-      value: 22.5
+      value: 0.8
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: knockbackResistance
@@ -46,15 +42,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: remoteBurstInterval
-      value: 0.75
+      value: 0.8
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: chargeWindupDuration
-      value: 0.375
+      value: 0.4
       objectReference: {fileID: 0}
     - target: {fileID: 286033231860513832, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: spikeBurstChargeTime
-      value: 1.125
+      value: 1.2
       objectReference: {fileID: 0}
     - target: {fileID: 354897101790281580, guid: 792329ba50ec0674d9470944996bc057, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'

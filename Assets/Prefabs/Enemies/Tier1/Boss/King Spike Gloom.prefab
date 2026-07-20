@@ -566,9 +566,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::KingSpikePD
   _rigidbody: {fileID: 5392799678339745330}
   enemyName: King Spike
-  moveSpeed: 12
+  moveSpeed: 10
   backpedalSpeedDivisor: 3
-  maxHealth: 5000
+  maxHealth: 25000
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3
@@ -602,10 +602,10 @@ MonoBehaviour:
   spikeBurstFill: {fileID: 8658849789107406530}
   remoteBurstPrefab: {fileID: 5351432771132445161, guid: 0596e4734b5af4648bbbf092a61ea0a2, type: 3}
   remoteBurstOffsetRadius: 1.5
-  remoteBurstRadius: 3
+  remoteBurstRadius: 6
   remoteBurstCount: 4
-  remoteBurstInterval: 1
-  remoteChargeTime: 1
+  remoteBurstInterval: 1.5
+  remoteChargeTime: 1.5
 --- !u!54 &-6973549993052189348
 Rigidbody:
   m_ObjectHideFlags: 0

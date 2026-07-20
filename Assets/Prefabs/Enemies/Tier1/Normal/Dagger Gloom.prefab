@@ -650,7 +650,7 @@ MonoBehaviour:
   contactColliderEnabled: 0
   contactCooldown: 0.5
   stunResistant: 0
-  knockbackResistance: 0
+  crowdControlResist: 0
   showDamageNumbers: 1
   sizeYOffset: 0
   sizeZOffset: 0.5
@@ -662,8 +662,8 @@ MonoBehaviour:
   spinRadius: 3
   windupDuration: 0.5
   spinDuration: 0.1
-  betweenSpinPause: 0.3
-  postSpinPause: 0.6
+  betweenSpinPause: 0.25
+  postSpinPause: 0.5
   attackCooldown: 3
   attacksPerAttack: 1
   dashSpeedMultiplier: 3

@@ -755,6 +755,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent, for CritChance's own percent
     // multiplier (bonusCritChancePercent starts at 1f, e.g. +0.25 = +25% total crit chance).
     public void AddCritChancePercent(float amount) => ApplyStatChange(() => bonusCritChancePercent += amount);
+    // Flat addition to CritDamage's own baseCritDamage term (CritDamage = (baseCritDamage +
+    // bonusCritDamageFlat) * bonusCritDamagePercent + ...), e.g. +0.1 for +10% crit damage.
+    public void AddCritDamageFlat(float amount) => ApplyStatChange(() => bonusCritDamageFlat += amount);
     // Inverted from every other "...Percent" wrapper above: damageReductionPercent starts at 1f and
     // multiplies DIRECTLY into incoming damage (TakeDamage's own `damage *= DamageReduction`), so a LOWER
     // value is better for the player here. The parameter still follows this class's usual "positive =
@@ -874,6 +877,32 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         if (data.ally == null || data.ally == this || data.ally.IsDead) return;
         _onAllyStrike.Invoke(data);
     }
+
+    // ── Execute ────────────────────────────────────────────────────────────
+    // Checked by EnemyBasePD.TakeDamage — see that method's own doc comment for the full condition. Two
+    // independent tracks: a plain "any hit" execute (execute/executeThreshold — nothing sets this yet, pure
+    // futureproofing for a non-crit execute augment down the line) and a crit-gated one
+    // (critExecute/critExecuteThreshold, what CritExecuteAugment actually turns on). Execute is just a
+    // cheap "does this attacker have EITHER form active at all" gate, checked before either specific
+    // threshold comparison runs.
+    [HideInInspector] public bool  execute = false;
+    [HideInInspector] public float executeThreshold = 0f;
+    [HideInInspector] public bool  critExecute = false;
+    [HideInInspector] public float critExecuteThreshold = 0f;
+    public bool Execute => execute || critExecute;
+
+    // Bosses resist execute effects by 80% — a threshold tuned for normal/elite enemies would otherwise
+    // insta-finish a boss the instant one crit landed while it was already low, which is a very different
+    // balance question than "does this run-of-the-mill enemy die a hit early." One shared multiplier
+    // (0.2 = keep 20%, i.e. -80%) rather than a separate boss-specific stat, so tuning the player-facing
+    // threshold and the boss reduction can never drift out of the intended ratio relative to each other.
+    public float BossExecuteThreshold => executeThreshold * 0.2f;
+    public float BossCritExecuteThreshold => critExecuteThreshold * 0.2f;
+
+    public void EnableExecute() => execute = true;
+    public void AddExecuteThresholdPercent(float amount) => executeThreshold += amount;
+    public void EnableCritExecute() => critExecute = true;
+    public void AddCritExecuteThresholdPercent(float amount) => critExecuteThreshold += amount;
 
     // These children stay visually the same size regardless of the character's own scale — a revive
     // trigger volume and worldspace/minimap UI markers shouldn't grow along with the player.

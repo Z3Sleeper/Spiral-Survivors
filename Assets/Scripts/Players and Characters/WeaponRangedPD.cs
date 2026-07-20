@@ -194,10 +194,15 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
     // ── Fire ──────────────────────────────────────────────────────────────────
 
+    // Scratch buffer for MultishotMath.ComputeAngles — static, not instance, same "shared, immediately
+    // drained within one synchronous call" convention as every other scratch buffer in this codebase.
+    private static readonly List<float> _multishotAngles = new();
+
     // Ricochet/multishot fractional-roll mechanic ported from the old WeaponBow.Fire() — the integer part
     // of each stat is guaranteed, the fractional part is a probability roll for one more (e.g. Ricochet =
     // 1.5 gives 1 bounce always, 2 bounces half the time). GameRandom, never UnityEngine.Random — this
-    // runs from LateSimulate(), a deterministic/replay-safe context.
+    // runs from LateSimulate(), a deterministic/replay-safe context. Angle fan-out uses the shared
+    // MultishotMath formula (see its own doc comment) — same behavior as ShooterGloomPD's own multishot.
     private void Fire(Vector3 targetPosition)
     {
         if (projectilePrefab == null) return;
@@ -209,16 +214,14 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         float rawMultishot = _stats.Multishot;
         int bonusShots = (int)rawMultishot;
         if (GameRandom.instance.NextFloat() < rawMultishot - bonusShots) bonusShots++;
-        int multishot = 1 + bonusShots;
 
         Vector3 origin = transform.position;
         Vector3 baseDir = (targetPosition - origin).normalized;
-        float startAngle = multishot > 1 ? -_stats.MultishotSpreadAngle / 2f : 0f;
-        float angleStep = multishot > 1 ? _stats.MultishotSpreadAngle / (multishot - 1) : 0f;
+        MultishotMath.ComputeAngles(bonusShots, _stats.MultishotSpreadAngle, _multishotAngles);
 
-        for (int i = 0; i < multishot; i++)
+        foreach (float angle in _multishotAngles)
         {
-            Vector3 dir = Quaternion.Euler(0f, startAngle + i * angleStep, 0f) * baseDir;
+            Vector3 dir = Quaternion.Euler(0f, angle, 0f) * baseDir;
             var id = hierarchy.Create(projectilePrefab, origin, Quaternion.LookRotation(dir), owner);
             if (!id.HasValue) continue;
 

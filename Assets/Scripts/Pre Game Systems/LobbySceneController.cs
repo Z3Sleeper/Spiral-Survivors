@@ -175,6 +175,12 @@ public class LobbySceneController : MonoBehaviour
         GameStartData.LocalUserId = lobbyManager.CurrentProvider.GetLocalUserIdAsync().Result;
         GameStartData.LocalCharacterIndex = 0;
         lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
+        // Keeps CharacterSelectUI's own local state (ready flag, _isRandom, cached other-members'
+        // selections) in sync with the lobby-side reset above — belt and suspenders alongside the
+        // OnRoomLeft() reset, so a fresh lobby always starts genuinely clean regardless of which path got
+        // us here.
+        CharacterSelectUI.instance?.ResetLocalLobbyState();
+        _connectingToHost = false;
 
         int assignedColor = CharacterSelectUI.instance?.AssignUniqueColor(lobby) ?? 0;
         GameStartData.LocalColorIndex = assignedColor;
@@ -201,6 +207,23 @@ public class LobbySceneController : MonoBehaviour
     private void OnRoomLeft()
     {
         _initializedForLobby = false;
+        // Was previously never reset here — CharacterSelectUI.ResetReadyState() (now ResetLocalLobbyState())
+        // existed but nothing called it, so local UI state could carry over stale into a later lobby session
+        // (e.g. join lobby A, ready up, leave, join lobby B — InitializeForLobby already resets the
+        // LOBBY-side ready flag on join, but the local _localIsReady bool would still read true from lobby
+        // A, making the next Ready click send "not ready" instead of "ready").
+        CharacterSelectUI.instance?.ResetLocalLobbyState();
+        // Same "never reset" gap — once set true (starting a connect attempt for THIS lobby's game start),
+        // nothing ever cleared it back to false. Left stuck true, it would permanently block
+        // OnRoomUpdated's own auto-connect check (!_connectingToHost) for every future lobby this session.
+        _connectingToHost = false;
+        // Defensive cleanup in case a game-start sequence was still in flight when we left (e.g. the host
+        // started loading but this client bailed out before TryLoadGameScene's own normal unsubscribe ran)
+        // — an un-cleared subscription would keep firing OnPurrNetPlayerJoined for a lobby we're no longer
+        // part of.
+        if (networkManager != null) networkManager.onPlayerJoined -= OnPurrNetPlayerJoined;
+        _expectedPlayerCount = 0;
+        _purrNetPlayersJoined = 0;
         characterSelectPanel.SetActive(false);
         purrLobbyPanel.SetActive(false);
         mainMenuPanel.SetActive(true);

@@ -23,7 +23,10 @@ MonoBehaviour:
   classRestrictionMode: 0
   characterClasses: 02000000
   incompatibleAugments: []
-  requiredCount: 2147483647
-  requiredAugments: []
+  requiredCount: 1
+  requiredAugments:
+  - {fileID: 11400000, guid: 39383a3fd2cd1ba4e8dbb4fde37ad941, type: 2}
+  - {fileID: 11400000, guid: 0208d14f9b2dfca47bed356dd6c4c0ea, type: 2}
   tags: []
   requiredTags: []
+  incompatibleTags: []

@@ -123,6 +123,11 @@ public struct EnemyBaseState
     // resimulate correctly, a plain field mutated in-place wouldn't roll back and replay consistently.
     public float enrageCountdown;
     public bool  enraged;
+    // True while a subclass's attack routine wants _target pinned for its whole duration — see
+    // EnemyBasePD.LockTarget's own doc comment for why this exists (FindTarget()'s periodic re-scan is not
+    // gated to the Moving state, so without this an attack sequence spanning more than FindTargetInterval
+    // could have its target silently swapped mid-sequence).
+    public bool  targetLocked;
 }
 
 [RequireComponent(typeof(PredictedRigidbody))]
@@ -448,7 +453,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (b.findTargetTimer <= 0f)
         {
             b.findTargetTimer = FindTargetInterval;
-            FindTarget();
+            // Skipped while targetLocked — see LockTarget's own doc comment.
+            if (!b.targetLocked) FindTarget();
         }
 
         for (int i = b.contactCooldowns.Count - 1; i >= 0; i--)
@@ -524,6 +530,18 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     }
 
     // ── Movement ───────────────────────────────────────────────────────────
+
+    // Pins _target for the duration of a multi-state attack routine (dash/windup/attack/etc.) — call at the
+    // moment a subclass commits to attacking (the same tick it reads _target to decide a dash direction,
+    // stab target, etc.), and ClearTargetLock() once the routine returns to its idle/Moving state.
+    // FindTarget()'s periodic re-scan runs unconditionally on a fixed timer regardless of attack/dash
+    // sub-state (see Simulate() above) — without this, an attack sequence that spans more than
+    // FindTargetInterval (default 1s) could have _target silently reassigned to a different, now-nearer
+    // player partway through, so e.g. a dash-toward-target or a facing/attack decision made later in the
+    // same sequence could act on someone other than who the sequence actually started against.
+    protected void LockTarget(ref TState state) => GetBase(ref state).targetLocked = true;
+    protected void ClearTargetLock(ref TState state) => GetBase(ref state).targetLocked = false;
+
     protected virtual void FindTarget()
     {
         float nearest = float.MaxValue;
@@ -672,6 +690,30 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         b.killerOwner = attackerOwner;
         b.health      -= damage;
+
+        // Execute — CharacterStatsPD.TakeDamage is the single choke point every damage source (any weapon,
+        // Phantom Blade, onhit effect, AOE augment, etc.) already funnels through, so hooking it here
+        // covers a crit (or, in the future, ANY hit — see CharacterStatsPD.execute's own doc comment) from
+        // anything uniformly, with no per-call-site changes needed anywhere else. Bosses use a separately
+        // reduced threshold (BossExecuteThreshold/BossCritExecuteThreshold, -80%) instead of the raw
+        // player-facing one, so a boss doesn't get finished off nearly as easily as a normal/elite enemy.
+        if (b.health > 0f && CharacterStatsPD.All.TryGetValue(attackerOwner, out var attackerStats) && attackerStats.Execute)
+        {
+            bool isBoss = spawnCategory == EnemySpawnCategory.Boss;
+
+            // Plain "any hit" execute — futureproofing, nothing sets attackerStats.execute yet.
+            float executeThresh = isBoss ? attackerStats.BossExecuteThreshold : attackerStats.executeThreshold;
+            if (b.health <= maxHealth * executeThresh)
+                b.health = 0f;
+
+            // Crit-gated execute — what CritExecuteAugment actually turns on.
+            if (isCrit && b.health > 0f)
+            {
+                float critExecuteThresh = isBoss ? attackerStats.BossCritExecuteThreshold : attackerStats.critExecuteThreshold;
+                if (b.health <= maxHealth * critExecuteThresh)
+                    b.health = 0f;
+            }
+        }
 
         if (b.health <= 0)
         {

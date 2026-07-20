@@ -63,7 +63,12 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
 
         if (phantomBladePrefab == null) return;
 
+        // usePenalizedDamage: true — this augment's trigger frequency itself scales with WeaponCount (more
+        // weapons means more hits means more crits), unlike Passive/OnDash which trigger at a fixed rate.
+        // Using the WeaponCount-divided WeaponDamage here (instead of the family's usual
+        // UnpenalizedWeaponDamage) offsets that so total blade output stays flat as weapon count grows
+        // instead of ballooning — see PhantomBladeSummonHelper.SummonAtTarget's own comment.
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, TargetSearchRadius, bladeCount, baseDamageMultiplier);
+            Stats.transform.position, TargetSearchRadius, bladeCount, baseDamageMultiplier, usePenalizedDamage: true);
     }
 }

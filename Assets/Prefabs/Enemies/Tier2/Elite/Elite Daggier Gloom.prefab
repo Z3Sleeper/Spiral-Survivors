@@ -65,8 +65,28 @@ PrefabInstance:
       value: 125
       objectReference: {fileID: 0}
     - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
+      propertyPath: enemyName
+      value: Elite Daggier Gloom
+      objectReference: {fileID: 0}
+    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
       propertyPath: maxHealth
-      value: 5000
+      value: 2500
+      objectReference: {fileID: 0}
+    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
+      propertyPath: moveSpeed
+      value: 15
+      objectReference: {fileID: 0}
+    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
+      propertyPath: postSpinPause
+      value: 0.4
+      objectReference: {fileID: 0}
+    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
+      propertyPath: windupDuration
+      value: 0.4
+      objectReference: {fileID: 0}
+    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
+      propertyPath: betweenSpinPause
+      value: 0.2
       objectReference: {fileID: 0}
     - target: {fileID: 2823677713980239291, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
@@ -86,7 +106,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
     - target: {fileID: 8329396689059783766, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
       propertyPath: m_Name
-      value: Elite Dagger Gloom Variant
+      value: Elite Daggier Gloom
       objectReference: {fileID: 0}
     - target: {fileID: 9115747715697537607, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'

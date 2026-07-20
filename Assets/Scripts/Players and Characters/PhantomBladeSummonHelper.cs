@@ -32,7 +32,8 @@ public static class PhantomBladeSummonHelper
     // excess blades all target the closest one (index 0) instead, per the family's stated design (unique
     // targets are preferred, but never wasting a summon just because targets ran out).
     public static void SummonAtClosestEnemies(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, Vector3 origin, float searchRadius, int summonCount, float baseDamageMultiplier)
+        CharacterStatsPD stats, Vector3 origin, float searchRadius, int summonCount, float baseDamageMultiplier,
+        bool usePenalizedDamage = false)
     {
         if (phantomBladePrefab == null || summonCount <= 0) return;
 
@@ -52,7 +53,7 @@ public static class PhantomBladeSummonHelper
         for (int i = 0; i < summonCount; i++)
         {
             var target = _found[i < _found.Count ? i : 0];
-            SummonAtTarget(hierarchy, phantomBladePrefab, stats, target, baseDamageMultiplier);
+            SummonAtTarget(hierarchy, phantomBladePrefab, stats, target, baseDamageMultiplier, usePenalizedDamage: usePenalizedDamage);
         }
     }
 
@@ -60,7 +61,8 @@ public static class PhantomBladeSummonHelper
     // tick, dash, onhit) — the one path that also notifies _onPhantomBladeSummon (unless notifySummon is
     // explicitly suppressed) so PhantomBladeCarnivalAugment (or any future listener) can react.
     public static void SummonAtTarget(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, IEnemyPD target, float baseDamageMultiplier, bool notifySummon = true)
+        CharacterStatsPD stats, IEnemyPD target, float baseDamageMultiplier, bool notifySummon = true,
+        bool usePenalizedDamage = false)
     {
         // Two separate multiplicative layers, not one combined pool — every non-size Phantom Blade
         // augment's own +size% sums additively into phantomBladeSizeBonus first, then
@@ -81,7 +83,16 @@ public static class PhantomBladeSummonHelper
         // already-combined total on top, so e.g. three +10% augments plus a +50% size bonus yields
         // 1.3 * 1.5 = 195% rather than a flat 180% — then phantomBladeDamagePenalty scales the result down
         // again for tradeoff augments like PhantomBladeCarnivalAugment.
-        float damage = rolled * stats.UnpenalizedWeaponDamage
+        //
+        // usePenalizedDamage picks between UnpenalizedWeaponDamage (no WeaponCount divide) and WeaponDamage
+        // (divides by WeaponCount) as the base. Passive/OnDash trigger at a fixed rate independent of
+        // WeaponCount, so they use the undivided total same as always. OnCrit is the one exception — its
+        // trigger frequency itself scales with WeaponCount (more weapons = more hits = more crits), so
+        // pairing that with undivided damage would make total blade output balloon with more weapons
+        // instead of holding flat the way weapon damage itself does; PhantomBladeOnCritAugment opts into
+        // the divided WeaponDamage to offset its own trigger-rate scaling.
+        float weaponDamageBase = usePenalizedDamage ? stats.WeaponDamage : stats.UnpenalizedWeaponDamage;
+        float damage = rolled * weaponDamageBase
             * (1f + stats.phantomBladeDamageBonus) * stats.phantomBladeDamageBonusPercent * stats.phantomBladeDamagePenalty;
 
         SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit);

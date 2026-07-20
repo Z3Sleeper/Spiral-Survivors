@@ -166,7 +166,12 @@ public class CharacterSelectUI : MonoBehaviour
     {
         if (lobbyManager == null) return;
         _localIsReady = !_localIsReady;
-        lobbyManager.ToggleLocalReady();
+        // Explicit value, not ToggleLocalReady() — that toggles based on the lobby provider's own mirrored
+        // localLobbyUser.IsReady, a separate state source from _localIsReady above that can drift out of
+        // sync with it, which was causing client/host ready state mismatches (unreadying on the client
+        // could read as readying on the host, since the two toggles didn't necessarily agree on the
+        // starting value). Sending the exact bool we just computed removes that ambiguity entirely.
+        lobbyManager.SetIsReady(GameStartData.LocalUserId, _localIsReady);
         RefreshFromLobby(lobbyManager.CurrentLobby);
 
         if (_localIsReady)
@@ -183,9 +188,21 @@ public class CharacterSelectUI : MonoBehaviour
         }
     }
 
-    public void ResetReadyState()
+    // Renamed from ResetReadyState — that only ever cleared _localIsReady, but auditing turned up two more
+    // local, lobby-specific fields with the exact same "never reset on leave" gap: _isRandom (so picking
+    // Random in one lobby wouldn't silently keep showing "Random" as your char name in a later lobby even
+    // after GameStartData.LocalCharacterIndex got reset back to 0 by InitializeForLobby), and the cached
+    // OTHER-members' selections (_charSelections/_colorSelections/_powerLevels — keyed by userId, so a
+    // player who hops between lobbies with you could otherwise briefly show stale data from the previous
+    // lobby until the next RefreshFromLobby overwrites it). Called from both LobbySceneController.OnRoomLeft
+    // and InitializeForLobby, so it's covered whichever path a lobby transition takes.
+    public void ResetLocalLobbyState()
     {
         _localIsReady = false;
+        _isRandom = false;
+        _charSelections.Clear();
+        _colorSelections.Clear();
+        _powerLevels.Clear();
     }
 
     private void SelectColor(int index)

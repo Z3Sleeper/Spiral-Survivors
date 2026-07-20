@@ -184,12 +184,33 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         if (_rigidbody != null)
         {
             bool shouldBeKinematic = isWindupOrLeap;
-            if (shouldBeKinematic && !_rigidbody.isKinematic)
+            bool kinematicChanging = _rigidbody.isKinematic != shouldBeKinematic;
+
+            // Zero velocity on EITHER transition direction, not just becoming-kinematic. A kinematic
+            // rigidbody driven by MovePosition (the Leaping arc lerp above) still reports an implicit
+            // velocity derived from its position delta each tick — Unity computes this so the kinematic
+            // body can push dynamic bodies it collides with. That leftover velocity was still sitting on
+            // the rigidbody the instant Leaping->Landing flipped isKinematic back to false, so it got
+            // applied as real physics velocity and shot the leaper off in whatever direction the final
+            // leap frame was moving — the "sliding after leap" bug. Matches old LeaperGloom.Land()'s
+            // explicit _rb.linearVelocity = Vector3.zero right after un-kinematic-ing.
+            //
+            // The zero-out has to happen on whichever side of the isKinematic assignment the body is
+            // actually non-kinematic — Rigidbody.velocity's setter throws "not supported on a kinematic
+            // body" otherwise. Entering kinematic: it's still non-kinematic right up until the assignment
+            // below, so zero first. Leaving kinematic: it's still kinematic until that same assignment
+            // runs, so the zero has to come after.
+            if (kinematicChanging && shouldBeKinematic)
             {
                 _rigidbody.velocity = Vector3.zero;
                 _rigidbody.angularVelocity = Vector3.zero;
             }
             _rigidbody.isKinematic = shouldBeKinematic;
+            if (kinematicChanging && !shouldBeKinematic)
+            {
+                _rigidbody.velocity = Vector3.zero;
+                _rigidbody.angularVelocity = Vector3.zero;
+            }
         }
 
         if (_physicsCollider != null) _physicsCollider.enabled = ss != LeapState.Leaping;
@@ -201,6 +222,10 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private void EnterWindup(ref State state)
     {
         if (_target == null) return;
+
+        // Pinned for the whole attack sequence (re-set on every repeat leap, harmless) — see EnterMoving
+        // for the matching clear.
+        LockTarget(ref state);
 
         // Fixed-radius, random-angle offset — matches KingSpikePD's remote-burst offset (a uniform random
         // angle at a FIXED distance, not old's Random.insideUnitCircle.normalized equivalent, ported to
@@ -228,9 +253,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // assignment rather than trusting the final lerp step to land exactly on target.
         transform.position = new Vector3(state.leapTarget.x, transform.position.y, state.leapTarget.z);
         // No velocity to zero here — the rigidbody is still kinematic at this exact point (it doesn't flip
-        // back to non-kinematic until the shared post-switch block runs later this same tick, so setting
-        // velocity now would throw the same "not supported on a kinematic body" error), and a
-        // MovePosition-driven kinematic leap doesn't leave any residual velocity behind to clear anyway.
+        // back to non-kinematic until the shared post-switch block runs later this same tick). That block
+        // is what actually clears the leftover MovePosition-derived velocity on the kinematic->false edge —
+        // see its comment for why that leftover velocity exists at all.
 
         state.stateTimer = landingDuration;
         SetLeapState(ref state, LeapState.Landing);
@@ -265,6 +290,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private void EnterMoving(ref State state)
     {
         state.leapsRemaining = leapsPerAttack;
+        ClearTargetLock(ref state);
         SetLeapState(ref state, LeapState.Moving);
     }
 

@@ -16,7 +16,7 @@ MonoBehaviour:
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0
   bonusWeaponDamageFlat: 0
-  bonusWeaponDamagePercent: 0.3
+  bonusWeaponDamagePercent: 0.5
   bonusWeaponDamagePenalty: 0
   bonusWeaponRadiusFlat: 3
   bonusWeaponRadiusPercent: 0

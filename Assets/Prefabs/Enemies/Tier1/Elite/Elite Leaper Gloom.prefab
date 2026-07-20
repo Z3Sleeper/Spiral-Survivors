@@ -8,6 +8,10 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: -6973549993052189348, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
+      propertyPath: m_Mass
+      value: 50
+      objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: xpValue
       value: 25
@@ -33,24 +37,16 @@ PrefabInstance:
       value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
-      propertyPath: preferredRange
-      value: 7.5
-      objectReference: {fileID: 0}
-    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: leapOffsetRadius
       value: 1.5
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
-      propertyPath: rangeToleranceFar
-      value: 1.5
+      propertyPath: crowdControlResist
+      value: 0.25
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: knockbackResistance
       value: 0.5
-      objectReference: {fileID: 0}
-    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
-      propertyPath: rangeToleranceClose
-      value: 0.45
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: _damageNumberPlayerOffset

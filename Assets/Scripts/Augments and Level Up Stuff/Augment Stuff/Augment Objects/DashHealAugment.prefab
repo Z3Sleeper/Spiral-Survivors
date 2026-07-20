@@ -47,4 +47,4 @@ MonoBehaviour:
   healPercent: 5
   healRadius: 5
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 51d1225411f343943a91a434cbf2f2dd, type: 3}
-  vfxDuration: 0.3
+  vfxDuration: 0.1

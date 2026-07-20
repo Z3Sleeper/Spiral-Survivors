@@ -28,10 +28,26 @@ PrefabInstance:
       propertyPath: moveSpeed
       value: 9
       objectReference: {fileID: 0}
+    - target: {fileID: 354897101790281580, guid: e2bafb70f1547904da52c6726e8a929b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
     - target: {fileID: 1597157536724350220, guid: e2bafb70f1547904da52c6726e8a929b, type: 3}
       propertyPath: m_Name
       value: Spikier Gloom
       objectReference: {fileID: 0}
+    - target: {fileID: 4915765862012716736, guid: e2bafb70f1547904da52c6726e8a929b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
+    - target: {fileID: 5173062577797930298, guid: e2bafb70f1547904da52c6726e8a929b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
+    - target: {fileID: 6371288759870050912, guid: e2bafb70f1547904da52c6726e8a929b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
     - target: {fileID: 7839943648137112170, guid: e2bafb70f1547904da52c6726e8a929b, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

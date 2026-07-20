@@ -1902,6 +1902,7 @@ RectTransform:
   m_Children:
   - {fileID: 416007367}
   - {fileID: 1667967031}
+  - {fileID: 444160736}
   - {fileID: 104016851}
   - {fileID: 255453177}
   - {fileID: 28150914}
@@ -2928,6 +2929,97 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 417029622}
   m_CullTransparentMesh: 1
+--- !u!1 &444160735
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 444160736}
+  - component: {fileID: 444160737}
+  - component: {fileID: 444160738}
+  - component: {fileID: 444160739}
+  m_Layer: 5
+  m_Name: BuffBar
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &444160736
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 444160735}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 264528626}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: -180.5, y: -365}
+  m_SizeDelta: {x: 515, y: 30}
+  m_Pivot: {x: 0, y: 0.5}
+--- !u!114 &444160737
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 444160735}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 30649d3a9faa99c48a7b1166b86bf2a0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.HorizontalLayoutGroup
+  m_Padding:
+    m_Left: 0
+    m_Right: 0
+    m_Top: 0
+    m_Bottom: 0
+  m_ChildAlignment: 3
+  m_Spacing: 1
+  m_ChildForceExpandWidth: 0
+  m_ChildForceExpandHeight: 0
+  m_ChildControlWidth: 1
+  m_ChildControlHeight: 0
+  m_ChildScaleWidth: 0
+  m_ChildScaleHeight: 0
+  m_ReverseArrangement: 0
+--- !u!114 &444160738
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 444160735}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3245ec927659c4140ac4f8d17403cc18, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.ContentSizeFitter
+  m_HorizontalFit: 0
+  m_VerticalFit: 0
+--- !u!114 &444160739
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 444160735}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3f27e54c8bb4b164695865b2ff79bd3d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BuffBarPD
+  buffIconPrefab: {fileID: 3160422767347383445, guid: ed5c383d8e51fb342933b3a50d741383, type: 3}
 --- !u!1 &448553425
 GameObject:
   m_ObjectHideFlags: 0
@@ -8114,13 +8206,15 @@ MonoBehaviour:
     normal:
     - {fileID: 1597157536724350220, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
     - {fileID: 1597157536724350220, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-    - {fileID: 1597157536724350220, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
     - {fileID: 1597157536724350220, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
+    - {fileID: 1597157536724350220, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
+    - {fileID: 1597157536724350220, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
     elite:
     - {fileID: 1812104275775090706, guid: 85488a841a962ae4a9a0ea80b412b47c, type: 3}
     - {fileID: 8329396689059783766, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-    - {fileID: 4196754441784489447, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
     - {fileID: 6304511416081444933, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+    - {fileID: 3116795667001106926, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
+    - {fileID: 4196754441784489447, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
     boss:
     - {fileID: 1597157536724350220, guid: 792329ba50ec0674d9470944996bc057, type: 3}
     pleb:
@@ -8130,8 +8224,14 @@ MonoBehaviour:
     - {fileID: 2259831222579492897, guid: e42e5a40a09955945994deb1b38daa88, type: 3}
     - {fileID: 6143286297466499065, guid: a26db6784b72fef439531d5511997e9c, type: 3}
     - {fileID: 6074674118707803445, guid: 3ff4f3108fa30f74d97148e79ee5ca06, type: 3}
+    - {fileID: 2225048739166665265, guid: b5f7c440579cae24f8a1973987b7bcab, type: 3}
     - {fileID: 3533963572311859131, guid: a31530711b64b664fa77fe41d89f53eb, type: 3}
-    elite: []
+    elite:
+    - {fileID: 4308514868733512369, guid: 93c5e1b6dec8a4249b038f939391ca8e, type: 3}
+    - {fileID: 4187810981206843494, guid: 33777791f3d836f4f92320e8d91d5e88, type: 3}
+    - {fileID: 3721031815765918055, guid: b018022815749334888b0e5d214e7aca, type: 3}
+    - {fileID: 1927343215851148131, guid: 4faf95e69d801674d8048de09d732d31, type: 3}
+    - {fileID: 6594610724574555039, guid: 2adeba403fa71404b9a11b12757312ef, type: 3}
     boss:
     - {fileID: 723119908134984683, guid: 9ca8c6d718c8d5e4595f18cad458e6f9, type: 3}
     pleb:
@@ -8165,9 +8265,9 @@ MonoBehaviour:
   - {fileID: 48887943}
   spawnMinDistance: 25
   spawnMaxDistance: 30
-  spawnIntervalQ1: 6
-  spawnIntervalQ2: 3
-  spawnIntervalQ3: 1.5
+  spawnIntervalQ1: 1.5
+  spawnIntervalQ2: 1.25
+  spawnIntervalQ3: 1
   spawnIntervalQ4: 0.75
   cycleInterval: 240
   eliteSpawnTimeFirst: 150

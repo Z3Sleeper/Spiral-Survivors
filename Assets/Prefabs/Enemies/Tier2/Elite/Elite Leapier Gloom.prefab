@@ -17,8 +17,28 @@ PrefabInstance:
       value: 125
       objectReference: {fileID: 0}
     - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+      propertyPath: enemyName
+      value: Elite Leapier Gloom
+      objectReference: {fileID: 0}
+    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
       propertyPath: maxHealth
-      value: 5000
+      value: 2500
+      objectReference: {fileID: 0}
+    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+      propertyPath: moveSpeed
+      value: 15
+      objectReference: {fileID: 0}
+    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+      propertyPath: leapDuration
+      value: 0.32
+      objectReference: {fileID: 0}
+    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+      propertyPath: postLeapPause
+      value: 0.4
+      objectReference: {fileID: 0}
+    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+      propertyPath: windupDuration
+      value: 0.32
       objectReference: {fileID: 0}
     - target: {fileID: 3285713333976428323, guid: 39e35a18b925c6444ab288f082127594, type: 3}
       propertyPath: m_LocalPosition.x
@@ -66,7 +86,7 @@ PrefabInstance:
       objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
     - target: {fileID: 6304511416081444933, guid: 39e35a18b925c6444ab288f082127594, type: 3}
       propertyPath: m_Name
-      value: Elite Leaper Gloom Variant
+      value: Elite Leapier Gloom
       objectReference: {fileID: 0}
     - target: {fileID: 7087330477830094251, guid: 39e35a18b925c6444ab288f082127594, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'

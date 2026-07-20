@@ -300,8 +300,8 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 6883465488274931265}
-  - {fileID: 5513950161839650562}
   - {fileID: 3541637886794090097}
+  - {fileID: 5513950161839650562}
   - {fileID: 2886678057887901167}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -330,7 +330,7 @@ MonoBehaviour:
   contactColliderEnabled: 0
   contactCooldown: 0.5
   stunResistant: 0
-  knockbackResistance: 0
+  crowdControlResist: 0
   showDamageNumbers: 1
   sizeYOffset: 0
   sizeZOffset: 0.5
@@ -343,8 +343,8 @@ MonoBehaviour:
   stabRange: 4
   windupDuration: 0.5
   stabDuration: 0.1
-  betweenStabPause: 0.3
-  postStabPause: 0.6
+  betweenStabPause: 0.25
+  postStabPause: 0.5
   attackCooldown: 3
   attacksPerAttack: 1
   dashSpeedMultiplier: 3

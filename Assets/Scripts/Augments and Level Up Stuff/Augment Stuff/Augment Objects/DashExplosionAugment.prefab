@@ -48,4 +48,4 @@ MonoBehaviour:
   onHitPowerPercent: 2
   explosionRadius: 5
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
-  vfxDuration: 0.3
+  vfxDuration: 0.1

@@ -5831,9 +5831,10 @@ MonoBehaviour:
   m_text: 'Fires projectiles at enemies in range and LoS at x12 Attack Speed
 
     Projectiles
-    pierce enemies but lose 10% damage each hit
+    pierce but lose 10% Damage/On-Hit Power each hit
 
-    +10 Range & +50% Range'
+    +10 Range and has Compensating
+    Augment'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -9755,13 +9756,10 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: '+15% Crit Chance & +50% Total Crit Chance
+  m_text: 'Has ThinkingCritically and Critxecute Augments
 
-    <color=red>Handle hits
-    deal 25% damage and can''t Crit</color>
-
-    +2 Range & axe width scales more
-    with range'
+    <color=red>Handle
+    hits deal 25% damage and can''t Crit</color>'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -27255,10 +27253,10 @@ MonoBehaviour:
       m_Calls: []
   m_text: '+2 Weapons & Weapons orbit at a distance
 
-    +30% Damage
+    +50% Damage (Damage is divided
+    by weapon count)
 
-    <color=#F00000>-50%
-    Range</color>'
+    <color=#F00000>-50% Range</color>'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

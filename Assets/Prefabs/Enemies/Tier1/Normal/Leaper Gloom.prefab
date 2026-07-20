@@ -600,7 +600,7 @@ MonoBehaviour:
   contactColliderEnabled: 0
   contactCooldown: 0.5
   stunResistant: 0
-  knockbackResistance: 0
+  crowdControlResist: 0
   showDamageNumbers: 1
   sizeYOffset: 0
   sizeZOffset: 0.5
@@ -610,8 +610,8 @@ MonoBehaviour:
   - {fileID: 3448404629509916890}
   landDamageMultiplier: 1
   landRadius: 3
-  windupDuration: 0.8
-  leapDuration: 0.5
+  windupDuration: 0.4
+  leapDuration: 0.4
   leapArcHeight: 3
   postLeapPause: 0.5
   attackCooldown: 3
