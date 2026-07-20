@@ -46,3 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SurgeDualWeildAugment
   bonusWeapons: 1
   damageBonus: 0.4
+  onHitPowerBonus: 0.4

@@ -14,8 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF0000>Critical</color> <color=#7DFF00>Healing
   description: <color=#7DFF00>Healing</color> given and received can <color=#FF0000>Crit</color>
-    for <color=#7DFF00>bonus healing</color> equal to <color=#FF0000>30% bonus Crit
-    Damage</color>.
+    for <color=#7DFF00>bonus healing</color> equal to <color=#FF0000>20% Crit Damage</color>.
   icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
   effectPrefab: {fileID: 2304256494459472739, guid: 0118d9782c00b2143bd2852a754b4d26, type: 3}
   multiplayerOnly: 0

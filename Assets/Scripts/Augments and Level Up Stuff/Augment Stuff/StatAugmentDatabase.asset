@@ -20,7 +20,7 @@ MonoBehaviour:
     prependText: +
     appendText: 
   - statType: 5
-    displayName: HealthRegen
+    displayName: Health Regen
     color: {r: 0.49019608, g: 1, b: 0, a: 1}
     value: 0.25
     prependText: +

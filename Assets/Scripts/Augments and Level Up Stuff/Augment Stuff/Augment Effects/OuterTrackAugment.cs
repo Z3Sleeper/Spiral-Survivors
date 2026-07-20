@@ -20,13 +20,18 @@ public class OuterTrackAugment : AugmentEffectPD<OuterTrackAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float rangePenalty = 0.25f;
-    [SerializeField] private float damageBonus  = 0.6f;
+    [SerializeField] private float rangePenalty    = 0.25f;
+    [SerializeField] private float damageBonus     = 0.6f;
+    // OnHitPower auto-divides by weaponTracks the same way WeaponDamage does (see class comment) — a
+    // separate tunable rather than reusing damageBonus, kept in case onhit-triggered effects (Phantom
+    // Blade, OnHitDamageAugment, etc.) need to be tuned independently of raw weapon damage.
+    [SerializeField] private float onHitPowerBonus = 0.6f;
 
     protected override void OnApply()
     {
         Stats.AddWeaponTracks(1);
         Stats.AddWeaponRangePercent(-rangePenalty);
         Stats.AddWeaponDamagePercent(damageBonus);
+        Stats.MultiplyOnHitPowerMultiplier(1f + onHitPowerBonus);
     }
 }

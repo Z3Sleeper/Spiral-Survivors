@@ -1,8 +1,9 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// +0.25 Luck Ceiling (bonusLuckCeilingPercent, additive against its 1f baseline — see
-// CharacterStatsPD.AddLuckCeilingPercent's own doc comment). At base stats, 150% -> 175%.
+// +0.25 Luck Ceiling, directly additive against the ceiling value itself (AddLuckCeilingFlat) — at base
+// stats, 1.5 -> 1.75. NOT AddLuckCeilingPercent, which would instead scale the 1.5 baseline multiplicatively
+// (1.5 * 1.25 = 1.875).
 public class LuckCeilingAugment : AugmentEffectPD<LuckCeilingAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
@@ -11,6 +12,6 @@ public class LuckCeilingAugment : AugmentEffectPD<LuckCeilingAugment.State>
 
     protected override void OnApply()
     {
-        Stats.AddLuckCeilingPercent(luckCeilingBonus);
+        Stats.AddLuckCeilingFlat(luckCeilingBonus);
     }
 }

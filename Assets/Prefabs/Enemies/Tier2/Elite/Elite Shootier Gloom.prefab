@@ -10,7 +10,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: 593286561736656083, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
       propertyPath: damage
-      value: 20
+      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 593286561736656083, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
       propertyPath: xpValue

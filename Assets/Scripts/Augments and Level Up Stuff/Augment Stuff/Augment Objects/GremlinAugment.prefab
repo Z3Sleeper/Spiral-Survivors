@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1760c4424764b914aafb12d62b4bd17a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GremlinAugment
-  sizePercent: -0.1
+  sizePercent: -0.2
   attackSpeedPercent: 0.1
   moveSpeedPercent: 0.1

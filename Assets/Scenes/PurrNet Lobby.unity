@@ -27253,10 +27253,10 @@ MonoBehaviour:
       m_Calls: []
   m_text: '+2 Weapons & Weapons orbit at a distance
 
-    +50% Damage (Damage is divided
-    by weapon count)
+    +50% Damage <color=#F00000>-50%
+    Range</color>
 
-    <color=#F00000>-50% Range</color>'
+    <i>(Damage & On-Hit Power are divided by weapon count)</i>'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

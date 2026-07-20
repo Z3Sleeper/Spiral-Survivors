@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Titan2Augment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FF00>Gargantuan</color>
-  description: '<color=#FFA000>+15% Size</color>
+  description: '<color=#FFA000>+30% Size</color>
 
     <color=#00FF00>+15% Max Health</color>
 

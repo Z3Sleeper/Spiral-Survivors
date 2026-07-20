@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CriticalHealingAugment
   bonusCritChance: 0
-  critHealBonusPercent: 0.3
+  critHealBonusPercent: 0.2

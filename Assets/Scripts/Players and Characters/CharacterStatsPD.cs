@@ -243,6 +243,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [HideInInspector] public float luckPenalty = 1f;
     [HideInInspector] public float bonusLuckFloorPercent = 1f;
     [HideInInspector] public float luckFloorPenalty = 1f;
+    [HideInInspector] public float bonusLuckCeilingFlat = 0f;
     [HideInInspector] public float bonusLuckCeilingPercent = 1f;
     [HideInInspector] public float luckCeilingPenalty = 1f;
     [HideInInspector] public float bonusHighrollPercent = 1f;
@@ -342,7 +343,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // debuff/penalty stacking can ever push either one negative and cause a roll below zero. No upper
     // clamp on the ceiling; an arbitrarily high one is just a bigger reward, not a bug.
     public float LuckFloor   => Mathf.Max(0f, baseLuckFloor * bonusLuckFloorPercent * luckFloorPenalty);
-    public float LuckCeiling => Mathf.Max(0f, baseLuckCeiling * bonusLuckCeilingPercent * luckCeilingPenalty);
+    public float LuckCeiling => Mathf.Max(0f, (baseLuckCeiling + bonusLuckCeilingFlat) * bonusLuckCeilingPercent * luckCeilingPenalty);
     // The floor a roll is actually bounded by once LuckChance has raised it off the raw LuckFloor — same
     // Lerp(rawMin, max, LuckChance) WeaponDamageMath.RollDamage itself uses, just expressed in the
     // [LuckFloor, LuckCeiling] multiplier space instead of actual damage numbers so UI can display it
@@ -741,9 +742,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void AddEnergyRegenPercent(float amount) => ApplyStatChange(() => bonusEnergyRegenPercent += amount);
     public void AddLuckFlat(float amount) => ApplyStatChange(() => bonusLuckFlat += amount);
     public void AddLuckPercent(float amount) => ApplyStatChange(() => bonusLuckPercent += amount);
+    // Directly additive against the LuckCeiling number itself (base 1.5 + 0.25 = 1.75), same
+    // (base + Flat) * Percent * Penalty shape as WeaponDamage — NOT AddLuckCeilingPercent below, which
+    // instead scales bonusLuckCeilingPercent's own 1f-baseline multiplier and would compound against
+    // baseLuckCeiling (1.5 * 1.25 = 1.875) rather than adding to it directly.
+    public void AddLuckCeilingFlat(float amount) => ApplyStatChange(() => bonusLuckCeilingFlat += amount);
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — bonusLuckCeilingPercent
-    // starts at 1f (LuckCeiling = baseLuckCeiling * bonusLuckCeilingPercent * luckCeilingPenalty), just had
-    // no augment-facing wrapper until now.
+    // starts at 1f (LuckCeiling = (baseLuckCeiling + bonusLuckCeilingFlat) * bonusLuckCeilingPercent *
+    // luckCeilingPenalty), just had no augment-facing wrapper until now.
     public void AddLuckCeilingPercent(float amount) => ApplyStatChange(() => bonusLuckCeilingPercent += amount);
     // Inverted, same reasoning as AddDamageReductionPercent: Highroll = baseHighroll * bonusHighrollPercent
     // * highrollPenalty, and a LOWER Highroll threshold means MORE of a roll's window counts as a highroll

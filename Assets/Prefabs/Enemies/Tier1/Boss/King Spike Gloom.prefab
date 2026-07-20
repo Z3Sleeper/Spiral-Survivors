@@ -568,7 +568,7 @@ MonoBehaviour:
   enemyName: King Spike
   moveSpeed: 10
   backpedalSpeedDivisor: 3
-  maxHealth: 25000
+  maxHealth: 12500
   preferredRange: 0
   rangeToleranceFar: 1
   rangeToleranceClose: 0.3

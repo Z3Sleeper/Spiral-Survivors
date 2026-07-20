@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: GremlinAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF0050>Gremlin</color>
-  description: '-10% Size
+  description: '-20% Size
 
     <color=#FF0050>+10% Total Attack Speed</color>
 

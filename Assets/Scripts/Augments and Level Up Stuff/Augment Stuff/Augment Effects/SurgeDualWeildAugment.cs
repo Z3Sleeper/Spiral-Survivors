@@ -14,8 +14,12 @@ public class SurgeDualWeildAugment : AugmentEffectPD<SurgeDualWeildAugment.State
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private int   bonusWeapons = 1;
-    [SerializeField] private float damageBonus  = 0.3f;
+    [SerializeField] private int   bonusWeapons    = 1;
+    [SerializeField] private float damageBonus     = 0.3f;
+    // Separate tunable, not a reuse of damageBonus — OnHitPower auto-divides by WeaponCount the same way
+    // WeaponDamage does, so it needs its own compensating bonus, but kept independently adjustable in case
+    // onhit-triggered effects need different tuning than raw weapon damage.
+    [SerializeField] private float onHitPowerBonus = 0.3f;
 
     protected override void OnApply()
     {
@@ -37,11 +41,15 @@ public class SurgeDualWeildAugment : AugmentEffectPD<SurgeDualWeildAugment.State
     {
         Stats.AddWeaponCountFlat(bonusWeapons);
         Stats.AddWeaponDamagePercent(damageBonus);
+        // MultiplyOnHitPowerMultiplier, not AddWeaponDamagePercent's additive-into-1f pattern —
+        // bonusOnHitPowerMultiplier is a straight multiplicative stack, exactly inverted on Surge end below.
+        Stats.MultiplyOnHitPowerMultiplier(1f + onHitPowerBonus);
     }
 
     private void OnSurgeEnded()
     {
         Stats.AddWeaponCountFlat(-bonusWeapons);
         Stats.AddWeaponDamagePercent(-damageBonus);
+        Stats.MultiplyOnHitPowerMultiplier(1f / (1f + onHitPowerBonus));
     }
 }

@@ -440,7 +440,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SpikeGloomPD
   _rigidbody: {fileID: -2186915327312289600}
-  enemyName: Spike
+  enemyName: Spike Gloom
   moveSpeed: 6
   backpedalSpeedDivisor: 3
   maxHealth: 30
@@ -452,7 +452,7 @@ MonoBehaviour:
   contactColliderEnabled: 1
   contactCooldown: 0.5
   stunResistant: 0
-  knockbackResistance: 0
+  crowdControlResist: 0
   showDamageNumbers: 1
   sizeYOffset: 0
   sizeZOffset: 1

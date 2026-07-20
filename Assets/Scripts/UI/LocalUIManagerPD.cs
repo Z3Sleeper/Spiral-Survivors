@@ -466,7 +466,7 @@ public class LocalUIManagerPD : MonoBehaviour
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
         _statsSB.AppendLine($" {_stats.Luck:G4}");
-        _statsSB.AppendLine($" {Mathf.Min(_stats.HighrollChance * 100f, 100f):G4}%");
+        _statsSB.AppendLine($" {Mathf.Min(_stats.HighrollChance * 100f, 100f):0.##}%");
         _statsSB.AppendLine($" {_stats.OnHitPower * 100f:G4}%");
         SetText(statsNumbersText, _statsSB.ToString());
     }

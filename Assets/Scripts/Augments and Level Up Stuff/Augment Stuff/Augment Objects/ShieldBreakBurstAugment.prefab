@@ -45,9 +45,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShieldBreakBurstAugment
   invincibilityDuration: 1
-  damagePercent: 2
+  damagePercent: 5
   burstRadius: 5
   baseKnockback: 10
-  stunDuration: 1
+  stunDuration: 2
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
   vfxDuration: 0.3

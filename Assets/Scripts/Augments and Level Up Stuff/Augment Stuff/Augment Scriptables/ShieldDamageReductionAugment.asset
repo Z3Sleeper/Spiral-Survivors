@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: ShieldDamageReductionAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF00FF>Unbreakable</color>
-  description: '<color=#C8C8C8>+40% Damage Reduction</color> while <color=#FF00FF>Shielded</color>.
+  description: '<color=#C8C8C8>+30% Damage Reduction</color> while <color=#FF00FF>Shielded</color>.
 
     <color=#FFA000>On
     Lethal Damage Taken:</color> Set your <color=#00FF00>Health</color> to <color=#00FF00>1</color>,
     gain <color=#FFA000>Invulnerability</color> for 1 second and recharge your <color=#FF00FF>Shield</color>.
-    (30s cd)'
+    (20s cd)'
   icon: {fileID: 21300000, guid: 37a9507e367a9dc4e964a6b2fa3a1d43, type: 3}
   effectPrefab: {fileID: 128303859756713544, guid: ec614b706e5c1494f86d50803dc8c147, type: 3}
   multiplayerOnly: 0
