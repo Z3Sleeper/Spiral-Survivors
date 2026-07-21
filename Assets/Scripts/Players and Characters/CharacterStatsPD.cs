@@ -11,14 +11,15 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Static, not per-instance PredictedEvent — fired from EnemyBasePD.UpdateView() off verified state with
     // its own edge-detection (isDead && !_wasDeadLastFrame), the same hand-rolled pattern already
     // established as functionally equivalent to PredictedEvent (see GameManagerPD.OnGameEnded), so it's
-    // already safe to fire directly here without needing the PredictedEvent machinery itself. OnEnemyDeath
-    // fires for every enemy death regardless of killer (killer may be null if it doesn't resolve to a
-    // living player); OnEnemyKill only fires additionally when the killer is the LOCAL owner specifically —
-    // for augments that care only about the local player's own kills, not every death on the field.
+    // already safe to fire directly here without needing the PredictedEvent machinery itself. Fires for
+    // every enemy death on every machine, regardless of killer (killer may be null if it doesn't resolve to
+    // a living player) — a "my own kills only" augment filters by comparing killer against its own Stats
+    // instance, which evaluates identically on every machine since killer/enemy are resolved the same way
+    // everywhere. (A separate OnEnemyKill used to exist, gated to only firing on the killer's own local
+    // machine — removed since it had zero subscribers and that owner-only gating would have desynced any
+    // effect that needs to mutate shared/enemy state, like OnKillLaunchEnemiesAugment's corpse launch.)
     public static event Action<CharacterStatsPD, IEnemyPD> OnEnemyDeath;
-    public static event Action<CharacterStatsPD, IEnemyPD> OnEnemyKill;
     public static void RaiseOnEnemyDeath(CharacterStatsPD killer, IEnemyPD enemy) => OnEnemyDeath?.Invoke(killer, enemy);
-    public static void RaiseOnEnemyKill(CharacterStatsPD killer, IEnemyPD enemy) => OnEnemyKill?.Invoke(killer, enemy);
 
     public enum CharacterClass { Knight, Rogue, Archer, Bladeweaver, Executioner }
     public CharacterClass characterClass;
@@ -370,7 +371,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float Knockback => baseKnockback * knockbackMultiplier * knockbackPenalty;
 
     // Same auto-divide as WeaponDamage and for the same reason — onHitPower feeds every onhit-triggered
-    // effect (OnHitDamageAugment, PhantomBladeOnHitAugment, HealAllyOnStrikeAugment, etc.), so without this
+    // effect (OnHitDamageAugment, PhantomBladeOnHitAugment, OnStrikeHealAllyAugment, etc.), so without this
     // an augment that grants more simultaneous weapons/multishot would silently multiply every one of
     // those effects' output too, blowing past the 20/30-point budget guideline those augments were tuned
     // against. No "Unpenalized" variant here (unlike WeaponDamage) — nothing currently reads a pre-divide
@@ -468,6 +469,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // the outcome. No payload — a listener that wants to react conditionally (e.g. a cooldown) tracks that
     // itself; the incoming damage amount isn't needed to decide whether to intervene.
     private PredictedEvent _onLethalDamageTaken;
+    // Fires from inside TakeDamage whenever incoming damage actually reduces shield and/or health by a
+    // positive amount (post-DamageReduction, before it's split between shield/health) — e.g.
+    // PhantomBladeOnDamagedAugment. Excludes a killing blow, same reasoning as _onShieldBreak: a "reacted to
+    // taking damage" effect firing on a player who's already dead doesn't make sense.
+    private PredictedEvent<float> _onDamaged;
     // Relayed here from WeaponManagerPD (which subscribes to every one of this player's own registered
     // weapons' own crit events) — the one channel downstream per-player systems like
     // PhantomBladeOnCritAugment subscribe to, instead of each augment needing to know about individual
@@ -478,10 +484,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // CritTriggerOnHitAugment subscribes to both and calls NotifyHit again from its own crit listener to
     // make a crit count as two hits.
     private PredictedEvent<WeaponHitData> _onHit;
+    // Fires once per REAL weapon connection with an enemy — relayed from WeaponManagerPD exactly like
+    // _onHit/_onCritStrike, but deliberately never touched by anything that re-invokes _onHit/NotifyHit
+    // (e.g. CritTriggerOnHitAugment calling Stats.NotifyHit again from its own crit listener). Effects that
+    // must fire exactly once per genuine strike, not once-or-twice depending on other augments (e.g.
+    // OnStrikeEnergyRegenAugment), subscribe here instead of to _onHit.
+    private PredictedEvent<WeaponHitData> _onStrike;
     // Fires whenever any of this player's weapons touches (not damages) an ally — called directly by each
     // weapon (no WeaponManagerPD relay hop needed, unlike _onHit/_onCritStrike, since "touched an ally"
     // isn't a per-weapon-type concept anything else needs to distinguish). Generic on purpose: multiple
-    // "hit ally, do something" augments (HealAllyOnStrikeAugment and future family members) can each
+    // "hit ally, do something" augments (OnStrikeHealAllyAugment and future family members) can each
     // subscribe independently and decide what to do with the touch themselves, rather than this class
     // baking in any one specific effect.
     private PredictedEvent<AllyStrikeData> _onAllyStrike;
@@ -505,12 +517,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void RemoveShieldRechargeListener(Action listener) => _onShieldRecharge.RemoveListener(listener);
     public void AddLethalDamageTakenListener(Action listener) => _onLethalDamageTaken.AddListener(listener);
     public void RemoveLethalDamageTakenListener(Action listener) => _onLethalDamageTaken.RemoveListener(listener);
+    public void AddDamagedListener(Action<float> listener) => _onDamaged.AddListener(listener);
+    public void RemoveDamagedListener(Action<float> listener) => _onDamaged.RemoveListener(listener);
     public void AddCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.AddListener(listener);
     public void RemoveCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.RemoveListener(listener);
     public void NotifyCritStrike(WeaponHitData data) => _onCritStrike.Invoke(data);
     public void AddHitListener(Action<WeaponHitData> listener) => _onHit.AddListener(listener);
     public void RemoveHitListener(Action<WeaponHitData> listener) => _onHit.RemoveListener(listener);
     public void NotifyHit(WeaponHitData data) => _onHit.Invoke(data);
+    public void AddStrikeListener(Action<WeaponHitData> listener) => _onStrike.AddListener(listener);
+    public void RemoveStrikeListener(Action<WeaponHitData> listener) => _onStrike.RemoveListener(listener);
+    public void NotifyStrike(WeaponHitData data) => _onStrike.Invoke(data);
     public void AddAllyStrikeListener(Action<AllyStrikeData> listener) => _onAllyStrike.AddListener(listener);
     public void RemoveAllyStrikeListener(Action<AllyStrikeData> listener) => _onAllyStrike.RemoveListener(listener);
     public void AddPhantomBladeSummonListener(Action<PhantomBladeSummonData> listener) => _onPhantomBladeSummon.AddListener(listener);
@@ -526,8 +543,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onShieldBreak   = new PredictedEvent(predictionManager, this);
         _onShieldRecharge = new PredictedEvent(predictionManager, this);
         _onLethalDamageTaken = new PredictedEvent(predictionManager, this);
+        _onDamaged       = new PredictedEvent<float>(predictionManager, this);
         _onCritStrike    = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onHit           = new PredictedEvent<WeaponHitData>(predictionManager, this);
+        _onStrike        = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onAllyStrike    = new PredictedEvent<AllyStrikeData>(predictionManager, this);
         _onPhantomBladeSummon = new PredictedEvent<PhantomBladeSummonData>(predictionManager, this);
 
@@ -549,9 +568,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     {
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
-        // Energy recharges even while dead so the player has energy on revive.
+        // Energy recharges even while dead so the player has energy on revive. Normally suppressed while
+        // Surging — EnergyRegenWhileSurgingAugment punches a partial-rate hole in that via
+        // energyRegenWhileSurgingPercent (0 = fully suppressed, the default/no-augment case).
         if (!state.isSurging)
             state.energy = Mathf.Min(state.energy + EnergyRegen * delta, MaxEnergy);
+        else if (energyRegenWhileSurgingPercent > 0f)
+            state.energy = Mathf.Min(state.energy + EnergyRegen * energyRegenWhileSurgingPercent * delta, MaxEnergy);
 
         if (state.isDead) return;
 
@@ -776,6 +799,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // DashHaste's own percent multiplier (bonusDashHastePercent starts at 1f, e.g. +0.15 = +15% total).
     public void AddDashHastePercent(float amount) => ApplyStatChange(() => bonusDashHastePercent += amount);
     public void AddWeaponCountFlat(int amount) => ApplyStatChange(() => bonusWeaponCountFlat += amount);
+    // Multiplicative compounding, same convention as MultiplyWeaponDamagePenalty/MultiplyOnHitPowerMultiplier
+    // — bonusWeaponCountMultiplier already sits in the WeaponCount formula (previously only ever touched by
+    // ClassPassiveData aggregation), just had no augment-facing wrapper until now. factor is an exact
+    // integer multiplier (e.g. 2 for SurgeWeaponCountAugment's x2), inverted with the same factor to revert
+    // (integer *=/ /= pairs cleanly as long as they're applied/removed in matched pairs).
+    public void MultiplyWeaponCountMultiplier(int factor) => ApplyStatChange(() => bonusWeaponCountMultiplier *= factor);
+    // Paired revert for the above — an int can't be un-multiplied via 1f/factor the way the float
+    // Multiply___ methods revert, so this divides back by the same exact factor instead. Only safe when
+    // applied/removed in matched pairs with no other multiplicative change interleaved in between.
+    public void DivideWeaponCountMultiplier(int factor) => ApplyStatChange(() => bonusWeaponCountMultiplier /= factor);
     // Unused for now — the planned OuterWeaponTrackAugment will call this. amount can be negative to
     // remove tracks (nothing currently does, but the direct += supports it symmetrically for free).
     public void AddWeaponTracks(int amount) => ApplyStatChange(() => weaponTracks += amount);
@@ -856,13 +889,37 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     // Same enable-bool shape as phantomBladeOnHitEnabled above, but generic (no attached magnitude here) —
     // weapons only pay for the extra ally-hurtbox overlap query when this (or allyStrikeDamageEnabled
-    // below) is true, and ANY "hit ally, do something" augment (HealAllyOnStrikeAugment, future family
+    // below) is true, and ANY "hit ally, do something" augment (OnStrikeHealAllyAugment, future family
     // members) turns it on the same way via EnableAllyStrikeHit(). Multiple such augments picked at once
     // just each call it — idempotent, no conflict — and all react independently to the same underlying
     // _onAllyStrike notifications below. Consolidated from the old system's canContactAllies (same role,
     // dormant/unused in this project until now).
     [HideInInspector] public bool allyStrikeHitEnabled = false;
     public void EnableAllyStrikeHit() => allyStrikeHitEnabled = true;
+
+    // Read directly by EnemyBasePD.Die() (Simulate-context, safe pure reads of counts only ever incremented
+    // once each, at OnApply()) to reserve exactly enough death-holds up front, atomically — no dependence
+    // on OnEnemyDeath listener dispatch order/timing the way a single "did anyone enable this" bool would
+    // have (that was the previous killEffectHoldEnabled design; a listener requesting its own hold DURING
+    // dispatch could lose the race against deletion checking the count that same tick). deathEventCount is
+    // summed across every player's Stats since a death-reactive effect (e.g. a future "on any enemy death"
+    // augment) doesn't care who the killer was; killEventCount is read only off the killer's own Stats since
+    // kill-credited effects (e.g. OnKillLaunchEnemiesAugment) only ever react to their own kills. Each
+    // augment that needs a hold increments the matching count once in OnApply() — multiple such augments on
+    // the same player just add up, same idempotent shape as every other augment count in this file — and
+    // releases its own hold via the enemy's ReleaseDeathHold() once its individual effect concludes.
+    [HideInInspector] public int deathEventCount = 0;
+    [HideInInspector] public int killEventCount = 0;
+    public void AddDeathEventCount(int amount = 1) => deathEventCount += amount;
+    public void AddKillEventCount(int amount = 1) => killEventCount += amount;
+
+    // Punches a partial-rate hole in Simulate()'s own !state.isSurging gate on the passive EnergyRegen tick
+    // (see EnergyRegenWhileSurgingAugment) — 0 (default) means fully suppressed while Surging, same as
+    // before this existed. Plain += (not ApplyStatChange) since it doesn't touch Max Health/Energy, same
+    // shape as phantomBladeDamageBonusPercent; multiple copies of the augment (or future family members)
+    // just stack additively.
+    [HideInInspector] public float energyRegenWhileSurgingPercent = 0f;
+    public void AddEnergyRegenWhileSurgingPercent(float amount) => energyRegenWhileSurgingPercent += amount;
 
     // Separate gate for actually DAMAGING a touched ally (real friendly fire) — a weapon only applies
     // TakeDamage to an ally it touches if this is true, independent of allyStrikeHitEnabled above (a
@@ -1206,6 +1263,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         currentState.damageEventId++;
         currentState.shieldRechargeTimer = shieldRechargeTime;
         damage *= DamageReduction;
+        // Captured here, before the shield/health split below — "how much damage this hit represented" as
+        // a whole, for _onDamaged's payload.
+        float totalDamageTaken = damage;
 
         // Break edge, not "shield is currently 0" — only true the tick it actually crosses down from >0,
         // same reasoning as every other transition-detected event in this class. Invoking is deferred to
@@ -1251,6 +1311,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // "shield broke" reaction (invincibility, an AOE burst, etc.) on a player who's already dead.
         if (shieldJustBroke && !currentState.isDead)
             _onShieldBreak.Invoke();
+
+        // Same "not on the killing blow" exclusion as _onShieldBreak above.
+        if (totalDamageTaken > 0f && !currentState.isDead)
+            _onDamaged.Invoke(totalDamageTaken);
     }
 
     public void Heal(float amount)
@@ -1272,6 +1336,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         float healed = Mathf.Min(amount, MaxHealth - currentState.health);
         if (healed <= 0f) return;
         currentState.health += healed;
+    }
+
+    // Same clamped-gain shape as Heal(), for Energy instead of Health — no _onXInvoke since nothing
+    // currently needs to react to an energy gain in progress the way CriticalHealingAugment reacts to heals.
+    public void GainEnergy(float amount)
+    {
+        if (currentState.isDead) return;
+        float gained = Mathf.Min(amount, MaxEnergy - currentState.energy);
+        if (gained <= 0f) return;
+        currentState.energy += gained;
     }
 
     public void Revive(float healthPercent = 0.5f)

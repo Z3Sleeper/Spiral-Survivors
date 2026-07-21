@@ -20,7 +20,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         public Vector3 leapStart;
         public Vector3 leapTarget;            // locked in at Windup entry, reused through Leaping/Landing
         public int     leapsRemaining;
-        public void Dispose() { b.contactCooldowns.Dispose(); }
+        public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
     }
 
     public enum LeapState { Moving, Windup, Leaping, Landing, PostLeap }
@@ -303,14 +303,14 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
         if (!gameObject.activeInHierarchy) return;
 
-        // Death is handled by base.UpdateView() above (OnHideOnDeath() + hierarchy.Delete()) — but that
+        // Death is handled by base.UpdateView() above (OnDeathStop() + hierarchy.Delete()) — but that
         // doesn't stop execution from continuing into the rest of THIS method afterward. If death happens
         // while stateId still reads Windup/Leaping (e.g. killed by AoE/DoT mid-leap, never transitioning
         // back to Moving first), the SetActive(...) call further down would immediately re-enable the very
-        // indicator OnHideOnDeath() just hid. Since the indicator is unparented to world root during that
+        // indicator OnDeathStop() just hid. Since the indicator is unparented to world root during that
         // window, it'd then sit there forever, detached and visible, with nothing left to ever hide it
         // again once this enemy itself is deleted/pooled — this was the "leftover circle on the ground"
-        // bug. Bailing here preserves whatever OnHideOnDeath() already did.
+        // bug. Bailing here preserves whatever OnDeathStop() already did.
         if (viewState.b.isDead) return;
 
         // Sourced from _leapTargetSnapshot (a plain field, not predicted State) — instantly available on
@@ -387,10 +387,13 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         }
     }
 
-    protected override void OnHideOnDeath()
+    protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.ResetFill();
+        // Snaps out of whatever attack pose this enemy died mid-animation in — see SpearGloomPD's own
+        // OnDeathStop comment for why (stateId is frozen from here on, so nothing else will do this).
+        if (_animator != null) _animator.Play(IdleHash, 0, 0f);
     }
 
     protected override void OnRespawnReset()

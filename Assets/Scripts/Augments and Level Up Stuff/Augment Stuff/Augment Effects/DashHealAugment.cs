@@ -3,7 +3,7 @@ using UnityEngine;
 
 // Ported from _OldSystemArchive/Augment Effects/DashHealAugment.cs — On Dash End, heals self and all nearby
 // allies for a percent of HealthRegen. Rolls luck variance per ally independently (the "*" annotation),
-// same as every other healing/damage effect (see HealAllyOnStrikeAugment's own RollDamage call). No longer
+// same as every other healing/damage effect (see OnStrikeHealAllyAugment's own RollDamage call). No longer
 // grants a flat dashHaste bonus (removed per the "no training wheels" balance pass — augments granting
 // unique effects shouldn't hand out the stats needed to build around them). Subscribes directly to this
 // player's own PlayerControllerPD._onDashEnded, same per-owner-instance cross-player-safety reasoning as

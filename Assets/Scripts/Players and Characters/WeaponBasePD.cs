@@ -32,6 +32,15 @@ public interface IWeaponPD
     void RemoveCritStrikeListener(System.Action<WeaponHitData> listener);
     void AddHitListener(System.Action<WeaponHitData> listener);
     void RemoveHitListener(System.Action<WeaponHitData> listener);
+    // Fires once per REAL weapon connection with an enemy — deliberately separate from AddHitListener/OnHit,
+    // which augments like CritTriggerOnHitAugment can (and do) invoke an extra time per real hit for their
+    // own onhit-chain purposes. OnStrike is never touched by anything that re-triggers OnHit, so it's safe
+    // for effects that must fire exactly once per genuine strike (e.g. OnStrikeEnergyRegenAugment).
+    void AddStrikeListener(System.Action<WeaponHitData> listener);
+    void RemoveStrikeListener(System.Action<WeaponHitData> listener);
+    // Real-world distance from origin to this weapon's own current outer hit-detection edge — see
+    // WeaponBasePD's shared implementation for why one formula covers every weapon type.
+    float GetOuterReach(Vector3 origin);
 }
 
 // Shared payload for both the OnHit (every weapon hit) and OnCrit (the subset of hits that also crit)
@@ -138,7 +147,7 @@ public static class CombatLayerMasks
 {
     public static readonly int EnemyHurtboxMask = LayerMask.GetMask("Enemy");
     // Only ever queried when a weapon's owner has allyStrikeHitEnabled or allyStrikeDamageEnabled (any
-    // "hit ally, do something" augment, e.g. HealAllyOnStrikeAugment, or real friendly fire) — every other
+    // "hit ally, do something" augment, e.g. OnStrikeHealAllyAugment, or real friendly fire) — every other
     // weapon skips the extra query entirely, so this costs nothing for players without either.
     public static readonly int PlayerHurtboxMask = LayerMask.GetMask("Player");
 }
@@ -167,11 +176,30 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     [SerializeField] public    Transform[] xzScaleFollowers;
     [SerializeField] public    Transform[] xScaleFollowers;
 
+    // Decorative tip mesh (e.g. an arrowhead/blade point) that extends past the base hitbox/hb edge —
+    // GetOuterReach can't see this from meleeHalfExtents/hb.lossyScale alone since it's a separate piece
+    // with its own authored length, not part of the hitbox box itself. hitboxTipOffset is that length AT
+    // SCALE 1 (same "base value, scaled live" convention as meleeHalfExtents); the scalesWith bools mark
+    // which of hitboxTip's own localScale axes track range growth (e.g. a diamond tip in xzScaleFollowers
+    // would check X and Z), so GetOuterReach knows which current scale value(s) to multiply the base
+    // offset by. Optional — leave hitboxTip unassigned for weapons with no separate tip decoration.
+    [SerializeField] private Transform hitboxTip;
+    [SerializeField] private float     hitboxTipOffset = 0f;
+    [SerializeField] private bool      hitboxTipScalesWithX = false;
+    [SerializeField] private bool      hitboxTipScalesWithY = false;
+    [SerializeField] private bool      hitboxTipScalesWithZ = false;
+
     private float     _hiltEdgeLocal;
     private float     _baseRangeScaleX;
     private float[]   _baseYScales;
     private Vector2[] _baseXZScales;
     private float[]   _baseXScales;
+    // hitboxTipOffset is authored against hitboxTip's scale AT THIS captured moment (i.e. whatever the
+    // prefab is currently set to) — so GetOuterReach multiplies by (current / base) per marked axis rather
+    // than the raw current scale directly. That's what lets hitboxTipOffset be set to the actual,
+    // Scene-view-measurable extension length at the prefab's authored scale, instead of a confusing
+    // per-unit-scale constant the raw-current-scale approach would otherwise require.
+    private Vector3   _hitboxTipBaseScale = Vector3.one;
     // Guards InitModelVisuals() below to a single real capture per GameObject instance — WeaponManagerPD
     // calls InitModelVisuals() from RegisterWeapon() on every logical spawn, including pooled reuse (since
     // LateAwake() re-fires then too). Without this, a reused instance would re-capture the "base" values
@@ -235,6 +263,9 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
                 if (xScaleFollowers[i] != null)
                     _baseXScales[i] = xScaleFollowers[i].localScale.x;
         }
+
+        if (hitboxTip != null)
+            _hitboxTipBaseScale = hitboxTip.localScale;
     }
 
     public void ScaleModel(float range)
@@ -328,12 +359,23 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     public void RemoveHitListener(System.Action<WeaponHitData> listener) => _onHit.RemoveListener(listener);
     public void NotifyHit(WeaponHitData data) => _onHit.Invoke(data);
 
+    // Fires once per REAL weapon connection with an enemy, invoked directly alongside _onHit at each
+    // weapon's own actual hit-resolution call site (WeaponMeleePD.Hit/WeaponAxePD's equivalent/
+    // WeaponRangedProjectilePD's ProcessHit) — never touched by anything that re-invokes _onHit/NotifyHit
+    // (e.g. CritTriggerOnHitAugment), so it can't be duplicated the way _onHit can.
+    protected PredictedEvent<WeaponHitData> _onStrike;
+
+    public void AddStrikeListener(System.Action<WeaponHitData> listener) => _onStrike.AddListener(listener);
+    public void RemoveStrikeListener(System.Action<WeaponHitData> listener) => _onStrike.RemoveListener(listener);
+    public void NotifyStrike(WeaponHitData data) => _onStrike.Invoke(data);
+
     protected override void LateAwake()
     {
         base.LateAwake();
         _onHighroll = new PredictedEvent<float>(predictionManager, this);
         _onCritStrike = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onHit = new PredictedEvent<WeaponHitData>(predictionManager, this);
+        _onStrike = new PredictedEvent<WeaponHitData>(predictionManager, this);
     }
 
     // Shared orbital-position formula — WeaponMeleePD/WeaponAxePD (swept hitbox) and WeaponRangedPD (fires
@@ -359,6 +401,49 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
         float radius = weaponRadiusOffset + _stats.transform.lossyScale.x * 0.5f + halfRange;
         return origin + new Vector3(Mathf.Cos(rad) * radius, 0f, Mathf.Sin(rad) * radius);
+    }
+
+    // Used by PlayerRangeIndicatorPD to show players exactly where their weapons can actually hit, without
+    // duplicating each weapon type's own hitbox geometry. WeaponMeleePD's box (half-extent along hb's local
+    // Z = meleeHalfExtents.z * hb.lossyScale.z, default 0.5) and WeaponAxePD's inner-box+outer-capsule zones
+    // (whose farthest reach past hb.position works out to exactly hb.lossyScale.z * 0.5 once the
+    // handle/blade ratio split cancels out — see WeaponAxePD.ComputeZones) both reduce to the same "half of
+    // hb.lossyScale.z past hb.position" formula, so one shared implementation covers both without needing
+    // per-subclass overrides. hb.forward always points radially outward from the player (LookRotation(
+    // outward) is set every tick in LateSimulate), so a scalar distance-plus-half-extent is exact, not an
+    // approximation. Ranged weapons have no melee-style fixed hitbox at all — their real reach is
+    // target-acquisition range (WeaponRangedPD.FindTarget), whose raycast pulls its origin back by 1 unit
+    // and extends range by +1 to compensate, exactly cancelling out — so the real reach past the weapon's
+    // own live position is just WeaponRange. Measuring from transform.position directly (like the melee
+    // branch measures from hb.position) rather than reconstructing it from WeaponRadius/track offset keeps
+    // this exact regardless of orbit clearance terms, instead of dropping them like a stats-only formula
+    // would.
+    public float GetOuterReach(Vector3 origin)
+    {
+        if (!IsMelee)
+            return Vector3.Distance(origin, transform.position) + _stats.WeaponRange;
+
+        Transform hb = hitboxTarget != null ? hitboxTarget : transform;
+        // hitboxTip's own pivot tracks the same range-driven position as hb's far edge (both derive from
+        // the same WeaponRange-based math, via rangeFollowers/SetupWeaponRange respectively), so its extra
+        // length is added directly on top rather than measured from a second, separate origin.
+        return Vector3.Distance(origin, hb.position) + hb.lossyScale.z * 0.5f + GetHitboxTipExtraReach();
+    }
+
+    // Shared by GetOuterReach above and WeaponMeleePD's own hit-detection box, so the actual hitbox and the
+    // cosmetic range indicator can never drift apart — the real extra forward reach hitboxTip contributes
+    // right now, scaled by (current / base) per marked axis rather than the raw current scale (see
+    // _hitboxTipBaseScale's own comment for why). 0 if no tip is assigned.
+    protected float GetHitboxTipExtraReach()
+    {
+        if (hitboxTip == null || hitboxTipOffset == 0f) return 0f;
+
+        float ratio = 0f;
+        int   axisCount = 0;
+        if (hitboxTipScalesWithX && _hitboxTipBaseScale.x > 0f) { ratio += hitboxTip.localScale.x / _hitboxTipBaseScale.x; axisCount++; }
+        if (hitboxTipScalesWithY && _hitboxTipBaseScale.y > 0f) { ratio += hitboxTip.localScale.y / _hitboxTipBaseScale.y; axisCount++; }
+        if (hitboxTipScalesWithZ && _hitboxTipBaseScale.z > 0f) { ratio += hitboxTip.localScale.z / _hitboxTipBaseScale.z; axisCount++; }
+        return hitboxTipOffset * (axisCount > 0 ? ratio / axisCount : 1f);
     }
 
     // How many sub-arcs a swept-hitbox weapon (WeaponMeleePD, WeaponAxePD) should sample this tick instead

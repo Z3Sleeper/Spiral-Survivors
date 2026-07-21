@@ -23,7 +23,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // arms attackCooldownTimer. This is how the cooldown ends up starting only once the last remote
         // burst has finished charging, without KingSpikePD needing to observe the spawned hazards directly.
         public float   remoteSequenceTimer;
-        public void Dispose() { b.contactCooldowns.Dispose(); }
+        public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
     }
 
     public enum KingSpikeState { Moving, ChargeWindup, Charging, BetweenCharges, SpikeBurstWindup }
@@ -344,7 +344,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         }
     }
 
-    protected override void OnHideOnDeath()
+    protected override void OnDeathStop()
     {
         if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
         if (chargeWindupFill != null)      chargeWindupFill.ResetFill();

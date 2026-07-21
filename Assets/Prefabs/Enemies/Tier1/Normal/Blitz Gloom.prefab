@@ -324,10 +324,11 @@ MonoBehaviour:
   rangeToleranceClose: 0.3
   damage: 10
   xpValue: 5
+  size: 1
   contactColliderEnabled: 1
   contactCooldown: 0.5
   stunResistant: 0
-  knockbackResistance: 0
+  crowdControlResist: 0
   showDamageNumbers: 1
   sizeYOffset: 0
   sizeZOffset: 0.5

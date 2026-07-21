@@ -3,6 +3,15 @@ using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
+// Per-connected-player "how long since they joined without finishing local setup" — see
+// GameManagerPD.TickSetupTimers's own doc comment for why this exists. Same shape as EnemyBasePD's
+// ContactCooldown (PlayerID + a float that ticks in predicted State).
+public struct PlayerSetupTimer
+{
+    public PlayerID player;
+    public float elapsed;
+}
+
 public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
 {
     public struct State : IPredictedData<State>
@@ -24,6 +33,8 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         // Reading that from Simulate() risked a replayed tick computing a different gameStarted result
         // than the tick's original live pass, the same category of bug already fixed for AwardXP.
         public DisposableList<PlayerID> readyPlayers;
+        // Ticked every tick while !gameStarted — see TickSetupTimers's own doc comment.
+        public DisposableList<PlayerSetupTimer> setupTimers;
         // Snapshotted once, the exact tick gameStarted flips true — every mid-run co-op scaling system
         // (enemy toughness, XP penalty, multiplayer-only augment availability, etc.) should read THIS, not
         // NetworkManager/PredictionManager's live playerCount, so a player disconnecting mid-run doesn't
@@ -41,6 +52,7 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         {
             readyPlayers.Dispose();
             endReadyPlayers.Dispose();
+            setupTimers.Dispose();
         }
     }
 
@@ -63,6 +75,12 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     // Lets a harder level award more points per kill without having to also inflate enemy XP values
     // (which would throw off the level-up pacing) for balance purposes.
     [SerializeField] private float upgradePointMultiplier = 1f;
+
+    [Header("Connection Watchdog")]
+    // A connected player whose own local one-time setup (PlayerDataPD's isOwner/verified-gated color +
+    // progression bonuses + input-enable chain, culminating in MarkPlayerReady()) hasn't completed within
+    // this many seconds gets forcibly kicked — see TickSetupTimers's own doc comment for why this exists.
+    [SerializeField] private float maxSetupWaitSeconds = 30f;
 
     public bool  GameStarted        => currentState.gameStarted;
     public float CurrentXP          => currentState.currentXP;
@@ -103,6 +121,7 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         xpToNextLevel = baseXPToNextLevel,
         readyPlayers = DisposableList<PlayerID>.Create(4),
         endReadyPlayers = DisposableList<PlayerID>.Create(4),
+        setupTimers = DisposableList<PlayerSetupTimer>.Create(4),
     };
 
     // ── Game start ──────────────────────────────────────────────────────────
@@ -112,6 +131,8 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         if (!state.gameStarted)
         {
             var nm = NetworkManager.main;
+            TickSetupTimers(ref state, nm, delta);
+
             if (nm == null || nm.playerCount == 0) return;
             if (state.readyPlayers.Count < nm.playerCount) return;
 
@@ -171,6 +192,76 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
             if (currentState.readyPlayers[i] == player) return;
 
         currentState.readyPlayers.Add(player);
+    }
+
+    // ── Connection watchdog ────────────────────────────────────────────────
+
+    // A marginal/flaky connection can register as a genuinely distinct joined player (nm.playerCount
+    // includes them, so this isn't the phantom-join/counter-inflation bug LobbySceneController already
+    // guards against) yet never stabilize enough for PlayerDataPD's isOwner/verified-gated setup chain to
+    // finish — which, before this existed, would silently block state.readyPlayers.Count from ever
+    // reaching nm.playerCount, stalling the ENTIRE lobby's game start for every other player too, with no
+    // recovery path. Ticked identically on every machine (deterministic, off predicted State), so every
+    // machine agrees on the exact same elapsed time and therefore the exact same tick a kick threshold is
+    // crossed — only the actual KickPlayer() call is gated to the server, since severing a connection is
+    // inherently a server-authoritative action; every other machine just observes the resulting
+    // nm.players/nm.playerCount change on a later tick like any other disconnect.
+    private void TickSetupTimers(ref State state, NetworkManager nm, float delta)
+    {
+        if (nm == null) return;
+
+        // Drop tracking for anyone no longer connected (they left on their own — nothing left to kick) or
+        // who has since finished setup (readyPlayers already covers them) — keeps setupTimers from
+        // accumulating stale entries across a long lobby-wait.
+        for (int i = state.setupTimers.Count - 1; i >= 0; i--)
+        {
+            var player = state.setupTimers[i].player;
+
+            bool stillConnected = false;
+            for (int j = 0; j < nm.players.Count; j++)
+                if (nm.players[j] == player) { stillConnected = true; break; }
+
+            bool alreadyReady = false;
+            for (int j = 0; j < state.readyPlayers.Count; j++)
+                if (state.readyPlayers[j] == player) { alreadyReady = true; break; }
+
+            if (!stillConnected || alreadyReady)
+                state.setupTimers.RemoveAt(i);
+        }
+
+        for (int i = 0; i < nm.players.Count; i++)
+        {
+            var player = nm.players[i];
+
+            bool alreadyReady = false;
+            for (int j = 0; j < state.readyPlayers.Count; j++)
+                if (state.readyPlayers[j] == player) { alreadyReady = true; break; }
+            if (alreadyReady) continue;
+
+            int idx = -1;
+            for (int j = 0; j < state.setupTimers.Count; j++)
+                if (state.setupTimers[j].player == player) { idx = j; break; }
+
+            if (idx < 0)
+            {
+                state.setupTimers.Add(new PlayerSetupTimer { player = player, elapsed = 0f });
+                continue;
+            }
+
+            var timer = state.setupTimers[idx];
+            timer.elapsed += delta;
+
+            if (timer.elapsed >= maxSetupWaitSeconds)
+            {
+                state.setupTimers.RemoveAt(idx);
+                if (nm.isServer)
+                    nm.playerModule?.KickPlayer(player);
+            }
+            else
+            {
+                state.setupTimers[idx] = timer;
+            }
+        }
     }
 
     // ── Upgrade points ─────────────────────────────────────────────────────

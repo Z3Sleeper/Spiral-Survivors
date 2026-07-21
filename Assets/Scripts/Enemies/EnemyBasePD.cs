@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using PurrNet;
 using PurrNet.Pooling;
 using PurrNet.Prediction;
@@ -64,6 +65,10 @@ public interface IEnemyPD
     bool _isDead { get; }
     float CurrentHealth { get; }
     float MaxHealth { get; }
+    // Whether the specific hit that killed this enemy was a crit — read from an OnEnemyDeath reaction so a
+    // kill-triggered effect (e.g. OnKillLaunchEnemiesAugment) can inherit the killing hit's crit status
+    // instead of rolling its own independent chance.
+    bool WasKilledByCrit { get; }
     string EnemyName { get; }
     // 1 = full time remaining before enraging, 0 = enraged (or enrageTimer isn't configured at all — most
     // enemies). Same generic-regardless-of-TState reasoning as every other member here.
@@ -92,6 +97,15 @@ public interface IEnemyPD
     // regardless of which concrete TState the enemy's subclass uses — same reason this interface exists
     // at all.
     void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier);
+
+    // Generic death-hold API — see EnemyBasePD.RequestDeathHold's own doc comment. Only safe to call from a
+    // verified-state reaction (e.g. CharacterStatsPD.OnEnemyDeath), never from raw Simulate()-context code.
+    void RequestDeathHold();
+    void ReleaseDeathHold();
+    // Starts the on-kill launch effect (OnKillLaunchEnemiesAugment) — see EnemyBasePD.StartKillLaunch's own
+    // doc comment. Die() already reserved this effect's death-hold via the killer's killEventCount; the
+    // caller doesn't need to request or track one itself, only trust HandleKillLaunch to release it.
+    void StartKillLaunch(Vector3 direction, float speed, float distance, float damage, bool isCrit = false, bool isHighroll = false);
 }
 
 // Per-target contact damage cooldown — contact damage repeats over time (unlike a one-shot attack),
@@ -115,7 +129,14 @@ public struct EnemyBaseState
     public Vector3 dashDirection;
     public Vector3 dashDestination;
     public float    dashSpeed;
+    // Always exactly one killer — overwritten unconditionally on every TakeDamage call (not just the lethal
+    // one), so by the time Die() runs this already reflects whoever landed the actual final blow. Never a
+    // list/multiple; there's no scenario in this game where more than one player is credited for one kill.
     public PlayerID killerOwner;
+    // Whether the SPECIFIC hit that killed this enemy was a crit — captured at the exact TakeDamage call
+    // that reduced health to <= 0 (see that method's own comment), not inferred later, since isCrit is only
+    // in scope as that call's own parameter.
+    public bool killedByCrit;
     public bool initialized;
     // Live, ticking-down countdown — kept separate from EnemyBasePD.enrageTimer (the configured starting
     // duration, a plain never-mutated field) for the same reason WeaponRangedPD's fireTimer isn't just a
@@ -128,6 +149,28 @@ public struct EnemyBaseState
     // gated to the Moving state, so without this an attack sequence spanning more than FindTargetInterval
     // could have its target silently swapped mid-sequence).
     public bool  targetLocked;
+
+    // Generic "don't actually hide/delete yet" reference count — see EnemyBasePD.RequestDeathHold's own doc
+    // comment. Independent scripts each request/release their own hold; hide+delete both wait until this
+    // reaches 0 regardless of how many scripts are currently holding.
+    public int deathHoldCount;
+
+    // On-kill launch effect (e.g. OnKillLaunchEnemiesAugment) — generic on EnemyBasePD itself (not the
+    // augment) since ANY enemy type can be the one killed, and the augment has no per-tick relationship
+    // with the corpse once it fires StartKillLaunch(). See EnemyBasePD.HandleKillLaunch's own doc comment.
+    public bool    killLaunchActive;
+    public Vector3 killLaunchDirection;
+    public float   killLaunchSpeed;
+    public float   killLaunchRemainingDistance;
+    public float   killLaunchDamage;
+    // Locked in once at kill-time (same reasoning as PhantomBladePD: whether this hit crits is a property
+    // of the whole launch, not re-rolled per enemy it passes through) and carried through to TakeDamage +
+    // each hit's queued damage-number feedback — see HandleKillLaunch's own comment.
+    public bool    killLaunchIsCrit;
+    public bool    killLaunchIsHighroll;
+    // Which enemies this launch has already damaged — travelling through a cluster shouldn't repeatedly
+    // hit the same target every tick it stays overlapped.
+    public DisposableList<PredictedObjectID> killLaunchHitIds;
 }
 
 [RequireComponent(typeof(PredictedRigidbody))]
@@ -170,6 +213,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
     [NonSerialized] public float baseXpValue;
+    // Generic per-enemy size scalar — not tied to any one visual/physics system, just a shared number
+    // other generic code (e.g. HandleKillLaunch's sphere-cast radius) can read without needing its own
+    // separate per-enemy tunable. Default 1, hand-tuned per enemy prefab.
+    public float size = 1f;
 
     [Header("Contact Damage")]
     public bool contactColliderEnabled = true;
@@ -211,6 +258,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public bool IsStunned => B.stunTimer > 0f;
     protected virtual bool IsReadyToAttack => false;
     public bool _isDead => B.isDead;
+    public bool WasKilledByCrit => B.killedByCrit;
 
     public static int ActiveCount = 0;
     public static int ActiveNormalCount = 0;
@@ -249,8 +297,31 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // running every frame once already hidden, same pattern as PhantomBladePD/WeaponRangedProjectilePD's
     // _hiddenOnExpire.
     private bool  _hiddenOnDeath;
+    // Edge-detected the same way _hiddenOnDeath is, just for OnDeathStop() instead — see that method's own
+    // doc comment for why it fires earlier (immediately on death) and independently of _hiddenOnDeath.
+    private bool  _deathStopped;
     private float _verifiedHealth;
     private float _verifiedEnrageCountdown;
+    // Edge-detected the same way _hiddenOnDeath is — drives "stay red for the whole kill-launch" below,
+    // rather than the normal brief FlashCoroutine per hit (which would fight this: it reverts to
+    // _originalColors after 0.08s regardless of whether the corpse is still mid-launch).
+    private bool  _wasKillLaunchActiveLastFrame;
+
+    // Swapped to on Die() (see its own comment) and restored on pooled reuse — captured once in Awake()
+    // since that only ever runs once per GameObject lifetime, unlike the pooled-reuse init block which
+    // reruns every reuse and needs the TRUE original to restore to, not whatever Die() last left it as.
+    // NOT a static field initializer — LayerMask.NameToLayer isn't allowed to run in a MonoBehaviour's
+    // static constructor (fires too early, e.g. during script import/domain reload, before the engine's
+    // layer table is ready), so this is resolved lazily on first real use instead, from Awake().
+    private static int _noneLayer = -1;
+    private int _originalLayer;
+
+    private readonly RaycastHit[] _killLaunchSweepResults = new RaycastHit[16];
+    // Queued in Simulate()-context (HandleKillLaunch), drained in UpdateView() at render rate — same
+    // "queue during simulation, fire the actual non-idempotent side effect off render/verified timing"
+    // split every weapon's own _hitFeedbackQueue already uses, so a resimulation replay of HandleKillLaunch
+    // can't spawn duplicate damage numbers for the same conceptual hit.
+    private readonly List<(IEnemyPD enemy, float damage, bool isCrit, bool isHighroll, PlayerID attackerOwner)> _killLaunchFeedbackQueue = new();
 
     // ── Subclass contract ──────────────────────────────────────────────────
     protected abstract ref EnemyBaseState GetBase(ref TState state);
@@ -283,6 +354,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // that first search (in Simulate(), below) uses the full FindTargetInterval.
         b.findTargetTimer = 0f;
         b.contactCooldowns = DisposableList<ContactCooldown>.Create(4);
+        b.killLaunchHitIds = DisposableList<PredictedObjectID>.Create(4);
         b.enrageCountdown = enrageTimer;
         return s;
     }
@@ -297,6 +369,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // weapon/projectile, so avoiding the wasted extra hop adds up.
         _hurtbox = GetComponent<Collider>();
         _predictedTransform = GetComponent<PredictedTransform>();
+        _originalLayer = gameObject.layer;
+        if (_noneLayer < 0) _noneLayer = LayerMask.NameToLayer("None");
 
         var physicsChild = transform.Find("PhysicsCollider");
         if (physicsChild != null) _physicsCollider = physicsChild.GetComponent<Collider>();
@@ -400,8 +474,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             _target = null;
             _wasDeadLastFrame = false;
             _hiddenOnDeath    = false;
+            _deathStopped     = false;
             _verifiedHealth   = maxHealth;
+            gameObject.layer  = _originalLayer;
 
+            // Defensive — in case a previous life died mid-kill-launch (still kinematic, physics collider
+            // still disabled) and got pooled before that ever got a chance to clean itself up.
+            if (_rigidbody != null) _rigidbody.isKinematic = false;
             if (_rigidbody != null && !_rigidbody.isKinematic)
             {
                 _rigidbody.velocity = Vector3.zero;
@@ -428,7 +507,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             OnRespawnReset();
         }
 
-        if (b.isDead) return;
+        if (b.isDead)
+        {
+            // The one thing still allowed to run post-death — see HandleKillLaunch's own doc comment for
+            // why this lives here (generic on EnemyBasePD) rather than on whatever augment started it.
+            if (b.killLaunchActive) HandleKillLaunch(ref b, delta);
+            return;
+        }
 
         if (b.stunTimer > 0f)
         {
@@ -485,6 +570,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (_animator != null)
             UpdateAnimator(viewState);
 
+        // Fire hit feedback immediately at render rate — bypasses state propagation delay, same convention
+        // as every weapon's own _hitFeedbackQueue drain.
+        foreach (var (enemy, dmg, isCrit, isHighroll, attackerOwner) in _killLaunchFeedbackQueue)
+        {
+            if (CharacterStatsPD.All.TryGetValue(attackerOwner, out var attacker))
+                enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, attacker);
+        }
+        _killLaunchFeedbackQueue.Clear();
+
         // Instant, predicted hide — doesn't wait for server verification, unlike the state-critical
         // one-shot side effects below. Same fix as PhantomBladePD/WeaponRangedProjectilePD: viewState is
         // this machine's own already-simulated prediction (identical deterministic simulation runs on
@@ -493,12 +587,24 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // still hittable, after it should already be dead" delay. One-way (never un-hides here) since
         // enemy health only ever decreases (TakeDamage's `b.health -= damage`, no enemy-side regen), so a
         // resimulation flipping isDead back to false isn't a real scenario — a fresh pooled reuse (the
-        // `!b.initialized` block above) is what resets this for a later spawn.
+        // `!b.initialized` block above) is what resets this for a later spawn. Also gated on
+        // deathHoldCount <= 0 — a death with no held effect in play (the overwhelming common case) still
+        // hides exactly as instantly as before, since deathHoldCount only ever becomes nonzero via Die()'s
+        // own bridging hold (see its comment), itself only placed when the killer's Stats says an effect
+        // actually needs it.
         ref var viewB = ref GetBase(ref viewState);
-        if (viewB.isDead && !_hiddenOnDeath)
+
+        // Stops attack telegraphs immediately on death — see OnDeathStop's own doc comment for why this is
+        // deliberately NOT gated on deathHoldCount the way the render-hide block below is.
+        if (viewB.isDead && !_deathStopped)
+        {
+            _deathStopped = true;
+            OnDeathStop();
+        }
+
+        if (viewB.isDead && viewB.deathHoldCount <= 0 && !_hiddenOnDeath)
         {
             _hiddenOnDeath = true;
-            OnHideOnDeath();
             if (_renderers != null)
                 foreach (var r in _renderers)
                     if (r != null) r.enabled = false;
@@ -506,6 +612,24 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             if (_physicsCollider != null) _physicsCollider.enabled = false;
             if (_contactDamageCollider != null) _contactDamageCollider.enabled = false;
         }
+
+        // Stay red for the entire kill-launch, not just a brief per-hit flash — same instant/predicted
+        // timing as the hide block above (viewState, not verified) since this is purely cosmetic. Edge-
+        // detected so it only sets/reverts once each way, rather than fighting FlashCoroutine's own
+        // revert-after-0.08s (which TriggerHitFeedback skips entirely while killLaunchActive — see its own
+        // comment).
+        if (viewB.killLaunchActive && !_wasKillLaunchActiveLastFrame)
+        {
+            if (_renderers != null)
+                foreach (var r in _renderers)
+                    if (r != null && r.material != null) r.material.color = Color.red;
+        }
+        else if (!viewB.killLaunchActive && _wasKillLaunchActiveLastFrame && _renderers != null)
+        {
+            for (int i = 0; i < _renderers.Length; i++)
+                if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+        }
+        _wasKillLaunchActiveLastFrame = viewB.killLaunchActive;
 
         // Death is state-critical — only act on server-confirmed dead.
         if (verified.HasValue)
@@ -517,11 +641,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             {
                 CharacterStatsPD.All.TryGetValue(vb.killerOwner, out var killer);
                 CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
-                if (killer != null && killer.isOwner) CharacterStatsPD.RaiseOnEnemyKill(killer, this);
                 if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(xpValue);
-
-                hierarchy.Delete(this);
             }
+
+            // Deletion re-checked every tick once verified-dead (not just on the edge above) so it
+            // naturally waits out however long any real hold takes to clear, however many ticks that is.
+            if (vb.isDead && vb.deathHoldCount <= 0)
+                hierarchy.Delete(this);
 
             _wasDeadLastFrame = vb.isDead;
             _verifiedHealth   = vb.health;
@@ -718,6 +844,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (b.health <= 0)
         {
             b.health = 0;
+            // Captured here, not inferred later — Die()/OnEnemyDeath need to know whether the specific hit
+            // that actually killed this enemy was a crit (e.g. OnKillLaunchEnemiesAugment inheriting crit
+            // status rather than rolling its own), and isCrit is only in scope as this call's own parameter.
+            b.killedByCrit = isCrit;
             Die();
         }
     }
@@ -733,7 +863,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // fires, this pooled enemy instance can already have been reused for a new spawn (isDead reset to
         // false) while transiently still inactive, same as the respawn-reset/animator cases elsewhere in
         // this class.
-        if (!B.isDead && gameObject.activeInHierarchy) StartCoroutine(FlashCoroutine());
+        //
+        // Gated on !_hiddenOnDeath, not !B.isDead — a kill-launch corpse is still dead (isDead is already
+        // true for the killing blow itself, and stays true for every hit it takes while travelling) but
+        // stays visible/renderer-enabled the whole time it's held, so it should still show hit feedback for
+        // every hit it takes during that window, including the killing blow. Once actually hidden there's
+        // nothing left to flash. Also skipped entirely while B.killLaunchActive — UpdateView's own
+        // edge-detected block already holds the corpse solid red for the whole launch, and this coroutine's
+        // revert-to-_originalColors after 0.08s would fight that.
+        if (!_hiddenOnDeath && !B.killLaunchActive && gameObject.activeInHierarchy) StartCoroutine(FlashCoroutine());
         if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit, isHighroll, isPriority);
         if (attacker.isOwner && SFXManager.instance != null)
             SFXManager.instance.Play(attacker.hitSfx, transform.position, 1f, 0.05f);
@@ -745,8 +883,116 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ActiveCount--;
         AdjustCategoryCount(spawnCategory, -1);
 
+        // Both moved here (previously only set once the hide block finally ran) per the user's own call —
+        // a dead body's physical presence should end immediately regardless of whether hide/delete are
+        // being held up for an on-death effect. The layer swap is what actually keeps this corpse out of
+        // any layer-mask-based query (weapon hitboxes, this same kill-launch's own sphere-cast against
+        // OTHER enemies, etc.) without needing to separately toggle _hurtbox.enabled too.
+        if (_physicsCollider != null) _physicsCollider.enabled = false;
+        gameObject.layer = _noneLayer;
+
+        // Reserves exactly enough death-holds up front, atomically, for every effect that's going to react
+        // to this death — no dependence on OnEnemyDeath listener dispatch (in UpdateView, potentially many
+        // ticks later) actually running before hide/delete gets a chance to check deathHoldCount. See
+        // CharacterStatsPD.deathEventCount/killEventCount's own doc comment for the summed-vs-killer-only
+        // split. This is a pure read of counts that are only ever incremented once each (at augment
+        // OnApply()), so it's safe here even though Die() runs from Simulate()-context.
+        int holds = 0;
+        foreach (var stats in CharacterStatsPD.All.Values)
+            holds += stats.deathEventCount;
+        bool foundKiller = CharacterStatsPD.All.TryGetValue(B.killerOwner, out var killerStats);
+        if (foundKiller)
+            holds += killerStats.killEventCount;
+        B.deathHoldCount += holds;
+
         if (XPOrbManagerPD.instance != null)
             XPOrbManagerPD.instance.SpawnOrbs(hierarchy, transform.position, xpValue);
+    }
+
+    // ── Death hold ─────────────────────────────────────────────────────────
+    // Generic "don't hide/delete yet" API — any number of independent scripts can each request their own
+    // hold and release it on their own schedule; hide+delete both wait until deathHoldCount reaches 0
+    // regardless of how many are currently outstanding, so one script releasing never ends another's hold.
+    // Safe to call from a verified-state reaction (e.g. CharacterStatsPD.OnEnemyDeath, which — like every
+    // other "fires exactly once per real occurrence" event in this codebase — is safe to mutate predicted
+    // state from), NOT from raw Simulate()-context code, which risks double-counting during resimulation.
+    public void RequestDeathHold() => B.deathHoldCount++;
+    public void ReleaseDeathHold() => B.deathHoldCount = Mathf.Max(0, B.deathHoldCount - 1);
+
+    // Starts the on-kill launch effect (OnKillLaunchEnemiesAugment) — called from a verified OnEnemyDeath
+    // reaction (safe, see RequestDeathHold's own comment). Does NOT request its own hold — Die() already
+    // reserved exactly one for this effect via the killer's killEventCount (see Die()'s own comment), since
+    // OnKillLaunchEnemiesAugment.OnApply() incremented that count. HandleKillLaunch releases that reserved
+    // hold once the corpse finishes travelling.
+    public void StartKillLaunch(Vector3 direction, float speed, float distance, float damage, bool isCrit = false, bool isHighroll = false)
+    {
+        ref var b = ref B;
+        b.killLaunchActive = true;
+        b.killLaunchDirection = direction.sqrMagnitude > 0.0001f ? direction.normalized : transform.forward;
+        b.killLaunchSpeed = speed;
+        b.killLaunchRemainingDistance = distance;
+        b.killLaunchDamage = damage;
+        b.killLaunchIsCrit = isCrit;
+        b.killLaunchIsHighroll = isHighroll;
+
+        if (_rigidbody != null)
+        {
+            // Guarded by !isKinematic — same reason Simulate()'s own pause-handling does this (see its
+            // comment): SpearGloomPD/KingSpikePD-style Windup/Stabbing sub-states can already have this
+            // rigidbody kinematic when the killing blow lands mid-attack, and PredictedRigidbody's velocity
+            // setters throw ("not supported") if attempted on an already-kinematic body.
+            if (!_rigidbody.isKinematic)
+            {
+                _rigidbody.velocity = Vector3.zero;
+                _rigidbody.angularVelocity = Vector3.zero;
+            }
+            _rigidbody.isKinematic = true;
+        }
+    }
+
+    // Moves the corpse at a constant speed toward killLaunchRemainingDistance, sphere-casting each step
+    // against other enemies (radius 0.5 * size) and dealing killLaunchDamage once per enemy hit — the
+    // damage itself was already rolled once at kill-time (StartKillLaunch's caller), not re-rolled here.
+    // Lives on EnemyBasePD itself, not the augment, since ANY enemy type can be the one killed and the
+    // augment (a separate PredictedIdentity on the player) has no ongoing per-tick relationship with this
+    // specific corpse once it fires StartKillLaunch() — the corpse has to track and end its own effect.
+    // This enemy's own hurtbox/collider is already off the layer HandleKillLaunch's sphere-cast mask
+    // targets (Die() swapped it to NoneLayer), so it can never sphere-cast-detect itself.
+    private void HandleKillLaunch(ref EnemyBaseState b, float delta)
+    {
+        float step = Mathf.Min(b.killLaunchSpeed * delta, b.killLaunchRemainingDistance);
+        Vector3 prevPos = transform.position;
+        Vector3 newPos  = prevPos + b.killLaunchDirection * step;
+
+        if (_rigidbody != null) _rigidbody.MovePosition(newPos);
+        else transform.position = newPos;
+
+        b.killLaunchRemainingDistance -= step;
+
+        if (step > 0.0001f)
+        {
+            float radius = 0.5f * size;
+            int n = Physics.SphereCastNonAlloc(prevPos, radius, b.killLaunchDirection, _killLaunchSweepResults, step, CombatLayerMasks.EnemyHurtboxMask);
+            for (int i = 0; i < n; i++)
+            {
+                if (!_killLaunchSweepResults[i].collider.TryGetComponent(out IEnemyPD enemy)) continue;
+                if (enemy._isDead) continue;
+                if (b.killLaunchHitIds.Contains(enemy.ObjectId)) continue;
+                b.killLaunchHitIds.Add(enemy.ObjectId);
+                enemy.TakeDamage(b.killLaunchDamage, b.killLaunchIsCrit, b.killerOwner);
+                // TakeDamage alone never shows a damage number (see TriggerHitFeedback's own doc comment on
+                // IEnemyPD) — queued here, drained in UpdateView(), same split every weapon's own
+                // _hitFeedbackQueue already uses.
+                _killLaunchFeedbackQueue.Add((enemy, b.killLaunchDamage, b.killLaunchIsCrit, b.killLaunchIsHighroll, b.killerOwner));
+            }
+        }
+
+        if (b.killLaunchRemainingDistance <= 0f)
+        {
+            b.killLaunchActive = false;
+            if (_rigidbody != null) _rigidbody.isKinematic = false;
+            ReleaseDeathHold();
+        }
     }
 
     // Public stun entry point — every caller outside this class goes through here, so crowdControlResist
@@ -827,7 +1073,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     }
 
     // ── Visuals ────────────────────────────────────────────────────────────
-    protected virtual void OnHideOnDeath() { }
+    // Fires the instant this enemy is dead (viewB.isDead edge, predicted/instant timing, NOT gated on
+    // deathHoldCount) — a held corpse (kill-launch, any future on-death effect) should already read as
+    // fully "dead" behaviorally the whole time it's held: Simulate() already stops updating movement/attack
+    // state once isDead, so this is the visuals-side counterpart — stop any attack telegraph (windup
+    // indicator, charge fill, etc.) immediately rather than leaving it visibly active/frozen on a corpse
+    // that's still flying around. Deliberately separate from the render-hide block (renderers/hurtbox/
+    // physicsCollider disable), which still waits for deathHoldCount <= 0 — the model and healthbar are
+    // meant to stay visible for the whole hold, only attack telegraphs stop early.
+    protected virtual void OnDeathStop() { }
     protected virtual void UpdateAnimator(TState viewState) { }
 
     // Called once per (re)spawn, from within the guaranteed-reliable respawn block in Simulate().
@@ -852,6 +1106,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         for (int i = 0; i < _renderers.Length; i++)
             if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = Color.red;
         yield return new WaitForSeconds(0.08f);
+
+        // Skip the revert if a kill-launch is now active — TriggerHitFeedback's own !B.killLaunchActive
+        // guard only stops a NEW flash from starting once the launch is already underway, but the killing
+        // blow's own hit-feedback drains off the WEAPON's UpdateView, which can run before or after this
+        // enemy's own UpdateView (where OnEnemyDeath dispatch actually flips killLaunchActive true) — pure
+        // Unity script execution order, not something worth pinning down. If this coroutine already started
+        // before that flip landed, it would otherwise revert the corpse back to its original color ~0.08s
+        // into a launch that's supposed to stay solid red the whole time. UpdateView's own edge-detected
+        // red/revert already owns the corpse's color for the launch's actual duration once this bails.
+        if (B.killLaunchActive) yield break;
+
         for (int i = 0; i < _renderers.Length; i++)
             if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
     }
@@ -896,7 +1161,9 @@ public class EnemyBasePD : EnemyBasePD<EnemyBasePD.State>
     public struct State : IPredictedData<State>
     {
         public EnemyBaseState b;
-        public void Dispose() { }
+        // contactCooldowns was never disposed here (pre-existing gap, fixed in passing) — killLaunchHitIds
+        // needs the same treatment as every other enemy subclass's own Dispose().
+        public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
     }
 
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;

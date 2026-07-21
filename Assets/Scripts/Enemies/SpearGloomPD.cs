@@ -17,6 +17,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         {
             hitTargetsThisStab.Dispose();
             b.contactCooldowns.Dispose();
+            b.killLaunchHitIds.Dispose();
         }
     }
 
@@ -309,10 +310,14 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         }
     }
 
-    protected override void OnHideOnDeath()
+    protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null) _windupFill.ResetFill();
+        // Snaps out of whatever attack pose (Windup/Stabbing/etc.) this enemy died mid-animation in — ss
+        // is frozen from here on (Simulate() stops updating spearStateId once dead), so without this the
+        // corpse would otherwise hold/loop that pose for the entire kill-launch instead of reading as dead.
+        if (_animator != null) _animator.Play(IdleHash, 0, 0f);
     }
 
     protected override void OnRespawnReset()

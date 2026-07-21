@@ -1,0 +1,31 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: OnStrikeEnergyRegenAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#FFFF00>Energy Reaping</color>
+  description: 'Gain <color=#FFFF00>Energy</color> equal to <color=#FFFF00>2%<color=#00FF87>*</color>
+    Energy Regen</color> <color=#FF0050>On-Strike</color>.
+
+    <color=#00FF87>*Affected
+    by Luck*</color>'
+  icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
+  effectPrefab: {fileID: 3653572354511512405, guid: ee7c8a3b3d6237b428c279beda5f781e, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags: []
+  requiredTags: []
+  incompatibleTags: []

@@ -12,9 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: ShieldBreakFrenzyAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FF00FF>Break Frenzy</color>
+  displayName: <color=#FF00FF>Break</color> <color=#FF0050>Frenzy</color>
   description: <color=#FFA000>On <color=#FF00FF>Shield</color> Break:</color> Gain
-    <color=#FF0050>+20% Total Attack Speed</color> and <color=#FFFFFF>Move Speed</color>
+    <color=#FF0050>+20% Total Attack Speed</color> and <color=#FFFFFF>+20% Move Speed</color>
     for 3 seconds.
   icon: {fileID: 21300000, guid: 37a9507e367a9dc4e964a6b2fa3a1d43, type: 3}
   effectPrefab: {fileID: 3352971506339463653, guid: a3ba840aa57acab4195ef6e098701b1d, type: 3}

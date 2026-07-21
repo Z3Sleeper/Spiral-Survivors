@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: OnKIllLaunchEnemiesAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#FFA000>Blast Off</color>
+  description: '<color=#FFA000>On Kill:</color> <color=#8C3B00>Knock</color> the
+    enemy far back, causing them to deal <color=#FF5000>50%<color=#00FF87>*</color>
+    unpenalized Damage</color> to all other enemies they collide with.
+
+    <color=#00FF87>*Affected
+    by Luck*</color>'
+  icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
+  effectPrefab: {fileID: 7899156508405542931, guid: 2219856765fefb7469454d3e327fa288, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags: []
+  requiredTags: []
+  incompatibleTags: []

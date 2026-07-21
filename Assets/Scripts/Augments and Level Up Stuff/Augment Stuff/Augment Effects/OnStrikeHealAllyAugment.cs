@@ -9,7 +9,7 @@ using UnityEngine;
 // allyStrikeHitEnabled and the _onAllyStrike event it gates are both generic (own no heal-specific state)
 // so future "hit ally, do something" augments can reuse the exact same detection plumbing by just calling
 // EnableAllyStrikeHit() and subscribing their own listener — this augment is simply the first consumer of it.
-public class HealAllyOnStrikeAugment : AugmentEffectPD<HealAllyOnStrikeAugment.State>
+public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 

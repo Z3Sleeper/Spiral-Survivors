@@ -56,6 +56,26 @@ namespace PurrLobby
 
         private bool IsStarting = false;
 
+        // Guaranteed backstop for the ready-check — see PollReadyState's own doc comment for why this
+        // exists (Steam's, or any provider's, lobby-data callbacks aren't ordering-guaranteed across
+        // peers). The reactive check inside SubscribeToProviderEvents' OnLobbyUpdated handler is kept too,
+        // purely as a responsiveness optimization for the common case — this poll is what makes the
+        // ready-check actually CORRECT, not just usually-fast.
+        [SerializeField] private float readyPollInterval = 1f;
+        private float _readyPollTimer;
+
+        // Stored delegate references — SubscribeToProviderEvents/UnsubscribeFromProviderEvents previously
+        // used brand-new inline lambdas on each call, which C# delegate removal treats as unrelated
+        // instances (not equal-by-reference to whatever was originally added), so the "unsubscribe" calls
+        // were silent no-ops. Currently latent (SetProvider only ever runs once, at Awake), but a real bug
+        // waiting for the first runtime provider switch — storing the actual subscribed delegate fixes it.
+        private UnityAction<string> _onLobbyJoinFailedHandler;
+        private UnityAction _onLobbyLeftHandler;
+        private UnityAction<Lobby> _onLobbyUpdatedHandler;
+        private UnityAction<Lobby> _onLobbyJoinedRelayHandler;
+        private UnityAction<List<LobbyUser>> _onLobbyPlayerListUpdatedHandler;
+        private UnityAction<string> _onErrorHandler;
+
         private void Awake()
         {
             _lastKnownState = new Lobby { IsValid = false };
@@ -96,6 +116,49 @@ namespace PurrLobby
             {
                 _delayedActions.Dequeue()?.Invoke();
             }
+
+            _readyPollTimer -= Time.deltaTime;
+            if (_readyPollTimer > 0f) return;
+            _readyPollTimer = readyPollInterval;
+
+            PollReadyState();
+        }
+
+        // Guaranteed replacement for "trust the next OnLobbyUpdated callback to have a fully consistent
+        // snapshot" — a lobby provider's ready-flag writes (e.g. SteamLobbyProvider.SetIsReadyAsync writing
+        // "IsReady" and a separate "UpdateTrigger" nudge as two independent, unordered backend writes) have
+        // no guaranteed delivery order to other peers, so a single reactive callback can observe a stale
+        // "not ready" and never get corrected if no further lobby-data event happens to fire. This instead
+        // actively pulls a FRESH member list straight from the provider's own local cache
+        // (GetLobbyMembersAsync — not dependent on any callback having fired at all, ever) once every
+        // readyPollInterval seconds, so "everyone's actually ready" is detected within a bounded worst-case
+        // delay no matter what order/whether callbacks arrived. This is what makes the ready-check
+        // GUARANTEED rather than best-effort — the reactive OnLobbyUpdated check is still there too, purely
+        // so the common case still feels instant instead of interval-bounded.
+        private void PollReadyState()
+        {
+            if (IsStarting || _currentProvider == null || !_currentLobby.IsValid) return;
+
+            RunTask(async () =>
+            {
+                var members = await _currentProvider.GetLobbyMembersAsync();
+                if (members == null || members.Count == 0) return;
+                // Re-check after the await gap — IsStarting/the lobby itself could have changed while this
+                // was in flight (e.g. we left the lobby, or another path already triggered the start).
+                if (IsStarting || !_currentLobby.IsValid) return;
+
+                if (members.TrueForAll(x => x.IsReady))
+                {
+                    IsStarting = true;
+                    // Deferred via InvokeDelayed, not called directly — CallOnAllReady() awaits
+                    // WaitForAllTasksAsync(), which spins until _taskLock reaches 0. This lambda is still
+                    // running INSIDE a RunTask() (which is what's holding _taskLock elevated right now), so
+                    // calling it synchronously here would deadlock-spin forever. Deferring to a later
+                    // Update() dequeue runs it after this RunTask's own finally block has already
+                    // decremented _taskLock, same as every other CallOnAllReady() call site in this class.
+                    InvokeDelayed(CallOnAllReady);
+                }
+            });
         }
 
         private void InvokeDelayed(Action action)
@@ -138,14 +201,23 @@ namespace PurrLobby
         // Subscribe to provider events
         private void SubscribeToProviderEvents()
         {
-            _currentProvider.OnLobbyJoinFailed += message => InvokeDelayed(() => OnRoomJoinFailed.Invoke(message));
-            _currentProvider.OnLobbyLeft += () => InvokeDelayed(() =>
+            _onLobbyJoinFailedHandler = message => InvokeDelayed(() => OnRoomJoinFailed.Invoke(message));
+            _currentProvider.OnLobbyJoinFailed += _onLobbyJoinFailedHandler;
+
+            _onLobbyLeftHandler = () => InvokeDelayed(() =>
             {
                 _currentLobby = default;
+                // Was never reset here — once a ready-check successfully passed (CallOnAllReady's success
+                // path doesn't reset it either, by design, since that lobby is now genuinely starting), a
+                // player who abandons that connect attempt and leaves would carry IsStarting=true into any
+                // later lobby joined in the same scene session, permanently blocking the !IsStarting guard
+                // below from ever firing OnAllReady again — the Ready button would silently stop working.
+                IsStarting = false;
                 OnRoomLeft?.Invoke();
             });
-            
-            _currentProvider.OnLobbyUpdated += room => InvokeDelayed(() =>
+            _currentProvider.OnLobbyLeft += _onLobbyLeftHandler;
+
+            _onLobbyUpdatedHandler = room => InvokeDelayed(() =>
             {
                 if(!_lastKnownState.HasChanged(room) || room.Members.Count <= 0 || !room.IsValid) return;
 
@@ -159,36 +231,34 @@ namespace PurrLobby
                     CallOnAllReady();
                 }
             });
+            _currentProvider.OnLobbyUpdated += _onLobbyUpdatedHandler;
 
-            _currentProvider.OnLobbyPlayerListUpdated += players => InvokeDelayed(() => OnPlayerListUpdated.Invoke(players));
-            _currentProvider.OnError += error => InvokeDelayed(() => OnError.Invoke(error));
-            
-            _currentProvider.OnLobbyUpdated += room =>
+            _onLobbyPlayerListUpdatedHandler = players => InvokeDelayed(() => OnPlayerListUpdated.Invoke(players));
+            _currentProvider.OnLobbyPlayerListUpdated += _onLobbyPlayerListUpdatedHandler;
+
+            _onErrorHandler = error => InvokeDelayed(() => OnError.Invoke(error));
+            _currentProvider.OnError += _onErrorHandler;
+
+            _onLobbyJoinedRelayHandler = room =>
             {
                 if (room.IsValid)
                 {
                     InvokeDelayed(() => OnRoomJoined?.Invoke(room));
                 }
             };
+            _currentProvider.OnLobbyUpdated += _onLobbyJoinedRelayHandler;
         }
 
-        // Unsubscribe from provider events
+        // Unsubscribe from provider events — must use the SAME delegate instances stored above; a
+        // syntactically-identical new lambda is a different instance and `-=` against it is a silent no-op.
         private void UnsubscribeFromProviderEvents()
         {
-            _currentProvider.OnLobbyJoinFailed -= message => InvokeDelayed(() => OnRoomJoinFailed.Invoke(message));
-            _currentProvider.OnLobbyLeft -= () => InvokeDelayed(() => OnRoomLeft.Invoke());
-            _currentProvider.OnLobbyUpdated -= room => InvokeDelayed(() => OnRoomUpdated.Invoke(room));
-            _currentProvider.OnLobbyPlayerListUpdated -= players => InvokeDelayed(() => OnPlayerListUpdated.Invoke(players));
-            _currentProvider.OnError -= error => InvokeDelayed(() => OnError.Invoke(error));
-
-            // ReSharper disable once EventUnsubscriptionViaAnonymousDelegate
-            _currentProvider.OnLobbyUpdated -= room =>
-            {
-                if (room.IsValid)
-                {
-                    InvokeDelayed(() => OnRoomJoined?.Invoke(room));
-                }
-            };
+            if (_onLobbyJoinFailedHandler != null) _currentProvider.OnLobbyJoinFailed -= _onLobbyJoinFailedHandler;
+            if (_onLobbyLeftHandler != null) _currentProvider.OnLobbyLeft -= _onLobbyLeftHandler;
+            if (_onLobbyUpdatedHandler != null) _currentProvider.OnLobbyUpdated -= _onLobbyUpdatedHandler;
+            if (_onLobbyPlayerListUpdatedHandler != null) _currentProvider.OnLobbyPlayerListUpdated -= _onLobbyPlayerListUpdatedHandler;
+            if (_onErrorHandler != null) _currentProvider.OnError -= _onErrorHandler;
+            if (_onLobbyJoinedRelayHandler != null) _currentProvider.OnLobbyUpdated -= _onLobbyJoinedRelayHandler;
         }
 
         /// <summary>

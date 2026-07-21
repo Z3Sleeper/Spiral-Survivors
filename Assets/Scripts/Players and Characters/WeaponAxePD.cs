@@ -46,7 +46,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private readonly HashSet<IEnemyPD>            _outerHitsThisTick = new();
     private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
 
-    // Ally-strike detection (HealAllyOnStrikeAugment, real friendly fire) — only populated/queried when
+    // Ally-strike detection (OnStrikeHealAllyAugment, real friendly fire) — only populated/queried when
     // _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true. _outerAlliesThisTick mirrors
     // _outerHitsThisTick's tie-break (an ally touching both zones counts as outer) so handle touches still
     // heal/damage for less, matching Hit()'s own innerOnHitPowerMultiplier/innerDamageMultiplier treatment.
@@ -81,9 +81,10 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         mgr.RegisterWeapon(this);
     }
 
-    protected override void OnDestroy()
+    // Destroyed(), not OnDestroy() — see WeaponMeleePD's own comment on the same change for why (pooled
+    // removal never reliably fired OnDestroy(), leaving a stale WeaponManagerPD entry behind).
+    protected override void Destroyed()
     {
-        base.OnDestroy();
         if (_manager != null) _manager.UnregisterWeapon(this);
     }
 
@@ -280,6 +281,21 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
             : outerXExtent * sx;
         float capsuleRadius     = bladeHZ;
         float capsuleHalfHeight = Mathf.Max(0f, outerX - capsuleRadius);
+
+        // Extends the capsule's own forward reach to match hitboxTip's visual reach — same technique as
+        // WeaponMeleePD's box (see GetHitboxTipExtraReach's own comment): shifting outerCenter forward and
+        // growing capsuleRadius by the same half-extra-reach amount nets a far edge exactly tipExtra
+        // further out while the near edge (relative to outerCenter) stays fixed, the shift terms cancelling
+        // out identically to the melee case. Applied after capsuleHalfHeight above so it doesn't feed back
+        // into the outerX-derived side width. Growing capsuleRadius does also widen the capsule's reach
+        // perpendicular to hb.right (up/down and past the endpoints) slightly, an unavoidable consequence
+        // of a capsule's radius being uniform in every direction perpendicular to its own line segment —
+        // no separate "length" knob exists the way a box's half-extents give per-axis independence. 0 when
+        // no hitboxTip is assigned (every axe currently), so this is a no-op today.
+        float centerShift = GetHitboxTipExtraReach() * 0.5f;
+        outerCenter   += hb.forward * centerShift;
+        capsuleRadius += centerShift;
+
         Vector3 outerPoint1 = outerCenter + hb.right * capsuleHalfHeight;
         Vector3 outerPoint2 = outerCenter - hb.right * capsuleHalfHeight;
         float innerX = xRangeScaleRatio > 0f
@@ -359,6 +375,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = onHitPower, isCrit = isCrit };
         _onHit.Invoke(hitData);
+        _onStrike.Invoke(hitData);
         if (isCrit) _onCritStrike.Invoke(hitData);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;

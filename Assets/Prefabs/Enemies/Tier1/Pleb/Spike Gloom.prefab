@@ -449,6 +449,7 @@ MonoBehaviour:
   rangeToleranceClose: 0.3
   damage: 5
   xpValue: 1
+  size: 1
   contactColliderEnabled: 1
   contactCooldown: 0.5
   stunResistant: 0

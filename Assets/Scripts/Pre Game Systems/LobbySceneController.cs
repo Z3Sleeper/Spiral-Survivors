@@ -28,7 +28,12 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private AudioClip unlockSound;
 
     private int _expectedPlayerCount;
-    private int _purrNetPlayersJoined;
+    // Deduplicated by PlayerID rather than a raw counter — a flaky connection can retry and register a
+    // brand-new PlayerID with the server for what is physically the same reconnecting client (PurrNet mints
+    // a fresh PlayerID per completed handshake when host migration/cookies aren't in play), so a plain
+    // counter could cross _expectedPlayerCount purely from reconnect noise without every distinct player
+    // actually being present.
+    private readonly HashSet<PlayerID> _joinedPlayerIds = new();
     private bool _initializedForLobby;
     private bool _connectingToHost;
 
@@ -221,9 +226,13 @@ public class LobbySceneController : MonoBehaviour
         // started loading but this client bailed out before TryLoadGameScene's own normal unsubscribe ran)
         // — an un-cleared subscription would keep firing OnPurrNetPlayerJoined for a lobby we're no longer
         // part of.
-        if (networkManager != null) networkManager.onPlayerJoined -= OnPurrNetPlayerJoined;
+        if (networkManager != null)
+        {
+            networkManager.onPlayerJoined -= OnPurrNetPlayerJoined;
+            networkManager.onPlayerLeft -= OnPurrNetPlayerLeft;
+        }
         _expectedPlayerCount = 0;
-        _purrNetPlayersJoined = 0;
+        _joinedPlayerIds.Clear();
         characterSelectPanel.SetActive(false);
         purrLobbyPanel.SetActive(false);
         mainMenuPanel.SetActive(true);
@@ -233,6 +242,18 @@ public class LobbySceneController : MonoBehaviour
     {
         if (characterSelectPanel.activeInHierarchy)
             CharacterSelectUI.instance?.RefreshFromLobby(lobby);
+
+        // Once we're waiting on players to finish connecting (_expectedPlayerCount was captured in
+        // OnAllReady), a member leaving the Steam lobby before their PurrNet connection ever completed
+        // would otherwise leave everyone else waiting forever for a join event that can now never come —
+        // this was the "stuck until the struggling player disconnected" bug: shrinking the target the
+        // moment Steam confirms they're gone, and re-checking the gate immediately, is what actually
+        // unblocks the remaining players instead of relying on some other event to coincidentally do it.
+        if (_expectedPlayerCount > 0 && lobby.Members.Count < _expectedPlayerCount)
+        {
+            _expectedPlayerCount = lobby.Members.Count;
+            TryLoadGameScene();
+        }
 
         if (!lobby.IsOwner && !networkManager.isClient && !_connectingToHost)
         {
@@ -273,8 +294,10 @@ public class LobbySceneController : MonoBehaviour
             if (!networkManager.isClient)
                 StartCoroutine(StartClientDelayed());
 
-            _purrNetPlayersJoined = networkManager.playerCount;
+            _joinedPlayerIds.Clear();
+            foreach (var p in networkManager.players) _joinedPlayerIds.Add(p);
             networkManager.onPlayerJoined += OnPurrNetPlayerJoined;
+            networkManager.onPlayerLeft += OnPurrNetPlayerLeft;
             TryLoadGameScene();
         }
         else if (!networkManager.isClient && !_connectingToHost)
@@ -328,14 +351,24 @@ public class LobbySceneController : MonoBehaviour
     private void OnPurrNetPlayerJoined(PlayerID player, bool isReconnect, bool asServer)
     {
         if (!asServer) return;
-        _purrNetPlayersJoined++;
+        // HashSet.Add is naturally idempotent — a reconnect storm minting a fresh PlayerID for what's
+        // physically the same client would previously inflate a raw counter past the real distinct-player
+        // count; a genuinely new distinct id is what actually moves this closer to _expectedPlayerCount.
+        _joinedPlayerIds.Add(player);
         TryLoadGameScene();
+    }
+
+    private void OnPurrNetPlayerLeft(PlayerID player, bool asServer)
+    {
+        if (!asServer) return;
+        _joinedPlayerIds.Remove(player);
     }
 
     private void TryLoadGameScene()
     {
-        if (_purrNetPlayersJoined < _expectedPlayerCount) return;
+        if (_joinedPlayerIds.Count < _expectedPlayerCount) return;
         networkManager.onPlayerJoined -= OnPurrNetPlayerJoined;
+        networkManager.onPlayerLeft -= OnPurrNetPlayerLeft;
         networkManager.sceneModule.LoadSceneAsync(GameStartData.GameSceneName, new PurrSceneSettings
         {
             mode = LoadSceneMode.Single,

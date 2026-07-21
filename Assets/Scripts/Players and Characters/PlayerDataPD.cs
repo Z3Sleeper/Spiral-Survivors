@@ -99,6 +99,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
     private bool _registeredInAll;
     private bool _classPassivesApplied;
     private bool _allReady;
+    private bool _inputEnabled;
 
     protected override void UpdateView(PlayerShellState viewState, PlayerShellState? verified)
     {
@@ -175,8 +176,20 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
             {
                 _allReady = true;
                 _localSetupComplete = true;
-                if (isOwner && character.TryGetComponent(out PlayerControllerPD ctrl))
-                    ctrl.EnableInput();
+            }
+
+            // Deliberately NOT nested inside the one-shot block above, and re-checked every frame instead
+            // of latched alongside it — isOwner can resolve true on a LATER frame than the tick _allReady
+            // first latches (e.g. a marginal connection whose own login handshake hasn't finished yet, so
+            // this client still reads itself as "not owner" at that exact moment and takes the same
+            // registration path a remote viewer would). EnableInput() living inside that one-time gate
+            // would otherwise permanently skip it once _allReady already latched via the non-owner path —
+            // this is what actually "waits until the client is connected" for input specifically, instead
+            // of only getting one chance tied to an unrelated transition.
+            if (_allReady && !_inputEnabled && isOwner && character.TryGetComponent(out PlayerControllerPD ctrl))
+            {
+                ctrl.EnableInput();
+                _inputEnabled = true;
             }
         }
     }

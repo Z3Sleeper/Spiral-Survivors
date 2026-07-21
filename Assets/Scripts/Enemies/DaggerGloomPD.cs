@@ -18,7 +18,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         public float stateTimer;
         public float attackCooldownTimer;
         public int   attacksRemaining;
-        public void Dispose() { b.contactCooldowns.Dispose(); }
+        public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
     }
 
     public enum DaggerState { Moving, Windup, Spinning, BetweenSpins, PostSpin, DashingToTarget }
@@ -281,10 +281,13 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         }
     }
 
-    protected override void OnHideOnDeath()
+    protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.ResetFill();
+        // Snaps out of whatever attack pose this enemy died mid-animation in — see SpearGloomPD's own
+        // OnDeathStop comment for why (stateId is frozen from here on, so nothing else will do this).
+        if (_animator != null) _animator.Play(IdleHash, 0, 0f);
     }
 
     protected override void OnRespawnReset()

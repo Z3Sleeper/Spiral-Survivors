@@ -87,4 +87,4 @@ MonoBehaviour:
   damageReductionPenalty: 0
   passiveAugments:
   - {fileID: 11400000, guid: 3547c9a34d1cb3f42a8f43883f6f6ee6, type: 2}
-  - {fileID: 11400000, guid: 020766a25056f084d9eb876cf5038a28, type: 2}
+  - {fileID: 11400000, guid: 27223498c3d65d64b9dc1ba51a9fa906, type: 2}

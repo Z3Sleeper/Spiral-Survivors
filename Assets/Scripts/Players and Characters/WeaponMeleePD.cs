@@ -21,7 +21,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
     private readonly HashSet<IEnemyPD>                               _touchedThisTick  = new();
 
-    // Ally-strike detection (HealAllyOnStrikeAugment, real friendly fire) — only ever populated/queried
+    // Ally-strike detection (OnStrikeHealAllyAugment, real friendly fire) — only ever populated/queried
     // when _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true, so this costs nothing
     // for weapons without either. _sweepResults/_overlapResults are reused for the ally queries too (safe
     // — each call's results are fully consumed into a HashSet before the next Physics call overwrites the
@@ -51,9 +51,14 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         mgr.RegisterWeapon(this);
     }
 
-    protected override void OnDestroy()
+    // Destroyed(), not OnDestroy() — same reasoning as CharacterStatsPD.Destroyed()/EnemyBasePD.Destroyed():
+    // this is the hook PurrNet guarantees fires on every logical removal (including a pooled "delete" that
+    // never actually calls Unity's own OnDestroy), whereas OnDestroy() left this weapon un-unregistered on
+    // pooled removal — WeaponManagerPD kept a stale entry in _weapons/_outerWeapons pointing at a
+    // deactivated-but-still-existing weapon GameObject, which TryGetFarthestWeaponReach then happily kept
+    // reading (its now-frozen position making the range indicator balloon as the player walked away from it).
+    protected override void Destroyed()
     {
-        base.OnDestroy();
         if (_manager != null) _manager.UnregisterWeapon(this);
     }
 
@@ -107,6 +112,19 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             meleeHalfExtents.y * hb.lossyScale.y,
             meleeHalfExtents.z * hb.lossyScale.z);
 
+        // Extends the box's far edge to match hitboxTip's own visual reach (GetOuterReach uses the exact
+        // same GetHitboxTipExtraReach() value, so the real hitbox and the cosmetic range indicator can
+        // never drift apart). Applied as a forward-only center shift, not added straight into half.z, so
+        // the NEAR edge (toward the handle) stays fixed — half the extra reach shifts center forward, half
+        // grows half.z, netting a far edge that's exactly tipExtra further out and a near edge that's
+        // unchanged. 0 when no hitboxTip is assigned, so this is a no-op for every other weapon.
+        float tipExtra   = GetHitboxTipExtraReach();
+        float centerShift = tipExtra * 0.5f;
+        half.z += centerShift;
+        // hb's rotation at this exact point (before any SetPositionAndRotation calls below run this tick)
+        // is still last tick's — correct for shifting prevCenter, which is itself a previous-tick position.
+        prevCenter += (state.prevSet ? hb.rotation : Quaternion.LookRotation(outward)) * Vector3.forward * centerShift;
+
         _touchedThisTick.Clear();
         _touchedAlliesThisTick.Clear();
         bool detectAllies = _stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled;
@@ -143,6 +161,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
                 transform.SetPositionAndRotation(stepPos, Quaternion.LookRotation(stepOutward));
                 hb.GetPositionAndRotation(out segCenter, out segRot);
+                segCenter += segRot * Vector3.forward * centerShift;
 
                 Vector3 sweep = segCenter - segStart;
                 float   dist  = sweep.magnitude;
@@ -178,6 +197,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         {
             transform.SetPositionAndRotation(orbitPos, Quaternion.LookRotation(outward));
             hb.GetPositionAndRotation(out center, out hitboxRot);
+            center += hitboxRot * Vector3.forward * centerShift;
         }
 
         // Overlap at current position
@@ -263,6 +283,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         if (isHighroll) _onHighroll.Invoke(damage);
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.WeaponDamage, onHitPower = _stats.OnHitPower, isCrit = isCrit };
         _onHit.Invoke(hitData);
+        _onStrike.Invoke(hitData);
         if (isCrit) _onCritStrike.Invoke(hitData);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
@@ -305,10 +326,14 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             meleeHalfExtents.x * hb.lossyScale.x * xRatio,
             meleeHalfExtents.y * hb.lossyScale.y,
             meleeHalfExtents.z * hb.lossyScale.z);
+        // Same forward-only extension as LateSimulate's real hitbox — see its own comment for why this is
+        // a center shift plus half.z growth rather than a plain half.z increase.
+        float centerShift = GetHitboxTipExtraReach() * 0.5f;
+        half.z += centerShift;
         Gizmos.color = new Color(1f, 0.5f, 0f, 0.4f);
         Matrix4x4 prev = Gizmos.matrix;
         Gizmos.matrix = Matrix4x4.TRS(hb.position, hb.rotation, Vector3.one);
-        Gizmos.DrawWireCube(Vector3.zero, half * 2f);
+        Gizmos.DrawWireCube(new Vector3(0f, 0f, centerShift), half * 2f);
         Gizmos.matrix = prev;
     }
 }

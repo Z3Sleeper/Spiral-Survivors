@@ -19,7 +19,10 @@ public class EnemyUIPD : MonoBehaviour
 
     private void Update()
     {
-        if (_enemy == null || _enemy._isDead) return;
+        // No _isDead early-return — a kill-launch corpse stays visible (and its healthbar with it) for a
+        // while after death, so the bar needs to keep updating to actually show 0/max instead of freezing
+        // at whatever it last displayed the instant before the killing blow landed.
+        if (_enemy == null) return;
         if (_enemy.MaxHealth <= 0f) return;
         healthBar.value = _enemy.CurrentHealth / _enemy.MaxHealth;
         healthText.text = $"<b>{FormatStat(_enemy.CurrentHealth)}/{FormatStat(_enemy.MaxHealth)}</b>";

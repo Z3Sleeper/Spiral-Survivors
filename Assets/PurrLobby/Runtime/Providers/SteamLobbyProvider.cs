@@ -162,7 +162,11 @@ namespace PurrLobby.Providers
             if (!IsSteamClientAvailable)
                 return Task.FromResult(new List<LobbyUser>());
 
-            return Task.FromResult(GetLobbyUsers(Steamworks.SteamUser.GetSteamID()));
+            // Was passing the LOCAL PLAYER's own Steam ID here instead of the lobby's — GetLobbyUsers
+            // expects a lobby handle, not a member handle, so this returned garbage/empty results for
+            // every caller. Unused anywhere until LobbyManager's ready-state poll (see its own comment)
+            // started relying on this as a live, callback-independent snapshot pull.
+            return Task.FromResult(GetLobbyUsers(_currentLobby));
         }
 
         public Task<string> GetLocalUserIdAsync()
@@ -348,6 +352,15 @@ namespace PurrLobby.Providers
                 && Steamworks.SteamUser.GetSteamID().m_SteamID == id)
             {
                 Steamworks.SteamMatchmaking.SetLobbyMemberData(_currentLobby, "IsReady", isReady.ToString());
+                // Nudges Steam into firing a LobbyDataUpdate_t callback sooner than it reliably would from
+                // the member-data write alone — a responsiveness optimization ONLY. These are two
+                // independent, unordered writes to Steam's backend with no guaranteed relative delivery
+                // order to other peers, so a peer's callback COULD read "IsReady" before it's actually
+                // propagated. That used to be load-bearing (the ready-check only ever ran reactively inside
+                // that callback) — it no longer is: LobbyManager's periodic ready-state poll
+                // (GetLobbyMembersAsync, a fresh pull straight from each client's own local Steam cache, not
+                // dependent on this or any callback having fired at all) is what actually guarantees
+                // eventual correctness now, within one poll interval regardless of callback timing.
                 Steamworks.SteamMatchmaking.SetLobbyData(_currentLobby, "UpdateTrigger", DateTime.UtcNow.Ticks.ToString());
             }
 

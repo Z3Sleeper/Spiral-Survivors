@@ -18,7 +18,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         public float   attackCooldownTimer;
         public Vector3 blitzDirection;        // locked in at Windup entry, reused through Blitzing
         public int     blitzesRemaining;
-        public void Dispose() { b.contactCooldowns.Dispose(); }
+        public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
     }
 
     public enum BlitzState { Moving, Windup, Blitzing, PostBlitz }
@@ -182,7 +182,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         }
     }
 
-    protected override void OnHideOnDeath()
+    protected override void OnDeathStop()
     {
         if (windupIndicator != null) windupIndicator.SetActive(false);
         if (windupFill != null)      windupFill.ResetFill();

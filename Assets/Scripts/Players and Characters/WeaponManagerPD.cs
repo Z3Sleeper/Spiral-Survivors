@@ -112,6 +112,7 @@ public class WeaponManagerPD : MonoBehaviour
         // to subscribe to, regardless of how many weapons this player has or which one actually hit/crit.
         weapon.AddCritStrikeListener(OnAnyWeaponCrit);
         weapon.AddHitListener(OnAnyWeaponHit);
+        weapon.AddStrikeListener(OnAnyWeaponStrike);
     }
 
     public void UnregisterWeapon(IWeaponPD weapon)
@@ -133,10 +134,12 @@ public class WeaponManagerPD : MonoBehaviour
 
         weapon.RemoveCritStrikeListener(OnAnyWeaponCrit);
         weapon.RemoveHitListener(OnAnyWeaponHit);
+        weapon.RemoveStrikeListener(OnAnyWeaponStrike);
     }
 
     private void OnAnyWeaponCrit(WeaponHitData data) => _stats.NotifyCritStrike(data);
     private void OnAnyWeaponHit(WeaponHitData data) => _stats.NotifyHit(data);
+    private void OnAnyWeaponStrike(WeaponHitData data) => _stats.NotifyStrike(data);
 
     // ── Range / size helpers ──────────────────────────────────────────────────
 
@@ -165,6 +168,28 @@ public class WeaponManagerPD : MonoBehaviour
         weapon.ScaleModel(_stats.WeaponRange);
         weapon.RootScale  = weapon.transform.localScale;
         weapon.RangeValue = _stats.WeaponRange;
+    }
+
+    // Farthest current outer hit-detection edge across every registered weapon (both rings) — used by
+    // PlayerRangeIndicatorPD so the ring always reflects whichever weapon actually reaches furthest right
+    // now, not a guessed stat formula. See IWeaponPD.GetOuterReach for the per-weapon-type math.
+    public bool TryGetFarthestWeaponReach(out float reach)
+    {
+        reach = 0f;
+        bool found = false;
+        Vector3 origin = _stats.transform.position;
+
+        foreach (var weapon in _weapons)
+        {
+            float d = weapon.GetOuterReach(origin);
+            if (!found || d > reach) { reach = d; found = true; }
+        }
+        foreach (var weapon in _outerWeapons)
+        {
+            float d = weapon.GetOuterReach(origin);
+            if (!found || d > reach) { reach = d; found = true; }
+        }
+        return found;
     }
 
     public void ApplyColor(Color c)

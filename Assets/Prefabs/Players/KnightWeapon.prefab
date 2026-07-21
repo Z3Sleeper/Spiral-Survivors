@@ -232,7 +232,7 @@ MonoBehaviour:
   rangeScaleTarget: {fileID: 1776253383228023903}
   rangeFollowers:
   - {fileID: 1719263058978148157}
-  tipOffset: 0
+  tipOffset: 0.2828
   xRangeScaleRatio: 0.1
   yScaleFollowers:
   - {fileID: 7916714521472660137}
@@ -240,6 +240,11 @@ MonoBehaviour:
   - {fileID: 1719263058978148157}
   xScaleFollowers:
   - {fileID: 5658850961026097083}
+  hitboxTip: {fileID: 1719263058978148157}
+  hitboxTipOffset: 0.2828
+  hitboxTipScalesWithX: 1
+  hitboxTipScalesWithY: 0
+  hitboxTipScalesWithZ: 1
   meleeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
 --- !u!114 &8198260059138025823
 MonoBehaviour:
@@ -263,6 +268,7 @@ MonoBehaviour:
   - {fileID: 8667004372245903466}
   - {fileID: 3231712233815679040}
   tintedMaterialIndex: 0
+  alpha: 1
 --- !u!114 &6886117423986760106
 MonoBehaviour:
   m_ObjectHideFlags: 0

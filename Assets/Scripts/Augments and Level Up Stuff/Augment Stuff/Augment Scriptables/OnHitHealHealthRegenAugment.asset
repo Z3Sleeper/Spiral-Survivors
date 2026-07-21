@@ -10,18 +10,22 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
-  m_Name: SurgeDualWeildAugment
+  m_Name: OnHitHealHealthRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FFFF00>Secret Weapon</color>
-  description: <color=#FFA000>While <color=#FFFF00>Surging</color>:</color> <color=#FFA000>+1
-    Weapon</color> and <color=#FF5000>+40% Damage</color>.
-  icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
-  effectPrefab: {fileID: 5489089648639806987, guid: 9450586d5b1b20f49be8db9a16ea0e19, type: 3}
+  displayName: <color=#7DFF00>Therapeutic Strikes</color>
+  description: '<color=#7DFF00>Heal 10%<color=#00FF87>*</color> Health Regen</color>
+    <color=#FF0050>On-Hit</color>.
+
+    <color=#00FF87>*Affected by Luck*</color>'
+  icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
+  effectPrefab: {fileID: 4271127026077503740, guid: 1e3887ea2479e1f4a9d45183236aac46, type: 3}
   multiplayerOnly: 0
   classRestrictionMode: 0
   characterClasses: 
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  tags: []
+  tags:
+  - On-Hit Effect
   requiredTags: []
+  incompatibleTags: []

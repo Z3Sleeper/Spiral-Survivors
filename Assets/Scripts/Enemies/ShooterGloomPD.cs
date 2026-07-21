@@ -16,7 +16,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         public float shooterStateTimer;
         public float attackCooldownTimer;
         public int   shotsRemaining;
-        public void Dispose() => b.contactCooldowns.Dispose();
+        public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
     }
 
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;
@@ -309,6 +309,14 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 _animator.Play(PostShotHash, 0, 0f);
                 break;
         }
+    }
+
+    // No windup indicator to hide (unlike Spear/Dagger/Leaper) — only needed here to snap out of whatever
+    // attack pose this enemy died mid-animation in (shooterStateId is frozen from here on, so nothing else
+    // will do this), same reasoning as SpearGloomPD's own OnDeathStop.
+    protected override void OnDeathStop()
+    {
+        if (_animator != null) _animator.Play(IdleHash, 0, 0f);
     }
 
     protected override void OnRespawnReset()

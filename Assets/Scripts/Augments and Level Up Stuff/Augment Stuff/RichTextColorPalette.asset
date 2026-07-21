@@ -47,3 +47,5 @@ MonoBehaviour:
     color: {r: 0.54901963, g: 0.23191826, b: 0, a: 0}
   - name: Flavor
     color: {r: 0.39215687, g: 0.39215687, b: 0.39215687, a: 0}
+  - name: Hint
+    color: {r: 1, g: 0.74509805, b: 0.3137255, a: 0}

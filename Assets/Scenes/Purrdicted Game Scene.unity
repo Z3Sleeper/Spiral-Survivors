@@ -8277,9 +8277,9 @@ MonoBehaviour:
   - {fileID: 48887943}
   spawnMinDistance: 25
   spawnMaxDistance: 30
-  spawnIntervalQ1: 1.5
-  spawnIntervalQ2: 1.25
-  spawnIntervalQ3: 1
+  spawnIntervalQ1: 6
+  spawnIntervalQ2: 3
+  spawnIntervalQ3: 1.5
   spawnIntervalQ4: 0.75
   cycleInterval: 240
   eliteSpawnTimeFirst: 150
@@ -8289,10 +8289,10 @@ MonoBehaviour:
   bossesToDefeatForWin: 3
   maxNormalEnemies: 100
   maxEliteEnemies: 100
-  maxPlebEnemies: 300
+  maxPlebEnemies: 500
   plebSpawnAmount: 5
-  plebSpawnIntervalQ1: 3
-  plebSpawnIntervalQ2: 2
+  plebSpawnIntervalQ1: 2
+  plebSpawnIntervalQ2: 1.5
   plebSpawnIntervalQ3: 1
   plebSpawnIntervalQ4: 0.5
 --- !u!1 &1131900761
@@ -14635,8 +14635,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameManagerPD
   baseXPToNextLevel: 20
   xpLevelStep: 5
-  coopToughnessScalar: 0.5
+  coopToughnessScalar: 0.25
   upgradePointMultiplier: 1
+  maxSetupWaitSeconds: 30
 --- !u!1 &2037280116
 GameObject:
   m_ObjectHideFlags: 0

@@ -44,7 +44,7 @@ public class OnHitDamageAugment : AugmentEffectPD<OnHitDamageAugment.State>
         // 1/WeaponCount², shrinking this augment's total output as you stack more weapons instead of
         // holding flat like every other weapon-damage-scaled effect. Using UnpenalizedWeaponDamage (which
         // deliberately excludes that divide) instead of weaponDamage leaves onHitPower as the only
-        // WeaponCount divisor — same convention HealAllyOnStrikeAugment/OnHitDamageHealthRegenAugment
+        // WeaponCount divisor — same convention OnStrikeHealAllyAugment/OnHitDamageHealthRegenAugment
         // already use (onHitPower multiplied against a non-divided base stat), while still letting this
         // scale with any real onHitPower stat investment, unlike a ratio-normalized approach would.
         // Anything that deals damage rolls luck variance — no exceptions.

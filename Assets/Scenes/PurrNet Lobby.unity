@@ -273,7 +273,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &6321156
 RectTransform:
   m_ObjectHideFlags: 0
@@ -2560,6 +2560,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LoadingScreen
   canvasGameObject: {fileID: 516020019}
+  loadingText: {fileID: 993785995}
+  baseText: Loading
+  dotInterval: 0.4
+  maxDots: 3
 --- !u!4 &205622257
 Transform:
   m_ObjectHideFlags: 0
@@ -7381,8 +7385,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -287.993, y: 100}
-  m_SizeDelta: {x: 560, y: 80}
+  m_AnchoredPosition: {x: -258.9965, y: 100}
+  m_SizeDelta: {x: 617.99, y: 80}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &604194054
 MonoBehaviour:
@@ -7404,7 +7408,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Has Secret Weapon and Revved Up Augments
+  m_text: Has Secret Weapon and Energized Escape Augments
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -13896,14 +13900,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - v0.2
+      - v0.2.1
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - v0.2
+    - v0.2.1
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -14035,6 +14039,7 @@ MonoBehaviour:
   onShutdown:
     m_PersistentCalls:
       m_Calls: []
+  readyPollInterval: 1
 --- !u!1 &1101296062
 GameObject:
   m_ObjectHideFlags: 0
@@ -19874,7 +19879,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.2
+  m_text: Version 0.2.1
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -27256,7 +27261,7 @@ MonoBehaviour:
     +50% Damage <color=#F00000>-50%
     Range</color>
 
-    <i>(Damage & On-Hit Power are divided by weapon count)</i>'
+    <i>(Damage & On-Hit Power are divided by Weapon Count)</i>'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

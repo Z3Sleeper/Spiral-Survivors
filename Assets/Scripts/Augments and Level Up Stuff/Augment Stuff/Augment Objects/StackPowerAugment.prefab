@@ -1,6 +1,6 @@
 %YAML 1.1
 %TAG !u! tag:unity3d.com,2011:
---- !u!1 &5489089648639806987
+--- !u!1 &543852543365188260
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -8,22 +8,22 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 4696115394792131596}
-  - component: {fileID: 3428327919930281659}
+  - component: {fileID: 6439878731167959497}
+  - component: {fileID: 7029716719825782819}
   m_Layer: 0
-  m_Name: SurgeDualWeildAugment
+  m_Name: StackPowerAugment
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &4696115394792131596
+--- !u!4 &6439878731167959497
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5489089648639806987}
+  m_GameObject: {fileID: 543852543365188260}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -32,18 +32,16 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &3428327919930281659
+--- !u!114 &7029716719825782819
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5489089648639806987}
+  m_GameObject: {fileID: 543852543365188260}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b72d6b94d51c3024287ce37d2dde036e, type: 3}
+  m_Script: {fileID: 11500000, guid: 9e27bff8381132b4ab8735c6b6a375d3, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SurgeDualWeildAugment
-  bonusWeapons: 1
-  damageBonus: 0.4
-  onHitPowerBonus: 0.4
+  m_EditorClassIdentifier: Assembly-CSharp::StackPowerAugment
+  stackPowerBonus: 0.5

@@ -37,7 +37,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     private readonly Dictionary<IEnemyPD, float> _hitCooldowns = new();
     private readonly List<IEnemyPD> _cooldownBuffer = new();
 
-    // Ally targeting (HealAllyOnStrikeAugment, real friendly fire, future "hit ally, do something"
+    // Ally targeting (OnStrikeHealAllyAugment, real friendly fire, future "hit ally, do something"
     // augments) — only ever populated/queried when _stats.allyStrikeHitEnabled or
     // _stats.allyStrikeDamageEnabled is true. Separate from _hitCooldowns since an ally is a
     // CharacterStatsPD, not an IEnemyPD; same per-target cooldown-gates-SELECTION-only reasoning as the
@@ -67,9 +67,10 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         mgr.RegisterWeapon(this);
     }
 
-    protected override void OnDestroy()
+    // Destroyed(), not OnDestroy() — see WeaponMeleePD's own comment on the same change for why (pooled
+    // removal never reliably fired OnDestroy(), leaving a stale WeaponManagerPD entry behind).
+    protected override void Destroyed()
     {
-        base.OnDestroy();
         if (_manager != null) _manager.UnregisterWeapon(this);
     }
 

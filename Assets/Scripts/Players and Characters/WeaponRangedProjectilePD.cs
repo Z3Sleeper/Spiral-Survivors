@@ -55,7 +55,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     private readonly Collider[] _retargetResults = new Collider[16];
     private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
 
-    // Ally-strike detection (HealAllyOnStrikeAugment, real friendly fire, future "hit ally, do something"
+    // Ally-strike detection (OnStrikeHealAllyAugment, real friendly fire, future "hit ally, do something"
     // augments) — only queried when _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true.
     // Unlike _hitTargets (one closest enemy per tick, gates further damage to that same enemy), every ally
     // the sweep touches gets processed the same tick — no "closest only" restriction, since a cluster of
@@ -216,6 +216,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         {
             var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = state.currentDamage, onHitPower = state.currentOnHitPower, isCrit = isCrit };
             _launcher.NotifyHit(hitData);
+            _launcher.NotifyStrike(hitData);
             if (isCrit) _launcher.NotifyCritStrike(hitData);
         }
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
