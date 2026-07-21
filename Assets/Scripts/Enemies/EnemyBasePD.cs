@@ -1,7 +1,7 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using PurrNet;
+using PurrNet.Packing;
 using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
@@ -117,7 +117,7 @@ public struct ContactCooldown
 }
 
 // Common enemy simulation fields; embedded inside each enemy's TState struct.
-public struct EnemyBaseState
+public struct EnemyBaseState : IDuplicate<EnemyBaseState>
 {
     public float health;
     public bool isDead;
@@ -171,6 +171,22 @@ public struct EnemyBaseState
     // Which enemies this launch has already damaged — travelling through a cluster shouldn't repeatedly
     // hit the same target every tick it stays overlapped.
     public DisposableList<PredictedObjectID> killLaunchHitIds;
+
+    // Lets the packer duplicate this struct via a direct field-copy during snapshot/history/rollback
+    // operations instead of falling back to a full serialize/deserialize round-trip — see
+    // purrnet.dev/docs/client-side-prediction/disposable-collections. With potentially 50-100+ enemies
+    // alive at once, every one of them getting the slow fallback path every tick is a real, compounding CPU
+    // cost; this is a plain value-copy (`this`) with just the two DisposableList fields replaced by their
+    // own .Duplicate() — struct-copying a DisposableList instead of calling .Duplicate() on it would alias
+    // the SAME pooled underlying list between the original and the "copy" (the documented anti-pattern),
+    // not create an independent one.
+    public EnemyBaseState Duplicate()
+    {
+        var copy = this;
+        copy.contactCooldowns = contactCooldowns.Duplicate();
+        copy.killLaunchHitIds = killLaunchHitIds.Duplicate();
+        return copy;
+    }
 }
 
 [RequireComponent(typeof(PredictedRigidbody))]
@@ -392,6 +408,30 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         _animator = GetComponentInChildren<Animator>();
     }
 
+    // Resets renderer visibility + color the INSTANT this GameObject (re)activates — Unity guarantees
+    // OnEnable() fires before this frame ever renders, but a pooled reactivation and this identity's own
+    // Simulate() tick (whose !b.initialized block also resets this) aren't always perfectly synchronized,
+    // especially under client-side replay/reconciliation. Without this, a pooled corpse that was still
+    // showing a hit-flash or kill-launch red at the moment it got hidden could show that same stale red for
+    // a real visible frame or two on its NEXT life, before Simulate() gets around to resetting it — this
+    // was the "enemies spawning red" symptom. _originalColors is populated once in Awake(), which Unity
+    // always runs before the very first OnEnable() and never again after, so it's already valid by the time
+    // this fires on every subsequent pooled reactivation too. Left in Simulate()'s own reset block as well
+    // (redundant, not harmful) rather than removed, in case some future pooling path re-enables the
+    // GameObject without this ever having fired.
+    private void OnEnable()
+    {
+        // Defensive — in case a previous life was hidden/pooled mid-flash (_isFlashing still true, timer
+        // never got to expire). Without this, TriggerFlash()'s own `if (_isFlashing) return;` guard would
+        // think this life is already flashing red and skip re-painting it on the very next hit, even though
+        // the color was just reset to _originalColors right above.
+        _isFlashing = false;
+        if (_renderers == null) return;
+        foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
+        for (int i = 0; i < _renderers.Length; i++)
+            if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+    }
+
     protected override void LateAwake()
     {
         ActiveCount++;
@@ -595,7 +635,16 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ref var viewB = ref GetBase(ref viewState);
 
         // Stops attack telegraphs immediately on death — see OnDeathStop's own doc comment for why this is
-        // deliberately NOT gated on deathHoldCount the way the render-hide block below is.
+        // deliberately NOT gated on deathHoldCount the way the render-hide block below is. Deliberately NOT
+        // gated on activeInHierarchy either (previously was, briefly) — a windup indicator that's been
+        // unparented to world root (LeaperGloomPD's, during Leaping) is NOT a child of this GameObject, so
+        // it doesn't get implicitly hidden when this enemy itself is deactivated/pooled; if this enemy gets
+        // hidden and pooled before ever becoming active again this life (entirely possible — hide only
+        // waits on deathHoldCount, not on this instance passing through an active frame first), gating
+        // OnDeathStop() here meant it could simply never fire, leaving that detached indicator visible
+        // forever. Individual overrides that call Animator.Play() guard THAT specific call's own
+        // activeInHierarchy instead (seeing SpearGloomPD's own OnDeathStop for why), so the indicator-hide
+        // half of OnDeathStop always runs immediately while only the animator snap can harmlessly skip.
         if (viewB.isDead && !_deathStopped)
         {
             _deathStopped = true;
@@ -869,9 +918,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // stays visible/renderer-enabled the whole time it's held, so it should still show hit feedback for
         // every hit it takes during that window, including the killing blow. Once actually hidden there's
         // nothing left to flash. Also skipped entirely while B.killLaunchActive — UpdateView's own
-        // edge-detected block already holds the corpse solid red for the whole launch, and this coroutine's
-        // revert-to-_originalColors after 0.08s would fight that.
-        if (!_hiddenOnDeath && !B.killLaunchActive && gameObject.activeInHierarchy) StartCoroutine(FlashCoroutine());
+        // edge-detected block already holds the corpse solid red for the whole launch, and TriggerFlash's
+        // own revert-to-_originalColors would fight that.
+        if (!_hiddenOnDeath && !B.killLaunchActive && gameObject.activeInHierarchy) TriggerFlash();
         if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit, isHighroll, isPriority);
         if (attacker.isOwner && SFXManager.instance != null)
             SFXManager.instance.Play(attacker.hitSfx, transform.position, 1f, 0.05f);
@@ -1058,9 +1107,19 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     {
         if (!isStunnable || _isDead) return;
         float effectiveSpeed = impulse.magnitude * (1f - crowdControlResist);
-        // Zeroed first rather than added to, so knockback doesn't have to fight whatever velocity the
-        // enemy's own movement AddForce was already carrying that tick.
-        _rigidbody.velocity = impulse.normalized * effectiveSpeed;
+        // Guarded by !isKinematic — same reason StartKillLaunch/Simulate()'s pause-handling do this: a
+        // Windup/Stabbing/Spinning-style kinematic sub-state (SpearGloomPD, KingSpikePD, DaggerGloomPD's
+        // spin, etc.) means this rigidbody can already be kinematic when a knockback source (e.g.
+        // ShieldBreakBurstAugment's AoE) hits, and PredictedRigidbody's velocity setter throws ("not
+        // supported") if attempted on an already-kinematic body. The stun below still applies regardless —
+        // ApplyStun's own IsReadyToAttack guard already decides whether an active attack sequence should be
+        // interruptible, independent of whether the physical push could happen.
+        if (!_rigidbody.isKinematic)
+        {
+            // Zeroed first rather than added to, so knockback doesn't have to fight whatever velocity the
+            // enemy's own movement AddForce was already carrying that tick.
+            _rigidbody.velocity = impulse.normalized * effectiveSpeed;
+        }
         const float drag      = 9f;
         const float threshold = 1f;
         float stunDuration = effectiveSpeed > threshold
@@ -1101,21 +1160,44 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             DamageNumberManager.instance.Spawn(amount, this, sizeYOffset, sizeZOffset, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), isCrit, isHighroll, attackerOwner, isPriority);
     }
 
-    private IEnumerator FlashCoroutine()
+    private const float FlashDuration = 0.08f;
+    private float _flashTimer;
+    private bool  _isFlashing;
+
+    // Timer-based, not a StartCoroutine(...) per hit — a coroutine-per-hit meant N hits landing within the
+    // same ~0.08s window (very much the normal case for "swarm scale" enemy types getting hit by AoE/multi-
+    // hit weapons) spawned N independent coroutines, each on its OWN 0.08s clock. Once the first one's
+    // timer expired it would revert to _originalColors[i] while later ones were still mid-flight — if hits
+    // kept arriving often enough, there was always at least one still "just started" the moment another
+    // reverted, so the enemy could visibly never stop flickering red even though each individual coroutine
+    // was behaving correctly in isolation. A single shared timer just gets EXTENDED by every new hit
+    // instead of stacking a fresh independent clock, so the revert only ever happens once, `FlashDuration`
+    // after the LAST hit actually landed.
+    private void TriggerFlash()
     {
+        _flashTimer = FlashDuration;
+        if (_isFlashing) return;
+        _isFlashing = true;
         for (int i = 0; i < _renderers.Length; i++)
             if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = Color.red;
-        yield return new WaitForSeconds(0.08f);
+    }
+
+    private void Update()
+    {
+        if (!_isFlashing) return;
+        _flashTimer -= Time.deltaTime;
+        if (_flashTimer > 0f) return;
+        _isFlashing = false;
 
         // Skip the revert if a kill-launch is now active — TriggerHitFeedback's own !B.killLaunchActive
         // guard only stops a NEW flash from starting once the launch is already underway, but the killing
         // blow's own hit-feedback drains off the WEAPON's UpdateView, which can run before or after this
         // enemy's own UpdateView (where OnEnemyDeath dispatch actually flips killLaunchActive true) — pure
-        // Unity script execution order, not something worth pinning down. If this coroutine already started
-        // before that flip landed, it would otherwise revert the corpse back to its original color ~0.08s
+        // Unity script execution order, not something worth pinning down. If this flash already started
+        // before that flip landed, it would otherwise revert the corpse back to its original color shortly
         // into a launch that's supposed to stay solid red the whole time. UpdateView's own edge-detected
         // red/revert already owns the corpse's color for the launch's actual duration once this bails.
-        if (B.killLaunchActive) yield break;
+        if (B.killLaunchActive) return;
 
         for (int i = 0; i < _renderers.Length; i++)
             if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
@@ -1158,12 +1240,19 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 [RequireComponent(typeof(PredictedRigidbody))]
 public class EnemyBasePD : EnemyBasePD<EnemyBasePD.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         // contactCooldowns was never disposed here (pre-existing gap, fixed in passing) — killLaunchHitIds
         // needs the same treatment as every other enemy subclass's own Dispose().
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.b = b.Duplicate();
+            return copy;
+        }
     }
 
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;

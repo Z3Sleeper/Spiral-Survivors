@@ -1,3 +1,4 @@
+using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -11,7 +12,7 @@ using UnityEngine;
 // Dagger's own smaller 20% post-attack reroll, which was the exact pattern already rejected for BlitzGloomPD.
 public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         public int   stateId;              // cast to/from DaggerState, same convention as SpearGloomPD
@@ -19,6 +20,13 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         public float attackCooldownTimer;
         public int   attacksRemaining;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.b = b.Duplicate();
+            return copy;
+        }
     }
 
     public enum DaggerState { Moving, Windup, Spinning, BetweenSpins, PostSpin, DashingToTarget }
@@ -287,7 +295,8 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         if (_windupFill != null)      _windupFill.ResetFill();
         // Snaps out of whatever attack pose this enemy died mid-animation in — see SpearGloomPD's own
         // OnDeathStop comment for why (stateId is frozen from here on, so nothing else will do this).
-        if (_animator != null) _animator.Play(IdleHash, 0, 0f);
+        // Guarded on activeInHierarchy — see SpearGloomPD's own comment on the same guard.
+        if (_animator != null && gameObject.activeInHierarchy) _animator.Play(IdleHash, 0, 0f);
     }
 
     protected override void OnRespawnReset()

@@ -47,30 +47,58 @@ public class XPOrbPD : PredictedIdentity<XPOrbPD.State>
 
     private void OnBoundsOrObstacleTrigger(GameObject other)
     {
+        // Was missing the same pause gate Simulate() has — this callback fires off Unity's own trigger
+        // detection, entirely independent of Simulate()'s early-return, so an orb sitting in a Bounds/
+        // Obstacle trigger kept getting nudged every tick regardless of pause. That's the "vibrates like
+        // crazy during pause and never stops" symptom: as long as the orb stayed overlapped, this fired
+        // forever with nothing ever gating it off.
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (!currentState.settled || currentState.collected) return;
 
         float delta = predictionManager.tickDelta;
 
+        // MovePosition, not a raw transform.position write — every other moving predicted object in this
+        // project (dashes, knockback, kill-launch) goes through the Rigidbody so PredictedTransform's own
+        // interpolation/tracking picks it up correctly. A bare transform.position assignment bypasses that
+        // pipeline entirely, which is very likely why this specifically jittered on non-host clients (their
+        // smoothed/interpolated view fighting a position change PredictedTransform never knew happened)
+        // while host, rendering its own live transform directly, looked fine.
         if (other.layer == LayerMask.NameToLayer("Bounds"))
         {
-            transform.position = Vector3.MoveTowards(
+            Vector3 target = Vector3.MoveTowards(
                 transform.position,
                 new Vector3(0f, transform.position.y, 0f),
                 attractSpeed * delta);
+            _rigidbody.MovePosition(target);
         }
         else if (other.layer == LayerMask.NameToLayer("Obstacle"))
         {
             Vector3 obstacleCenter = other.TryGetComponent(out Collider col) ? col.bounds.center : other.transform.position;
             Vector3 dir = new Vector3(transform.position.x - obstacleCenter.x, 0f, transform.position.z - obstacleCenter.z);
             if (dir == Vector3.zero) dir = Vector3.right;
-            transform.position += dir.normalized * attractSpeed * delta;
+            _rigidbody.MovePosition(transform.position + dir.normalized * attractSpeed * delta);
         }
     }
 
     // ── Simulation ─────────────────────────────────────────────────────────
     protected override void Simulate(ref State state, float delta)
     {
-        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+        if (PausePD.instance != null && PausePD.instance.IsPaused)
+        {
+            // Same reasoning as EnemyBasePD's own pause-handling: the physics engine keeps integrating
+            // whatever velocity a non-kinematic Rigidbody already has every tick regardless of this early
+            // return — an orb still mid-scatter (not yet settled, so not yet kinematic) when pause hits
+            // would otherwise keep drifting on residual velocity for the whole pause, which is exactly the
+            // milder "wiggle" left over after the trigger-callback jitter was fixed. Guarded by !isKinematic
+            // since a settled orb's Rigidbody is already kinematic and PredictedRigidbody's velocity setter
+            // throws if attempted on one.
+            if (_rigidbody != null && !_rigidbody.isKinematic)
+            {
+                _rigidbody.velocity = Vector3.zero;
+                _rigidbody.angularVelocity = Vector3.zero;
+            }
+            return;
+        }
         if (state.collected) return;
 
         // Pooled reuse never calls SimulationStart()/OnRemovedFromPool() (PredictedHierarchy's pool

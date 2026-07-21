@@ -1,3 +1,4 @@
+using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -8,7 +9,7 @@ using UnityEngine;
 // EnemyBasePD's generic enrageTimer/OnEnrage() (armed via the enrageTimer Inspector field).
 public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         public int     stateId;              // cast to/from KingSpikeState, same convention as SpearGloomPD
@@ -24,6 +25,13 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // burst has finished charging, without KingSpikePD needing to observe the spawned hazards directly.
         public float   remoteSequenceTimer;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.b = b.Duplicate();
+            return copy;
+        }
     }
 
     public enum KingSpikeState { Moving, ChargeWindup, Charging, BetweenCharges, SpikeBurstWindup }

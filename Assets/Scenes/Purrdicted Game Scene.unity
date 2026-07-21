@@ -15159,7 +15159,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1147083180}
         m_TargetAssemblyTypeName: LocalUIManagerPD, Assembly-CSharp
-        m_MethodName: OnReturnToLobbyClicked
+        m_MethodName: OnEndScreenReadyClicked
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}

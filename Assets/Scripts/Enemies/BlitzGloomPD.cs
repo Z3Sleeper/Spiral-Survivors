@@ -1,3 +1,4 @@
+using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -10,7 +11,7 @@ using UnityEngine;
 // moving fast into whatever it touches, unlike SpearGloomPD's separate stab hitbox.
 public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         public int     stateId;              // cast to/from BlitzState, same convention as SpearGloomPD
@@ -19,6 +20,13 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         public Vector3 blitzDirection;        // locked in at Windup entry, reused through Blitzing
         public int     blitzesRemaining;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.b = b.Duplicate();
+            return copy;
+        }
     }
 
     public enum BlitzState { Moving, Windup, Blitzing, PostBlitz }

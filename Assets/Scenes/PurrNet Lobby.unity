@@ -273,7 +273,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!224 &6321156
 RectTransform:
   m_ObjectHideFlags: 0
@@ -10018,12 +10018,13 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "Player List:\n\u25A0 Ready - PlayerName - Knight - Power Level: 100.00k\n\u25A0
-    Ready - PlayerName - Knight - Power Level: 100.00k\n\u25A0 Ready - PlayerName
-    - Knight - Power Level: 100.00k\n\u25A0 Ready - PlayerName - Knight - Power Level:
+  m_text: "Player List (1/8):\n\u25A0 Ready - PlayerName - Knight - Power Level:
     100.00k\n\u25A0 Ready - PlayerName - Knight - Power Level: 100.00k\n\u25A0 Ready
     - PlayerName - Knight - Power Level: 100.00k\n\u25A0 Ready - PlayerName - Knight
-    - Power Level: 100.00k\n\u25A0 Ready - PlayerName - Knight - Power Level: 100.00k"
+    - Power Level: 100.00k\n\u25A0 Ready - PlayerName - Knight - Power Level: 100.00k\n\u25A0
+    Ready - PlayerName - Knight - Power Level: 100.00k\n\u25A0 Ready - PlayerName
+    - Knight - Power Level: 100.00k\n\u25A0 Ready - PlayerName - Knight - Power Level:
+    100.00k"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -13322,7 +13323,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 2072866401}
   m_HandleRect: {fileID: 2072866400}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -13714,7 +13715,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 2108945444}
   m_HandleRect: {fileID: 2108945443}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:
@@ -13900,14 +13901,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - v0.2.1
+      - v0.2.3
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - v0.2.1
+    - v0.2.3
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -18897,7 +18898,7 @@ MonoBehaviour:
   _networkRules: {fileID: 11400000, guid: d8799083b96579a42b8b2d03e4ceae98, type: 2}
   _visibilityRules: {fileID: 11400000, guid: 8f014a5bd8dc68646a2a3c0b18c5bbd8, type: 2}
   _authenticator: {fileID: 1457045225}
-  _tickRate: 30
+  _tickRate: 60
   _patchLingeringProcessBug: 0
 --- !u!4 &1457045224
 Transform:
@@ -19879,7 +19880,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.2.1
+  m_text: Version 0.2.3
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -28104,7 +28105,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 1433267950}
   m_HandleRect: {fileID: 1433267949}
   m_Direction: 2
-  m_Value: 1
+  m_Value: 0
   m_Size: 1
   m_NumberOfSteps: 0
   m_OnValueChanged:

@@ -489,6 +489,9 @@ MonoBehaviour:
   phantomBladeOnHitEnabled: 0
   phantomBladeOnHitPowerPercent: 0
   allyStrikeHitEnabled: 0
+  deathEventCount: 0
+  killEventCount: 0
+  energyRegenWhileSurgingPercent: 0
   allyStrikeDamageEnabled: 0
   execute: 0
   executeThreshold: 0

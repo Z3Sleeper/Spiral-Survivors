@@ -107,7 +107,7 @@ public class CharacterSelectUI : MonoBehaviour
             }
         }
 
-        var sb = new System.Text.StringBuilder("Player List:\n");
+        var sb = new System.Text.StringBuilder($"Player List ({lobby.Members.Count}/{lobby.MaxPlayers}):\n");
         foreach (var member in lobby.Members)
         {
             string charName = "...";

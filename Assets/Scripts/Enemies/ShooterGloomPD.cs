@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -9,7 +10,7 @@ using UnityEngine;
 // shared MultishotMath formula (WeaponBasePD.cs) — same behavior as the player's own WeaponRangedPD.
 public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         public int   shooterStateId;
@@ -17,6 +18,13 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         public float attackCooldownTimer;
         public int   shotsRemaining;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.b = b.Duplicate();
+            return copy;
+        }
     }
 
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;
@@ -316,7 +324,8 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     // will do this), same reasoning as SpearGloomPD's own OnDeathStop.
     protected override void OnDeathStop()
     {
-        if (_animator != null) _animator.Play(IdleHash, 0, 0f);
+        // Guarded on activeInHierarchy — see SpearGloomPD's own comment on the same guard.
+        if (_animator != null && gameObject.activeInHierarchy) _animator.Play(IdleHash, 0, 0f);
     }
 
     protected override void OnRespawnReset()

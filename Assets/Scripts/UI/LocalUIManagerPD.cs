@@ -227,6 +227,7 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private bool _levelUpScreenShown;
     private bool _levelUpBackgroundShown;
+    private bool _cardsShown;
 
     private void UpdateLevelUpScreen()
     {
@@ -248,20 +249,37 @@ public class LocalUIManagerPD : MonoBehaviour
             _levelUpBackgroundShown = false;
         }
 
+        // The level-up screen itself (overlay + timer + card container) now ALSO spans the whole
+        // presenting window, same as levelUpBackground above — it used to close the instant THIS player
+        // picked (levelUpScreen.SetActive(false) hid its overlay/timer children along with the cards),
+        // which read as "the level-up screen closed early" even though other players were still choosing.
+        // Only the cards themselves hide early now (below) — the timer/overlay stay up for everyone until
+        // the whole window actually ends.
+        if (presenting && !_levelUpScreenShown)
+        {
+            ShowLevelUpScreen();
+            _levelUpScreenShown = true;
+        }
+        else if (!presenting && _levelUpScreenShown)
+        {
+            HideLevelUpScreen();
+            _levelUpScreenShown = false;
+        }
+
         // Cards only need to be visible until THIS player has picked — no reason to keep showing your
         // own already-answered options while waiting on everyone else.
         bool shouldShowCards = presenting && !AugmentManagerPD.instance.HasPlayerPicked(_controller.owner.Value);
 
-        if (shouldShowCards && !_levelUpScreenShown)
+        if (shouldShowCards && !_cardsShown)
         {
             SetUpLevelUpScreen(AugmentManagerPD.instance.GetOptionsForPlayer(_controller.owner.Value));
-            ShowLevelUpScreen();
-            _levelUpScreenShown = true;
+            cardContainer.gameObject.SetActive(true);
+            _cardsShown = true;
         }
-        else if (!shouldShowCards && _levelUpScreenShown)
+        else if (!shouldShowCards && _cardsShown)
         {
-            HideLevelUpScreen();
-            _levelUpScreenShown = false;
+            cardContainer.gameObject.SetActive(false);
+            _cardsShown = false;
         }
     }
 

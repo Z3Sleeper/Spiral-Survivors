@@ -1,11 +1,12 @@
 using PurrNet;
+using PurrNet.Packing;
 using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
 public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         public int spearStateId;
@@ -18,6 +19,14 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
             hitTargetsThisStab.Dispose();
             b.contactCooldowns.Dispose();
             b.killLaunchHitIds.Dispose();
+        }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.b = b.Duplicate();
+            copy.hitTargetsThisStab = hitTargetsThisStab.Duplicate();
+            return copy;
         }
     }
 
@@ -317,7 +326,13 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         // Snaps out of whatever attack pose (Windup/Stabbing/etc.) this enemy died mid-animation in — ss
         // is frozen from here on (Simulate() stops updating spearStateId once dead), so without this the
         // corpse would otherwise hold/loop that pose for the entire kill-launch instead of reading as dead.
-        if (_animator != null) _animator.Play(IdleHash, 0, 0f);
+        // Guarded on activeInHierarchy (unlike the indicator-hide above, which must always run — see
+        // EnemyBasePD.UpdateView's own comment) since Animator.Play() logs a warning when called on an
+        // inactive GameObject; on the client this can be transiently true if this tick is being replayed
+        // before a pooled instance has fully reactivated. Harmless to skip here — a hidden/dead corpse's
+        // pose no longer matters, and a genuinely fresh reuse gets its own animator reset via
+        // OnRespawnReset()'s Rebind() regardless.
+        if (_animator != null && gameObject.activeInHierarchy) _animator.Play(IdleHash, 0, 0f);
     }
 
     protected override void OnRespawnReset()

@@ -1,3 +1,4 @@
+using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -11,7 +12,7 @@ using UnityEngine;
 // deliberately leaves contact damage untouched, matched here via no CanContactDamage override.
 public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         public int     stateId;              // cast to/from LeapState, same convention as SpearGloomPD
@@ -21,6 +22,13 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         public Vector3 leapTarget;            // locked in at Windup entry, reused through Leaping/Landing
         public int     leapsRemaining;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.b = b.Duplicate();
+            return copy;
+        }
     }
 
     public enum LeapState { Moving, Windup, Leaping, Landing, PostLeap }
@@ -393,7 +401,8 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         if (_windupFill != null)      _windupFill.ResetFill();
         // Snaps out of whatever attack pose this enemy died mid-animation in — see SpearGloomPD's own
         // OnDeathStop comment for why (stateId is frozen from here on, so nothing else will do this).
-        if (_animator != null) _animator.Play(IdleHash, 0, 0f);
+        // Guarded on activeInHierarchy — see SpearGloomPD's own comment on the same guard.
+        if (_animator != null && gameObject.activeInHierarchy) _animator.Play(IdleHash, 0, 0f);
     }
 
     protected override void OnRespawnReset()
