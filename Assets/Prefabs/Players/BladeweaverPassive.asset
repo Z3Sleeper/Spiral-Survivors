@@ -33,8 +33,8 @@ MonoBehaviour:
   bonusWeaponCountMultiplier: 1
   bonusWeaponRangeFlat: 0
   bonusWeaponRangePercent: 0
-  weaponRangePenalty: -0.5
-  totalWeaponRangePercent: 0
+  weaponRangePenalty: 0
+  totalWeaponRangePercent: -0.5
   totalWeaponRangePenalty: 0
   bonusWeaponSizePercent: 0
   bonusSizePercent: 0
@@ -75,8 +75,6 @@ MonoBehaviour:
   totalEnergyRegenPenalty: 0
   bonusSurgeCostFlat: 0
   bonusSurgeCostPercent: 0
-  surgeEffectiveness: 1
-  surgeEffectivenessPenalty: 0
   surgeAttackSpeedPenalty: 0
   dashHaste: 0
   bonusDashHastePercent: 0

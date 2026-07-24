@@ -203,18 +203,19 @@ public class LobbySceneController : MonoBehaviour
         CharacterSelectUI.instance?.ResetLocalLobbyState();
         _connectingToHost = false;
 
-        int assignedColor = CharacterSelectUI.instance?.AssignUniqueColor(lobby) ?? 0;
-        GameStartData.LocalColorIndex = assignedColor;
-        GameStartData.LocalColor = CharacterSelectUI.instance?.GetColor(assignedColor) ?? UnityEngine.Color.white;
-
+        // Color is no longer self-assigned here — the host is the single source of truth for color
+        // assignment now (see CharacterSelectUI.ResolveColorAssignments/ColorAssignmentsKey). This starts
+        // at whatever GameStartData.LocalColorIndex already held (0 by default) as a harmless placeholder;
+        // the RefreshFromLobby call below resolves the real assignment — instantly for the host itself (no
+        // network round-trip to read back its own just-written data), or within one lobby-update round-trip
+        // for a joining client waiting on the host's answer.
         if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
         {
             var steamLobby = new CSteamID(lobbyIdRaw);
             SteamMatchmaking.SetLobbyMemberData(steamLobby, "char", "0");
-            SteamMatchmaking.SetLobbyMemberData(steamLobby, "color", assignedColor.ToString());
             SteamMatchmaking.SetLobbyMemberData(steamLobby, "power", ProgressionManager.SpentPoints.ToString());
         }
-        CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0, assignedColor);
+        CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0, GameStartData.LocalColorIndex);
         CharacterSelectUI.instance?.RefreshFromLobby(lobby);
         ShowCharacterSelect();
     }

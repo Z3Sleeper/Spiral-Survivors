@@ -56,27 +56,107 @@ public class CharacterSelectUI : MonoBehaviour
 
     public UnityEngine.Color GetColor(int index) => colorPalette != null ? colorPalette.Get(index) : UnityEngine.Color.white;
 
-    public int AssignUniqueColor(Lobby lobby)
-    {
-        if (colorPalette == null || colorPalette.Count == 0) return 0;
+    // Lobby-wide data (SetLobbyData) — as opposed to per-member data (SetLobbyMemberData) — can only ever be
+    // written by the lobby owner. That's an actual Steam-enforced single-writer guarantee, which is what
+    // makes this blob a true single source of truth for color assignment instead of the old "every client
+    // independently claims its own slot" design (which had a real race — two clients could both read a color
+    // as free before either write propagated, and both claim it). Format: "steamId1:0,steamId2:2,...".
+    // Non-host clients never write this directly — see SelectColor/ColorRequestKey.
+    private const string ColorAssignmentsKey = "ColorAssignments";
 
-        var taken = new System.Collections.Generic.HashSet<int>();
-        if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
+    // Per-member data — a non-authoritative REQUEST only ("I'd like this color"), never a claim. Only the
+    // host ever turns a request into an actual assignment, via ResolveColorAssignments.
+    private const string ColorRequestKey = "colorRequest";
+
+    private static Dictionary<string, int> ParseColorAssignments(string blob)
+    {
+        var result = new Dictionary<string, int>();
+        if (string.IsNullOrEmpty(blob)) return result;
+
+        foreach (var entry in blob.Split(','))
         {
-            var lobbyCSteamID = new CSteamID(lobbyIdRaw);
-            foreach (var member in lobby.Members)
+            int sep = entry.IndexOf(':');
+            if (sep <= 0) continue;
+            if (int.TryParse(entry.Substring(sep + 1), out int idx))
+                result[entry.Substring(0, sep)] = idx;
+        }
+        return result;
+    }
+
+    private static string SerializeColorAssignments(Dictionary<string, int> assignments)
+    {
+        var sb = new System.Text.StringBuilder();
+        bool first = true;
+        foreach (var kvp in assignments)
+        {
+            if (!first) sb.Append(',');
+            sb.Append(kvp.Key).Append(':').Append(kvp.Value);
+            first = false;
+        }
+        return sb.ToString();
+    }
+
+    // Pure function over already-known state (no Steam calls) — ResolveColorAssignments already has the
+    // full picture of who currently holds what via the working `taken` set.
+    private int FindFirstFreeColor(HashSet<int> taken)
+    {
+        for (int i = 0; i < colorPalette.Count; i++)
+            if (!taken.Contains(i)) return i;
+        return 0;
+    }
+
+    // HOST-ONLY. Reconciles ColorAssignments against the current member list and everyone's outstanding
+    // colorRequest: prunes members who've left (freeing their color back up), auto-assigns anyone missing
+    // an assignment (new joiners), and grants a pending request iff the requested color is actually free —
+    // otherwise the requester silently keeps their current color until they request a different, free one.
+    private void ResolveColorAssignments(Lobby lobby)
+    {
+        if (!lobby.IsOwner) return;
+        if (colorPalette == null || colorPalette.Count == 0) return;
+        if (!ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw)) return;
+        var lobbyCSteamID = new CSteamID(lobbyIdRaw);
+
+        var assignments = ParseColorAssignments(SteamMatchmaking.GetLobbyData(lobbyCSteamID, ColorAssignmentsKey));
+        var taken = new HashSet<int>(assignments.Values);
+        bool changed = false;
+
+        var memberIds = new HashSet<string>();
+        foreach (var member in lobby.Members) memberIds.Add(member.Id);
+        foreach (var staleId in new List<string>(assignments.Keys))
+        {
+            if (memberIds.Contains(staleId)) continue;
+            taken.Remove(assignments[staleId]);
+            assignments.Remove(staleId);
+            changed = true;
+        }
+
+        foreach (var member in lobby.Members)
+        {
+            if (!ulong.TryParse(member.Id, out ulong memberIdRaw)) continue;
+            bool hasAssignment = assignments.TryGetValue(member.Id, out int currentColor);
+
+            if (!hasAssignment)
             {
-                if (member.Id == GameStartData.LocalUserId) continue;
-                if (!ulong.TryParse(member.Id, out ulong memberIdRaw)) continue;
-                string val = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, new CSteamID(memberIdRaw), "color");
-                if (int.TryParse(val, out int idx)) taken.Add(idx);
+                int assigned = FindFirstFreeColor(taken);
+                assignments[member.Id] = assigned;
+                taken.Add(assigned);
+                changed = true;
+                continue;
+            }
+
+            string requestVal = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, new CSteamID(memberIdRaw), ColorRequestKey);
+            if (int.TryParse(requestVal, out int requested) && requested != currentColor
+                && requested >= 0 && requested < colorPalette.Count && !taken.Contains(requested))
+            {
+                taken.Remove(currentColor);
+                taken.Add(requested);
+                assignments[member.Id] = requested;
+                changed = true;
             }
         }
 
-        for (int i = 0; i < colorPalette.Count; i++)
-            if (!taken.Contains(i)) return i;
-
-        return 0;
+        if (changed)
+            SteamMatchmaking.SetLobbyData(lobbyCSteamID, ColorAssignmentsKey, SerializeColorAssignments(assignments));
     }
 
     public void RefreshFromLobby(Lobby lobby)
@@ -84,9 +164,22 @@ public class CharacterSelectUI : MonoBehaviour
         if (playerListText == null || CharacterRegistry.instance == null) return;
         codeButton?.Init(lobby.LobbyId);
 
+        // Host reconciles first so its own read immediately below (both here and everyone else's, once this
+        // client's write propagates) reflects the freshest possible assignment — no-ops entirely for non-host
+        // clients, whose color always comes purely from reading this same blob, never from self-assignment.
+        ResolveColorAssignments(lobby);
+
         if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
         {
             var lobbyCSteamID = new CSteamID(lobbyIdRaw);
+            var colorAssignments = ParseColorAssignments(SteamMatchmaking.GetLobbyData(lobbyCSteamID, ColorAssignmentsKey));
+
+            if (colorAssignments.TryGetValue(GameStartData.LocalUserId, out int myColor))
+            {
+                GameStartData.LocalColorIndex = myColor;
+                GameStartData.LocalColor = GetColor(myColor);
+            }
+
             foreach (var member in lobby.Members)
             {
                 if (member.Id == GameStartData.LocalUserId) continue;
@@ -97,8 +190,7 @@ public class CharacterSelectUI : MonoBehaviour
                 if (int.TryParse(charVal, out int charIdx))
                     _charSelections[member.Id] = charIdx;
 
-                string colorVal = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, memberSteamID, "color");
-                if (int.TryParse(colorVal, out int colorIdx))
+                if (colorAssignments.TryGetValue(member.Id, out int colorIdx))
                     _colorSelections[member.Id] = colorIdx;
 
                 string powerVal = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, memberSteamID, "power");
@@ -205,6 +297,12 @@ public class CharacterSelectUI : MonoBehaviour
         _powerLevels.Clear();
     }
 
+    // Just files a REQUEST — never claims the color directly. The host (see ResolveColorAssignments) is the
+    // only thing that ever actually grants it, via ColorAssignmentsKey; GameStartData.LocalColorIndex only
+    // updates once RefreshFromLobby reads that confirmation back, not optimistically here. For the host's
+    // own clicks this resolves within the same RefreshFromLobby call below (no network round-trip needed to
+    // read back its own just-written Steam data); for a non-host client it resolves once the host's answer
+    // propagates back, same latency as everyone else's data in this screen.
     private void SelectColor(int index)
     {
         if (lobbyManager != null)
@@ -212,27 +310,15 @@ public class CharacterSelectUI : MonoBehaviour
             var lobby = lobbyManager.CurrentLobby;
             if (lobby.IsValid && ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
             {
-                var lobbyCSteamID = new CSteamID(lobbyIdRaw);
-                foreach (var member in lobby.Members)
-                {
-                    if (member.Id == GameStartData.LocalUserId) continue;
-                    if (!ulong.TryParse(member.Id, out ulong memberIdRaw)) continue;
-                    string val = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, new CSteamID(memberIdRaw), "color");
-                    if (int.TryParse(val, out int idx) && idx == index) return;
-                }
-                SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "color", index.ToString());
-                GameStartData.LocalColorIndex = index;
-                GameStartData.LocalColor = colorPalette.Get(index);
-                if (!string.IsNullOrEmpty(GameStartData.LocalUserId))
-                    _colorSelections[GameStartData.LocalUserId] = index;
+                SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), ColorRequestKey, index.ToString());
                 RefreshFromLobby(lobby);
                 return;
             }
         }
 
+        // No active lobby (e.g. solo/offline) — nothing to arbitrate, just set it directly.
         GameStartData.LocalColorIndex = index;
-        if (!string.IsNullOrEmpty(GameStartData.LocalUserId))
-            _colorSelections[GameStartData.LocalUserId] = index;
+        GameStartData.LocalColor = GetColor(index);
     }
 
     private void SelectCharacter(int index)

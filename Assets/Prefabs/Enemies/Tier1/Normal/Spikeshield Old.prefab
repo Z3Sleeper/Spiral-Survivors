@@ -193,7 +193,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 2083188982215853157}
-  - component: {fileID: 8714963381851736946}
   - component: {fileID: 406130325739584143}
   m_Layer: 0
   m_Name: Spikeshield Old
@@ -223,43 +222,6 @@ Transform:
   - {fileID: 5608761759983764785}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &8714963381851736946
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 104351452379949711}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f39ac1778ca92ae4fb5ee01cb83e4187, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GloomShield
-  _isSetup: 0
-  _prefabId: -2147483648
-  _componentIndex: -2147483648
-  _shouldBePooled: 0
-  _parent: {fileID: 0}
-  _invertedPathToNearestParent: 
-  _directChildren: []
-  _networkRules: {fileID: 0}
-  _visitiblityRules: {fileID: 0}
-  shieldOffset: 1
-  angleOffset: 0
-  windupDuration: 1
-  explosionDuration: 0.1
-  rotationSpeed: 90
-  reactionCooldown: 3
-  explosionMultiplier: 2
-  hitbox: {fileID: 3071644559402824046}
-  strikeableCollider: {fileID: 1187304013089527040}
-  shieldRenderers:
-  - {fileID: 6778979631659814862}
-  - {fileID: 9137959009368600237}
-  - {fileID: 7565304498323452007}
-  windupIndicator: {fileID: 6334586207801002072}
-  windupFill: {fileID: 5224979170181036711}
-  windupColor: {r: 1, g: 0, b: 0, a: 1}
 --- !u!54 &406130325739584143
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -2064,7 +2026,6 @@ GameObject:
   m_Component:
   - component: {fileID: 7636337710024134192}
   - component: {fileID: 3071644559402824046}
-  - component: {fileID: 8552918508780767413}
   m_Layer: 0
   m_Name: Hitbox
   m_TagString: Untagged
@@ -2108,18 +2069,6 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 1.5, y: 0.25, z: 3}
   m_Center: {x: 0, y: 0, z: 1.5}
---- !u!114 &8552918508780767413
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1897075325162957499}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6977898a27f4303408cf391df2fd45cb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GloomShieldHitbox
 --- !u!1 &1904263757586369466
 GameObject:
   m_ObjectHideFlags: 0
@@ -7870,7 +7819,6 @@ GameObject:
   - component: {fileID: 5009932571158473137}
   - component: {fileID: 2475776942606442973}
   - component: {fileID: 7207008217804128282}
-  - component: {fileID: 5224979170181036711}
   m_Layer: 0
   m_Name: WindupFill
   m_TagString: Untagged
@@ -7950,21 +7898,6 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!114 &5224979170181036711
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8070230306836080924}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: aa65e4e8d724bea4db2b9392ffb3bfe3, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WindupFill
-  fillType: 0
-  fillAxis: 2
-  fillMode: 1
 --- !u!1 &8081573942544852081
 GameObject:
   m_ObjectHideFlags: 0
