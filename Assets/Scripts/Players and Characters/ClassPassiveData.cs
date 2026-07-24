@@ -24,18 +24,26 @@ public class ClassPassiveData : ScriptableObject
     public float bonusMoveSpeedFlat = 0f;
     public float bonusMoveSpeedPercent = 0f;
     public float moveSpeedPenalty = 0f;
+    public float totalMoveSpeedPercent = 0f;
+    public float totalMoveSpeedPenalty = 0f;
 
-    [Header("Weapon Damage")]
-    public float bonusWeaponDamageFlat = 0f;
-    public float bonusWeaponDamagePercent = 0f;
-    public float bonusWeaponDamagePenalty = 0f;
+    [Header("Strength")]
+    public float bonusStrengthFlat = 0f;
+    public float bonusStrengthPercent = 0f;
+    public float bonusStrengthPenalty = 0f;
+    public float totalStrengthPercent = 0f;
+    public float totalStrengthPenalty = 0f;
 
     [Header("Weapon Radius")]
     public float bonusWeaponRadiusFlat = 0f;
     public float bonusWeaponRadiusPercent = 0f;
+    public float totalWeaponRadiusPercent = 0f;
+    public float totalWeaponRadiusPenalty = 0f;
 
     [Header("Attack Speed")]
-    public float attackSpeedPercent = 0f;
+    // Renamed from attackSpeedPercent to match CharacterStatsPD's own rename — this is a flat, in-units
+    // addition to baseAttackSpeed (despite the old name), not a genuine percent multiplier.
+    public float attackSpeedFlat = 0f;
     public float attackSpeedTotalPercent = 0f;
     public float attackSpeedPenalty = 0f;
 
@@ -47,6 +55,8 @@ public class ClassPassiveData : ScriptableObject
     public float bonusWeaponRangeFlat = 0f;
     public float bonusWeaponRangePercent = 0f;
     public float weaponRangePenalty = 0f;
+    public float totalWeaponRangePercent = 0f;
+    public float totalWeaponRangePenalty = 0f;
 
     [Header("Weapon Size")]
     public float bonusWeaponSizePercent = 0f;
@@ -58,6 +68,8 @@ public class ClassPassiveData : ScriptableObject
     [Header("Crit Chance")]
     public float bonusCritChanceFlat = 0f;
     public float bonusCritChancePercent = 0f;
+    public float totalCritChancePercent = 0f;
+    public float totalCritChancePenalty = 0f;
 
     [Header("Crit Damage")]
     public float bonusCritDamageFlat = 0f;
@@ -66,10 +78,14 @@ public class ClassPassiveData : ScriptableObject
     [Header("Ricochet")]
     public float bonusRicochetFlat = 0f;
     public float bonusRicochetPercent = 0f;
+    public float totalRicochetPercent = 0f;
+    public float totalRicochetPenalty = 0f;
 
     [Header("Multishot")]
     public float bonusMultishotFlat = 0f;
     public float bonusMultishotPercent = 0f;
+    public float totalMultishotPercent = 0f;
+    public float totalMultishotPenalty = 0f;
 
     [Header("Projectile Dropoff")]
     public float projectileDamageDropoffReduction = 0f;
@@ -78,14 +94,20 @@ public class ClassPassiveData : ScriptableObject
     [Header("Max Health")]
     public float bonusMaxHealthFlat = 0f;
     public float bonusMaxHealthPercent = 0f;
+    public float totalMaxHealthPercent = 0f;
+    public float totalMaxHealthPenalty = 0f;
 
     [Header("Health Regen")]
     public float bonusHealthRegenFlat = 0f;
     public float bonusHealthRegenPercent = 0f;
+    public float totalHealthRegenPercent = 0f;
+    public float totalHealthRegenPenalty = 0f;
 
     [Header("Max Shield")]
     public float bonusMaxShieldFlat = 0f;
     public float bonusMaxShieldPercent = 0f;
+    public float totalMaxShieldPercent = 0f;
+    public float totalMaxShieldPenalty = 0f;
 
     [Header("Max Energy")]
     public float bonusMaxEnergyFlat = 0f;
@@ -95,16 +117,22 @@ public class ClassPassiveData : ScriptableObject
     public float bonusEnergyRegenFlat = 0f;
     public float bonusEnergyRegenPercent = 0f;
     public float energyRegenPenalty = 0f;
+    public float totalEnergyRegenPercent = 0f;
+    public float totalEnergyRegenPenalty = 0f;
 
     [Header("Surge")]
     public float bonusSurgeCostFlat = 0f;
     public float bonusSurgeCostPercent = 0f;
-    public float surgeEffectiveness = 1f;
-    public float surgeEffectivenessPenalty = 0f;
     public float surgeAttackSpeedPenalty = 0f;
 
+    // dashHaste plays the "base+flat" role by itself (no separate base field — see CharacterStatsPD's own
+    // declaration comment), so bonusDashHastePercent/totalDashHastePercent/totalDashHastePenalty are the
+    // rest of the same 5-field convention as every other split stat, just without a distinct bonusFlat.
     [Header("Dash")]
     public float dashHaste = 0f;
+    public float bonusDashHastePercent = 0f;
+    public float totalDashHastePercent = 0f;
+    public float totalDashHastePenalty = 0f;
 
     [Header("Max SP")]
     public float bonusMaxSPFlat = 0f;
@@ -114,6 +142,8 @@ public class ClassPassiveData : ScriptableObject
     public float bonusLuckFlat = 0f;
     public float bonusLuckPercent = 0f;
     public float luckPenalty = 0f;
+    public float totalLuckPercent = 0f;
+    public float totalLuckPenalty = 0f;
     public float bonusLuckFloorPercent = 0f;
     public float luckFloorPenalty = 0f;
     public float bonusLuckCeilingPercent = 0f;
@@ -130,6 +160,8 @@ public class ClassPassiveData : ScriptableObject
     [Header("On-Hit Power")]
     public float bonusOnHitPowerMultiplier = 1f;
     public float bonusOnHitPowerPenalty = 0f;
+    public float totalOnHitPowerPercent = 0f;
+    public float totalOnHitPowerPenalty = 0f;
 
     [Header("Stack Power")]
     public float stackPowerPercent = 0f;

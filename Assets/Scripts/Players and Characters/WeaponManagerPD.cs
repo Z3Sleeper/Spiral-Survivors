@@ -107,39 +107,23 @@ public class WeaponManagerPD : MonoBehaviour
         SetupWeaponRange(weapon);
         foreach (var a in weapon.transform.GetComponentsInChildren<PlayerColorApplicator>(true))
             a.Apply(_stats.PlayerColor);
-        // Relays every registered weapon's own crit/hit events up to this player's own CharacterStatsPD —
-        // the one place downstream systems (e.g. PhantomBladeOnCritAugment, CritTriggerOnHitAugment) need
-        // to subscribe to, regardless of how many weapons this player has or which one actually hit/crit.
-        weapon.AddCritStrikeListener(OnAnyWeaponCrit);
-        weapon.AddHitListener(OnAnyWeaponHit);
-        weapon.AddStrikeListener(OnAnyWeaponStrike);
     }
 
     public void UnregisterWeapon(IWeaponPD weapon)
     {
-        bool removed;
         if (weapon.IsOuterTrack)
         {
-            removed = _outerWeapons.Remove(weapon);
+            _outerWeapons.Remove(weapon);
             for (int i = 0; i < _outerWeapons.Count; i++)
                 _outerWeapons[i].SlotIndex = i;
         }
         else
         {
-            removed = _weapons.Remove(weapon);
+            _weapons.Remove(weapon);
             for (int i = 0; i < _weapons.Count; i++)
                 _weapons[i].SlotIndex = i;
         }
-        if (!removed) return;
-
-        weapon.RemoveCritStrikeListener(OnAnyWeaponCrit);
-        weapon.RemoveHitListener(OnAnyWeaponHit);
-        weapon.RemoveStrikeListener(OnAnyWeaponStrike);
     }
-
-    private void OnAnyWeaponCrit(WeaponHitData data) => _stats.NotifyCritStrike(data);
-    private void OnAnyWeaponHit(WeaponHitData data) => _stats.NotifyHit(data);
-    private void OnAnyWeaponStrike(WeaponHitData data) => _stats.NotifyStrike(data);
 
     // ── Range / size helpers ──────────────────────────────────────────────────
 

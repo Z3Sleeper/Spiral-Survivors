@@ -5,14 +5,14 @@ using UnityEngine;
 
 public static class ProgressionManager
 {
-    private const int    CurrentSaveVersion = 2;
+    private const int    CurrentSaveVersion = 3;
     private const string SaveFileName       = "progression.json";
 
     private const int   BaseFee       = 50;
     private const float FeeMultiplier = 1.1f;
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
-    private static readonly int[] WeaponDamageCosts =
+    private static readonly int[] StrengthCosts =
         { 0, 500, 1000 };
     private static readonly int[] DashChargesCosts =
         { 0, 250, 500, 750 };
@@ -52,9 +52,9 @@ public static class ProgressionManager
         { 8000, 16000, 24000, 32000, 40000, 48000, 56000, 64000, 72000, 80000 };
     private static readonly int[] LevelUpOptionsCosts =
         { 10000, 20000 };
-    private static readonly int[] DamagePerLevelCosts =
+    private static readonly int[] StrengthPerLevelCosts =
         { 100000, 150000, 200000, 250000, 300000 };
-    private static readonly int[] WeaponDamagePercentCosts =
+    private static readonly int[] StrengthPercentCosts =
         { 250000, 500000, 750000, 1000000, 1250000 };
 
     private static string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
@@ -115,6 +115,9 @@ public static class ProgressionManager
 
     private static void CleanLegacyPlayerPrefs()
     {
+        // These key strings are a hardcoded snapshot of an OLD PlayerPrefs-based save system's own key
+        // names, used only to detect and delete its leftovers — NOT generated from StatType.ToString(), so
+        // they intentionally still say "WeaponDamage" and must NOT be renamed to match StatType.Strength.
         string[] legacyKeys =
         {
             "TotalPoints", "SpentPoints", "BoughtUpgrades", "SaveVersion", "LevelUpTier",
@@ -157,7 +160,7 @@ public static class ProgressionManager
     private static int[] GetStatCosts(StatType statType) => statType switch
     {
         StatType.MaxHealth         => MaxHealthCosts,
-        StatType.WeaponDamage      => WeaponDamageCosts,
+        StatType.Strength          => StrengthCosts,
         StatType.MoveSpeed         => MoveSpeedCosts,
         StatType.AttackSpeed       => AttackSpeedCosts,
         StatType.HealthRegen       => HealthRegenCosts,
@@ -173,9 +176,9 @@ public static class ProgressionManager
         StatType.XPMultiplier      => XPMultiplierCosts,
         StatType.LevelUpOptions    => LevelUpOptionsCosts,
         StatType.LevelUpStats       => LevelUpStatsCosts,
-        StatType.WeaponDamagePercent => WeaponDamagePercentCosts,
+        StatType.StrengthPercent     => StrengthPercentCosts,
         StatType.Luck                => LuckCosts,
-        StatType.DamagePerLevel      => DamagePerLevelCosts,
+        StatType.StrengthPerLevel    => StrengthPerLevelCosts,
         StatType.MaxShield           => MaxShieldCosts,
         StatType.ShieldRechargeTime  => ShieldRechargeTimeCosts,
         _                           => System.Array.Empty<int>()
@@ -192,7 +195,7 @@ public static class ProgressionManager
 
     public static bool IsStatUnlocked(StatType statType)
     {
-        if (statType == StatType.WeaponDamage) return true;
+        if (statType == StatType.Strength) return true;
         int[] costs = GetStatCosts(statType);
         return costs.Length > 0 && TotalPoints >= costs[0] * 5 + BaseFee;
     }
@@ -202,7 +205,7 @@ public static class ProgressionManager
 
     public static float GetBaseStatValuePerTier(StatType statType) => statType switch
     {
-        StatType.WeaponDamage      => 5f,
+        StatType.Strength          => 5f,
         StatType.MaxHealth         => 10f,
         StatType.MoveSpeed         => 1f,
         StatType.AttackSpeed       => 15f,
@@ -219,9 +222,9 @@ public static class ProgressionManager
         StatType.XPMultiplier      => 10f,
         StatType.LevelUpOptions    => 1f,
         StatType.LevelUpStats       => 10f,
-        StatType.WeaponDamagePercent => 0.1f,
+        StatType.StrengthPercent     => 0.1f,
         StatType.Luck                => 10f,
-        StatType.DamagePerLevel      => 0.5f,
+        StatType.StrengthPerLevel    => 0.5f,
         StatType.MaxShield           => 0.05f,
         StatType.ShieldRechargeTime  => -0.5f,
         _                           => 0f
@@ -327,7 +330,7 @@ public static class ProgressionManager
     private static string GetStatDisplayName(StatType stat) => stat switch
     {
         StatType.MaxHealth         => "Max Health",
-        StatType.WeaponDamage      => "Damage",
+        StatType.Strength          => "Strength",
         StatType.MoveSpeed         => "Move Speed",
         StatType.AttackSpeed       => "Attack Speed",
         StatType.HealthRegen       => "Health Regen",
@@ -343,9 +346,9 @@ public static class ProgressionManager
         StatType.XPMultiplier      => "XP Multiplier",
         StatType.LevelUpOptions    => "Level Up Options",
         StatType.LevelUpStats       => "Level Up Stats",
-        StatType.WeaponDamagePercent => "% Damage",
+        StatType.StrengthPercent     => "% Strength",
         StatType.Luck                => "Luck",
-        StatType.DamagePerLevel      => "Damage Per Level",
+        StatType.StrengthPerLevel    => "Strength Per Level",
         StatType.MaxShield           => "Max Shield",
         StatType.ShieldRechargeTime  => "Shield Recharge Time",
         _                           => stat.ToString()

@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -19,11 +18,6 @@ public class OnHitDamageAugment : AugmentEffectPD<OnHitDamageAugment.State>
 
     [SerializeField] private float onHitDamagePercent = 0.2f;
 
-    // Plain (not predicted State) — same "queue in Simulate-context, drain in UpdateView" split as every
-    // weapon's own _hitFeedbackQueue, so damage numbers/flash fire at render rate instead of risking a
-    // resimulation replaying TriggerHitFeedback's non-idempotent coroutine/SFX calls multiple times.
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
-
     protected override void OnApply()
     {
         Stats.AddHitListener(OnHit);
@@ -40,32 +34,21 @@ public class OnHitDamageAugment : AugmentEffectPD<OnHitDamageAugment.State>
         if (!data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy) || enemy._isDead) return;
 
         // data.weaponDamage and data.onHitPower each independently already divide by WeaponCount (see
-        // CharacterStatsPD.WeaponDamage/OnHitPower) — multiplying them directly would compound that into
+        // CharacterStatsPD.Strength/OnHitPower) — multiplying them directly would compound that into
         // 1/WeaponCount², shrinking this augment's total output as you stack more weapons instead of
-        // holding flat like every other weapon-damage-scaled effect. Using UnpenalizedWeaponDamage (which
+        // holding flat like every other weapon-damage-scaled effect. Using UnpenalizedStrength (which
         // deliberately excludes that divide) instead of weaponDamage leaves onHitPower as the only
         // WeaponCount divisor — same convention OnStrikeHealAllyAugment/OnHitDamageHealthRegenAugment
         // already use (onHitPower multiplied against a non-divided base stat), while still letting this
         // scale with any real onHitPower stat investment, unlike a ratio-normalized approach would.
         // Anything that deals damage rolls luck variance — no exceptions.
-        float baseDamage = Stats.UnpenalizedWeaponDamage * onHitDamagePercent * data.onHitPower;
+        float baseDamage = Stats.UnpenalizedStrength * onHitDamagePercent * data.onHitPower;
         float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
 
         if (data.isCrit) rolled *= Stats.CritDamage;
 
         enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
-        _hitFeedbackQueue.Add((enemy, rolled, data.isCrit, isHighroll));
-    }
-
-    protected override void UpdateView(State viewState, State? verified)
-    {
-        base.UpdateView(viewState, verified);
-
-        if (Stats == null) return;
-
-        foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, Stats);
-        _hitFeedbackQueue.Clear();
+        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false });
     }
 }

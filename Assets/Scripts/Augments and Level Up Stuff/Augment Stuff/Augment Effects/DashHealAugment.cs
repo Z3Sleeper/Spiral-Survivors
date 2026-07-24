@@ -12,7 +12,7 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float healPercent = 5f;
+    [SerializeField] private float healthRegenMultiplier = 5f;
     [SerializeField] private float healRadius   = 10f;
 
     [Header("VFX")]
@@ -45,7 +45,7 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
             if (ally.IsDead) continue;
             if (Vector3.Distance(ally.transform.position, Stats.transform.position) > healRadius) continue;
 
-            float baseHeal = Stats.HealthRegen * healPercent;
+            float baseHeal = Stats.HealthRegen * healthRegenMultiplier;
             float rolled = WeaponDamageMath.RollDamage(baseHeal, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
             if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
 

@@ -231,10 +231,6 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     {
         if (_target == null) return;
 
-        // Pinned for the whole attack sequence (re-set on every repeat leap, harmless) — see EnterMoving
-        // for the matching clear.
-        LockTarget(ref state);
-
         // Fixed-radius, random-angle offset — matches KingSpikePD's remote-burst offset (a uniform random
         // angle at a FIXED distance, not old's Random.insideUnitCircle.normalized equivalent, ported to
         // GameRandom for determinism).
@@ -298,7 +294,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private void EnterMoving(ref State state)
     {
         state.leapsRemaining = leapsPerAttack;
-        ClearTargetLock(ref state);
+        // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
+        // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
+        FindClosestTarget();
         SetLeapState(ref state, LeapState.Moving);
     }
 

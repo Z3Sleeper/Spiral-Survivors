@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using PurrNet;
+using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -69,12 +70,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float baseMoveSpeed = 10f;
 
     [Header("Weapon")]
-    public float damagePerLevel = 2.5f;
-    public float baseWeaponDamage = 15f;
+    public float strengthPerLevel = 2.5f;
+    public float baseStrength = 15f;
     public float baseWeaponRadius = 0f;
     public float baseAttackSpeed = 0.5f;
     public int baseWeaponCount = 1;
-    // Extra weapon "tracks" (e.g. the planned OuterWeaponTrackAugment), feeding into WeaponDamage's own
+    // Extra weapon "tracks" (e.g. the planned OuterWeaponTrackAugment), feeding into Strength's own
     // auto-divide below. Deliberately a single plain int, not a base/flat/multiplier scaffold like
     // baseWeaponCount — this is intentionally-unused-elsewhere bookkeeping, directly += a small integer
     // whenever tracks are added or removed (see AddWeaponTracks), never multiplied.
@@ -130,8 +131,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float baseLuckFloor = 0.5f;
     public float baseLuckCeiling = 1.5f;
     // The "floor" of a highroll — a roll landing in the top (1 - Highroll) fraction of its own window
-    // snaps up to the max and invokes the hitting weapon's own _onHighroll (a PredictedEvent, rollback-safe
-    // — see WeaponBasePD<TState>._onHighroll / WeaponRangedProjectilePD._onHighroll). Same base+bonus+penalty
+    // snaps up to the max and invokes the hitting player's own CharacterStatsPD._onHighroll (a PredictedEvent,
+    // rollback-safe, called via NotifyHighroll from whatever weapon/effect actually rolled the hit). Same
+    // base+bonus+penalty
     // convention as every other stat here, so a future augment/passive can push it (e.g. toward 1.0 = never
     // highrolls, or lower = highrolls more often) without touching WeaponDamageMath itself.
     public float baseHighroll = 0.95f;
@@ -160,18 +162,37 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     // ── Augment/bonus modifiers ────────────────────────────────────────────
 
+    // bonusMoveSpeedFlat/Percent/moveSpeedPenalty are the "Bonus" tier — class passives
+    // (ClassPassiveData/ApplyClassPassives) and meta-progression are the only writers, so bonusMoveSpeedPercent
+    // only ever scales bonusMoveSpeedFlat (see MoveSpeed below), never base directly. totalMoveSpeedPercent is
+    // the NEW "Total" tier — the one in-run stat augments (MoveSpeedAugment and friends) grant, scaling the
+    // whole (base + bonus) sum uniformly regardless of how big base itself is. See
+    // project_bonus_total_stat_tiers memory for the full reasoning/formula.
     [HideInInspector] public float bonusMoveSpeedFlat = 0f;
     [HideInInspector] public float bonusMoveSpeedPercent = 1f;
     [HideInInspector] public float moveSpeedPenalty = 1f;
+    [HideInInspector] public float totalMoveSpeedPercent = 1f;
+    [HideInInspector] public float totalMoveSpeedPenalty = 1f;
 
-    [HideInInspector] public float bonusWeaponDamageFlat = 0f;
-    [HideInInspector] public float bonusWeaponDamagePercent = 1f;
-    [HideInInspector] public float bonusWeaponDamagePenalty = 1f;
+    // bonusStrengthPercent/bonusStrengthPenalty are Bonus tier (class passives/meta-progression only).
+    // totalStrengthPercent/totalStrengthPenalty are the Total tier — what the weapon-count/multishot/track
+    // "compensate with a damage bonus" augments (BladeweaviestBladeweaverAugment, MultiShotAugment,
+    // OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) grant instead, now that they're not
+    // "the 9" but still needed redirecting per the same-stat-being-changed rule.
+    [HideInInspector] public float bonusStrengthFlat = 0f;
+    [HideInInspector] public float bonusStrengthPercent = 1f;
+    [HideInInspector] public float bonusStrengthPenalty = 1f;
+    [HideInInspector] public float totalStrengthPercent = 1f;
+    [HideInInspector] public float totalStrengthPenalty = 1f;
 
     [HideInInspector] public float bonusWeaponRadiusFlat = 0f;
     [HideInInspector] public float bonusWeaponRadiusPercent = 1f;
+    [HideInInspector] public float totalWeaponRadiusPercent = 1f;
+    [HideInInspector] public float totalWeaponRadiusPenalty = 1f;
 
-    [HideInInspector] public float attackSpeedPercent = 0f;
+    // Despite the old name, this is a flat, in-units addition to baseAttackSpeed, not a genuine percent
+    // multiplier — see AddAttackSpeedFlat's own comment. Renamed from attackSpeedPercent.
+    [HideInInspector] public float attackSpeedFlat = 0f;
     [HideInInspector] public float attackSpeedTotalPercent = 1f;
     [HideInInspector] public float attackSpeedPenalty = 1f;
 
@@ -181,6 +202,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [HideInInspector] public float bonusWeaponRangeFlat = 0f;
     [HideInInspector] public float bonusWeaponRangePercent = 1f;
     [HideInInspector] public float weaponRangePenalty = 1f;
+    [HideInInspector] public float totalWeaponRangePercent = 1f;
+    [HideInInspector] public float totalWeaponRangePenalty = 1f;
 
     [HideInInspector] public float bonusWeaponSizePercent = 1f;
 
@@ -194,28 +217,40 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     [HideInInspector] public float bonusCritChanceFlat = 0f;
     [HideInInspector] public float bonusCritChancePercent = 1f;
+    [HideInInspector] public float totalCritChancePercent = 1f;
+    [HideInInspector] public float totalCritChancePenalty = 1f;
 
     [HideInInspector] public float bonusCritDamageFlat = 0f;
     [HideInInspector] public float bonusCritDamagePercent = 1f;
 
     [HideInInspector] public float bonusRicochetFlat = 0f;
     [HideInInspector] public float bonusRicochetPercent = 1f;
+    [HideInInspector] public float totalRicochetPercent = 1f;
+    [HideInInspector] public float totalRicochetPenalty = 1f;
 
     [HideInInspector] public float bonusMultishotFlat = 0f;
     [HideInInspector] public float bonusMultishotPercent = 1f;
     [HideInInspector] public float bonusMultishotSpreadPercent = 1f;
+    [HideInInspector] public float totalMultishotPercent = 1f;
+    [HideInInspector] public float totalMultishotPenalty = 1f;
 
     [HideInInspector] public float projectileDamageDropoffReduction = 1f;
     [HideInInspector] public float projectileOnHitDropoffReduction = 1f;
 
     [HideInInspector] public float bonusMaxHealthFlat = 0f;
     [HideInInspector] public float bonusMaxHealthPercent = 1f;
+    [HideInInspector] public float totalMaxHealthPercent = 1f;
+    [HideInInspector] public float totalMaxHealthPenalty = 1f;
 
     [HideInInspector] public float bonusHealthRegenFlat = 0f;
     [HideInInspector] public float bonusHealthRegenPercent = 1f;
+    [HideInInspector] public float totalHealthRegenPercent = 1f;
+    [HideInInspector] public float totalHealthRegenPenalty = 1f;
 
     [HideInInspector] public float bonusMaxShieldFlat = 0f;
     [HideInInspector] public float bonusMaxShieldPercent = 1f;
+    [HideInInspector] public float totalMaxShieldPercent = 1f;
+    [HideInInspector] public float totalMaxShieldPenalty = 1f;
 
     [HideInInspector] public float bonusMaxEnergyFlat = 0f;
     [HideInInspector] public float bonusMaxEnergyPercent = 1f;
@@ -223,18 +258,25 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [HideInInspector] public float bonusEnergyRegenFlat = 0f;
     [HideInInspector] public float bonusEnergyRegenPercent = 1f;
     [HideInInspector] public float energyRegenPenalty = 1f;
+    [HideInInspector] public float totalEnergyRegenPercent = 1f;
+    [HideInInspector] public float totalEnergyRegenPenalty = 1f;
 
     [HideInInspector] public float bonusSurgeCostFlat = 0f;
     [HideInInspector] public float bonusSurgeCostPercent = 1f;
-    [HideInInspector] public float surgeEffectiveness = 1f;
-    [HideInInspector] public float surgeEffectivenessPenalty = 1f;
     [HideInInspector] public float surgeAttackSpeedPenalty = 1f;
 
     [HideInInspector] public float dashHaste = 0f;
     // Multiplicative on top of dashHaste (see DashCooldown) — same "additive against a 1f baseline"
     // pattern as bonusWeaponRangePercent/bonusCritChancePercent, added alongside dashHaste's existing flat
     // grant so DashHaste-family augments can have the same flat+percent dual structure Range/CritChance do.
+    // dashHaste has no separate serialized "base" field (it starts at 0 and is purely additive, unlike
+    // every other stat here), so there's no distinct base/bonus split to make for this one — totalDashHastePercent
+    // is simply appended as one more multiplier. Nothing but DashHasteAugment ever wrote bonusDashHastePercent
+    // anyway (ClassPassiveData/progression only ever add to dashHaste itself), so redirecting it to Total is
+    // a clean, zero-risk swap.
     [HideInInspector] public float bonusDashHastePercent = 1f;
+    [HideInInspector] public float totalDashHastePercent = 1f;
+    [HideInInspector] public float totalDashHastePenalty = 1f;
 
     [HideInInspector] public float bonusMaxSPFlat = 0f;
     [HideInInspector] public float bonusMaxSPPercent = 1f;
@@ -242,6 +284,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [HideInInspector] public float bonusLuckFlat = 0f;
     [HideInInspector] public float bonusLuckPercent = 1f;
     [HideInInspector] public float luckPenalty = 1f;
+    [HideInInspector] public float totalLuckPercent = 1f;
+    [HideInInspector] public float totalLuckPenalty = 1f;
     [HideInInspector] public float bonusLuckFloorPercent = 1f;
     [HideInInspector] public float luckFloorPenalty = 1f;
     [HideInInspector] public float bonusLuckCeilingFlat = 0f;
@@ -257,6 +301,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     [HideInInspector] public float bonusOnHitPowerMultiplier = 1f;
     [HideInInspector] public float bonusOnHitPowerPenalty = 1f;
+    // Total tier — bonusOnHitPowerMultiplier is already a genuine multiplier (no base/flat addition to
+    // split here), written only by ClassPassiveData/meta-progression now (Bonus tier, same as every other
+    // stat's bonus term). The weapon-count/multishot "compensate" augments (BladeweaviestBladeweaverAugment,
+    // MultiShotAugment, OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) all call
+    // AddOnHitPowerTotalPercent below instead — same Total-tier treatment as their Strength grant, not the
+    // old MultiplyOnHitPowerMultiplier compounding.
+    [HideInInspector] public float totalOnHitPowerPercent = 1f;
+    [HideInInspector] public float totalOnHitPowerPenalty = 1f;
 
     [HideInInspector] public float stackPowerPercent = 1f;
     [HideInInspector] public float stackPowerPenalty = 1f;
@@ -276,7 +328,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     // ── Computed properties ────────────────────────────────────────────────
 
-    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * bonusMoveSpeedPercent * moveSpeedPenalty * (currentState.isSurging ? SurgeMoveSpeedMulti : 1f);
+    // Bonus/Total split: bonusMoveSpeedPercent only scales bonusMoveSpeedFlat (the "Bonus" sub-term, still
+    // written only by ClassPassiveData/meta-progression), then totalMoveSpeedPercent scales the WHOLE
+    // (base + bonus) sum — so an in-run "+X% total move speed" augment is worth the same relative bump
+    // regardless of how big base/bonus already are, instead of being multiplied only against whatever tiny
+    // bonus pool happens to exist. See project_bonus_total_stat_tiers memory for the full formula.
+    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat * bonusMoveSpeedPercent * moveSpeedPenalty) * totalMoveSpeedPercent * totalMoveSpeedPenalty * (currentState.isSurging ? SurgeMoveSpeedMulti : 1f);
 
     // Auto-divided by total simultaneous damage instances (weapon tracks * weapon copies * shots per
     // attack) so picking up more weapons/multishot no longer needs its own hand-tuned damage penalty per
@@ -284,19 +341,29 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // straight damage bonus on top instead. (1f + Multishot) because Multishot itself is "bonus shots
     // beyond the first" (base 0), matching the same "+1" WeaponRangedPD.Fire() already applies when turning
     // it into an actual shot count — dividing by raw Multishot would divide by zero for anyone without it.
-    // UnpenalizedWeaponDamage deliberately excludes this divide, same as it already excludes
-    // bonusWeaponDamagePenalty — Phantom Blade damage reads this baseline and isn't one of the "extra
-    // simultaneous copies" this divide exists to counterbalance.
-    public float WeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent * bonusWeaponDamagePenalty
+    // UnpenalizedStrength deliberately excludes only this divide — Phantom Blade damage reads this baseline
+    // and isn't one of the "extra simultaneous copies" this divide exists to counterbalance. It shares the
+    // exact same (base + bonus) * total construction as Strength otherwise, penalties included.
+    // Same Bonus/Total split as MoveSpeed — bonusStrengthPenalty is folded into the Bonus sub-term
+    // (only ever written by ClassPassiveData/meta-progression, same as every other stat's bonus penalty),
+    // totalStrengthPenalty is the Total-tier counterpart.
+    public float Strength => (baseStrength + bonusStrengthFlat * bonusStrengthPercent * bonusStrengthPenalty) * totalStrengthPercent * totalStrengthPenalty
         / (weaponTracks * WeaponCount * (1f + Multishot));
-    public float UnpenalizedWeaponDamage => (baseWeaponDamage + bonusWeaponDamageFlat) * bonusWeaponDamagePercent;
+    public float UnpenalizedStrength => (baseStrength + bonusStrengthFlat * bonusStrengthPercent * bonusStrengthPenalty) * totalStrengthPercent * totalStrengthPenalty;
     // Deliberately doesn't factor in bonusSizePercent, unlike WeaponSize — Bladeweaver is the only class
     // that uses this for actual orbit distance (hovering blades), and a size augment pushing that
     // distance out further makes it harder for them to hit anything nearby, which isn't the intent of a
     // size augment. WeaponSize (hitbox/visual scale) still scales with size; this doesn't need to.
-    public float WeaponRadius => (baseWeaponRadius + bonusWeaponRadiusFlat) * bonusWeaponRadiusPercent;
+    // totalWeaponRadiusPercent: no in-run augment grants this yet (only ClassPassiveData touches
+    // bonusWeaponRadiusPercent) — added for future use per the same Bonus/Total split as every other stat.
+    public float WeaponRadius => (baseWeaponRadius + bonusWeaponRadiusFlat * bonusWeaponRadiusPercent) * totalWeaponRadiusPercent * totalWeaponRadiusPenalty;
 
-    public float AttackSpeed => (baseAttackSpeed + attackSpeedPercent) * attackSpeedTotalPercent * attackSpeedPenalty * (currentState.isSurging ? SurgeAttackSpeedMultiplier : 1f);
+    // Already implements the target Bonus/Total shape and needs no change: attackSpeedFlat IS this stat's
+    // "bonus" term already — added directly to base in absolute units, same role bonusMoveSpeedFlat plays
+    // elsewhere — and attackSpeedTotalPercent already is the genuine Total-tier multiplier AttackSpeedAugment
+    // grants. attackSpeedPenalty deliberately keeps its own "multiplies everything, outside both tiers"
+    // position — unlike Strength's bonusStrengthPenalty, no in-run system currently needs this reconsidered.
+    public float AttackSpeed => (baseAttackSpeed + attackSpeedFlat) * attackSpeedTotalPercent * attackSpeedPenalty * (currentState.isSurging ? SurgeAttackSpeedMultiplier : 1f);
     public float WeaponSpeed => AttackSpeed * 360f;
     // Public read access to the shared orbit angle (see State.weaponOrbitAngle's own doc comment) — every
     // weapon (WeaponMeleePD/WeaponAxePD/WeaponRangedPD) reads this instead of ticking its own copy.
@@ -304,41 +371,58 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float AttackSpeedPercent => attackSpeedTotalPercent * attackSpeedPenalty;
 
     public int WeaponCount => (baseWeaponCount + bonusWeaponCountFlat) * bonusWeaponCountMultiplier;
-    public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat) * bonusWeaponRangePercent * weaponRangePenalty * 0.2f;
+    // Same Bonus/Total split as MoveSpeed — totalWeaponRangePercent is the new Total tier RangeAugment (and
+    // its outlier siblings OuterTrackAugment/TitanAugment) grant; weaponRangePenalty is folded into the
+    // Bonus sub-term (ClassPassiveData is its only writer, same as moveSpeedPenalty/energyRegenPenalty).
+    public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat * bonusWeaponRangePercent * weaponRangePenalty) * totalWeaponRangePercent * totalWeaponRangePenalty * 0.2f;
     public float WeaponSize => baseWeaponSize * bonusWeaponSizePercent * bonusSizePercent;
 
-    public float CritChance => (baseCritChance + bonusCritChanceFlat) * bonusCritChancePercent;
+    // Same Bonus/Total split — totalCritChancePercent is the new Total tier CritChanceAugment grants.
+    public float CritChance => (baseCritChance + bonusCritChanceFlat * bonusCritChancePercent) * totalCritChancePercent * totalCritChancePenalty;
     public float CritDamage => ((baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent) + Mathf.Max(0f, CritChance - 1f) * 0.5f;
 
-    public float Ricochet => (baseRicochet + bonusRicochetFlat) * bonusRicochetPercent;
-    public float Multishot => (baseMultishot + bonusMultishotFlat) * bonusMultishotPercent;
+    // totalRicochetPercent/totalMultishotPercent: no in-run augment grants these yet (RicochetAugment/
+    // MultiShotAugment only ever touch the Flat side) — added for future use per the same Bonus/Total split.
+    public float Ricochet => (baseRicochet + bonusRicochetFlat * bonusRicochetPercent) * totalRicochetPercent * totalRicochetPenalty;
+    public float Multishot => (baseMultishot + bonusMultishotFlat * bonusMultishotPercent) * totalMultishotPercent * totalMultishotPenalty;
     public float MultishotSpreadAngle => baseMultishotSpreadAngle * bonusMultishotSpreadPercent;
     public float ProjectileDamageDropoff => baseProjectileDamageDropoff * projectileDamageDropoffReduction;
     public float ProjectileOnHitDropoff => baseProjectileOnHitDropoff * projectileOnHitDropoffReduction;
 
-    public float MaxHealth => (baseMaxHealth + bonusMaxHealthFlat) * bonusMaxHealthPercent;
-    public float HealthRegen => (baseHealthRegen + bonusHealthRegenFlat) * bonusHealthRegenPercent;
+    // Same Bonus/Total split — totalMaxHealthPercent is the new Total tier HealthAugment (and outlier
+    // TitanAugment) grant.
+    public float MaxHealth => (baseMaxHealth + bonusMaxHealthFlat * bonusMaxHealthPercent) * totalMaxHealthPercent * totalMaxHealthPenalty;
+    // Same split — totalHealthRegenPercent is the new Total tier HealthRegenAugment grants.
+    public float HealthRegen => (baseHealthRegen + bonusHealthRegenFlat * bonusHealthRegenPercent) * totalHealthRegenPercent * totalHealthRegenPenalty;
 
-    public float MaxShieldPercentOfMaxHealth => (baseMaxShield + bonusMaxShieldFlat) * bonusMaxShieldPercent;
+    // totalMaxShieldPercent: no in-run augment grants this yet (only ClassPassiveData touches
+    // bonusMaxShieldPercent) — added for future use.
+    public float MaxShieldPercentOfMaxHealth => (baseMaxShield + bonusMaxShieldFlat * bonusMaxShieldPercent) * totalMaxShieldPercent * totalMaxShieldPenalty;
     public float MaxShield => MaxHealth * MaxShieldPercentOfMaxHealth;
 
     public float MaxEnergy => (baseMaxEnergy + bonusMaxEnergyFlat) * bonusMaxEnergyPercent;
-    public float EnergyRegen => (baseEnergyRegen + bonusEnergyRegenFlat) * bonusEnergyRegenPercent * energyRegenPenalty;
+    // Same Bonus/Total split as MoveSpeed/WeaponRange — energyRegenPenalty folded into the Bonus sub-term
+    // (ClassPassiveData-only writer), totalEnergyRegenPercent is the new Total tier EnergyRegenAugment grants.
+    public float EnergyRegen => (baseEnergyRegen + bonusEnergyRegenFlat * bonusEnergyRegenPercent * energyRegenPenalty) * totalEnergyRegenPercent * totalEnergyRegenPenalty;
 
     public float SurgeCost => (baseSurgeCost + bonusSurgeCostFlat) * bonusSurgeCostPercent;
     public float SurgeActivationThreshhold => SurgeCost * 5f;
-    public float SurgeEffectiveness => surgeEffectiveness * surgeEffectivenessPenalty;
-    public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty * SurgeEffectiveness;
-    public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty * SurgeEffectiveness;
+    public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty;
+    public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty;
 
     // The actual effective dash haste value DashCooldown's formula uses — exposed separately so UI (or
     // anything else) can display the real number instead of the pre-multiplier raw dashHaste field.
-    public float EffectiveDashHaste => dashHaste * bonusDashHastePercent;
+    // dashHaste has no separate base field (see its own declaration comment) — totalDashHastePercent (the
+    // new Total tier DashHasteAugment grants) is simply appended as one more multiplier alongside the
+    // existing bonusDashHastePercent, rather than restructured into a base/bonus split.
+    public float EffectiveDashHaste => dashHaste * bonusDashHastePercent * totalDashHastePercent * totalDashHastePenalty;
     public float DashCooldown => baseDashCooldown / (1f + EffectiveDashHaste / 100f);
 
     public float MaxSP => (baseMaxSP + bonusMaxSPFlat) * bonusMaxSPPercent;
 
-    public float Luck => (baseLuck + bonusLuckFlat) * bonusLuckPercent * luckPenalty;
+    // Same Bonus/Total split as MoveSpeed/WeaponRange — luckPenalty folded into the Bonus sub-term
+    // (ClassPassiveData-only writer), totalLuckPercent is the new Total tier LuckAugment grants.
+    public float Luck => (baseLuck + bonusLuckFlat * bonusLuckPercent * luckPenalty) * totalLuckPercent * totalLuckPenalty;
     public float LuckChance => Luck / (Luck + 100f);
     // Both clamped to a minimum of 0 here — the one source every consumer reads from — so no
     // debuff/penalty stacking can ever push either one negative and cause a roll below zero. No upper
@@ -370,13 +454,15 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public float Knockback => baseKnockback * knockbackMultiplier * knockbackPenalty;
 
-    // Same auto-divide as WeaponDamage and for the same reason — onHitPower feeds every onhit-triggered
+    // Same auto-divide as Strength and for the same reason — onHitPower feeds every onhit-triggered
     // effect (OnHitDamageAugment, PhantomBladeOnHitAugment, OnStrikeHealAllyAugment, etc.), so without this
     // an augment that grants more simultaneous weapons/multishot would silently multiply every one of
     // those effects' output too, blowing past the 20/30-point budget guideline those augments were tuned
-    // against. No "Unpenalized" variant here (unlike WeaponDamage) — nothing currently reads a pre-divide
-    // baseline the way Phantom Blade damage does.
-    public float OnHitPower => baseOnHitPower * bonusOnHitPowerMultiplier * bonusOnHitPowerPenalty
+    // against. No "Unpenalized" variant here (unlike Strength) — nothing currently reads a pre-divide
+    // baseline the way Phantom Blade damage does. bonusOnHitPowerMultiplier is already a genuine multiplier
+    // (no base/flat addition to split, unlike most other stats here) — totalOnHitPowerPercent is simply
+    // appended as one more independent multiplier per the same Bonus/Total convention.
+    public float OnHitPower => baseOnHitPower * bonusOnHitPowerMultiplier * bonusOnHitPowerPenalty * totalOnHitPowerPercent * totalOnHitPowerPenalty
         / (weaponTracks * WeaponCount * (1f + Multishot));
     public float StackPower => stackPowerPercent * stackPowerPenalty;
     public float XPModifier => xpMultiplier * xpPenalty;
@@ -415,12 +501,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         public bool isDead;
         public bool isSurging;
         public bool invincible;
-        public float invincibleTimer;
-        public float surgeTickTimer;
-        public float surgeMinDurationTimer;
+        // These four are ticks, not seconds — see EnemyBaseState.ContactCooldown.remaining's own doc comment for why
+        // (PurrNet's delta-packer costs a full 33 bits for any float that changed since last snapshot; a
+        // changed int only costs a cheap zigzag-varint diff). healthRegenTimer is seeded to -1 by
+        // GetInitialState() as a "not yet converted" sentinel — see Simulate()'s own comment on it, since
+        // GetInitialState() has no delta available yet to convert its seconds-based initial value.
+        public int invincibleTimer;
+        public int surgeTickTimer;
+        public int surgeMinDurationTimer;
         public int colorIndex;
-        public float healthRegenTimer;
-        public float shieldRechargeTimer;
+        public int healthRegenTimer;
+        public int shieldRechargeTimer;
         public uint damageEventId;
         public float currentReviveTime;
         // Single shared orbit angle for EVERY weapon this player owns (melee, axe, ranged alike) — ticked
@@ -430,7 +521,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // independently-ticking copy, a newly spawned weapon started fresh at 0 while existing weapons had
         // already drifted from spawn, so the two were never actually 360/count degrees apart — this fixes
         // that by construction, since there's only one angle value for every weapon to ever read.
-        public float weaponOrbitAngle;
+        // CompressedFloat (PurrNet built-in, 0.001-precision quantized float with implicit float
+        // conversions both ways) instead of a plain float — this field changes almost every tick for
+        // every living player, so it never earns PurrNet's cheap "unchanged" 1-bit case; CompressedFloat's
+        // delta-packer costs an integer diff of its internal rounded value instead of a full 33-bit float
+        // rewrite. Wrapped to 0-360 every tick in Simulate() (see that comment) both to keep this tidy and
+        // to stop CompressedFloat's internal int accumulator from eventually overflowing over a very long
+        // session (int overflows past ~2.1 million accumulated degrees at this precision).
+        public CompressedFloat weaponOrbitAngle;
         public void Dispose() { }
     }
 
@@ -440,8 +538,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         energy = baseMaxEnergy,
         shield = 0f,
         sp = 0f,
-        healthRegenTimer = 1f,
-        shieldRechargeTimer = 0f,
+        // Sentinel meaning "not yet converted from seconds to ticks" — GetInitialState() has no delta
+        // available yet. Simulate() converts this to the real tick count exactly once, the first time it
+        // ever runs for this character — see its own comment. -1 is safe/unambiguous since the normal
+        // countdown logic always reassigns to a valid positive count before a Simulate() call ends, so a
+        // legitimately-running countdown can never be negative when read back.
+        healthRegenTimer = -1,
+        shieldRechargeTimer = 0,
         currentReviveTime = reviveTime
     };
 
@@ -451,6 +554,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // own live (non-replay) pass, and non-owners fire once the tick is verified — so callers don't
     // need to reason about replay/ownership at the invoke site.
     private PredictedEvent<float> _onHeal;
+    // Fires whenever any hit this player lands highrolls — moved here from being owned by whichever weapon
+    // actually landed the hit (see feedback_predictedevent_anchor_persistent_identity memory / the hit-
+    // feedback despawn-race fix this mirrors): a weapon can despawn (WeaponManagerPD.DespawnWeapons, e.g.
+    // SurgeWeaponCountAugment ending) shortly after landing a hit, and a non-owner client only ever fires a
+    // PredictedEvent once its tick verifies, which requires the OWNING identity to still exist to be
+    // resimulated — a despawned weapon can never satisfy that. No subscribers yet (currently unused), but
+    // any future "on highroll, do X" augment should subscribe here, not to a weapon instance.
+    private PredictedEvent<float> _onHighroll;
     private PredictedEvent _onSurgeStarted;
     private PredictedEvent _onSurgeEnded;
     // Fires the tick shield crosses from >0 to <=0 inside TakeDamage — see that method's own 0-crossing
@@ -474,24 +585,27 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // PhantomBladeOnDamagedAugment. Excludes a killing blow, same reasoning as _onShieldBreak: a "reacted to
     // taking damage" effect firing on a player who's already dead doesn't make sense.
     private PredictedEvent<float> _onDamaged;
-    // Relayed here from WeaponManagerPD (which subscribes to every one of this player's own registered
-    // weapons' own crit events) — the one channel downstream per-player systems like
+    // Called directly by whichever weapon/projectile actually landed the crit (WeaponMeleePD.Hit(),
+    // WeaponAxePD.Hit(), WeaponRangedProjectilePD.ProcessHit()) via NotifyCritStrike — not relayed through
+    // WeaponManagerPD or any per-weapon event (see feedback_predictedevent_anchor_persistent_identity memory
+    // for why: a weapon can despawn before its own event's verification window closes, silently dropping the
+    // notification on other clients). The one channel downstream per-player systems like
     // PhantomBladeOnCritAugment subscribe to, instead of each augment needing to know about individual
     // weapons at all. Deliberately per-instance like every other event here, not static — this is what
     // makes cross-player interaction structurally impossible rather than just filtered against.
     private PredictedEvent<WeaponHitData> _onCritStrike;
-    // Same relay shape as _onCritStrike, but fires for every weapon hit (crit or not) — e.g.
+    // Same direct-call shape as _onCritStrike, but fires for every weapon hit (crit or not) — e.g.
     // CritTriggerOnHitAugment subscribes to both and calls NotifyHit again from its own crit listener to
     // make a crit count as two hits.
     private PredictedEvent<WeaponHitData> _onHit;
-    // Fires once per REAL weapon connection with an enemy — relayed from WeaponManagerPD exactly like
-    // _onHit/_onCritStrike, but deliberately never touched by anything that re-invokes _onHit/NotifyHit
+    // Fires once per REAL weapon connection with an enemy — called directly alongside _onHit/_onCritStrike
+    // exactly like them, but deliberately never touched by anything that re-invokes _onHit/NotifyHit
     // (e.g. CritTriggerOnHitAugment calling Stats.NotifyHit again from its own crit listener). Effects that
     // must fire exactly once per genuine strike, not once-or-twice depending on other augments (e.g.
     // OnStrikeEnergyRegenAugment), subscribe here instead of to _onHit.
     private PredictedEvent<WeaponHitData> _onStrike;
     // Fires whenever any of this player's weapons touches (not damages) an ally — called directly by each
-    // weapon (no WeaponManagerPD relay hop needed, unlike _onHit/_onCritStrike, since "touched an ally"
+    // weapon (same direct-call convention as _onHit/_onCritStrike/_onStrike, since "touched an ally"
     // isn't a per-weapon-type concept anything else needs to distinguish). Generic on purpose: multiple
     // "hit ally, do something" augments (OnStrikeHealAllyAugment and future family members) can each
     // subscribe independently and decide what to do with the touch themselves, rather than this class
@@ -505,8 +619,23 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // the copy itself, structurally ruling out recursion rather than needing a guard flag to prevent it.
     private PredictedEvent<PhantomBladeSummonData> _onPhantomBladeSummon;
 
+    // Owned here rather than by whichever weapon/projectile/blade/augment-effect actually landed the hit —
+    // every one of those emitters (WeaponBasePD, WeaponRangedProjectilePD, PhantomBladePD, AugmentEffectPD)
+    // is transient (despawns/gets deleted on its own schedule, independent of the hit it just landed),
+    // whereas this player's own CharacterStatsPD is persistent for the whole match. PredictedEvent<T> only
+    // actually fires for a non-owner, non-server client once the tick becomes verified, which requires the
+    // OWNING identity to still exist to be resimulated when that confirmation lands — a hit fired from a
+    // since-despawned weapon (e.g. SurgeWeaponCountAugment's temporary extra weapon, or any short-lived
+    // projectile/blade) could permanently lose its feedback on every other client if it depended on the
+    // weapon's own event instead of this one. Every emitter already carries `attacker` (this identity) in
+    // its HitFeedbackData payload, so routing the dispatch itself through here instead costs nothing.
+    private PredictedEvent<HitFeedbackData> _onHitFeedback;
+
     public void AddHealListener(Action<float> listener) => _onHeal.AddListener(listener);
     public void RemoveHealListener(Action<float> listener) => _onHeal.RemoveListener(listener);
+    public void AddHighrollListener(Action<float> listener) => _onHighroll.AddListener(listener);
+    public void RemoveHighrollListener(Action<float> listener) => _onHighroll.RemoveListener(listener);
+    public void NotifyHighroll(float damage) => _onHighroll.Invoke(damage);
     public void AddSurgeStartedListener(Action listener) => _onSurgeStarted.AddListener(listener);
     public void RemoveSurgeStartedListener(Action listener) => _onSurgeStarted.RemoveListener(listener);
     public void AddSurgeEndedListener(Action listener) => _onSurgeEnded.AddListener(listener);
@@ -534,10 +663,21 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void RemovePhantomBladeSummonListener(Action<PhantomBladeSummonData> listener) => _onPhantomBladeSummon.RemoveListener(listener);
     public void NotifyPhantomBladeSummon(PhantomBladeSummonData data) => _onPhantomBladeSummon.Invoke(data);
 
+    // No Add/RemoveListener wrappers — nothing outside this class needs to subscribe, it's purely a
+    // despawn-safe relay from "whatever landed the hit" to this identity's own TriggerHitFeedback dispatch.
+    public void NotifyHitFeedback(HitFeedbackData data) => _onHitFeedback.Invoke(data);
+
+    private void OnHitFeedback(HitFeedbackData data)
+    {
+        if (data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy))
+            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.isPriority);
+    }
+
     // ── Lifecycle ──────────────────────────────────────────────────────────
     protected override void LateAwake()
     {
         _onHeal          = new PredictedEvent<float>(predictionManager, this);
+        _onHighroll      = new PredictedEvent<float>(predictionManager, this);
         _onSurgeStarted  = new PredictedEvent(predictionManager, this);
         _onSurgeEnded    = new PredictedEvent(predictionManager, this);
         _onShieldBreak   = new PredictedEvent(predictionManager, this);
@@ -549,6 +689,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onStrike        = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onAllyStrike    = new PredictedEvent<AllyStrikeData>(predictionManager, this);
         _onPhantomBladeSummon = new PredictedEvent<PhantomBladeSummonData>(predictionManager, this);
+        _onHitFeedback   = new PredictedEvent<HitFeedbackData>(predictionManager, this);
+        _onHitFeedback.AddListener(OnHitFeedback);
 
         // bonuses applied by PlayerDataPD.Simulate after spawn
         GetComponent<WeaponManagerPD>()?.Init(this);
@@ -561,11 +703,22 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             LocalUIManagerPD.instance.SetPlayer(this);
     }
 
-    private const float SurgeTickInterval = 0.1f;
-    private const float SurgeMinDuration  = 0.5f;
+    private const float SurgeTickInterval    = 0.1f;
+    private const float SurgeMinDuration     = 0.5f;
+    private const float HealthRegenInterval  = 1f;
+
+    // Cached every tick (before the pause early-return, so it's always fresh) — GrantInvincibility(),
+    // StartSurge(), and TakeDamage() all set tick-based countdown fields from seconds-based durations, but
+    // are called from OTHER identities' Simulate()-context (dash input, weapon Hit(), contact damage),
+    // not this one's own, so they don't receive this tick's delta as a parameter directly. Safe to read:
+    // delta is a constant tick duration now that nothing manipulates Time.timeScale, so it's identical
+    // regardless of exactly when within a tick it's read.
+    private float _currentDelta;
 
     protected override void Simulate(ref State state, float delta)
     {
+        _currentDelta = delta;
+
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
         // Energy recharges even while dead so the player has energy on revive. Normally suppressed while
@@ -582,23 +735,41 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // themselves before this became a shared value.
         state.weaponOrbitAngle -= WeaponSpeed * delta;
 
+        // Wrapped to 0-360 every tick — keeps CompressedFloat's internal int accumulator from eventually
+        // overflowing over a very long session, and is safe regardless of magnitude (including a single
+        // tick's rotation exceeding a full 360° lap): OrbitalPosition() only ever reads this through
+        // Cos/Sin (exactly periodic every 360°), and WeaponMeleePD/WeaponAxePD's own sub-arc sweep
+        // reconstruction (startAngle = currentAngle + angleDelta) is recomputed fresh every tick from
+        // whatever this wrapped value currently is, so a wrap boundary crossed mid-tick can't corrupt it —
+        // confirmed by WeaponBasePD.ComputeSubArcCount() already explicitly capping its effective sweep
+        // coverage at 360° for exactly this "more than a full lap in one tick" case.
+        float wrappedAngle = state.weaponOrbitAngle % 360f;
+        if (wrappedAngle < 0f) wrappedAngle += 360f;
+        state.weaponOrbitAngle = wrappedAngle;
+
         // Invincibility timer
-        if (state.invincible && state.invincibleTimer > 0f)
+        if (state.invincible && state.invincibleTimer > 0)
         {
-            state.invincibleTimer -= delta;
-            if (state.invincibleTimer <= 0f)
+            state.invincibleTimer--;
+            if (state.invincibleTimer <= 0)
                 state.invincible = false;
         }
+
+        // One-time sentinel conversion — see GetInitialState()'s own comment. Only ever true on the very
+        // first Simulate() call this character's whole life; healthRegenTimer is never negative again
+        // after this, since the block below always reassigns it to a valid positive count before ending.
+        if (state.healthRegenTimer < 0)
+            state.healthRegenTimer = Mathf.Max(1, Mathf.RoundToInt(HealthRegenInterval / delta));
 
         // Health regen
         if (state.health < MaxHealth)
         {
-            state.healthRegenTimer -= delta;
-            if (state.healthRegenTimer <= 0f)
+            state.healthRegenTimer--;
+            if (state.healthRegenTimer <= 0)
             {
                 float healed = Mathf.Min(HealthRegen, MaxHealth - state.health);
                 state.health += healed;
-                state.healthRegenTimer = 1f;
+                state.healthRegenTimer = Mathf.Max(1, Mathf.RoundToInt(HealthRegenInterval / delta));
                 if (healed > 0f) _onHeal.Invoke(healed);
             }
         }
@@ -606,8 +777,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // Shield regen
         if (state.shield < MaxShield)
         {
-            state.shieldRechargeTimer -= delta;
-            if (state.shieldRechargeTimer <= 0f)
+            state.shieldRechargeTimer--;
+            if (state.shieldRechargeTimer <= 0)
             {
                 bool wasBroken = state.shield <= 0f;
                 state.shield = MaxShield;
@@ -622,13 +793,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // Surge energy drain (can't be surging while dead, so this block is alive-only)
         if (state.isSurging)
         {
-            if (state.surgeMinDurationTimer > 0f)
-                state.surgeMinDurationTimer -= delta;
+            if (state.surgeMinDurationTimer > 0)
+                state.surgeMinDurationTimer--;
 
-            state.surgeTickTimer -= delta;
-            if (state.surgeTickTimer <= 0f)
+            state.surgeTickTimer--;
+            if (state.surgeTickTimer <= 0)
             {
-                state.surgeTickTimer = SurgeTickInterval;
+                state.surgeTickTimer = Mathf.Max(1, Mathf.RoundToInt(SurgeTickInterval / delta));
                 state.energy -= SurgeCost;
                 if (state.energy <= 0f)
                 {
@@ -651,7 +822,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         {
             UIHealth              = verified.Value.health;
             UIShield              = verified.Value.shield;
-            UIShieldRechargeTimer = verified.Value.shieldRechargeTimer;
+            // Converted back to seconds — UIShieldRechargeTimer is a UI-facing float consumed by
+            // LocalUIManagerPD's fill-ratio math alongside shieldRechargeTime (also seconds), so it needs
+            // to stay in seconds even though the underlying predicted field is ticks now.
+            UIShieldRechargeTimer = verified.Value.shieldRechargeTimer * _currentDelta;
         }
         UIEnergy              = viewState.energy;
         UISP                  = viewState.sp;
@@ -678,17 +852,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // ── Init ──────────────────────────────────────────────────────────────
     public struct ProgressionBonuses
     {
-        public float weaponDamageFlat, moveSpeedFlat, attackSpeedPct, energyRegenFlat;
+        public float strengthFlat, moveSpeedFlat, attackSpeedPct, energyRegenFlat;
         public float dashHaste, critChanceFlat, xpRadiusFlat, weaponRangeFlat, maxEnergyFlat;
         public int   dashChargesBonus, levelUpOptionsBonus;
         public float revivePower, reviveTimePenaltyMult, xpMultiplier;
-        public float maxHealthFlat, healthRegenFlat, weaponDamagePct;
-        public float luckFlat, damagePerLevel, maxShieldFlat, shieldRechargeTime;
+        public float maxHealthFlat, healthRegenFlat, strengthPct;
+        public float luckFlat, strengthPerLevel, maxShieldFlat, shieldRechargeTime;
     }
 
     public static ProgressionBonuses ComputeProgressionBonuses() => new()
     {
-        weaponDamageFlat        = ProgressionManager.GetBaseStatBonus(StatType.WeaponDamage),
+        strengthFlat            = ProgressionManager.GetBaseStatBonus(StatType.Strength),
         moveSpeedFlat           = ProgressionManager.GetBaseStatBonus(StatType.MoveSpeed),
         attackSpeedPct          = ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f,
         energyRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen),
@@ -704,9 +878,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         xpMultiplier            = ProgressionManager.GetBaseStatBonus(StatType.XPMultiplier) * 0.01f,
         maxHealthFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxHealth),
         healthRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.HealthRegen),
-        weaponDamagePct         = ProgressionManager.GetBaseStatBonus(StatType.WeaponDamagePercent),
+        strengthPct             = ProgressionManager.GetBaseStatBonus(StatType.StrengthPercent),
         luckFlat                = ProgressionManager.GetBaseStatBonus(StatType.Luck),
-        damagePerLevel          = ProgressionManager.GetBaseStatBonus(StatType.DamagePerLevel),
+        strengthPerLevel        = ProgressionManager.GetBaseStatBonus(StatType.StrengthPerLevel),
         maxShieldFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxShield),
         shieldRechargeTime      = ProgressionManager.GetBaseStatBonus(StatType.ShieldRechargeTime),
     };
@@ -738,17 +912,31 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void AddMaxHealthFlat(float amount) => ApplyStatChange(() => bonusMaxHealthFlat += amount);
 
     // Same pattern as AddMaxHealthFlat, for augments that grant a percentage bonus instead (additive
-    // against the 1f baseline, e.g. +0.2 = +20% total).
+    // against the 1f baseline, e.g. +0.2 = +20% total). Bonus tier — now only scales bonusMaxHealthFlat
+    // (see MaxHealth), not the whole stat; kept for ClassPassiveData/meta-progression and any future
+    // "outlier" augment, but HealthAugment itself now calls AddMaxHealthTotalPercent below instead.
     public void AddMaxHealthPercent(float amount) => ApplyStatChange(() => bonusMaxHealthPercent += amount);
+    // NEW Total tier — scales the whole (base + bonus) MaxHealth sum. What HealthAugment (and TitanAugment,
+    // redirected alongside it since both grant MaxHealth) actually calls now.
+    public void AddMaxHealthTotalPercent(float amount) => ApplyStatChange(() => totalMaxHealthPercent += amount);
     public void AddWeaponRangeFlat(float amount) => ApplyStatChange(() => bonusWeaponRangeFlat += amount);
+    // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
     public void AddWeaponRangePercent(float amount) => ApplyStatChange(() => bonusWeaponRangePercent += amount);
+    // NEW Total tier — what RangeAugment/OuterTrackAugment/TitanAugment all call now (every existing
+    // WeaponRange-percent-granting augment, redirected together since they all target the same stat).
+    public void AddWeaponRangeTotalPercent(float amount) => ApplyStatChange(() => totalWeaponRangePercent += amount);
     public void AddAttackSpeedTotalPercent(float amount) => ApplyStatChange(() => attackSpeedTotalPercent += amount);
-    // attackSpeedPercent (despite the name) is added directly in the same units as baseAttackSpeed, not a
-    // raw fraction — matches the progression system's own conversion (entry.value * 0.01f * baseAttackSpeed)
-    // so a caller here can pass an intuitive fraction (e.g. 0.25 for +25%) same as every other percent Add.
-    public void AddAttackSpeedPercent(float amount) => ApplyStatChange(() => attackSpeedPercent += amount * baseAttackSpeed);
+    // attackSpeedFlat (renamed from attackSpeedPercent) is added directly in the same units as
+    // baseAttackSpeed, not a raw fraction — matches the progression system's own conversion
+    // (entry.value * 0.01f * baseAttackSpeed) so a caller here can pass an intuitive fraction (e.g. 0.25 for
+    // +25%) same as every other percent Add, even though what it grants under the hood is flat.
+    public void AddAttackSpeedFlat(float amount) => ApplyStatChange(() => attackSpeedFlat += amount * baseAttackSpeed);
     public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => bonusMoveSpeedFlat += amount);
+    // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
     public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => bonusMoveSpeedPercent += amount);
+    // NEW Total tier — what MoveSpeedAugment/GremlinAugment/ShieldBreakFrenzyAugment/SurgeEndMoveSpeedAugment
+    // all call now (every existing MoveSpeed-percent-granting augment, redirected together).
+    public void AddMoveSpeedTotalPercent(float amount) => ApplyStatChange(() => totalMoveSpeedPercent += amount);
     // Direct override, not additive — surgeMoveSpeedPenalty (default 0.5f) is the actual reduction
     // multiplier itself (SurgeMoveSpeedMulti = surgeMoveSpeedMulti * surgeMoveSpeedPenalty * ...), not a
     // bonus-stacking pool, so "half the penalty"/"no penalty" augments each set it to their own fixed
@@ -760,13 +948,22 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // 1f (StackPower = stackPowerPercent * stackPowerPenalty), just had no augment-facing wrapper until now.
     public void AddStackPowerPercent(float amount) => ApplyStatChange(() => stackPowerPercent += amount);
     public void AddHealthRegenFlat(float amount) => ApplyStatChange(() => bonusHealthRegenFlat += amount);
+    // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
     public void AddHealthRegenPercent(float amount) => ApplyStatChange(() => bonusHealthRegenPercent += amount);
+    // NEW Total tier — what HealthRegenAugment calls now.
+    public void AddHealthRegenTotalPercent(float amount) => ApplyStatChange(() => totalHealthRegenPercent += amount);
     public void AddEnergyRegenFlat(float amount) => ApplyStatChange(() => bonusEnergyRegenFlat += amount);
+    // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
     public void AddEnergyRegenPercent(float amount) => ApplyStatChange(() => bonusEnergyRegenPercent += amount);
+    // NEW Total tier — what EnergyRegenAugment calls now.
+    public void AddEnergyRegenTotalPercent(float amount) => ApplyStatChange(() => totalEnergyRegenPercent += amount);
     public void AddLuckFlat(float amount) => ApplyStatChange(() => bonusLuckFlat += amount);
+    // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
     public void AddLuckPercent(float amount) => ApplyStatChange(() => bonusLuckPercent += amount);
+    // NEW Total tier — what LuckAugment calls now.
+    public void AddLuckTotalPercent(float amount) => ApplyStatChange(() => totalLuckPercent += amount);
     // Directly additive against the LuckCeiling number itself (base 1.5 + 0.25 = 1.75), same
-    // (base + Flat) * Percent * Penalty shape as WeaponDamage — NOT AddLuckCeilingPercent below, which
+    // (base + Flat) * Percent * Penalty shape as Strength — NOT AddLuckCeilingPercent below, which
     // instead scales bonusLuckCeilingPercent's own 1f-baseline multiplier and would compound against
     // baseLuckCeiling (1.5 * 1.25 = 1.875) rather than adding to it directly.
     public void AddLuckCeilingFlat(float amount) => ApplyStatChange(() => bonusLuckCeilingFlat += amount);
@@ -782,8 +979,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void AddHighrollPenalty(float amount) => ApplyStatChange(() => highrollPenalty -= amount);
     public void AddCritChanceFlat(float amount) => ApplyStatChange(() => bonusCritChanceFlat += amount);
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent, for CritChance's own percent
-    // multiplier (bonusCritChancePercent starts at 1f, e.g. +0.25 = +25% total crit chance).
+    // multiplier. Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment
+    // calls this anymore (CritChanceAugment, née CritAugment, now calls AddCritChanceTotalPercent below).
     public void AddCritChancePercent(float amount) => ApplyStatChange(() => bonusCritChancePercent += amount);
+    // NEW Total tier — what CritChanceAugment calls now.
+    public void AddCritChanceTotalPercent(float amount) => ApplyStatChange(() => totalCritChancePercent += amount);
     // Flat addition to CritDamage's own baseCritDamage term (CritDamage = (baseCritDamage +
     // bonusCritDamageFlat) * bonusCritDamagePercent + ...), e.g. +0.1 for +10% crit damage.
     public void AddCritDamageFlat(float amount) => ApplyStatChange(() => bonusCritDamageFlat += amount);
@@ -797,9 +997,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void AddDashHaste(float amount) => ApplyStatChange(() => dashHaste += amount);
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent/AddCritChancePercent, for
     // DashHaste's own percent multiplier (bonusDashHastePercent starts at 1f, e.g. +0.15 = +15% total).
+    // No other writer ever touched this field (see its own declaration comment) — DashHasteAugment now
+    // calls AddDashHasteTotalPercent below instead; kept here only in case something else wants the
+    // (functionally identical, since dashHaste has no separate base) Bonus-tier slot later.
     public void AddDashHastePercent(float amount) => ApplyStatChange(() => bonusDashHastePercent += amount);
+    // NEW Total tier — what DashHasteAugment calls now.
+    public void AddDashHasteTotalPercent(float amount) => ApplyStatChange(() => totalDashHastePercent += amount);
     public void AddWeaponCountFlat(int amount) => ApplyStatChange(() => bonusWeaponCountFlat += amount);
-    // Multiplicative compounding, same convention as MultiplyWeaponDamagePenalty/MultiplyOnHitPowerMultiplier
+    // Multiplicative compounding, same convention as MultiplyStrengthPenalty/MultiplyOnHitPowerMultiplier
     // — bonusWeaponCountMultiplier already sits in the WeaponCount formula (previously only ever touched by
     // ClassPassiveData aggregation), just had no augment-facing wrapper until now. factor is an exact
     // integer multiplier (e.g. 2 for SurgeWeaponCountAugment's x2), inverted with the same factor to revert
@@ -812,28 +1017,45 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Unused for now — the planned OuterWeaponTrackAugment will call this. amount can be negative to
     // remove tracks (nothing currently does, but the direct += supports it symmetrically for free).
     public void AddWeaponTracks(int amount) => ApplyStatChange(() => weaponTracks += amount);
-    // Multiplicative, not additive — bonusWeaponDamagePenalty/bonusOnHitPowerPenalty both start at 1f and
-    // apply as straight multipliers (WeaponDamage/OnHitPower), so stacking two -40% penalties correctly
+    // Multiplicative, not additive — bonusStrengthPenalty/bonusOnHitPowerPenalty both start at 1f and
+    // apply as straight multipliers (Strength/OnHitPower), so stacking two -40% penalties correctly
     // compounds to 0.6 * 0.6 = 0.36 rather than clamping at 1 - 0.8 = 0.2. factor is what the penalty gets
     // multiplied by (e.g. 1f - 0.4f for a -40% penalty), matching the old system's identical
-    // `bonusWeaponDamagePenalty *= 1f - damagePenalty` call.
-    public void MultiplyWeaponDamagePenalty(float factor) => ApplyStatChange(() => bonusWeaponDamagePenalty *= factor);
+    // `bonusStrengthPenalty *= 1f - damagePenalty` call.
+    public void MultiplyStrengthPenalty(float factor) => ApplyStatChange(() => bonusStrengthPenalty *= factor);
     public void MultiplyOnHitPowerPenalty(float factor) => ApplyStatChange(() => bonusOnHitPowerPenalty *= factor);
-    // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — bonusWeaponDamagePercent
-    // already sits in the WeaponDamage formula, just had no augment-facing wrapper until now. Formerly,
-    // augments granting extra weapons/multishot (BladeweaviestBladeweaverAugment, MultiShotAugment) papered
-    // over the resulting damage inflation with a hand-tuned MultiplyWeaponDamagePenalty call; now that
-    // WeaponDamage auto-divides by weaponTracks/WeaponCount/Multishot itself, those same augments call this
-    // instead to grant a straight bonus on top rather than a penalty underneath.
-    public void AddWeaponDamagePercent(float amount) => ApplyStatChange(() => bonusWeaponDamagePercent += amount);
-    // Multiplicative compounding, same convention as MultiplyWeaponDamagePenalty/MultiplyOnHitPowerPenalty
+    // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — bonusStrengthPercent
+    // already sits in the Strength formula. Bonus tier — now only scales bonusStrengthFlat (see
+    // Strength), not the whole stat; kept for ClassPassiveData/meta-progression. The weapon-count/
+    // multishot/track "compensate with a damage bonus" augments below now call AddStrengthTotalPercent
+    // instead (redirected together since they all target the same stat being restructured here).
+    public void AddStrengthPercent(float amount) => ApplyStatChange(() => bonusStrengthPercent += amount);
+    // NEW Total tier — what BladeweaviestBladeweaverAugment/MultiShotAugment/OuterTrackAugment/
+    // SurgeWeaponCountAugment/WeaponCountAugment all call now, so their "extra copies, compensate with a
+    // damage bonus" grant keeps scaling the whole stat instead of only the (usually-zero) Bonus sub-term.
+    public void AddStrengthTotalPercent(float amount) => ApplyStatChange(() => totalStrengthPercent += amount);
+    // Multiplicative compounding, same convention as MultiplyStrengthPenalty/MultiplyOnHitPowerPenalty
     // — bonusOnHitPowerMultiplier already sits in the OnHitPower formula (previously only ever touched by
     // ClassPassiveData aggregation), just had no augment-facing wrapper until now. Same
-    // penalty-to-bonus swap as AddWeaponDamagePercent above, for the same reason.
+    // penalty-to-bonus swap as AddStrengthPercent above, for the same reason.
     public void MultiplyOnHitPowerMultiplier(float factor) => ApplyStatChange(() => bonusOnHitPowerMultiplier *= factor);
     public void AddRicochetFlat(float amount) => ApplyStatChange(() => bonusRicochetFlat += amount);
+    // NEW Total tier — no augment grants this yet (RicochetAugment only ever grants Flat), reserved for a
+    // future in-run Ricochet augment.
+    public void AddRicochetTotalPercent(float amount) => ApplyStatChange(() => totalRicochetPercent += amount);
     public void AddMultishotFlat(float amount) => ApplyStatChange(() => bonusMultishotFlat += amount);
-    // Same MultiplyWeaponDamagePenalty-style compounding convention — multiple spread-reducing sources
+    // NEW Total tier — no augment grants this yet (MultiShotAugment only ever grants Flat), reserved for a
+    // future in-run Multishot augment.
+    public void AddMultishotTotalPercent(float amount) => ApplyStatChange(() => totalMultishotPercent += amount);
+    // NEW Total tier — no augment grants WeaponRadius/MaxShield percent yet (only ClassPassiveData touches
+    // bonusWeaponRadiusPercent/bonusMaxShieldPercent) — reserved for future in-run augments on these stats.
+    public void AddWeaponRadiusTotalPercent(float amount) => ApplyStatChange(() => totalWeaponRadiusPercent += amount);
+    public void AddMaxShieldTotalPercent(float amount) => ApplyStatChange(() => totalMaxShieldPercent += amount);
+    // Total tier — what the weapon-count/multishot/track "compensate" augments (BladeweaviestBladeweaverAugment,
+    // MultiShotAugment, OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) all call now, same
+    // Total-tier treatment as their Strength grant.
+    public void AddOnHitPowerTotalPercent(float amount) => ApplyStatChange(() => totalOnHitPowerPercent += amount);
+    // Same MultiplyStrengthPenalty-style compounding convention — multiple spread-reducing sources
     // multiply together rather than summing (two -80% reductions compound to 0.2 * 0.2 = 0.04, not clamp
     // at 1 - 1.6). factor is what bonusMultishotSpreadPercent gets multiplied by (e.g. 1f - 0.8f for
     // MultiShotSpreadAugment's -80% reduction).
@@ -848,7 +1070,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // `blade.damage += blade.baseDamage * bladeDamageBonus`), and every blade reads the combined total
     // once at spawn time rather than each blade needing to know which augments exist. Plain += (not
     // ApplyStatChange) — doesn't affect Max Health/Energy, and nothing else reads these live the way
-    // WeaponDamage/MoveSpeed etc. do.
+    // Strength/MoveSpeed etc. do.
     [HideInInspector] public float phantomBladeDamageBonus = 0f;
     [HideInInspector] public float phantomBladeSizeBonus = 0f;
     // Second, separate multiplicative layer for each of the two above — PhantomBladeSizeAugment's own
@@ -863,7 +1085,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [HideInInspector] public float phantomBladeSizeBonusPercent = 1f;
     // Third layer, multiplicative like the "Percent" pair above but for PENALTIES rather than bonuses —
     // e.g. PhantomBladeCarnivalAugment's own -35% total damage/size tradeoff for its extra-blade-per-summon
-    // effect. Same MultiplyWeaponDamagePenalty-style compounding convention as bonusWeaponDamagePenalty
+    // effect. Same MultiplyStrengthPenalty-style compounding convention as bonusStrengthPenalty
     // (multiple penalty sources compound multiplicatively rather than summing, so two -35% penalties would
     // compound to 0.65 * 0.65 = 0.4225, not clamp at 1 - 0.7 = 0.3). Plain *= (not ApplyStatChange), same
     // reasoning as the rest of this scaffold.
@@ -998,9 +1220,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
         ApplyStatChange(() =>
         {
-            bonusWeaponDamageFlat      += b.weaponDamageFlat;
+            bonusStrengthFlat          += b.strengthFlat;
             bonusMoveSpeedFlat         += b.moveSpeedFlat;
-            attackSpeedPercent         += b.attackSpeedPct * baseAttackSpeed;
+            attackSpeedFlat            += b.attackSpeedPct * baseAttackSpeed;
             bonusEnergyRegenFlat       += b.energyRegenFlat;
             dashHaste                  += b.dashHaste;
             bonusCritChanceFlat        += b.critChanceFlat;
@@ -1014,9 +1236,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             xpMultiplier               += b.xpMultiplier;
             bonusMaxHealthFlat         += b.maxHealthFlat;
             bonusHealthRegenFlat       += b.healthRegenFlat;
-            bonusWeaponDamagePercent   += b.weaponDamagePct;
+            bonusStrengthPercent       += b.strengthPct;
             bonusLuckFlat              += b.luckFlat;
-            damagePerLevel             += b.damagePerLevel;
+            strengthPerLevel           += b.strengthPerLevel;
             bonusMaxShieldFlat         += b.maxShieldFlat;
             shieldRechargeTime         += b.shieldRechargeTime;
         });
@@ -1024,19 +1246,56 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     // Called from GameManagerPD.UpdateView() once per level gained, off verified state only — never
     // from Simulate(), since bonus fields aren't part of predicted State and can't roll back on replay.
-    public void OnLevelUp() => ApplyStatChange(() => bonusWeaponDamageFlat += damagePerLevel);
+    public void OnLevelUp() => ApplyStatChange(() => bonusStrengthFlat += strengthPerLevel);
+
+    // Whole-run bookkeeping only, one field per StatType ApplySingleStatEntry below actually handles — the
+    // literal amount ever added to that field via a stat-augment pick, nothing more (not the individual
+    // picks/options themselves, which AugmentManagerPD.State.picks already tracks whole-run, tagged per
+    // round). Returned by ApplyStatAugmentPick so AugmentManagerPD can accumulate it into its own per-player
+    // running total —
+    // kept here, not duplicated as a second switch statement elsewhere, so there's exactly one place that
+    // defines "what a stat pick actually grants."
+    public struct StatBoostTotals
+    {
+        public float maxHealth;
+        public float strength;
+        public float moveSpeed;
+        public float weaponRange;
+        public float attackSpeed;
+        public float healthRegen;
+        public float energyRegen;
+        public float dashHaste;
+        public float critChance;
+        public float luck;
+
+        public static StatBoostTotals operator +(StatBoostTotals a, StatBoostTotals b) => new()
+        {
+            maxHealth    = a.maxHealth    + b.maxHealth,
+            strength     = a.strength     + b.strength,
+            moveSpeed    = a.moveSpeed    + b.moveSpeed,
+            weaponRange  = a.weaponRange  + b.weaponRange,
+            attackSpeed  = a.attackSpeed  + b.attackSpeed,
+            healthRegen  = a.healthRegen  + b.healthRegen,
+            energyRegen  = a.energyRegen  + b.energyRegen,
+            dashHaste    = a.dashHaste    + b.dashHaste,
+            critChance   = a.critChance   + b.critChance,
+            luck         = a.luck         + b.luck,
+        };
+    }
 
     // Called from AugmentManagerPD.UpdateView() once per verified pick, same reasoning as OnLevelUp.
     // multiplier is the picking player's own meta-progression multiplier (ProgressionManager.GetStatMultiplier),
     // captured into PlayerControllerPD.Input by the OWNING client — never recomputed locally here, since
     // a remote machine's own ProgressionManager save data would give a different (wrong) answer.
-    public void ApplyStatAugmentPick(StatAugmentEntry entryA, StatAugmentEntry entryB, float multiplier)
+    public StatBoostTotals ApplyStatAugmentPick(StatAugmentEntry entryA, StatAugmentEntry entryB, float multiplier)
     {
+        StatBoostTotals delta = default;
         ApplyStatChange(() =>
         {
-            ApplySingleStatEntry(entryA, multiplier);
-            ApplySingleStatEntry(entryB, multiplier);
+            ApplySingleStatEntry(entryA, multiplier, ref delta);
+            ApplySingleStatEntry(entryB, multiplier, ref delta);
         });
+        return delta;
     }
 
     // Called from PlayerDataPD.UpdateView() once per character spawn, on every machine (not owner-gated
@@ -1060,15 +1319,21 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             bonusMoveSpeedFlat              += p.bonusMoveSpeedFlat;
             bonusMoveSpeedPercent           += p.bonusMoveSpeedPercent;
             moveSpeedPenalty                += p.moveSpeedPenalty;
+            totalMoveSpeedPercent           += p.totalMoveSpeedPercent;
+            totalMoveSpeedPenalty           += p.totalMoveSpeedPenalty;
 
-            bonusWeaponDamageFlat           += p.bonusWeaponDamageFlat;
-            bonusWeaponDamagePercent        += p.bonusWeaponDamagePercent;
-            bonusWeaponDamagePenalty        += p.bonusWeaponDamagePenalty;
+            bonusStrengthFlat           += p.bonusStrengthFlat;
+            bonusStrengthPercent        += p.bonusStrengthPercent;
+            bonusStrengthPenalty        += p.bonusStrengthPenalty;
+            totalStrengthPercent        += p.totalStrengthPercent;
+            totalStrengthPenalty        += p.totalStrengthPenalty;
 
             bonusWeaponRadiusFlat           += p.bonusWeaponRadiusFlat;
             bonusWeaponRadiusPercent        += p.bonusWeaponRadiusPercent;
+            totalWeaponRadiusPercent        += p.totalWeaponRadiusPercent;
+            totalWeaponRadiusPenalty        += p.totalWeaponRadiusPenalty;
 
-            attackSpeedPercent              += p.attackSpeedPercent;
+            attackSpeedFlat                 += p.attackSpeedFlat;
             attackSpeedTotalPercent         += p.attackSpeedTotalPercent;
             attackSpeedPenalty              += p.attackSpeedPenalty;
 
@@ -1078,6 +1343,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             bonusWeaponRangeFlat            += p.bonusWeaponRangeFlat;
             bonusWeaponRangePercent         += p.bonusWeaponRangePercent;
             weaponRangePenalty              += p.weaponRangePenalty;
+            totalWeaponRangePercent         += p.totalWeaponRangePercent;
+            totalWeaponRangePenalty         += p.totalWeaponRangePenalty;
 
             bonusWeaponSizePercent          += p.bonusWeaponSizePercent;
 
@@ -1085,27 +1352,39 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
             bonusCritChanceFlat             += p.bonusCritChanceFlat;
             bonusCritChancePercent          += p.bonusCritChancePercent;
+            totalCritChancePercent          += p.totalCritChancePercent;
+            totalCritChancePenalty          += p.totalCritChancePenalty;
 
             bonusCritDamageFlat             += p.bonusCritDamageFlat;
             bonusCritDamagePercent          += p.bonusCritDamagePercent;
 
             bonusRicochetFlat               += p.bonusRicochetFlat;
             bonusRicochetPercent            += p.bonusRicochetPercent;
+            totalRicochetPercent            += p.totalRicochetPercent;
+            totalRicochetPenalty            += p.totalRicochetPenalty;
 
             bonusMultishotFlat              += p.bonusMultishotFlat;
             bonusMultishotPercent           += p.bonusMultishotPercent;
+            totalMultishotPercent           += p.totalMultishotPercent;
+            totalMultishotPenalty           += p.totalMultishotPenalty;
 
             projectileDamageDropoffReduction += p.projectileDamageDropoffReduction;
             projectileOnHitDropoffReduction  += p.projectileOnHitDropoffReduction;
 
             bonusMaxHealthFlat              += p.bonusMaxHealthFlat;
             bonusMaxHealthPercent           += p.bonusMaxHealthPercent;
+            totalMaxHealthPercent           += p.totalMaxHealthPercent;
+            totalMaxHealthPenalty           += p.totalMaxHealthPenalty;
 
             bonusHealthRegenFlat            += p.bonusHealthRegenFlat;
             bonusHealthRegenPercent         += p.bonusHealthRegenPercent;
+            totalHealthRegenPercent         += p.totalHealthRegenPercent;
+            totalHealthRegenPenalty         += p.totalHealthRegenPenalty;
 
             bonusMaxShieldFlat              += p.bonusMaxShieldFlat;
             bonusMaxShieldPercent           += p.bonusMaxShieldPercent;
+            totalMaxShieldPercent           += p.totalMaxShieldPercent;
+            totalMaxShieldPenalty           += p.totalMaxShieldPenalty;
 
             bonusMaxEnergyFlat              += p.bonusMaxEnergyFlat;
             bonusMaxEnergyPercent           += p.bonusMaxEnergyPercent;
@@ -1113,14 +1392,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             bonusEnergyRegenFlat            += p.bonusEnergyRegenFlat;
             bonusEnergyRegenPercent         += p.bonusEnergyRegenPercent;
             energyRegenPenalty              += p.energyRegenPenalty;
+            totalEnergyRegenPercent         += p.totalEnergyRegenPercent;
+            totalEnergyRegenPenalty         += p.totalEnergyRegenPenalty;
 
             bonusSurgeCostFlat              += p.bonusSurgeCostFlat;
             bonusSurgeCostPercent           += p.bonusSurgeCostPercent;
-            surgeEffectiveness              *= p.surgeEffectiveness;
-            surgeEffectivenessPenalty       += p.surgeEffectivenessPenalty;
             surgeAttackSpeedPenalty         += p.surgeAttackSpeedPenalty;
 
             dashHaste                       += p.dashHaste;
+            bonusDashHastePercent           += p.bonusDashHastePercent;
+            totalDashHastePercent           += p.totalDashHastePercent;
+            totalDashHastePenalty           += p.totalDashHastePenalty;
 
             bonusMaxSPFlat                  += p.bonusMaxSPFlat;
             bonusMaxSPPercent               += p.bonusMaxSPPercent;
@@ -1128,6 +1410,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             bonusLuckFlat                   += p.bonusLuckFlat;
             bonusLuckPercent                += p.bonusLuckPercent;
             luckPenalty                     += p.luckPenalty;
+            totalLuckPercent                += p.totalLuckPercent;
+            totalLuckPenalty                += p.totalLuckPenalty;
             bonusLuckFloorPercent           += p.bonusLuckFloorPercent;
             luckFloorPenalty                += p.luckFloorPenalty;
             bonusLuckCeilingPercent         += p.bonusLuckCeilingPercent;
@@ -1142,6 +1426,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
             bonusOnHitPowerMultiplier       *= p.bonusOnHitPowerMultiplier;
             bonusOnHitPowerPenalty          += p.bonusOnHitPowerPenalty;
+            totalOnHitPowerPercent          += p.totalOnHitPowerPercent;
+            totalOnHitPowerPenalty          += p.totalOnHitPowerPenalty;
 
             stackPowerPercent               += p.stackPowerPercent;
             stackPowerPenalty               += p.stackPowerPenalty;
@@ -1167,20 +1453,56 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // ClassPassiveData.passiveAugments' own doc comments for the full reasoning.
     }
 
-    private void ApplySingleStatEntry(StatAugmentEntry entry, float multiplier)
+    // Called once per spawn (see PlayerDataPD.UpdateView()) to reapply whatever stat-augment totals
+    // AugmentManagerPD has on record for this player — same underlying fields ApplySingleStatEntry above
+    // grants, just applied as one lump sum instead of one pick at a time. On a normal game start every
+    // player's recorded totals are still all-zero (nobody's picked anything yet), so this is a genuine
+    // no-op then; for a reconnecting player (AugmentManagerPD itself is never destroyed/recreated by a
+    // single player dropping, so its bookkeeping survives the disconnect) it's what restores the stats
+    // they'd already earned. Not owner-gated, same reasoning as ApplyClassPassives — every machine holds
+    // an identically-computed copy of AugmentManagerPD's totals (accumulated off verified picks the same
+    // way on every machine), so every observer applies the same thing.
+    public void ApplyStatBoostTotals(StatBoostTotals totals)
+    {
+        ApplyStatChange(() =>
+        {
+            bonusMaxHealthFlat    += totals.maxHealth;
+            bonusStrengthFlat     += totals.strength;
+            bonusMoveSpeedFlat    += totals.moveSpeed;
+            bonusWeaponRangeFlat  += totals.weaponRange;
+            attackSpeedFlat       += totals.attackSpeed;
+            bonusHealthRegenFlat  += totals.healthRegen;
+            bonusEnergyRegenFlat  += totals.energyRegen;
+            dashHaste             += totals.dashHaste;
+            bonusCritChanceFlat   += totals.critChance;
+            bonusLuckFlat         += totals.luck;
+        });
+    }
+
+    private void ApplySingleStatEntry(StatAugmentEntry entry, float multiplier, ref StatBoostTotals delta)
     {
         switch (entry.statType)
         {
-            case StatType.MaxHealth:     bonusMaxHealthFlat    += entry.value * multiplier; break;
-            case StatType.WeaponDamage:  bonusWeaponDamageFlat += entry.value * multiplier; break;
-            case StatType.MoveSpeed:     bonusMoveSpeedFlat    += entry.value * multiplier; break;
-            case StatType.WeaponRange:   bonusWeaponRangeFlat  += entry.value; break;
-            case StatType.AttackSpeed:   attackSpeedPercent    += entry.value * 0.01f * baseAttackSpeed * multiplier; break;
-            case StatType.HealthRegen:   bonusHealthRegenFlat  += entry.value * multiplier; break;
-            case StatType.EnergyRegen:   bonusEnergyRegenFlat  += entry.value * multiplier; break;
-            case StatType.DashHaste:     dashHaste             += entry.value * multiplier; break;
-            case StatType.CritChance:    bonusCritChanceFlat   += entry.value * 0.01f * multiplier; break;
-            case StatType.Luck:          bonusLuckFlat         += entry.value * multiplier; break;
+            case StatType.MaxHealth:
+                { float d = entry.value * multiplier; bonusMaxHealthFlat += d; delta.maxHealth += d; break; }
+            case StatType.Strength:
+                { float d = entry.value * multiplier; bonusStrengthFlat += d; delta.strength += d; break; }
+            case StatType.MoveSpeed:
+                { float d = entry.value * multiplier; bonusMoveSpeedFlat += d; delta.moveSpeed += d; break; }
+            case StatType.WeaponRange:
+                { float d = entry.value; bonusWeaponRangeFlat += d; delta.weaponRange += d; break; }
+            case StatType.AttackSpeed:
+                { float d = entry.value * 0.01f * baseAttackSpeed * multiplier; attackSpeedFlat += d; delta.attackSpeed += d; break; }
+            case StatType.HealthRegen:
+                { float d = entry.value * multiplier; bonusHealthRegenFlat += d; delta.healthRegen += d; break; }
+            case StatType.EnergyRegen:
+                { float d = entry.value * multiplier; bonusEnergyRegenFlat += d; delta.energyRegen += d; break; }
+            case StatType.DashHaste:
+                { float d = entry.value * multiplier; dashHaste += d; delta.dashHaste += d; break; }
+            case StatType.CritChance:
+                { float d = entry.value * 0.01f * multiplier; bonusCritChanceFlat += d; delta.critChance += d; break; }
+            case StatType.Luck:
+                { float d = entry.value * multiplier; bonusLuckFlat += d; delta.luck += d; break; }
         }
     }
 
@@ -1200,15 +1522,15 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     {
         if (currentState.isDead || currentState.isSurging) return;
         currentState.isSurging = true;
-        currentState.surgeTickTimer = SurgeTickInterval;
-        currentState.surgeMinDurationTimer = SurgeMinDuration;
+        currentState.surgeTickTimer = Mathf.Max(1, Mathf.RoundToInt(SurgeTickInterval / _currentDelta));
+        currentState.surgeMinDurationTimer = Mathf.Max(1, Mathf.RoundToInt(SurgeMinDuration / _currentDelta));
         currentState.energy -= SurgeCost;
         _onSurgeStarted.Invoke();
     }
 
     public void TryEndSurge()
     {
-        if (!currentState.isSurging || currentState.surgeMinDurationTimer > 0f) return;
+        if (!currentState.isSurging || currentState.surgeMinDurationTimer > 0) return;
         currentState.isSurging = false;
         _onSurgeEnded.Invoke();
     }
@@ -1226,7 +1548,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     {
         if (duration <= 0f) return;
         currentState.invincible = true;
-        currentState.invincibleTimer = Mathf.Max(currentState.invincibleTimer, duration);
+        currentState.invincibleTimer = Mathf.Max(currentState.invincibleTimer, Mathf.RoundToInt(duration / _currentDelta));
     }
 
     // Plain, not State — reset to false right before every _onLethalDamageTaken.Invoke() call and read
@@ -1250,7 +1572,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     {
         bool wasBroken = currentState.shield <= 0f;
         currentState.shield = MaxShield;
-        currentState.shieldRechargeTimer = 0f;
+        currentState.shieldRechargeTimer = 0;
         if (wasBroken && currentState.shield > 0f)
             _onShieldRecharge.Invoke();
     }
@@ -1261,7 +1583,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         if (currentState.invincible) return;
 
         currentState.damageEventId++;
-        currentState.shieldRechargeTimer = shieldRechargeTime;
+        currentState.shieldRechargeTimer = Mathf.Max(1, Mathf.RoundToInt(shieldRechargeTime / _currentDelta));
         damage *= DamageReduction;
         // Captured here, before the shield/health split below — "how much damage this hit represented" as
         // a whole, for _onDamaged's payload.

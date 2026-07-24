@@ -24,15 +24,13 @@ public class PhantomBladePassiveAugment : AugmentEffectPD<PhantomBladePassiveAug
     [SerializeField] private float baseTimer = 3f;
     [SerializeField] private int   bladeCount = 1;
     [SerializeField] private float damageMultiplier = 0.5f;
-    [SerializeField] private float bladeDamageBonus = 0.1f;
-    [SerializeField] private float attackSpeedBonus = 0.1f;
+    [SerializeField] private float phantomBladeDamageBonus = 0.1f;
 
     protected override State GetInitialState() => new() { timer = baseTimer };
 
     protected override void OnApply()
     {
-        Stats.AddPhantomBladeDamageBonus(bladeDamageBonus);
-        Stats.AddAttackSpeedTotalPercent(attackSpeedBonus);
+        Stats.AddPhantomBladeDamageBonus(phantomBladeDamageBonus);
     }
 
     protected override void Simulate(ref State state, float delta)
@@ -40,7 +38,7 @@ public class PhantomBladePassiveAugment : AugmentEffectPD<PhantomBladePassiveAug
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (Stats == null || Stats.IsDead) return;
 
-        // Stats.AttackSpeedPercent excludes both the flat-style attackSpeedPercent stacking AND Surge (only
+        // Stats.AttackSpeedPercent excludes both the flat-style attackSpeedFlat stacking AND Surge (only
         // Stats.AttackSpeed itself carries the Surge multiplier) — dividing it out of AttackSpeed against
         // baseAttackSpeed gives the true current speed multiplier including Surge, recomputed every tick so
         // a Surge starting/ending mid-countdown speeds this up/down immediately instead of only affecting

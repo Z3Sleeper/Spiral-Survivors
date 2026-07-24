@@ -427,7 +427,34 @@ namespace PurrLobby.Providers
 
         public void Shutdown()
         {
-            //Not needed
+            // Steamworks.Callback<T> registers itself into a static, process-wide dispatch table
+            // (CallbackDispatcher.m_registeredCallbacks) the moment it's created — that registration is
+            // completely independent of this MonoBehaviour's Unity lifecycle, so Destroy()ing this GameObject
+            // (e.g. a scene-unload on match start) does NOT stop these from firing. Only Dispose() removes
+            // the entry. Without this, OnAvatarImageLoaded could fire at any arbitrary point for the rest of
+            // the process (including mid-match), since Steam avatar fetches queued while in the lobby can
+            // resolve whenever Steam gets around to it.
+            _avatarImageLoadedCallback?.Dispose();
+            _avatarImageLoadedCallback = null;
+
+            _lobbyDataUpdateCallback?.Dispose();
+            _lobbyDataUpdateCallback = null;
+
+            _lobbyChatUpdateCallback?.Dispose();
+            _lobbyChatUpdateCallback = null;
+
+            _gameLobbyJoinRequestedCallback?.Dispose();
+            _gameLobbyJoinRequestedCallback = null;
+        }
+
+        // Belt and suspenders: nothing in this project currently calls Shutdown() explicitly at the
+        // lobby-to-gameplay transition, so this is what actually triggers cleanup today — Unity calls
+        // OnDestroy() automatically when the Lobby scene unloads (LoadSceneMode.Single). Safe to call
+        // Shutdown() twice (explicit call now, this on eventual destroy) since Callback<T>.Dispose() is
+        // itself idempotent.
+        private void OnDestroy()
+        {
+            Shutdown();
         }
 
         private List<LobbyUser> GetLobbyUsers(Steamworks.CSteamID lobbyId)
@@ -460,9 +487,9 @@ namespace PurrLobby.Providers
                 byte[] imageBuffer = new byte[width * height * 4];
                 if (Steamworks.SteamUtils.GetImageRGBA(avatarHandle, imageBuffer, imageBuffer.Length))
                 {
+                    FlipImageBufferVertically(imageBuffer, (int)width, (int)height);
                     avatar = new Texture2D((int)width, (int)height, TextureFormat.RGBA32, false);
                     avatar.LoadRawTextureData(imageBuffer);
-                    FlipTextureVertically(avatar);
                     avatar.Apply();
                 }
             }
@@ -476,25 +503,24 @@ namespace PurrLobby.Providers
             };
         }
 
-        private void FlipTextureVertically(Texture2D texture)
+        // Flips a raw RGBA32 buffer in place, row by row, before it's ever uploaded to a Texture2D — avoids
+        // Texture2D.GetPixels()/SetPixels(), which allocate a full Color[] (16 bytes/pixel) and do an extra
+        // full texture readback+reupload. The only allocation here is one row-sized scratch buffer, reused
+        // across the whole flip.
+        private static void FlipImageBufferVertically(byte[] buffer, int width, int height)
         {
-            var pixels = texture.GetPixels();
-            int width = texture.width;
-            int height = texture.height;
+            int stride = width * 4;
+            var rowBuffer = new byte[stride];
 
             for (int y = 0; y < height / 2; y++)
             {
-                for (int x = 0; x < width; x++)
-                {
-                    var topPixel = pixels[y * width + x];
-                    var bottomPixel = pixels[(height - 1 - y) * width + x];
+                int topOffset = y * stride;
+                int bottomOffset = (height - 1 - y) * stride;
 
-                    pixels[y * width + x] = bottomPixel;
-                    pixels[(height - 1 - y) * width + x] = topPixel;
-                }
+                Array.Copy(buffer, topOffset, rowBuffer, 0, stride);
+                Array.Copy(buffer, bottomOffset, buffer, topOffset, stride);
+                Array.Copy(rowBuffer, 0, buffer, bottomOffset, stride);
             }
-
-            texture.SetPixels(pixels);
         }
 
         private FriendUser CreateFriendUser(Steamworks.CSteamID steamId)
@@ -509,9 +535,9 @@ namespace PurrLobby.Providers
                 byte[] imageBuffer = new byte[width * height * 4];
                 if (Steamworks.SteamUtils.GetImageRGBA(avatarHandle, imageBuffer, imageBuffer.Length))
                 {
+                    FlipImageBufferVertically(imageBuffer, (int)width, (int)height);
                     avatar = new Texture2D((int)width, (int)height, TextureFormat.RGBA32, false);
                     avatar.LoadRawTextureData(imageBuffer);
-                    FlipTextureVertically(avatar);
                     avatar.Apply();
                 }
             }
@@ -538,9 +564,9 @@ namespace PurrLobby.Providers
                 byte[] imageBuffer = new byte[width * height * 4];
                 if (Steamworks.SteamUtils.GetImageRGBA(callback.m_iImage, imageBuffer, imageBuffer.Length))
                 {
+                    FlipImageBufferVertically(imageBuffer, (int)width, (int)height);
                     Texture2D avatar = new Texture2D((int)width, (int)height, TextureFormat.RGBA32, false);
                     avatar.LoadRawTextureData(imageBuffer);
-                    FlipTextureVertically(avatar);
                     avatar.Apply();
 
                     UpdateUserAvatar(steamId, avatar);

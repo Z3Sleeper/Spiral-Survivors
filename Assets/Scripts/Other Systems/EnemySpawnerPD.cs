@@ -443,7 +443,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
 
         // Fallback: ring around a random living player, retried until far enough from every player. Reads
-        // CharacterStatsPD.All directly — safe from Simulate() the same way EnemyBasePD.FindTarget() reads
+        // CharacterStatsPD.All directly — safe from Simulate() the same way EnemyBasePD.FindClosestTarget() reads
         // it, since we're only reading each entry's own predicted currentState, not relying on the
         // dictionary's population timing.
         int aliveCount = 0;

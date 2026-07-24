@@ -11,12 +11,12 @@ public class RangeAugment : AugmentEffectPD<RangeAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusRangeFlat    = 2.5f;
-    [SerializeField] private float bonusRangePercent = 0.15f;
+    [SerializeField] private float bonusWeaponRangeFlat    = 2.5f;
+    [SerializeField] private float bonusWeaponRangePercent = 0.15f;
 
     protected override void OnApply()
     {
-        Stats.AddWeaponRangeFlat(bonusRangeFlat);
-        Stats.AddWeaponRangePercent(bonusRangePercent);
+        Stats.AddWeaponRangeFlat(bonusWeaponRangeFlat);
+        Stats.AddWeaponRangePercent(bonusWeaponRangePercent);
     }
 }

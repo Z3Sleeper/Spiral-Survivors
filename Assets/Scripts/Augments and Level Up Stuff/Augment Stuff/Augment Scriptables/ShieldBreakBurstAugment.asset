@@ -15,8 +15,8 @@ MonoBehaviour:
   displayName: <color=#FF00FF>Break Burst</color>
   description: '<color=#FFA000>On <color=#FF00FF>Shield</color> Break:</color> Become
     <color=#FFA000>Invulnerable</color> for 1 second and deal <color=#FF5000>500%<color=#00FF87>*</color>
-    unpenalized Damage</color> to all surrounding enemies, knocking them back and
-    <color=#FFA000>Stunning</color> them for 3 seconds.
+    unpenalized Strength</color> to all surrounding enemies, <color=#FFA000>knocking
+    them back</color> and <color=#FFA000>Stunning</color> them for 3 seconds.
 
     <color=#00FF87>*Affected
     by Luck*</color>'

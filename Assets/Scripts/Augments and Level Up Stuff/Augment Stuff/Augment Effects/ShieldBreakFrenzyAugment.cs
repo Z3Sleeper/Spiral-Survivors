@@ -25,8 +25,8 @@ public class ShieldBreakFrenzyAugment : AugmentEffectPD<ShieldBreakFrenzyAugment
         public void Dispose() { }
     }
 
-    [SerializeField] private float attackSpeedBonus = 0.2f;
-    [SerializeField] private float moveSpeedBonus   = 0.2f;
+    [SerializeField] private float attackSpeedTotalPercent = 0.2f;
+    [SerializeField] private float totalMoveSpeedPercent   = 0.2f;
     [SerializeField] private float buffDuration     = 3f;
 
     // Tracks whether the CONFIRMED (verified) buff window is currently granted — mutated only from
@@ -51,6 +51,7 @@ public class ShieldBreakFrenzyAugment : AugmentEffectPD<ShieldBreakFrenzyAugment
 
     protected override void Simulate(ref State state, float delta)
     {
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (state.buffTimer > 0f)
             state.buffTimer = Mathf.Max(0f, state.buffTimer - delta);
     }
@@ -66,7 +67,7 @@ public class ShieldBreakFrenzyAugment : AugmentEffectPD<ShieldBreakFrenzyAugment
         _grantedView = active;
 
         float sign = active ? 1f : -1f;
-        Stats.AddAttackSpeedTotalPercent(sign * attackSpeedBonus);
-        Stats.AddMoveSpeedPercent(sign * moveSpeedBonus);
+        Stats.AddAttackSpeedTotalPercent(sign * attackSpeedTotalPercent);
+        Stats.AddMoveSpeedTotalPercent(sign * totalMoveSpeedPercent);
     }
 }

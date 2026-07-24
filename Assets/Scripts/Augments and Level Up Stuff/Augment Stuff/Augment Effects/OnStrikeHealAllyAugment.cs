@@ -13,12 +13,10 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float healthRegenBonusFlat = 0.5f;
-    [SerializeField] private float allyHealPercent       = 2f; // 200%
+    [SerializeField] private float healthRegenMultiplier       = 2f; // 200%
 
     protected override void OnApply()
     {
-        Stats.AddHealthRegenFlat(healthRegenBonusFlat);
         Stats.EnableAllyStrikeHit();
         Stats.AddAllyStrikeListener(OnAllyStrike);
     }
@@ -33,7 +31,7 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
     // ally received, per the augment's own spec.
     private void OnAllyStrike(AllyStrikeData data)
     {
-        float baseHeal = Stats.HealthRegen * allyHealPercent * data.onHitPower;
+        float baseHeal = Stats.HealthRegen * healthRegenMultiplier * data.onHitPower;
         float rolled = WeaponDamageMath.RollDamage(baseHeal, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
         data.ally.Heal(rolled);

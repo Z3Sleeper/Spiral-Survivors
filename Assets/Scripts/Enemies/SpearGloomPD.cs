@@ -218,10 +218,6 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void EnterWindup(ref State state)
     {
         state.spearStateTimer = windupDuration;
-        // Pinned for the whole attack sequence — see EnterMoving for the matching clear. Entering Windup
-        // directly from Moving (rather than via EnterDashToTarget) is one of the two commit points, so the
-        // lock has to be set here too, not just in EnterDashToTarget.
-        LockTarget(ref state);
         SnapFaceTarget(ref state);
         SetSpearState(ref state, SpearState.Windup);
     }
@@ -242,10 +238,6 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
 
     private void EnterDashToTarget(ref State state)
     {
-        // Pinned for the whole attack sequence (dash -> windup -> stab(s) -> pause) — see EnterMoving for
-        // the matching clear. Locking here (the moment the dash direction is committed) rather than only in
-        // EnterWindup is what keeps the dash itself, and everything after it, aimed at the same player.
-        LockTarget(ref state);
         SetSpearState(ref state, SpearState.DashingToTarget);
         StartDashToTarget(ref state, baseMoveSpeed * dashSpeedMultiplier, preferredRange / 2f);
     }
@@ -261,7 +253,9 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void EnterMoving(ref State state)
     {
         state.spearAttacksRemaining = attacksPerAttack;
-        ClearTargetLock(ref state);
+        // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
+        // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
+        FindClosestTarget();
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         SetSpearState(ref state, SpearState.Moving);
     }

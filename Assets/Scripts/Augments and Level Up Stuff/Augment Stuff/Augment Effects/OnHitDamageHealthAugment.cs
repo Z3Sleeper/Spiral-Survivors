@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -15,8 +14,6 @@ public class OnHitDamageHealthAugment : AugmentEffectPD<OnHitDamageHealthAugment
 
     // 0.5f = 50% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
     [SerializeField] private float onHitMaxHealthPercent = 0.5f;
-
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
 
     protected override void OnApply()
     {
@@ -41,17 +38,6 @@ public class OnHitDamageHealthAugment : AugmentEffectPD<OnHitDamageHealthAugment
         if (data.isCrit) rolled *= Stats.CritDamage;
 
         enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
-        _hitFeedbackQueue.Add((enemy, rolled, data.isCrit, isHighroll));
-    }
-
-    protected override void UpdateView(State viewState, State? verified)
-    {
-        base.UpdateView(viewState, verified);
-
-        if (Stats == null) return;
-
-        foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, Stats);
-        _hitFeedbackQueue.Clear();
+        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false });
     }
 }

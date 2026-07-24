@@ -18,12 +18,12 @@ public class PhantomBladeSizeAugment : AugmentEffectPD<PhantomBladeSizeAugment.S
         public void Dispose() { }
     }
 
-    [SerializeField] private float damageBonus = 0.5f;
-    [SerializeField] private float sizeBonus   = 1f;
+    [SerializeField] private float phantomBladeDamageBonusPercent = 0.5f;
+    [SerializeField] private float phantomBladeSizeBonusPercent   = 1f;
 
     protected override void OnApply()
     {
-        Stats.AddPhantomBladeDamageBonusPercent(damageBonus);
-        Stats.AddPhantomBladeSizeBonusPercent(sizeBonus);
+        Stats.AddPhantomBladeDamageBonusPercent(phantomBladeDamageBonusPercent);
+        Stats.AddPhantomBladeSizeBonusPercent(phantomBladeSizeBonusPercent);
     }
 }

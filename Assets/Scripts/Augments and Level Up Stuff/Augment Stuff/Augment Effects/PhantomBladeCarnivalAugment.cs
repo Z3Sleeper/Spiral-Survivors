@@ -14,13 +14,13 @@ public class PhantomBladeCarnivalAugment : AugmentEffectPD<PhantomBladeCarnivalA
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     [SerializeField] private GameObject phantomBladePrefab;
-    [SerializeField] private float damagePenalty = 0.35f;
-    [SerializeField] private float sizePenalty   = 0.35f;
+    [SerializeField] private float phantomBladeDamagePenalty = 0.35f;
+    [SerializeField] private float phantomBladeSizePenalty   = 0.35f;
 
     protected override void OnApply()
     {
-        Stats.MultiplyPhantomBladeDamagePenalty(1f - damagePenalty);
-        Stats.MultiplyPhantomBladeSizePenalty(1f - sizePenalty);
+        Stats.MultiplyPhantomBladeDamagePenalty(1f - phantomBladeDamagePenalty);
+        Stats.MultiplyPhantomBladeSizePenalty(1f - phantomBladeSizePenalty);
         Stats.AddPhantomBladeSummonListener(OnPhantomBladeSummon);
     }
 

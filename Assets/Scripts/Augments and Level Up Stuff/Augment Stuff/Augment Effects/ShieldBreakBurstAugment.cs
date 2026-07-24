@@ -40,10 +40,6 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
     private static readonly Collider[] _overlapResults = new Collider[32];
     private readonly HashSet<IEnemyPD> _found = new();
 
-    // Plain (not predicted State) — same "queue in Simulate-context, drain in UpdateView" split as every
-    // other damage source's own hit-feedback queue.
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
-
     protected override void OnApply()
     {
         Stats.AddShieldBreakListener(OnShieldBreak);
@@ -72,13 +68,13 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
 
             bool isCrit = GameRandom.instance.NextFloat() < Stats.CritChance;
 
-            float baseDamage = Stats.UnpenalizedWeaponDamage * damagePercent;
+            float baseDamage = Stats.UnpenalizedStrength * damagePercent;
             float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
             if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
             if (isCrit) rolled *= Stats.CritDamage;
 
             enemy.TakeDamage(rolled, isCrit, Stats.owner ?? default);
-            _hitFeedbackQueue.Add((enemy, rolled, isCrit, isHighroll));
+            Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = true });
 
             Vector3 knockDir = (enemy.transform.position - Stats.transform.position).normalized;
             enemy.AddKnockbackVelocity(knockDir * knockback);
@@ -100,15 +96,4 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
             vfx.Launch(burstRadius, vfxDuration);
     }
 
-    protected override void UpdateView(State viewState, State? verified)
-    {
-        base.UpdateView(viewState, verified);
-
-        if (Stats == null) return;
-
-        // Priority, like real weapon hits — this is the burst's own direct damage.
-        foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, Stats, isPriority: true);
-        _hitFeedbackQueue.Clear();
-    }
 }

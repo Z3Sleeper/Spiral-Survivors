@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9e27bff8381132b4ab8735c6b6a375d3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::StackPowerAugment
-  stackPowerBonus: 0.5
+  stackPowerBonus: 0.3

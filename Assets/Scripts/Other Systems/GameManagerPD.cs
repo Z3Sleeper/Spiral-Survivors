@@ -149,7 +149,7 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         if (state.hasWon || state.isGameOver) return;
 
         // Game-over: every present player simultaneously dead. Safe to read CharacterStatsPD.All's own
-        // currentState.isDead per-entry from Simulate() (same cross-identity read EnemyBasePD.FindTarget()
+        // currentState.isDead per-entry from Simulate() (same cross-identity read EnemyBasePD.FindClosestTarget()
         // already does) — ReviveZonePD requires a nearby *alive* ally to charge a revive, so this really
         // is unrecoverable, not just "everyone's currently downed."
         int deadCount = 0, playerCount = 0;

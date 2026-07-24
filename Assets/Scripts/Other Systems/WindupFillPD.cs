@@ -18,20 +18,6 @@ public class WindupFillPD : MonoBehaviour
     private float _elapsed;
     private bool _filling;
     private bool _awoken;
-    private bool _paused;
-
-    private void OnEnable()
-    {
-        PausePD.OnPauseChanged += OnPauseChanged;
-        if (PausePD.instance != null) _paused = PausePD.instance.IsPaused;
-    }
-
-    private void OnDisable()
-    {
-        PausePD.OnPauseChanged -= OnPauseChanged;
-    }
-
-    private void OnPauseChanged(bool paused) => _paused = paused;
 
     private void Awake()
     {
@@ -75,7 +61,8 @@ public class WindupFillPD : MonoBehaviour
 
     private void Update()
     {
-        if (!_filling || _paused) return;
+        if (!_filling) return;
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         _elapsed += Time.deltaTime;
         Apply(Mathf.Clamp01(_elapsed / _duration));
         if (_elapsed >= _duration) _filling = false;

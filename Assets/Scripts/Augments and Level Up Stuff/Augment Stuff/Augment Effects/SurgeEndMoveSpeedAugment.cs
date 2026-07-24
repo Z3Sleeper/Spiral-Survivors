@@ -15,7 +15,7 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
         public void Dispose() { }
     }
 
-    [SerializeField] private float moveSpeedBonus = 0.6f;
+    [SerializeField] private float totalMoveSpeedPercent = 0.3f;
     [SerializeField] private float buffDuration    = 2f;
 
     [Header("Buff Bar")]
@@ -73,7 +73,7 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
         if (_bonusActive) return;
 
         _bonusActive = true;
-        Stats.AddMoveSpeedPercent(moveSpeedBonus);
+        Stats.AddMoveSpeedTotalPercent(totalMoveSpeedPercent);
 
         if (isOwner && BuffBarPD.instance != null && _buffIconInstance == null)
             _buffIconInstance = BuffBarPD.instance.AddBuffIcon(buffIcon);
@@ -85,7 +85,7 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
     {
         if (!_bonusActive) return;
         _bonusActive = false;
-        Stats.AddMoveSpeedPercent(-moveSpeedBonus);
+        Stats.AddMoveSpeedTotalPercent(-totalMoveSpeedPercent);
 
         if (_buffIconInstance != null && BuffBarPD.instance != null)
         {
@@ -96,6 +96,7 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
 
     protected override void Simulate(ref State state, float delta)
     {
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (state.buffTimer <= 0f) return;
 
         state.buffTimer = Mathf.Max(0f, state.buffTimer - delta);

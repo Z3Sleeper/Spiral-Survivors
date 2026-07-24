@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#8C8C8C>Phantom</color> <color=#00FFFF>Dash</color>
   description: '<color=#FFA000>On <color=#00FFFF>Dash End</color>:</color> <color=#FFA000>Summon</color>
     3 <color=#8C8C8C>Phantom Blades</color> piercing the nearest 3 enemies for <color=#FF5000>100%<color=#00FF87>*</color>
-    Unpenalized Damage</color>.
+    unpenalized Strength</color>.
 
     <color=#8C8C8C>+10% Phantom Blade Damage</color>
 
@@ -32,3 +32,4 @@ MonoBehaviour:
   tags:
   - Phantom Blade Generator
   requiredTags: []
+  incompatibleTags: []

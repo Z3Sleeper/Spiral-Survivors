@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#8C8C8C>Phantom</color> <color=#FF0050>Storm</color>
   description: '<color=#FFA000>Every 3 seconds:</color> <color=#FFA000>Summon</color>
     a <color=#8C8C8C>Phantom Blade</color> piercing the nearest enemy for <color=#FF5000>180%<color=#00FF87>*</color>
-    Unpenalized Damage</color>. Cooldown scales with <color=#FF0050>Attack Speed</color>.
+    Unpenalized Strength</color>. Cooldown scales with <color=#FF0050>Attack Speed</color>.
 
     <color=#8C8C8C>+10%
     Phantom Blade Damage</color>
@@ -32,3 +32,4 @@ MonoBehaviour:
   tags:
   - Phantom Blade Generator
   requiredTags: []
+  incompatibleTags: []

@@ -2,7 +2,7 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // New tech, not a port — our first StackPower-consuming augment. While Surging, gain a stack every 1s (up
-// to maxStacks); each stack grants +15% Attack Speed (AddAttackSpeedPercent's additive-into-baseAttackSpeed
+// to maxStacks); each stack grants +15% Attack Speed (AddAttackSpeedFlat's additive-into-baseAttackSpeed
 // convention, "not total" per the user's own wording — stacks sum linearly, they don't compound
 // multiplicatively), scaled by Stats.StackPower. Stacks reset to 0 the instant Surge ends, so every Surge
 // starts the climb over from scratch rather than carrying stacks between Surges.
@@ -10,7 +10,7 @@ using UnityEngine;
 // The stack COUNT lives in predicted State and ticks in Simulate() (safe — same shape as
 // CharacterStatsPD's own regen timers), but per AugmentEffectPD's own doc comment a discrete stat += is NOT
 // safe to call directly from Simulate() (risks double-firing during the client's own reconciliation pass).
-// So the actual Stats.AddAttackSpeedPercent mutation happens in UpdateView(), gated to verified state and
+// So the actual Stats.AddAttackSpeedFlat mutation happens in UpdateView(), gated to verified state and
 // keyed off a change in stack count — the same "react to a verified-state transition" shape used elsewhere
 // (e.g. EnemyBasePD's own isDead-transition detection), just for an int delta instead of a bool edge.
 //
@@ -30,7 +30,7 @@ public class SurgeStackingAttackSpeedAugment : AugmentEffectPD<SurgeStackingAtta
 
     [SerializeField] private float stackInterval    = 1f;
     [SerializeField] private int   maxStacks         = 10;
-    [SerializeField] private float perStackBonus     = 0.15f;
+    [SerializeField] private float attackSpeedFlat     = 0.15f;
 
     // Plain view-layer bookkeeping, not State — tracks what this effect has ACTUALLY applied to
     // CharacterStatsPD so it can be reversed exactly, same role as EnemyBasePD's _wasDeadLastFrame.
@@ -70,8 +70,8 @@ public class SurgeStackingAttackSpeedAugment : AugmentEffectPD<SurgeStackingAtta
         if (newCount == _lastStackCount) return;
         _lastStackCount = newCount;
 
-        Stats.AddAttackSpeedPercent(-_lastAppliedBonus);
-        _lastAppliedBonus = perStackBonus * Stats.StackPower * newCount;
-        Stats.AddAttackSpeedPercent(_lastAppliedBonus);
+        Stats.AddAttackSpeedFlat(-_lastAppliedBonus);
+        _lastAppliedBonus = attackSpeedFlat * Stats.StackPower * newCount;
+        Stats.AddAttackSpeedFlat(_lastAppliedBonus);
     }
 }

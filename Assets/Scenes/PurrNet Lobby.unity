@@ -273,7 +273,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &6321156
 RectTransform:
   m_ObjectHideFlags: 0
@@ -5809,8 +5809,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -211.66, y: 0}
-  m_SizeDelta: {x: 712.66, y: 82.0912}
+  m_AnchoredPosition: {x: -183.81259, y: 0}
+  m_SizeDelta: {x: 768.3548, y: 82.0912}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &506467849
 MonoBehaviour:
@@ -5835,10 +5835,10 @@ MonoBehaviour:
   m_text: 'Fires projectiles at enemies in range and LoS at x12 Attack Speed
 
     Projectiles
-    pierce but lose 10% Damage/On-Hit Power each hit
+    pierce but lose 10% Total Damage/On-Hit Power each hit
 
-    +10 Range and has Compensating
-    Augment'
+    +10 Range and has
+    Compensating Augment'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -5966,7 +5966,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.CanvasScaler
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
   m_ReferenceResolution: {x: 800, y: 600}
@@ -7224,7 +7224,7 @@ GameObject:
   - component: {fileID: 599895828}
   - component: {fileID: 599895827}
   m_Layer: 5
-  m_Name: DamagePerLevel Text
+  m_Name: StrengthPerLevel Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -9760,7 +9760,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Has ThinkingCritically and Critxecute Augments
+  m_text: 'Has Thinking Critically and Critxecute Augments
 
     <color=red>Handle
     hits deal 25% damage and can''t Crit</color>'
@@ -10831,7 +10831,7 @@ GameObject:
   - component: {fileID: 872093237}
   - component: {fileID: 872093236}
   m_Layer: 5
-  m_Name: DamagePerLevel Button
+  m_Name: StrengthPerLevel Button
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -10903,7 +10903,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1888371206}
         m_TargetAssemblyTypeName: UpgradePanel, Assembly-CSharp
-        m_MethodName: OnUpgradeDamagePerLevelClicked
+        m_MethodName: OnUpgradeStrengthPerLevelClicked
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -11442,7 +11442,7 @@ GameObject:
   - component: {fileID: 905906835}
   - component: {fileID: 905906834}
   m_Layer: 5
-  m_Name: Percent Damage Button
+  m_Name: Percent Strength Button
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -11514,7 +11514,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1888371206}
         m_TargetAssemblyTypeName: UpgradePanel, Assembly-CSharp
-        m_MethodName: OnUpgradeWeaponDamagePercentClicked
+        m_MethodName: OnUpgradeStrengthPercentClicked
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -13901,14 +13901,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - v0.2.3
+      - v0.2.4
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - v0.2.3
+    - v0.2.4
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -14162,7 +14162,7 @@ GameObject:
   - component: {fileID: 1117486875}
   - component: {fileID: 1117486874}
   m_Layer: 5
-  m_Name: Flat Damage Button
+  m_Name: Flat Strength Button
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -14234,7 +14234,7 @@ MonoBehaviour:
       m_Calls:
       - m_Target: {fileID: 1888371206}
         m_TargetAssemblyTypeName: UpgradePanel, Assembly-CSharp
-        m_MethodName: OnUpgradeDamageFlatClicked
+        m_MethodName: OnUpgradeStrengthFlatClicked
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}
@@ -18890,7 +18890,7 @@ MonoBehaviour:
   _stopPlayingOnDisconnect: 0
   _startServerFlags: 0
   _startClientFlags: 0
-  _cookieScope: 1
+  _cookieScope: 2
   _dontDestroyOnLoad: 1
   _transport: {fileID: 1457045222}
   _networkPrefabs: {fileID: 11400000, guid: 8232d0144cb72c74a9a0faa73c7b9ca8, type: 2}
@@ -19880,7 +19880,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.2.3
+  m_text: Version 0.2.4
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -21029,7 +21029,7 @@ GameObject:
   - component: {fileID: 1594387821}
   - component: {fileID: 1594387820}
   m_Layer: 5
-  m_Name: Percent Damage Text
+  m_Name: Percent Strength Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -23701,6 +23701,7 @@ MonoBehaviour:
   unlockPopup: {fileID: 711449437}
   unlockPopupText: {fileID: 659305280}
   unlockSound: {fileID: 8300000, guid: 46c7129edbae410419e8c572ca74f505, type: 3}
+  lockLobbyOnMatchStart: 1
 --- !u!1 &1805443636
 GameObject:
   m_ObjectHideFlags: 0
@@ -25177,7 +25178,7 @@ MonoBehaviour:
   pointsText: {fileID: 446596406}
   upgradeScrollRect: {fileID: 1379489526}
   levelUpStatsButtonText: {fileID: 1580979602}
-  damageFlatButtonText: {fileID: 1904880986}
+  strengthFlatButtonText: {fileID: 1904880986}
   maxHealthFlatButtonText: {fileID: 1726868340}
   moveSpeedFlatButtonText: {fileID: 1639100968}
   attackSpeedFlatButtonText: {fileID: 1532958960}
@@ -25193,9 +25194,9 @@ MonoBehaviour:
   reviveTimePenaltyButtonText: {fileID: 315504405}
   xpMultiplierButtonText: {fileID: 1390788936}
   levelUpOptionsButtonText: {fileID: 335989619}
-  weaponDamagePercentButtonText: {fileID: 1594387820}
+  strengthPercentButtonText: {fileID: 1594387820}
   luckButtonText: {fileID: 174675324}
-  damagePerLevelButtonText: {fileID: 599895827}
+  strengthPerLevelButtonText: {fileID: 599895827}
   maxShieldButtonText: {fileID: 335067822}
   shieldRechargeTimeButtonText: {fileID: 1211094984}
   selectedIcon: {fileID: 1985736942}
@@ -25380,7 +25381,7 @@ GameObject:
   - component: {fileID: 1904880987}
   - component: {fileID: 1904880986}
   m_Layer: 5
-  m_Name: Flat Damage Text
+  m_Name: Flat Strength Text
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -27259,10 +27260,10 @@ MonoBehaviour:
       m_Calls: []
   m_text: '+2 Weapons & Weapons orbit at a distance
 
-    +50% Damage <color=#F00000>-50%
-    Range</color>
+    +50% Total Strength <color=#F00000>-50%
+    Total Range</color>
 
-    <i>(Damage & On-Hit Power are divided by Weapon Count)</i>'
+    <i>(Strength & On-Hit Power are divided by Weapon Count)</i>'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

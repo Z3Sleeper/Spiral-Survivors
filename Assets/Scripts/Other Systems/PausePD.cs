@@ -11,10 +11,12 @@ public class PausePD : PredictedIdentity<PausePD.State>
     public static event System.Action<int> OnCountdownChanged;
     public static event System.Action<int, bool> OnFallbackTimerChanged;
 
-    private const float CountdownDuration = 3f;
+    // Exposed (not const) so these can be tuned down in the Inspector for local multiplayer testing
+    // (fast-forwarding through the countdowns instead of waiting out 3s/30s every time).
+    [SerializeField] private float countdownDuration = 3f;
     // Once at least one player has readied up (but not everyone), this counts down so a single AFK/
     // stuck player can't hold the whole group paused indefinitely — force-unpauses when it expires.
-    private const float ReadyFallbackDuration = 30f;
+    [SerializeField] private float readyFallbackDuration = 30f;
 
     public struct State : IPredictedData<State>
     {
@@ -44,7 +46,7 @@ public class PausePD : PredictedIdentity<PausePD.State>
 
     protected override State GetInitialState() => new()
     {
-        readyFallbackTimer = ReadyFallbackDuration,
+        readyFallbackTimer = readyFallbackDuration,
         readyPlayers = DisposableList<PlayerID>.Create(4)
     };
 
@@ -69,6 +71,23 @@ public class PausePD : PredictedIdentity<PausePD.State>
 
     protected override void Simulate(ref State state, float delta)
     {
+        // ── Level-up / win / loss screens override any manual pause entirely ────────────────────────────
+        // Gameplay stays frozen either way — IsPaused folds these in independently of state.isPaused — but
+        // the separate PAUSED overlay (LocalUIManagerPD listens for OnPauseChanged, which fires off
+        // state.isPaused specifically) would otherwise linger on top of the level-up screen, unresumable,
+        // if the player happened to pause manually right as a level-up (or the game ending) landed. Also
+        // discards any pending manual-pause toggle/countdown so a NEW pause can't engage while one of these
+        // is up either — same "the more important thing wins" reasoning IsPaused itself already uses.
+        if ((AugmentManagerPD.instance != null && AugmentManagerPD.instance.IsPresenting)
+            || (GameManagerPD.instance != null && (GameManagerPD.instance.HasWon || GameManagerPD.instance.IsGameOver)))
+        {
+            state.isPaused = false;
+            state.pauseCountdown = 0f;
+            state.readyPlayers.Clear();
+            _pendingToggle = false;
+            return;
+        }
+
         // ── Countdown ──────────────────────────────────────────────────────
         if (state.pauseCountdown > 0f)
         {
@@ -90,7 +109,7 @@ public class PausePD : PredictedIdentity<PausePD.State>
             {
                 state.isPaused = false;
                 state.readyPlayers.Clear();
-                state.readyFallbackTimer = ReadyFallbackDuration;
+                state.readyFallbackTimer = readyFallbackDuration;
                 return;
             }
 
@@ -101,14 +120,14 @@ public class PausePD : PredictedIdentity<PausePD.State>
                 {
                     state.isPaused = false;
                     state.readyPlayers.Clear();
-                    state.readyFallbackTimer = ReadyFallbackDuration;
+                    state.readyFallbackTimer = readyFallbackDuration;
                     return;
                 }
             }
             else
             {
                 // Nobody's readied up yet — keep the fallback window fresh until someone actually starts it.
-                state.readyFallbackTimer = ReadyFallbackDuration;
+                state.readyFallbackTimer = readyFallbackDuration;
             }
         }
 
@@ -132,35 +151,15 @@ public class PausePD : PredictedIdentity<PausePD.State>
             }
             else
             {
-                state.pauseCountdown = CountdownDuration;
+                state.pauseCountdown = countdownDuration;
             }
         }
     }
 
     protected override void UpdateView(State viewState, State? verified)
     {
-        // timeScale is a side-effect that must NOT live in Simulate (rollback would oscillate it), and
-        // must not react to raw currentState either — an in-flight misprediction correction would
-        // oscillate it there too. Verified state is the only safe source for it.
         var s = verified ?? viewState;
         int playerCount = NetworkManager.main != null ? NetworkManager.main.playerCount : 1;
-
-        bool presenting = AugmentManagerPD.instance != null && AugmentManagerPD.instance.VerifiedIsPresenting;
-        bool gameEnded = GameManagerPD.instance != null && GameManagerPD.instance.VerifiedGameEnded;
-        float targetTimeScale = (s.isPaused || presenting || gameEnded) ? 0f : 1f;
-
-        // Routed through predictionManager.time (PurrDiction's own PredictedTime module) instead of
-        // setting UnityEngine.Time.timeScale directly — its setter updates both Time.timeScale AND
-        // PurrDiction's own internally-tracked timeScale together. PredictionManager.DoPhysicsPass() reads
-        // that internal value (not Time.timeScale directly) to scale its Physics.Simulate() delta, and
-        // asserting a clean 0/1 here every frame is what actually prevents it from drifting to something
-        // like -0.0000001 on its own (which trips PhysicsScene.Simulate's negative-time guard) — setting
-        // Time.timeScale alone left PurrDiction to re-derive its own copy a tick later, which is
-        // apparently where that drift crept in.
-        if (predictionManager != null && predictionManager.time != null)
-            predictionManager.time.timeScale = targetTimeScale;
-        else
-            Time.timeScale = targetTimeScale;
 
         int countdownSecs = s.pauseCountdown > 0f ? Mathf.CeilToInt(s.pauseCountdown) : 0;
         if (countdownSecs != _prevCountdownSecs)

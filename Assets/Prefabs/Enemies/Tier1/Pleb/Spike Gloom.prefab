@@ -519,8 +519,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedRigidbody
   _rigidbody: {fileID: -6973549993052189348}
-  _floatAccuracy: 1
-  _eventMask: 63
+  _floatAccuracy: 2
+  _eventMask: 40
   _ignoreTriggerOnTrigger: 0
 --- !u!135 &9083167483732005889
 SphereCollider:

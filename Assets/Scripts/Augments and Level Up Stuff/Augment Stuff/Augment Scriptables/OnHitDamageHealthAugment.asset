@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FF00>Punching Down</color>
   description: 'Deal <color=#00FF00>50%<color=#00FF87>*</color> Max Health</color>
-    <color=#FF0050>On-Hit</color>.
+    <color=#FFA000>On-Hit</color>.
 
     <color=#00FF87>*Affected by Luck*</color>'
   icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}

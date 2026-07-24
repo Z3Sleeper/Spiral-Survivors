@@ -17,13 +17,11 @@ public class CritTriggerOnHitAugment : AugmentEffectPD<CritTriggerOnHitAugment.S
     {
         public void Dispose() { }
     }
-
-    [SerializeField] private float critChanceBonus = 0.1f;
+    
     [SerializeField] private float secondHitOnHitPowerPercent = 0.5f;
 
     protected override void OnApply()
     {
-        Stats.AddCritChanceFlat(critChanceBonus);
         Stats.AddCritStrikeListener(OnCritStrike);
     }
 

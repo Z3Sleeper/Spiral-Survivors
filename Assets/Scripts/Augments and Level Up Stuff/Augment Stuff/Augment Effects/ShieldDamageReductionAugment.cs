@@ -20,7 +20,7 @@ public class ShieldDamageReductionAugment : AugmentEffectPD<ShieldDamageReductio
         public void Dispose() { }
     }
 
-    [SerializeField] private float damageReductionBonus      = 0.4f;
+    [SerializeField] private float damageReductionPercent      = 0.4f;
     [SerializeField] private float saveInvincibilityDuration  = 1f;
     [SerializeField] private float saveCooldown                = 30f;
 
@@ -48,7 +48,7 @@ public class ShieldDamageReductionAugment : AugmentEffectPD<ShieldDamageReductio
         if (Stats.CurrentShield > 0f)
         {
             _reductionActive = true;
-            Stats.AddDamageReductionPercent(damageReductionBonus);
+            Stats.AddDamageReductionPercent(damageReductionPercent);
         }
 
         // Owner-only — every player's own copy of this augment effect exists on every machine (see
@@ -81,14 +81,14 @@ public class ShieldDamageReductionAugment : AugmentEffectPD<ShieldDamageReductio
     {
         if (!_reductionActive) return;
         _reductionActive = false;
-        Stats.AddDamageReductionPercent(-damageReductionBonus);
+        Stats.AddDamageReductionPercent(-damageReductionPercent);
     }
 
     private void OnShieldRecharge()
     {
         if (_reductionActive) return;
         _reductionActive = true;
-        Stats.AddDamageReductionPercent(damageReductionBonus);
+        Stats.AddDamageReductionPercent(damageReductionPercent);
     }
 
     private void OnLethalDamageTaken()
@@ -103,6 +103,7 @@ public class ShieldDamageReductionAugment : AugmentEffectPD<ShieldDamageReductio
 
     protected override void Simulate(ref State state, float delta)
     {
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (state.cooldownTimer > 0f)
             state.cooldownTimer = Mathf.Max(0f, state.cooldownTimer - delta);
     }

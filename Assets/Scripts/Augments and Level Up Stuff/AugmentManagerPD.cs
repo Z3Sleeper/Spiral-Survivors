@@ -22,11 +22,15 @@ public struct PlayerPick
     // PlayerControllerPD.Input at pick time — never recomputed locally, since a remote machine's own
     // ProgressionManager save data would give a different (wrong) answer for another player's pick.
     public float multiplier;
+    // Which round (State.levelBeingProcessed) this pick was submitted during — picks are whole-run, never
+    // cleared (see State.picks' own doc comment for why), so anything that used to rely on the list being
+    // freshly empty each round instead filters by this.
+    public int roundLevel;
 }
 
-// Whole-run record of which augments a player has picked — never cleared (unlike picks, which only
-// tracks the current round). Used to avoid re-offering an already-picked augment and to evaluate
-// prerequisites/incompatibilities for future offers.
+// Whole-run record of which augments a player has picked — never cleared, same lifetime as picks now.
+// Used to avoid re-offering an already-picked augment and to evaluate prerequisites/incompatibilities for
+// future offers.
 public struct PlayerAugmentRecord
 {
     public PlayerID player;
@@ -35,7 +39,10 @@ public struct PlayerAugmentRecord
 
 public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
 {
-    public static event System.Action<int> OnPresentingTimerChanged;
+    // (seconds, visible) — same shape as PausePD.OnFallbackTimerChanged. visible is false whenever solo
+    // (see IsSinglePlayer), so the UI can hide the countdown text entirely instead of showing a number
+    // nobody's actually counting down against.
+    public static event System.Action<int, bool> OnPresentingTimerChanged;
 
 
     public struct State : IPredictedData<State>
@@ -43,6 +50,15 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         public int levelBeingProcessed;
         public bool isPresenting;
         public float presentingTimer;
+        // Whole-run record of every pick ever submitted (augment AND stat), never cleared — same
+        // reasoning as pickedAugments below. Used to be cleared at the start of every round, which broke a
+        // freshly-spawned local replica's ability to rebuild historical state (a reconnecting player's own
+        // client, or any newly-joining observer): UpdateView()'s _appliedPickCount cursor can only recover
+        // picks that are still actually present in this list, and a brand-new replica starts that cursor at
+        // 0, so anything already cleared by the time it starts observing was permanently invisible to it.
+        // Every per-round check below (SubmitPick/AutoPick's "already picked", Simulate()'s "has everyone
+        // picked", CountExpectedPickEffects) now filters by PlayerPick.roundLevel instead of relying on the
+        // list being freshly empty.
         public DisposableList<PlayerPick> picks;
         public DisposableList<PlayerAugmentRecord> pickedAugments;
         public void Dispose()
@@ -92,15 +108,22 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
 
     // Once this round's screen has been up this long, any player who still hasn't picked gets a random
     // one auto-selected for them (see AutoPick) — same reasoning as PausePD's ready-up fallback: nobody
-    // should be able to hold the whole group hostage indefinitely.
-    private const float PresentingDuration = 30f;
+    // should be able to hold the whole group hostage indefinitely. Exposed (not const) so it can be tuned
+    // down in the Inspector for local multiplayer testing.
+    [SerializeField] private float presentingDuration = 30f;
 
     // Predicted, not verified — safe to read from other identities' Simulate() (rolls back correctly).
     // Folded into PausePD.IsPaused so every existing pause check across the codebase automatically also
     // halts gameplay while a level-up needs picks, without touching each of those systems individually.
     public bool IsPresenting => currentState.isPresenting;
 
-    public bool HasPresentingTimerExpired => currentState.isPresenting && currentState.presentingTimer <= 0f;
+    // Same live-playercount convention PausePD's own isSinglePlayer check uses — a solo player should get
+    // unlimited time to pick, no countdown, and never get auto-picked for. Live, not GameManagerPD's fixed-
+    // at-start count, so a multiplayer match that drops down to one remaining player also stops timing out
+    // from that point on, matching how PausePD's own ready-up/toggle logic already treats it.
+    private bool IsSinglePlayer => NetworkManager.main == null || NetworkManager.main.playerCount <= 1;
+
+    public bool HasPresentingTimerExpired => currentState.isPresenting && !IsSinglePlayer && currentState.presentingTimer <= 0f;
 
     // For view/UI purposes only — verified, so the level-up screen doesn't flicker on rollback.
     public bool VerifiedIsPresenting => verifiedState?.isPresenting ?? false;
@@ -142,6 +165,21 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     private bool _wasPresenting;
     private int _appliedPickCount;
     private int _prevTimerSecs = -1;
+    private bool _prevTimerVisible;
+
+    // Whole-run bookkeeping — the literal running total of every stat-augment delta each player has ever
+    // been granted (see CharacterStatsPD.StatBoostTotals' own doc comment). Plain Dictionary, not predicted
+    // State: mirrors CharacterStatsPD's own bonus fields, which this exists purely to record alongside —
+    // those aren't part of predicted State either (can't roll back on replay, see ApplyPick's own comment),
+    // so this is mutated the exact same way: once per verified pick, from UpdateView(), never from
+    // Simulate(). Not reset mid-run — a fresh instance (this class's own Awake() singleton guard) already
+    // starts empty for every new match.
+    private readonly Dictionary<PlayerID, CharacterStatsPD.StatBoostTotals> _statTotals = new();
+
+    // Copy, not a live reference — same "handed to a caller, safe to hold" reasoning as
+    // GetPickedAugmentsForPlayer, though here it's just a struct copy rather than a pooled list.
+    public CharacterStatsPD.StatBoostTotals GetStatTotals(PlayerID player) =>
+        _statTotals.TryGetValue(player, out var t) ? t : default;
 
     // How many of this round's picked-augment effects have confirmed OnApply() so far — reset to 0 only at
     // round start (state.isPresenting false -> true, itself already rollback-safe), then only ever
@@ -178,6 +216,17 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     {
         if (GameManagerPD.instance == null) return;
 
+        // Win/Loss takes total priority over a level-up round in progress — per the user's own pause-
+        // priority ordering (Win/Loss > Level Up > Pause), there's no reason to keep waiting on picks (or
+        // generating new options) once the game has already ended. Also what stops isPresenting from
+        // getting stuck true forever if the game ends mid-round, which would otherwise leave the level-up
+        // screen (VerifiedIsPresenting-driven, in LocalUIManagerPD) shown on top of the end screen forever.
+        if (GameManagerPD.instance.HasWon || GameManagerPD.instance.IsGameOver)
+        {
+            state.isPresenting = false;
+            return;
+        }
+
         RegisterClassPassiveAugments();
 
         if (!state.isPresenting)
@@ -186,16 +235,18 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
 
             state.levelBeingProcessed++;
             state.isPresenting = true;
-            state.presentingTimer = PresentingDuration;
-            state.picks.Clear();
+            state.presentingTimer = presentingDuration;
             _confirmedPickEffectsThisRound = 0;
             GenerateOptionsForAllPlayers();
             return;
         }
 
-        if (state.picks.Count < CharacterStatsPD.All.Count)
+        if (CountPicksThisRound(state.picks, state.levelBeingProcessed) < CharacterStatsPD.All.Count)
         {
-            state.presentingTimer = Mathf.Max(0f, state.presentingTimer - delta);
+            // Doesn't decrement at all in single player — HasPresentingTimerExpired also independently
+            // refuses to report expired while solo, but leaving the actual number frozen (not just ignored)
+            // means it reads as genuinely infinite rather than a value nobody happens to be checking.
+            if (!IsSinglePlayer) state.presentingTimer = Mathf.Max(0f, state.presentingTimer - delta);
             return;
         }
 
@@ -207,16 +258,26 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         // class-passive fix addressed, just for level-ups instead of game start. Re-derived fresh every
         // tick (cheap — a handful of picks at most) rather than cached, so there's nothing to get out of
         // sync with _confirmedPickEffectsThisRound.
-        if (_confirmedPickEffectsThisRound < CountExpectedPickEffects(state.picks)) return;
+        if (_confirmedPickEffectsThisRound < CountExpectedPickEffects(state.picks, state.levelBeingProcessed)) return;
 
         state.isPresenting = false;
+    }
+
+    // Picks are whole-run now (see State.picks' own doc comment) — every per-round check re-derives its
+    // own "this round only" view by filtering on PlayerPick.roundLevel instead of trusting Count directly.
+    private int CountPicksThisRound(DisposableList<PlayerPick> picks, int roundLevel)
+    {
+        int count = 0;
+        for (int i = 0; i < picks.Count; i++)
+            if (picks[i].roundLevel == roundLevel) count++;
+        return count;
     }
 
     // Pure, side-effect-free re-derivation from already-rolled-back-correct predicted state (state.picks)
     // plus static augmentDatabase data — safe to (re)compute every tick, including under resimulation,
     // since it never accumulates anything itself. Counts only picks that actually spawn a trackable effect
     // object (a pure stat pick, or an augment with no effectPrefab, has nothing to wait on).
-    private int CountExpectedPickEffects(DisposableList<PlayerPick> picks)
+    private int CountExpectedPickEffects(DisposableList<PlayerPick> picks, int roundLevel)
     {
         if (augmentDatabase == null) return 0;
 
@@ -224,6 +285,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         for (int i = 0; i < picks.Count; i++)
         {
             var pick = picks[i];
+            if (pick.roundLevel != roundLevel) continue;
             if (!pick.isAugment) continue;
             if (pick.augmentIndex < 0 || pick.augmentIndex >= augmentDatabase.augments.Count) continue;
 
@@ -298,7 +360,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         if (!currentState.isPresenting) return;
 
         for (int i = 0; i < currentState.picks.Count; i++)
-            if (currentState.picks[i].player == player) return;
+            if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.levelBeingProcessed) return;
 
         if (!_currentOptions.TryGetValue(player, out var options)) return;
         if (cardIndex < 0 || cardIndex >= options.Count) return;
@@ -306,7 +368,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         var option = options[cardIndex];
         if (option.isAugment)
         {
-            currentState.picks.Add(new PlayerPick { player = player, isAugment = true, augmentIndex = option.augmentIndex });
+            currentState.picks.Add(new PlayerPick { player = player, isAugment = true, augmentIndex = option.augmentIndex, roundLevel = currentState.levelBeingProcessed });
             // Recorded here, not in ApplyPick()/UpdateView() — this runs from Simulate(), the only place
             // predicted State can be safely mutated, atomically with the pick itself.
             currentState.pickedAugments.Add(new PlayerAugmentRecord { player = player, augmentIndex = option.augmentIndex });
@@ -320,7 +382,8 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
                 isAugment = false,
                 statIndexA = option.statIdxA,
                 statIndexB = option.statIdxB,
-                multiplier = multiplier
+                multiplier = multiplier,
+                roundLevel = currentState.levelBeingProcessed
             });
         }
     }
@@ -337,7 +400,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         if (!_currentOptions.TryGetValue(player, out var options) || options.Count == 0) return;
 
         for (int i = 0; i < currentState.picks.Count; i++)
-            if (currentState.picks[i].player == player) return;
+            if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.levelBeingProcessed) return;
 
         int randomIndex = GameRandom.instance.Next(options.Count);
         SubmitPick(player, randomIndex, multiplier);
@@ -366,8 +429,10 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         var v = verifiedState;
         if (!v.HasValue) return false;
 
+        // picks is whole-run now (see State.picks' own doc comment) — has to filter by the CURRENT round,
+        // otherwise this would report "already picked" forever after a player's very first pick ever.
         for (int i = 0; i < v.Value.picks.Count; i++)
-            if (v.Value.picks[i].player == player) return true;
+            if (v.Value.picks[i].player == player && v.Value.picks[i].roundLevel == v.Value.levelBeingProcessed) return true;
         return false;
     }
 
@@ -589,11 +654,14 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
 
         // Verified, not predicted — matches the level-up screen's own visibility (VerifiedIsPresenting),
         // so the countdown doesn't visually disagree with the cards/background it's displayed alongside.
-        int timerSecs = v.isPresenting ? Mathf.CeilToInt(v.presentingTimer) : 0;
-        if (timerSecs != _prevTimerSecs)
+        // Hidden entirely while solo (IsSinglePlayer) — no countdown to show when picking never expires.
+        bool timerVisible = v.isPresenting && !IsSinglePlayer;
+        int timerSecs = timerVisible ? Mathf.CeilToInt(v.presentingTimer) : 0;
+        if (timerSecs != _prevTimerSecs || timerVisible != _prevTimerVisible)
         {
             _prevTimerSecs = timerSecs;
-            OnPresentingTimerChanged?.Invoke(timerSecs);
+            _prevTimerVisible = timerVisible;
+            OnPresentingTimerChanged?.Invoke(timerSecs, timerVisible);
         }
 
         // Unconditional per-level bonus, independent of picks — looped in case a big XP orb crosses
@@ -607,7 +675,6 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
 
         if (v.isPresenting && !_wasPresenting)
         {
-            _appliedPickCount = 0;
             // Fires once per round, right as the cards start appearing — this is the same verified-only
             // "just started presenting" transition VerifiedIsPresenting/the level-up screen itself already
             // key off, so the timing matches what's on screen. Played at the camera/listener position
@@ -624,6 +691,9 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         // CharacterStatsPD aren't part of predicted State and can't roll back on replay. Augment picks
         // need no handling here: their effect object was already spawned deterministically in
         // SubmitPick() via hierarchy.Create(), and it applies its own bonus off its own verified state.
+        // _appliedPickCount is NEVER reset (picks is whole-run, see State.picks' own doc comment) — it's a
+        // monotonic cursor into a monotonically-growing list, same shape as pickedAugments' own handling,
+        // so it stays correct across any number of rounds without needing a per-round reset.
         for (int i = _appliedPickCount; i < v.picks.Count; i++)
             ApplyPick(v.picks[i]);
         _appliedPickCount = v.picks.Count;
@@ -640,6 +710,9 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         if (pick.statIndexA < 0 || pick.statIndexA >= statDatabase.stats.Count) return;
         if (pick.statIndexB < 0 || pick.statIndexB >= statDatabase.stats.Count) return;
 
-        stats.ApplyStatAugmentPick(statDatabase.stats[pick.statIndexA], statDatabase.stats[pick.statIndexB], pick.multiplier);
+        var delta = stats.ApplyStatAugmentPick(statDatabase.stats[pick.statIndexA], statDatabase.stats[pick.statIndexB], pick.multiplier);
+
+        _statTotals.TryGetValue(pick.player, out var totals);
+        _statTotals[pick.player] = totals + delta;
     }
 }

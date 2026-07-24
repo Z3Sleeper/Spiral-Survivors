@@ -54,7 +54,7 @@ public class OnKillLaunchEnemiesAugment : AugmentEffectPD<OnKillLaunchEnemiesAug
         float rolled = WeaponDamageMath.RollDamage(damagePercent, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
         if (isCrit) rolled *= Stats.CritDamage;
-        float damage = rolled * Stats.UnpenalizedWeaponDamage;
+        float damage = rolled * Stats.UnpenalizedStrength;
 
         Vector3 direction = enemy.transform.position - Stats.transform.position;
         direction.y = 0f;

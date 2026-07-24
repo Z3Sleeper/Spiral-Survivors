@@ -13,12 +13,10 @@ public class CriticalHealingAugment : AugmentEffectPD<CriticalHealingAugment.Sta
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float bonusCritChance     = 0.1f;
     [SerializeField] private float critHealBonusPercent = 0.15f;
 
     protected override void OnApply()
     {
-        Stats.AddCritChanceFlat(bonusCritChance);
         Stats.AddHealListener(OnHeal);
 
         // TODO: also apply this bonus to healing GIVEN to allies once an ally-heal mechanic exists —

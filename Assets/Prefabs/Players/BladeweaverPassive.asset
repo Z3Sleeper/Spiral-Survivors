@@ -15,12 +15,18 @@ MonoBehaviour:
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0
-  bonusWeaponDamageFlat: 0
-  bonusWeaponDamagePercent: 0.5
-  bonusWeaponDamagePenalty: 0
+  totalMoveSpeedPercent: 0
+  totalMoveSpeedPenalty: 0
+  bonusStrengthFlat: 0
+  bonusStrengthPercent: 0
+  bonusStrengthPenalty: 0
+  totalStrengthPercent: 0.5
+  totalStrengthPenalty: 0
   bonusWeaponRadiusFlat: 3
   bonusWeaponRadiusPercent: 0
-  attackSpeedPercent: 0
+  totalWeaponRadiusPercent: 0
+  totalWeaponRadiusPenalty: 0
+  attackSpeedFlat: 0
   attackSpeedTotalPercent: 0
   attackSpeedPenalty: 0
   bonusWeaponCountFlat: 2
@@ -28,40 +34,61 @@ MonoBehaviour:
   bonusWeaponRangeFlat: 0
   bonusWeaponRangePercent: 0
   weaponRangePenalty: -0.5
+  totalWeaponRangePercent: 0
+  totalWeaponRangePenalty: 0
   bonusWeaponSizePercent: 0
   bonusSizePercent: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 0
+  totalCritChancePercent: 0
+  totalCritChancePenalty: 0
   bonusCritDamageFlat: 0
   bonusCritDamagePercent: 0
   bonusRicochetFlat: 0
   bonusRicochetPercent: 0
+  totalRicochetPercent: 0
+  totalRicochetPenalty: 0
   bonusMultishotFlat: 0
   bonusMultishotPercent: 0
+  totalMultishotPercent: 0
+  totalMultishotPenalty: 0
   projectileDamageDropoffReduction: 0
   projectileOnHitDropoffReduction: 0
   bonusMaxHealthFlat: 0
   bonusMaxHealthPercent: 0
+  totalMaxHealthPercent: 0
+  totalMaxHealthPenalty: 0
   bonusHealthRegenFlat: 0
   bonusHealthRegenPercent: 0
+  totalHealthRegenPercent: 0
+  totalHealthRegenPenalty: 0
   bonusMaxShieldFlat: 0
   bonusMaxShieldPercent: 0
+  totalMaxShieldPercent: 0
+  totalMaxShieldPenalty: 0
   bonusMaxEnergyFlat: 0
   bonusMaxEnergyPercent: 0
   bonusEnergyRegenFlat: 0
   bonusEnergyRegenPercent: 0
   energyRegenPenalty: 0
+  totalEnergyRegenPercent: 0
+  totalEnergyRegenPenalty: 0
   bonusSurgeCostFlat: 0
   bonusSurgeCostPercent: 0
   surgeEffectiveness: 1
   surgeEffectivenessPenalty: 0
   surgeAttackSpeedPenalty: 0
   dashHaste: 0
+  bonusDashHastePercent: 0
+  totalDashHastePercent: 0
+  totalDashHastePenalty: 0
   bonusMaxSPFlat: 0
   bonusMaxSPPercent: 0
   bonusLuckFlat: 0
   bonusLuckPercent: 0
   luckPenalty: 0
+  totalLuckPercent: 0
+  totalLuckPenalty: 0
   bonusLuckFloorPercent: 0
   luckFloorPenalty: 0
   bonusLuckCeilingPercent: 0
@@ -74,6 +101,8 @@ MonoBehaviour:
   knockbackPenalty: 0
   bonusOnHitPowerMultiplier: 1
   bonusOnHitPowerPenalty: 0
+  totalOnHitPowerPercent: 0
+  totalOnHitPowerPenalty: 0
   stackPowerPercent: 0
   stackPowerPenalty: 0
   xpMultiplier: 0

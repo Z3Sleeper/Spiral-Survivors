@@ -33,6 +33,15 @@ public class SFXManager : MonoBehaviour
         }
     }
 
+    private void OnDestroy()
+    {
+        // DontDestroyOnLoad means this only ever runs at application quit — without it, _input stayed
+        // enabled for the whole process lifetime with nothing to tear it down, which is what was tripping
+        // InputSystem_Actions' own finalizer assert ("...Disable() has not been called") in the player log.
+        _input?.Disable();
+        _input?.Dispose();
+    }
+
     private void Update()
     {
         if (_input.Player.Mute.WasPressedThisFrame())

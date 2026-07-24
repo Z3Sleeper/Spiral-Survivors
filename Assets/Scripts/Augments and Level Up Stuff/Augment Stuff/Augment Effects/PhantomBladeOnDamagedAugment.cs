@@ -22,13 +22,13 @@ public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamage
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private int   bladeCount = 1;
     [SerializeField] private float damageMultiplier = 0.1f;
-    [SerializeField] private float bladeDamageBonus = 0.1f;
+    [SerializeField] private float phantomBladeDamageBonus = 0.1f;
 
     protected override void OnApply()
     {
-        // Matches PhantomBladeOnCritAugment's exact size += 0.5f * bladeDamageBonus ratio.
-        Stats.AddPhantomBladeDamageBonus(bladeDamageBonus);
-        Stats.AddPhantomBladeSizeBonus(0.5f * bladeDamageBonus);
+        // Matches PhantomBladeOnCritAugment's exact size += 0.5f * phantomBladeDamageBonus ratio.
+        Stats.AddPhantomBladeDamageBonus(phantomBladeDamageBonus);
+        Stats.AddPhantomBladeSizeBonus(0.5f * phantomBladeDamageBonus);
         Stats.AddDamagedListener(OnDamaged);
     }
 

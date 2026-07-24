@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -11,7 +12,13 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     public struct State : IPredictedData<State>
     {
         public bool  prevSet;
-        public void Dispose() { }
+        public DisposableList<HitCooldownEntry>     hitCooldowns;
+        public DisposableList<AllyHitCooldownEntry> allyHitCooldowns;
+        public void Dispose()
+        {
+            hitCooldowns.Dispose();
+            allyHitCooldowns.Dispose();
+        }
     }
 
     [Header("Zone Half-Extents (normalized, multiplied by weapon scale)")]
@@ -40,18 +47,13 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private readonly Collider[]   _innerOverlap = new Collider[16];
     private readonly Collider[]   _outerOverlap = new Collider[16];
 
-    private readonly Dictionary<IEnemyPD, float> _hitCooldowns     = new();
-    private readonly List<IEnemyPD>               _cooldownBuffer   = new();
     private readonly HashSet<IEnemyPD>            _touchedThisTick  = new();
     private readonly HashSet<IEnemyPD>            _outerHitsThisTick = new();
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
 
     // Ally-strike detection (OnStrikeHealAllyAugment, real friendly fire) — only populated/queried when
     // _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true. _outerAlliesThisTick mirrors
     // _outerHitsThisTick's tie-break (an ally touching both zones counts as outer) so handle touches still
     // heal/damage for less, matching Hit()'s own innerOnHitPowerMultiplier/innerDamageMultiplier treatment.
-    private readonly Dictionary<CharacterStatsPD, float> _allyHitCooldowns      = new();
-    private readonly List<CharacterStatsPD>              _allyCooldownBuffer   = new();
     private readonly HashSet<CharacterStatsPD>           _touchedAlliesThisTick = new();
     private readonly HashSet<CharacterStatsPD>           _outerAlliesThisTick   = new();
 
@@ -88,7 +90,11 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         if (_manager != null) _manager.UnregisterWeapon(this);
     }
 
-    protected override State GetInitialState() => default;
+    protected override State GetInitialState() => new()
+    {
+        hitCooldowns = DisposableList<HitCooldownEntry>.Create(4),
+        allyHitCooldowns = DisposableList<AllyHitCooldownEntry>.Create(4),
+    };
 
     // ── Simulation ────────────────────────────────────────────────────────────
 
@@ -101,6 +107,11 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     {
         if (!_initialized || _stats == null || _stats.IsDead) return;
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        // Tick cooldowns here (deterministic, tick-based delta) rather than Time.deltaTime in UpdateView()
+        // — see HitCooldownEntry's own doc comment for why the old approach was unsafe under resimulation.
+        HitCooldownMath.Tick(state.hitCooldowns);
+        HitCooldownMath.Tick(state.allyHitCooldowns);
 
         // Outer-track weapons (OuterTrackAugment) spin the opposite direction — see
         // WeaponMeleePD.LateSimulate's own angleSign comment for the full reasoning.
@@ -245,18 +256,16 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         // overlapping both zones this tick still counts as an outer hit (outer wins the tie-break).
         foreach (var enemy in _touchedThisTick)
         {
-            if (_hitCooldowns.ContainsKey(enemy)) continue;
-            _hitCooldowns[enemy] = HitCooldown;
-            Hit(enemy, _outerHitsThisTick.Contains(enemy));
+            if (HitCooldownMath.TryStart(state.hitCooldowns, enemy.ObjectId, HitCooldown, delta))
+                Hit(enemy, _outerHitsThisTick.Contains(enemy));
         }
 
         if (detectAllies)
         {
             foreach (var ally in _touchedAlliesThisTick)
             {
-                if (_allyHitCooldowns.ContainsKey(ally)) continue;
-                _allyHitCooldowns[ally] = HitCooldown;
-                HitAlly(ally, _outerAlliesThisTick.Contains(ally));
+                if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
+                    HitAlly(ally, _outerAlliesThisTick.Contains(ally));
             }
         }
 
@@ -310,35 +319,10 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     {
         if (!_initialized) TryInit();
 
-        // Tick cooldowns at render rate — not in Simulate, so resims can't expire them early.
-        _cooldownBuffer.Clear();
-        _cooldownBuffer.AddRange(_hitCooldowns.Keys);
-        foreach (var e in _cooldownBuffer)
-        {
-            _hitCooldowns[e] -= Time.deltaTime;
-            if (_hitCooldowns[e] <= 0f) _hitCooldowns.Remove(e);
-        }
-
-        _allyCooldownBuffer.Clear();
-        _allyCooldownBuffer.AddRange(_allyHitCooldowns.Keys);
-        foreach (var a in _allyCooldownBuffer)
-        {
-            _allyHitCooldowns[a] -= Time.deltaTime;
-            if (_allyHitCooldowns[a] <= 0f) _allyHitCooldowns.Remove(a);
-        }
-
         // Purely cosmetic (outer blade visual width) — render rate, not simulation, since it has no
         // gameplay effect and doesn't need to be replay-consistent.
         if (outerXScalesWithRange && outerBladeVisual != null && _stats != null)
             UpdateOuterBladeVisual();
-
-        // Fire hit feedback immediately at render rate — bypasses state propagation delay.
-        if (_stats != null)
-        {
-            foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
-                enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, _stats, isPriority: true);
-        }
-        _hitFeedbackQueue.Clear();
     }
 
     private void UpdateOuterBladeVisual()
@@ -363,24 +347,24 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private void Hit(IEnemyPD enemy, bool isOuter)
     {
         if (enemy._isDead) return;
-        float baseDamage = isOuter ? _stats.WeaponDamage : _stats.WeaponDamage * innerDamageMultiplier;
+        float baseDamage = isOuter ? _stats.Strength : _stats.Strength * innerDamageMultiplier;
         float damage = RollDamage(baseDamage, out bool isHighroll);
         if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = isOuter && GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
-        if (isHighroll) _onHighroll.Invoke(damage);
+        if (isHighroll) _stats.NotifyHighroll(damage);
         // baseDamage already accounts for innerDamageMultiplier on handle (inner) hits, and onHitPower gets
         // the equivalent innerOnHitPowerMultiplier treatment — downstream on-hit effects see the actual
-        // per-hit damage/power this hit represented, not a flat re-read of WeaponDamage/OnHitPower.
+        // per-hit damage/power this hit represented, not a flat re-read of Strength/OnHitPower.
         float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = onHitPower, isCrit = isCrit };
-        _onHit.Invoke(hitData);
-        _onStrike.Invoke(hitData);
-        if (isCrit) _onCritStrike.Invoke(hitData);
+        _stats.NotifyHit(hitData);
+        _stats.NotifyStrike(hitData);
+        if (isCrit) _stats.NotifyCritStrike(hitData);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * onHitPower);
-        _hitFeedbackQueue.Add((enemy, damage, isCrit, isHighroll));
+        NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
     }
 
     // allyStrikeHitEnabled and allyStrikeDamageEnabled are independent, same as WeaponMeleePD.HitAlly.
@@ -396,7 +380,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
         if (_stats.allyStrikeDamageEnabled)
         {
-            float baseDamage = isOuter ? _stats.WeaponDamage : _stats.WeaponDamage * innerDamageMultiplier;
+            float baseDamage = isOuter ? _stats.Strength : _stats.Strength * innerDamageMultiplier;
             float damage = RollDamage(baseDamage, out bool isHighroll);
             if (isHighroll) damage *= 1f + _stats.HighrollBonus;
             ally.TakeDamage(damage);

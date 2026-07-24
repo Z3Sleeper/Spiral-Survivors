@@ -451,10 +451,6 @@ MonoBehaviour:
     pooling:
       usePooling: 0
       initialSize: 0
-  - prefab: {fileID: 3020991797504713205, guid: 45cad8a3ff1680445bfc14439db46aaf, type: 3}
-    pooling:
-      usePooling: 0
-      initialSize: 0
   - prefab: {fileID: 8360293024593176208, guid: a1da94ebab9983f498d7bd66a4520bac, type: 3}
     pooling:
       usePooling: 0

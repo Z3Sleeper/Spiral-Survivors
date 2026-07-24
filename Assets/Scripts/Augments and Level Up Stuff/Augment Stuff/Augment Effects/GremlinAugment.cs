@@ -13,14 +13,14 @@ public class GremlinAugment : AugmentEffectPD<GremlinAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float sizePercent        = -0.15f;
-    [SerializeField] private float attackSpeedPercent = 0.15f;
-    [SerializeField] private float moveSpeedPercent   = 0.15f;
+    [SerializeField] private float bonusSizePercent        = -0.2f;
+    [SerializeField] private float attackSpeedTotalPercent = 0.1f;
+    [SerializeField] private float totalMoveSpeedPercent   = 0.1f;
 
     protected override void OnApply()
     {
-        Stats.AddSizePercent(sizePercent);
-        Stats.AddAttackSpeedTotalPercent(attackSpeedPercent);
-        Stats.AddMoveSpeedPercent(moveSpeedPercent);
+        Stats.AddSizePercent(bonusSizePercent);
+        Stats.AddAttackSpeedTotalPercent(attackSpeedTotalPercent);
+        Stats.AddMoveSpeedTotalPercent(totalMoveSpeedPercent);
     }
 }

@@ -129,9 +129,6 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 
     private void EnterWindup(ref State state)
     {
-        // Pinned for the whole attack sequence (re-set on every repeat blitz, harmless) — see EnterMoving
-        // for the matching clear.
-        LockTarget(ref state);
         var snapDir = SnapFaceTarget(ref state);
         if (snapDir != Vector3.zero) state.blitzDirection = snapDir;
         state.stateTimer = windupDuration;
@@ -157,7 +154,9 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     private void EnterMoving(ref State state)
     {
         state.blitzesRemaining = blitzesPerAttack;
-        ClearTargetLock(ref state);
+        // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
+        // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
+        FindClosestTarget();
         SetBlitzState(ref state, BlitzState.Moving);
     }
 

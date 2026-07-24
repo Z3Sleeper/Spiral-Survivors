@@ -44,5 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b26417733f81eea40a7f7ed7a95fc4e3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CritOnHitAugment
-  critChanceBonus: 0
-  secondHitOnHitPowerPercent: 0.4
+  secondHitOnHitPowerPercent: 0.3

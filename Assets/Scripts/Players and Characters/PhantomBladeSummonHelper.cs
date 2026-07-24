@@ -84,15 +84,15 @@ public static class PhantomBladeSummonHelper
         // 1.3 * 1.5 = 195% rather than a flat 180% — then phantomBladeDamagePenalty scales the result down
         // again for tradeoff augments like PhantomBladeCarnivalAugment.
         //
-        // usePenalizedDamage picks between UnpenalizedWeaponDamage (no WeaponCount divide) and WeaponDamage
+        // usePenalizedDamage picks between UnpenalizedStrength (no WeaponCount divide) and Strength
         // (divides by WeaponCount) as the base. Passive/OnDash trigger at a fixed rate independent of
         // WeaponCount, so they use the undivided total same as always. OnCrit is the one exception — its
         // trigger frequency itself scales with WeaponCount (more weapons = more hits = more crits), so
         // pairing that with undivided damage would make total blade output balloon with more weapons
         // instead of holding flat the way weapon damage itself does; PhantomBladeOnCritAugment opts into
-        // the divided WeaponDamage to offset its own trigger-rate scaling.
-        float weaponDamageBase = usePenalizedDamage ? stats.WeaponDamage : stats.UnpenalizedWeaponDamage;
-        float damage = rolled * weaponDamageBase
+        // the divided Strength to offset its own trigger-rate scaling.
+        float strengthBase = usePenalizedDamage ? stats.Strength : stats.UnpenalizedStrength;
+        float damage = rolled * strengthBase
             * (1f + stats.phantomBladeDamageBonus) * stats.phantomBladeDamageBonusPercent * stats.phantomBladeDamagePenalty;
 
         SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit);

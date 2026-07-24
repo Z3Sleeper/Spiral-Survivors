@@ -16,12 +16,10 @@ public class HealthRegenOnEnemyDeathAugment : AugmentEffectPD<HealthRegenOnEnemy
         public void Dispose() { }
     }
 
-    [SerializeField] private float regenMultiplier = 0.2f;
-    [SerializeField] private float flatRegenBonus  = 0.5f;
+    [SerializeField] private float healthRegenMultiplier = 0.2f;
 
     protected override void OnApply()
     {
-        Stats.AddHealthRegenFlat(flatRegenBonus);
         CharacterStatsPD.OnEnemyDeath += OnEnemyDeath;
     }
 
@@ -33,7 +31,7 @@ public class HealthRegenOnEnemyDeathAugment : AugmentEffectPD<HealthRegenOnEnemy
 
     private void OnEnemyDeath(CharacterStatsPD killer, IEnemyPD enemy)
     {
-        float rolled = WeaponDamageMath.RollDamage(regenMultiplier, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
+        float rolled = WeaponDamageMath.RollDamage(healthRegenMultiplier, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
         Stats.Heal(rolled * Stats.HealthRegen);
     }

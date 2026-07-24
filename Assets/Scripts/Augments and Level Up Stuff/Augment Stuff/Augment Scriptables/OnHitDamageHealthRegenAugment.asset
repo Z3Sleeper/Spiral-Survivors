@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Hearty Hits</color>
   description: 'Deal <color=#7DFF00>1000%<color=#00FF87>*</color> Health Regen</color>
-    <color=#FF0050>On-Hit</color>.
+    <color=#FFA000>On-Hit</color>.
 
     <color=#00FF87>*Affected by Luck*</color>'
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}

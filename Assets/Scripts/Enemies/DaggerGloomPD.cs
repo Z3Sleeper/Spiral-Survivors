@@ -175,10 +175,6 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private void EnterWindup(ref State state)
     {
         state.stateTimer = windupDuration;
-        // Pinned for the whole attack sequence — see EnterMoving for the matching clear. Entering Windup
-        // directly from Moving (rather than via EnterDashToTarget) is one of the two commit points, so the
-        // lock has to be set here too, not just in EnterDashToTarget.
-        LockTarget(ref state);
         SnapFaceTarget(ref state);
         SetDaggerState(ref state, DaggerState.Windup);
     }
@@ -215,10 +211,6 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private void EnterDashToTarget(ref State state)
     {
         if (_target == null) return;
-        // Pinned for the whole attack sequence (dash -> windup -> spin(s) -> pause) — see EnterMoving for
-        // the matching clear. Locking here (the moment the dash destination is committed) rather than only
-        // in EnterWindup is what keeps the dash itself, and everything after it, aimed at the same player.
-        LockTarget(ref state);
         Vector3 dir = _target.position - transform.position;
         dir.y = 0f;
         dir.Normalize();
@@ -237,7 +229,9 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private void EnterMoving(ref State state)
     {
         state.attacksRemaining = attacksPerAttack;
-        ClearTargetLock(ref state);
+        // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
+        // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
+        FindClosestTarget();
         SetDaggerState(ref state, DaggerState.Moving);
     }
 

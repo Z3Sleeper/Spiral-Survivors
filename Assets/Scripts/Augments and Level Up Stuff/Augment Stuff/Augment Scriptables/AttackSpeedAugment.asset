@@ -26,3 +26,4 @@ MonoBehaviour:
   requiredAugments: []
   tags: []
   requiredTags: []
+  incompatibleTags: []

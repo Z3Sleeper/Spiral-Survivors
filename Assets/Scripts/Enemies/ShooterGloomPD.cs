@@ -4,10 +4,11 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Ported from _OldSystemArchive/Enemies/ShooterGloom.cs. Waits at preferred range, fires on cooldown; if
-// the player gets too close first dashes away (target locked before the dash — see LockTarget/
-// ClearTargetLock below — so it can't dash away from Player A but end up windup-facing and shooting
-// Player B if EnemyBasePD's periodic FindTarget() reassigns _target mid-sequence). Multishot uses the
-// shared MultishotMath formula (WeaponBasePD.cs) — same behavior as the player's own WeaponRangedPD.
+// the player gets too close first dashes away. EnemyBasePD only re-targets on spawn or when the current
+// target goes null/dead (no periodic re-scan), so the whole DashingAway/Windup/Shooting/BetweenShots/
+// PostShot sequence stays aimed at the same player it committed to throughout — no locking needed.
+// Multishot uses the shared MultishotMath formula (WeaponBasePD.cs) — same behavior as the player's own
+// WeaponRangedPD.
 public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -137,10 +138,6 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 if (_target != null) HandleMovement(ref state, delta);
                 if (state.attackCooldownTimer <= 0f && TargetInRange())
                 {
-                    // Locked here, at the moment the attack is committed to — the whole
-                    // DashingAway/Windup/Shooting/BetweenShots/PostShot sequence below reads this same
-                    // pinned _target throughout. See LockTarget's own doc comment.
-                    LockTarget(ref state);
                     state.shotsRemaining = shotsPerAttack;
                     float dist = Vector3.Distance(transform.position, _target.position);
                     if (dist < minAttackRange) EnterDashAway(ref state, dist);
@@ -248,7 +245,9 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
 
     private void EnterMoving(ref State state)
     {
-        ClearTargetLock(ref state);
+        // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
+        // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
+        FindClosestTarget();
         SetShooterState(ref state, ShooterState.Moving);
     }
 

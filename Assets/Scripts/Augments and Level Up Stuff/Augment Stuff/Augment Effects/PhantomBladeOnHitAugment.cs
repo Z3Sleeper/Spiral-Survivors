@@ -15,13 +15,13 @@ public class PhantomBladeOnHitAugment : AugmentEffectPD<PhantomBladeOnHitAugment
         public void Dispose() { }
     }
 
-    [SerializeField] private float bladeDamageBonus       = 0.1f;
-    [SerializeField] private float bladeOnHitPowerPercent = 0.5f;
+    [SerializeField] private float phantomBladeDamageBonus       = 0.1f;
+    [SerializeField] private float phantomBladeOnHitPowerPercent = 0.5f;
 
     protected override void OnApply()
     {
-        Stats.AddPhantomBladeDamageBonus(bladeDamageBonus);
+        Stats.AddPhantomBladeDamageBonus(phantomBladeDamageBonus);
         Stats.EnablePhantomBladeOnHit();
-        Stats.AddPhantomBladeOnHitPowerPercent(bladeOnHitPowerPercent);
+        Stats.AddPhantomBladeOnHitPowerPercent(phantomBladeOnHitPowerPercent);
     }
 }

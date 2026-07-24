@@ -9,10 +9,10 @@ public class RicochetAugment : AugmentEffectPD<RicochetAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float bonusRicochet = 1f;
+    [SerializeField] private float bonusRicochetFlat = 1f;
 
     protected override void OnApply()
     {
-        Stats.AddRicochetFlat(bonusRicochet);
+        Stats.AddRicochetFlat(bonusRicochetFlat);
     }
 }

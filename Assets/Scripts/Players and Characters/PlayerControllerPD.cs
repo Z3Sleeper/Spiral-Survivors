@@ -98,7 +98,9 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
 
     protected override void OnDestroy()
     {
+        base.OnDestroy();
         _input?.Disable();
+        _input?.Dispose();
     }
 
     public void EnableInput() => _input?.Enable();

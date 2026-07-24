@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#FF0050>Hit</color>
   description: '<color=#8C8C8C>Phantom Blades</color> <color=#FFA000>trigger</color>
-    <color=#FF0050>On-Hit Effects</color> with <color=#FF0050>60% reduced On-Hit
+    <color=#FFA000>On-Hit Effects</color> with <color=#FFA000>70% reduced On-Hit
     Power</color>.
 
     <color=#8C8C8C>+10% Phantom Blade Damage</color>'

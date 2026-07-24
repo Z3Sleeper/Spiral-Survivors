@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -18,8 +17,6 @@ public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRe
     // 20f = 2000% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%, so 2000% = 20f).
     [SerializeField] private float onHitHealthRegenPercent = 20f;
     [SerializeField] private float healthRegenBonusFlat    = 0.5f;
-
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
 
     protected override void OnApply()
     {
@@ -45,17 +42,6 @@ public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRe
         if (data.isCrit) rolled *= Stats.CritDamage;
 
         enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
-        _hitFeedbackQueue.Add((enemy, rolled, data.isCrit, isHighroll));
-    }
-
-    protected override void UpdateView(State viewState, State? verified)
-    {
-        base.UpdateView(viewState, verified);
-
-        if (Stats == null) return;
-
-        foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, Stats);
-        _hitFeedbackQueue.Clear();
+        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false });
     }
 }

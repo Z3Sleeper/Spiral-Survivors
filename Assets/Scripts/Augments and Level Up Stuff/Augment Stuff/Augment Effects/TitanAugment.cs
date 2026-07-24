@@ -8,9 +8,9 @@ public class TitanAugment : AugmentEffectPD<TitanAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float sizeBonus = 0.25f;
-    [SerializeField] private float rangeBonus = 0.10f;
-    [SerializeField] private float healthBonus = 0.15f;
+    [SerializeField] private float bonusSizePercent = 0.2f;
+    [SerializeField] private float totalWeaponRangePercent = 0.1f;
+    [SerializeField] private float totalMaxHealthPercent = 0.1f;
 
     protected override void OnApply()
     {
@@ -20,8 +20,8 @@ public class TitanAugment : AugmentEffectPD<TitanAugment.State>
         // this one. WeaponSize already reads bonusSizePercent directly, so the weapon's hitbox/visual
         // scale grows with the character without a separate call here. WeaponRadius (orbit distance)
         // deliberately doesn't scale with size — see CharacterStatsPD.WeaponRadius for why.
-        Stats.AddSizePercent(sizeBonus);
-        Stats.AddWeaponRangePercent(rangeBonus);
-        Stats.AddMaxHealthPercent(healthBonus);
+        Stats.AddSizePercent(bonusSizePercent);
+        Stats.AddWeaponRangeTotalPercent(totalWeaponRangePercent);
+        Stats.AddMaxHealthTotalPercent(totalMaxHealthPercent);
     }
 }

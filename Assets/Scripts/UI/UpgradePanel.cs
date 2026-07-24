@@ -10,7 +10,7 @@ public class UpgradePanel : MonoBehaviour
 
     [Header("Upgrade Buttons")]
     [SerializeField] private TextMeshProUGUI levelUpStatsButtonText;
-    [SerializeField] private TextMeshProUGUI damageFlatButtonText;
+    [SerializeField] private TextMeshProUGUI strengthFlatButtonText;
     [SerializeField] private TextMeshProUGUI maxHealthFlatButtonText;
     [SerializeField] private TextMeshProUGUI moveSpeedFlatButtonText;
     [SerializeField] private TextMeshProUGUI attackSpeedFlatButtonText;
@@ -26,9 +26,9 @@ public class UpgradePanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI reviveTimePenaltyButtonText;
     [SerializeField] private TextMeshProUGUI xpMultiplierButtonText;
     [SerializeField] private TextMeshProUGUI levelUpOptionsButtonText;
-    [SerializeField] private TextMeshProUGUI weaponDamagePercentButtonText;
+    [SerializeField] private TextMeshProUGUI strengthPercentButtonText;
     [SerializeField] private TextMeshProUGUI luckButtonText;
-    [SerializeField] private TextMeshProUGUI damagePerLevelButtonText;
+    [SerializeField] private TextMeshProUGUI strengthPerLevelButtonText;
     [SerializeField] private TextMeshProUGUI maxShieldButtonText;
     [SerializeField] private TextMeshProUGUI shieldRechargeTimeButtonText;
 
@@ -63,7 +63,7 @@ public class UpgradePanel : MonoBehaviour
     private void OnEnable()
     {
         if (_selectedStat == null)
-            Select(StatType.WeaponDamage);
+            Select(StatType.Strength);
         Refresh();
         if (upgradeScrollRect != null)
             upgradeScrollRect.verticalNormalizedPosition = 1f;
@@ -74,7 +74,7 @@ public class UpgradePanel : MonoBehaviour
         pointsText.text = $"{FormatPoints(ProgressionManager.AvailablePoints)} pts\n{FormatPoints(ProgressionManager.SpentPoints)} pts";
 
         RefreshButtonText(StatType.LevelUpStats,      "Level Up Stats",      levelUpStatsButtonText);
-        RefreshButtonText(StatType.WeaponDamage,      "Damage",              damageFlatButtonText);
+        RefreshButtonText(StatType.Strength,           "Strength",              strengthFlatButtonText);
         RefreshButtonText(StatType.MaxHealth,          "Max Health",          maxHealthFlatButtonText);
         RefreshButtonText(StatType.MoveSpeed,          "Move Speed",          moveSpeedFlatButtonText);
         RefreshButtonText(StatType.AttackSpeed,        "Attack Speed",        attackSpeedFlatButtonText);
@@ -90,9 +90,9 @@ public class UpgradePanel : MonoBehaviour
         RefreshButtonText(StatType.ReviveTimePenalty,  "Revive Time Penalty", reviveTimePenaltyButtonText);
         RefreshButtonText(StatType.XPMultiplier,       "XP",                  xpMultiplierButtonText);
         RefreshButtonText(StatType.LevelUpOptions,      "Level Up Options",    levelUpOptionsButtonText);
-        RefreshButtonText(StatType.WeaponDamagePercent, "% Damage",            weaponDamagePercentButtonText);
+        RefreshButtonText(StatType.StrengthPercent,     "% Strength",            strengthPercentButtonText);
         RefreshButtonText(StatType.Luck,                "Luck",                luckButtonText);
-        RefreshButtonText(StatType.DamagePerLevel,      "Damage Per Level",       damagePerLevelButtonText);
+        RefreshButtonText(StatType.StrengthPerLevel,    "Strength Per Level",       strengthPerLevelButtonText);
         RefreshButtonText(StatType.MaxShield,            "Max Shield",             maxShieldButtonText);
         RefreshButtonText(StatType.ShieldRechargeTime,   "Shield Recharge",        shieldRechargeTimeButtonText);
 
@@ -125,7 +125,7 @@ public class UpgradePanel : MonoBehaviour
         StatType.ShieldRechargeTime => "s",
         StatType.XPMultiplier      => "%",
         StatType.LevelUpStats        => "%",
-        StatType.WeaponDamagePercent => "%",
+        StatType.StrengthPercent     => "%",
         StatType.RevivePower       => "%",
         _                          => ""
     };
@@ -135,7 +135,7 @@ public class UpgradePanel : MonoBehaviour
         int tier      = ProgressionManager.GetBaseStatTier(stat);
         int maxTier   = ProgressionManager.GetMaxBaseTier(stat);
         float perTier = ProgressionManager.GetBaseStatValuePerTier(stat);
-        float displayScale = (stat == StatType.RevivePower || stat == StatType.WeaponDamagePercent || stat == StatType.MaxShield) ? 100f : 1f;
+        float displayScale = (stat == StatType.RevivePower || stat == StatType.StrengthPercent || stat == StatType.MaxShield) ? 100f : 1f;
         float current = Mathf.Abs(perTier * tier)   * displayScale;
         float max     = Mathf.Abs(perTier * maxTier) * displayScale;
         float absPer  = Mathf.Abs(perTier)           * displayScale;
@@ -146,7 +146,7 @@ public class UpgradePanel : MonoBehaviour
         return stat switch
         {
             StatType.LevelUpStats      => $"Increases stat gains from level up rewards by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.WeaponDamage      => $"Increases your Damage by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nWeapon Strikes randomly deal between 80% to 120% of your Damage, influenced by Luck.",
+            StatType.Strength          => $"Increases your Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nWeapon Strikes randomly deal between 80% to 120% of your Strength, influenced by Luck.",
             StatType.MaxHealth         => $"Increases your Max Health by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.MoveSpeed         => $"Increases your Move Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.AttackSpeed       => $"Increases your Weapon Attack Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nAttack Speed is equivalent to revolutions per second.",
@@ -162,9 +162,9 @@ public class UpgradePanel : MonoBehaviour
             StatType.ReviveTimePenalty => $"(Multiplayer Only) Reduces your Revive Time Penalty per death by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.XPMultiplier      => $"Increases your XP Multiplier by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nTeam XP multiplier is the additively combined XP multiplier of your party divided by the number of players.",
             StatType.LevelUpOptions      => $"Increases your level up reward options by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.WeaponDamagePercent => $"Increases your Damage by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
+            StatType.StrengthPercent     => $"Increases your Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.Luck                => $"Increases your Luck by {absPer} per tier ({current}/{max}).\nEach 1 Luck tightens variance towards the maximum roll by 1%.",
-            StatType.DamagePerLevel      => $"Increases your Damage per Level by {absPer} per tier ({current}/{max}).",
+            StatType.StrengthPerLevel    => $"Increases your Strength per Level by {absPer} per tier ({current}/{max}).",
             StatType.MaxShield           => $"Increases your Max Shield by {absPer}{unit} of your Max Health ({sign}{current}{unit}/{sign}{max}{unit}).\nShield takes 5 seconds to fully recharge, reduced by Shield Recharge Time Reductions.",
             StatType.ShieldRechargeTime  => $"Reduces your Shield Recharge Time by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             _                            => string.Empty
@@ -210,7 +210,7 @@ public class UpgradePanel : MonoBehaviour
 
     // All buttons — click to SELECT
     public void OnLevelUpStatsClicked()                { Select(StatType.LevelUpStats); }
-    public void OnUpgradeDamageFlatClicked()           { Select(StatType.WeaponDamage); }
+    public void OnUpgradeStrengthFlatClicked()           { Select(StatType.Strength); }
     public void OnUpgradeMaxHealthFlatClicked()        { Select(StatType.MaxHealth); }
     public void OnUpgradeMoveSpeedFlatClicked()        { Select(StatType.MoveSpeed); }
     public void OnUpgradeAttackSpeedFlatClicked()      { Select(StatType.AttackSpeed); }
@@ -226,9 +226,9 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeReviveTimePenaltyClicked()    { Select(StatType.ReviveTimePenalty); }
     public void OnUpgradeXPMultiplierClicked()         { Select(StatType.XPMultiplier); }
     public void OnUpgradeLevelUpOptionsClicked()        { Select(StatType.LevelUpOptions); }
-    public void OnUpgradeWeaponDamagePercentClicked()  { Select(StatType.WeaponDamagePercent); }
+    public void OnUpgradeStrengthPercentClicked()      { Select(StatType.StrengthPercent); }
     public void OnUpgradeLuckClicked()                 { Select(StatType.Luck); }
-    public void OnUpgradeDamagePerLevelClicked()       { Select(StatType.DamagePerLevel); }
+    public void OnUpgradeStrengthPerLevelClicked()     { Select(StatType.StrengthPerLevel); }
     public void OnUpgradeMaxShieldClicked()            { Select(StatType.MaxShield); }
     public void OnUpgradeShieldRechargeTimeClicked()   { Select(StatType.ShieldRechargeTime); }
 

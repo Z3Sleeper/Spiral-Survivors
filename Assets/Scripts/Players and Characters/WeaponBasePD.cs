@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using PurrNet;
+using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -25,19 +27,6 @@ public interface IWeaponPD
     void Init(CharacterStatsPD stats);
     void InitModelVisuals();
     void ScaleModel(float range);
-    // Lets WeaponManagerPD subscribe generically to any weapon's crit/hit events, regardless of concrete
-    // type, so it can relay every registered weapon's crits/hits up to the owning player's own
-    // CharacterStatsPD.
-    void AddCritStrikeListener(System.Action<WeaponHitData> listener);
-    void RemoveCritStrikeListener(System.Action<WeaponHitData> listener);
-    void AddHitListener(System.Action<WeaponHitData> listener);
-    void RemoveHitListener(System.Action<WeaponHitData> listener);
-    // Fires once per REAL weapon connection with an enemy — deliberately separate from AddHitListener/OnHit,
-    // which augments like CritTriggerOnHitAugment can (and do) invoke an extra time per real hit for their
-    // own onhit-chain purposes. OnStrike is never touched by anything that re-triggers OnHit, so it's safe
-    // for effects that must fire exactly once per genuine strike (e.g. OnStrikeEnergyRegenAugment).
-    void AddStrikeListener(System.Action<WeaponHitData> listener);
-    void RemoveStrikeListener(System.Action<WeaponHitData> listener);
     // Real-world distance from origin to this weapon's own current outer hit-detection edge — see
     // WeaponBasePD's shared implementation for why one formula covers every weapon type.
     float GetOuterReach(Vector3 origin);
@@ -46,8 +35,8 @@ public interface IWeaponPD
 // Shared payload for both the OnHit (every weapon hit) and OnCrit (the subset of hits that also crit)
 // event chains — a crit is still a hit, so it carries the same hit data rather than just a bare target id.
 // weaponDamage is the pre-luck-roll, pre-crit-multiplier damage baseline for THIS specific hit, not a
-// flat re-read of CharacterStatsPD.WeaponDamage — WeaponRangedProjectilePD passes its own already
-// ricochet-decayed State.currentDamage, and WeaponAxePD passes WeaponDamage * innerDamageMultiplier for
+// flat re-read of CharacterStatsPD.Strength — WeaponRangedProjectilePD passes its own already
+// ricochet-decayed State.currentDamage, and WeaponAxePD passes Strength * innerDamageMultiplier for
 // handle (inner) hits, so downstream on-hit effects see the damage that hit actually represented rather
 // than re-deriving it themselves per weapon type.
 public struct WeaponHitData
@@ -74,6 +63,25 @@ public struct AllyStrikeData
 {
     public CharacterStatsPD ally;
     public float onHitPower;
+}
+
+// Payload for a PredictedEvent<HitFeedbackData>-based hit-feedback notification (damage number, hit-flash,
+// SFX) — replaces the old "queue a plain List<T> in Simulate()/LateSimulate(), drain it once in
+// UpdateView()" pattern used across every weapon/effect that deals damage. That pattern turned out to be
+// resimulation-unsafe: the queue isn't predicted State, so it never rolls back — a hit that gets replayed
+// N times before the next real-frame UpdateView() call produces N duplicate damage numbers/SFX for one
+// real hit (see feedback_manual_queue_drain_pattern_unsafe memory). PredictedEvent<T>.Invoke() already has
+// the right guard built in (skips notifying listeners entirely while the owner is mid-replay, only fires
+// on the one live execution), so invoking this directly from Hit()/OnHit() and letting the listener call
+// TriggerHitFeedback needs no queue at all.
+public struct HitFeedbackData
+{
+    public PredictedObjectID target;
+    public float damage;
+    public bool isCrit;
+    public bool isHighroll;
+    public CharacterStatsPD attacker;
+    public bool isPriority;
 }
 
 // Shared damage-roll formula, non-generic so it's usable by anything that needs it without inheriting
@@ -135,6 +143,98 @@ public static class MultishotMath
             angles.Add(-half * (i / (float)leftCount));
         for (int i = 1; i <= rightCount; i++)
             angles.Add(half * (i / (float)rightCount));
+    }
+}
+
+// Predicted-state-safe hit-cooldown entry — for weapons that need a REPEATING "don't re-hit the same
+// target immediately" gate (WeaponMeleePD, WeaponAxePD; a one-shot weapon like WeaponRangedProjectilePD/
+// PhantomBladePD just uses a permanent _hitTargets HashSet instead, since it only ever needs "never hit
+// twice", not "cooldown, then allow again"). Ticked down by delta inside LateSimulate() itself
+// (deterministic, tick-based, rolls back correctly) rather than Time.deltaTime inside UpdateView() — a
+// real-time-decayed plain Dictionary was the actual cause of enemies flashing red and then never
+// reverting, and of the "possible WeaponMeleePD double hit-feedback, unconfirmed if real double damage or
+// cosmetic" entry in the project backlog: a replayed historical tick would see the cooldown already
+// expired (real time kept advancing independently of which tick was being resimulated) and re-fire a hit
+// that had already happened.
+public struct HitCooldownEntry
+{
+    public PredictedObjectID target;
+    // Ticks remaining, not seconds — see EnemyBaseState.ContactCooldown.remaining's own doc comment for the full
+    // reasoning (PurrNet's delta-packer costs a full 33 bits for any float that changed since last
+    // snapshot; this field changes almost every tick whenever a cooldown is active, so an int (cheap
+    // zigzag-varint diff) is far cheaper than a float here too). delta is a constant tick duration now
+    // that nothing manipulates Time.timeScale, so converting a seconds-duration to ticks at TryStart time
+    // is exact, not approximate.
+    public int remaining;
+}
+
+public struct AllyHitCooldownEntry
+{
+    public PlayerID ally;
+    public int remaining;
+}
+
+// Shared tick-down + gate-check helpers for HitCooldownEntry/AllyHitCooldownEntry lists — see
+// HitCooldownEntry's own doc comment for why this replaced a plain Dictionary. DisposableList<T> wraps an
+// internal List<T> reference, so passing it by value and mutating it (Add/RemoveAt/indexer) still mutates
+// the caller's own field — no ref needed.
+public static class HitCooldownMath
+{
+    public static void Tick(DisposableList<HitCooldownEntry> cooldowns)
+    {
+        for (int i = cooldowns.Count - 1; i >= 0; i--)
+        {
+            var entry = cooldowns[i];
+            entry.remaining--;
+            if (entry.remaining <= 0) cooldowns.RemoveAt(i);
+            else cooldowns[i] = entry;
+        }
+    }
+
+    // Returns true and starts the cooldown if target wasn't already on cooldown; false (no-op) otherwise.
+    // duration is still seconds at call sites (derived from WeaponSpeed, etc.) — converted to ticks here.
+    public static bool TryStart(DisposableList<HitCooldownEntry> cooldowns, PredictedObjectID target, float duration, float delta)
+    {
+        for (int i = 0; i < cooldowns.Count; i++)
+            if (cooldowns[i].target.Equals(target)) return false;
+        cooldowns.Add(new HitCooldownEntry { target = target, remaining = Mathf.Max(1, Mathf.RoundToInt(duration / delta)) });
+        return true;
+    }
+
+    // Read-only check, for callers (WeaponRangedPD.FindTarget) that need to EXCLUDE cooldown-gated
+    // candidates while picking a target, separately from whichever candidate actually ends up committed
+    // via TryStart afterward.
+    public static bool IsOnCooldown(DisposableList<HitCooldownEntry> cooldowns, PredictedObjectID target)
+    {
+        for (int i = 0; i < cooldowns.Count; i++)
+            if (cooldowns[i].target.Equals(target)) return true;
+        return false;
+    }
+
+    public static void Tick(DisposableList<AllyHitCooldownEntry> cooldowns)
+    {
+        for (int i = cooldowns.Count - 1; i >= 0; i--)
+        {
+            var entry = cooldowns[i];
+            entry.remaining--;
+            if (entry.remaining <= 0) cooldowns.RemoveAt(i);
+            else cooldowns[i] = entry;
+        }
+    }
+
+    public static bool TryStart(DisposableList<AllyHitCooldownEntry> cooldowns, PlayerID ally, float duration, float delta)
+    {
+        for (int i = 0; i < cooldowns.Count; i++)
+            if (cooldowns[i].ally == ally) return false;
+        cooldowns.Add(new AllyHitCooldownEntry { ally = ally, remaining = Mathf.Max(1, Mathf.RoundToInt(duration / delta)) });
+        return true;
+    }
+
+    public static bool IsOnCooldown(DisposableList<AllyHitCooldownEntry> cooldowns, PlayerID ally)
+    {
+        for (int i = 0; i < cooldowns.Count; i++)
+            if (cooldowns[i].ally == ally) return true;
+        return false;
     }
 }
 
@@ -322,60 +422,23 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     protected float RollDamage(float damage, out bool isHighroll) =>
         WeaponDamageMath.RollDamage(damage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out isHighroll);
 
-    // PredictedEvent, not a plain C# event — per PurrNet's docs (client-side-prediction/multi-identity-
-    // interactions), this is the framework's own mechanism for rollback-safe one-shot notifications: it
-    // only actually invokes subscribers once, off a verified/non-replaying pass, so a client-side
-    // misprediction that the server later disagrees with never fires it. A plain event fired directly from
-    // Simulate-context code (what this used to be) would fire again on every resimulation replay.
-    // protected, not private — subclasses (WeaponMeleePD.Hit(), WeaponAxePD.Hit()) invoke it directly at
-    // their own hit call sites. External subscribers use the Add/RemoveHighrollListener wrappers below,
-    // matching the private-field + wrapper-method convention CharacterStatsPD._onHeal and
-    // PlayerControllerPD._onDashStarted already established.
-    protected PredictedEvent<float> _onHighroll;
-
-    public void AddHighrollListener(System.Action<float> listener) => _onHighroll.AddListener(listener);
-    public void RemoveHighrollListener(System.Action<float> listener) => _onHighroll.RemoveListener(listener);
-
-    // Same PredictedEvent reasoning as _onHighroll above. Part of a per-owner event chain (weapon fires ->
-    // WeaponManagerPD relays -> owner's CharacterStatsPD fires its own -> subscribers like
-    // PhantomBladeOnCritAugment) deliberately built to have zero shared/global channel anywhere, unlike the
-    // old system's static WeaponBase.OnCritStrike bus. NotifyCritStrike is the external-invoke entry point
-    // for WeaponRangedProjectilePD, which rolls its own crit but isn't a WeaponBasePD<TState> itself, so it
-    // relays through the WeaponRangedPD that launched it instead.
-    protected PredictedEvent<WeaponHitData> _onCritStrike;
-
-    public void AddCritStrikeListener(System.Action<WeaponHitData> listener) => _onCritStrike.AddListener(listener);
-    public void RemoveCritStrikeListener(System.Action<WeaponHitData> listener) => _onCritStrike.RemoveListener(listener);
-    public void NotifyCritStrike(WeaponHitData data) => _onCritStrike.Invoke(data);
-
-    // Fires for every weapon hit (crit or not) — same per-owner event chain shape as _onCritStrike, and
-    // likewise relayed through WeaponRangedPD by WeaponRangedProjectilePD (NotifyHit). A crit still invokes
-    // this once via the normal hit path; augments that want a hit to count "extra" on crit (e.g.
-    // CritTriggerOnHitAugment) do so by calling CharacterStatsPD.NotifyHit again themselves from their own
-    // crit listener, not by this event double-firing on its own.
-    protected PredictedEvent<WeaponHitData> _onHit;
-
-    public void AddHitListener(System.Action<WeaponHitData> listener) => _onHit.AddListener(listener);
-    public void RemoveHitListener(System.Action<WeaponHitData> listener) => _onHit.RemoveListener(listener);
-    public void NotifyHit(WeaponHitData data) => _onHit.Invoke(data);
-
-    // Fires once per REAL weapon connection with an enemy, invoked directly alongside _onHit at each
-    // weapon's own actual hit-resolution call site (WeaponMeleePD.Hit/WeaponAxePD's equivalent/
-    // WeaponRangedProjectilePD's ProcessHit) — never touched by anything that re-invokes _onHit/NotifyHit
-    // (e.g. CritTriggerOnHitAugment), so it can't be duplicated the way _onHit can.
-    protected PredictedEvent<WeaponHitData> _onStrike;
-
-    public void AddStrikeListener(System.Action<WeaponHitData> listener) => _onStrike.AddListener(listener);
-    public void RemoveStrikeListener(System.Action<WeaponHitData> listener) => _onStrike.RemoveListener(listener);
-    public void NotifyStrike(WeaponHitData data) => _onStrike.Invoke(data);
+    // Highroll/crit/hit/strike/hit-feedback are all relayed straight to _stats (this weapon's owning,
+    // persistent CharacterStatsPD) rather than dispatched through a PredictedEvent owned by this weapon
+    // itself — see CharacterStatsPD._onHitFeedback's own doc comment (and
+    // feedback_predictedevent_anchor_persistent_identity memory) for why: a weapon can be despawned
+    // (WeaponManagerPD.DespawnWeapons, e.g. SurgeWeaponCountAugment ending) shortly after landing a hit, and
+    // PredictedEvent's non-owner/non-server dispatch only fires once the hit's tick verifies, which requires
+    // the OWNING identity to still exist to be resimulated — a despawned weapon can never satisfy that,
+    // permanently dropping the notification on other clients. _stats outlives every weapon it owns for the
+    // whole match, so routing through it instead removes that race. Subclasses (WeaponMeleePD.Hit(),
+    // WeaponAxePD.Hit(), WeaponRangedProjectilePD.ProcessHit()) call _stats.NotifyHighroll/NotifyCritStrike/
+    // NotifyHit/NotifyStrike directly rather than through a wrapper here, since there's no weapon-local state
+    // left to hide behind one.
+    protected void NotifyHitFeedback(HitFeedbackData data) => _stats.NotifyHitFeedback(data);
 
     protected override void LateAwake()
     {
         base.LateAwake();
-        _onHighroll = new PredictedEvent<float>(predictionManager, this);
-        _onCritStrike = new PredictedEvent<WeaponHitData>(predictionManager, this);
-        _onHit = new PredictedEvent<WeaponHitData>(predictionManager, this);
-        _onStrike = new PredictedEvent<WeaponHitData>(predictionManager, this);
     }
 
     // Shared orbital-position formula — WeaponMeleePD/WeaponAxePD (swept hitbox) and WeaponRangedPD (fires

@@ -98,6 +98,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
     private bool _bonusesApplied;
     private bool _registeredInAll;
     private bool _classPassivesApplied;
+    private bool _statTotalsApplied;
     private bool _allReady;
     private bool _inputEnabled;
 
@@ -164,6 +165,17 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
                 _classPassivesApplied = true;
             }
 
+            // Reapplies whatever stat-augment totals AugmentManagerPD has on record for this player (see
+            // CharacterStatsPD.ApplyStatBoostTotals' own doc comment) — all-zero and a no-op on a normal
+            // game start, restores prior gains for a reconnecting player. Gated on _classPassivesApplied
+            // purely to run right after it (order doesn't actually matter, these are all plain += fields),
+            // not because it depends on anything class-passive-specific.
+            if (_classPassivesApplied && !_statTotalsApplied && owner.HasValue && AugmentManagerPD.instance != null)
+            {
+                stats.ApplyStatBoostTotals(AugmentManagerPD.instance.GetStatTotals(owner.Value));
+                _statTotalsApplied = true;
+            }
+
             // _classPassivesApplied can only become true after _registeredInAll (and everything that gates
             // it) already did. Also waits on ClassPassiveAugmentsReady — ApplyClassPassives() above only
             // covers ClassPassiveData's plain stat fields; the passiveAugments[] escape hatch (unique-effect
@@ -199,7 +211,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
         if (owner.HasValue)
         {
             // CharacterStatsPD.All never had a removal path anywhere in the codebase — every other reader
-            // of this dictionary (FindTarget, AwardXP, ReviveZonePD, AugmentManagerPD, etc.) trusted it to
+            // of this dictionary (FindClosestTarget, AwardXP, ReviveZonePD, AugmentManagerPD, etc.) trusted it to
             // only ever contain live players. Same risk category as the enemy Active*Count drift: no
             // domain reload means this never resets, and unlike a plain counter, a stale entry here is a
             // dangling Component reference other code might dereference mid-Simulate().

@@ -45,12 +45,17 @@ public class LocalUIManagerPD : MonoBehaviour
     private readonly List<PredictedObjectID> _bossIdBuffer = new();
     private readonly List<PredictedObjectID> _staleBossIdBuffer = new();
 
+    // Shared across every system that used to have its own separate overlay/timer (Level Up, Pause,
+    // End Screen) — none of these are ever up at the same time as another (Win/Loss > Level Up > Pause,
+    // see PausePD/AugmentManagerPD's own priority-ordering comments), so one tint + one timer text covers
+    // all of them. Resolved every frame in UpdateTintOverlay()/UpdateMultiplayerTimer() rather than each
+    // system independently toggling them — see those methods' own doc comments for why.
+    [Header("Shared Overlay/Timer")]
+    [SerializeField] private GameObject tintScreenOverlay;
+    [SerializeField] private TextMeshProUGUI multiplayerTimerText;
+
     [Header("Level Up Panel")]
     [SerializeField] private GameObject levelUpScreen;
-    // Separate from levelUpScreen so the paused-feeling tint can stay up for the whole multiplayer
-    // presenting window, independent of whether THIS player specifically has already picked.
-    [SerializeField] private GameObject levelUpBackground;
-    [SerializeField] private TextMeshProUGUI levelUpTimerText;
     [SerializeField] private AugmentCardUI cardPrefab;
     [SerializeField] private Transform cardContainer;
     private List<AugmentCardUI> _cardPool = new();
@@ -62,12 +67,10 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private GameObject settingsPanel;
 
     [Header("Pause System")]
-    [SerializeField] private TextMeshProUGUI pauseCountdownText;
     [SerializeField] private GameObject pauseScreen;
     [SerializeField] private GameObject singlePlayerResumePanel;
     [SerializeField] private GameObject multiplayerPausePanel;
     [SerializeField] private TextMeshProUGUI pauseReadyCountText;
-    [SerializeField] private TextMeshProUGUI pauseFallbackTimerText;
     [SerializeField] private TextMeshProUGUI pauseReadyButtonText;
     [SerializeField] private GameObject returnToLobbyButton;
 
@@ -87,8 +90,7 @@ public class LocalUIManagerPD : MonoBehaviour
     {
         instance = this;
         levelUpScreen.SetActive(false);
-        levelUpBackground.SetActive(false);
-        pauseCountdownText.gameObject.SetActive(false);
+        if (tintScreenOverlay != null) tintScreenOverlay.SetActive(false);
         statsUI.SetActive(true);
         statsUIExpanded.SetActive(false);
         pauseScreen.SetActive(false);
@@ -138,10 +140,15 @@ public class LocalUIManagerPD : MonoBehaviour
         _controller.RequestEndScreenReady();
     }
 
-    private void OnPresentingTimerChanged(int seconds)
+    // Stores the latest value only — doesn't touch multiplayerTimerText directly. Three separate
+    // PredictedIdentity UpdateView() calls (AugmentManagerPD, PausePD twice) can fire in any order within
+    // the same tick, so writing straight to the shared text from each handler risked one clobbering
+    // another's more-current state. UpdateMultiplayerTimer() resolves all three with an explicit priority
+    // every frame instead, which is order-independent.
+    private void OnPresentingTimerChanged(int seconds, bool visible)
     {
-        if (levelUpTimerText == null) return;
-        levelUpTimerText.text = $"Time Remaining: {seconds}s";
+        _levelUpTimerSeconds = seconds;
+        _levelUpTimerVisible = visible;
     }
 
     private void OnPauseStateChanged(bool isPaused)
@@ -153,8 +160,8 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private void OnCountdownChanged(int seconds)
     {
-        if (seconds > 0) ShowPauseCountdown(seconds);
-        else UpdatePauseCountdown(0);
+        _pauseCountdownSeconds = seconds;
+        _pauseCountdownVisible = seconds > 0;
     }
 
     private void OnReadyCountChanged(int ready, int total)
@@ -229,28 +236,34 @@ public class LocalUIManagerPD : MonoBehaviour
     private bool _levelUpBackgroundShown;
     private bool _cardsShown;
 
+    // Latest values reported by each of the three timer sources that now share multiplayerTimerText —
+    // resolved with an explicit priority in UpdateMultiplayerTimer() every frame, not written to directly
+    // by the event handlers themselves (see OnPresentingTimerChanged's own doc comment).
+    private int  _levelUpTimerSeconds;
+    private bool _levelUpTimerVisible;
+    private int  _pauseCountdownSeconds;
+    private bool _pauseCountdownVisible;
+    private int  _fallbackTimerSeconds;
+    private bool _fallbackTimerVisible;
+    private bool _multiplayerTimerShown;
+
+    // Edge-detected purely to avoid a redundant SetActive call every frame.
+    private bool _tintOverlayShown;
+
     private void UpdateLevelUpScreen()
     {
         if (AugmentManagerPD.instance == null || _controller == null || !_controller.owner.HasValue) return;
 
         bool presenting = AugmentManagerPD.instance.VerifiedIsPresenting;
 
-        // Background reflects the whole multiplayer presenting window (every player, not just this
-        // one) — otherwise it drops the instant THIS player picks, even while teammates are still
-        // choosing and the game is still effectively paused underneath.
-        if (presenting && !_levelUpBackgroundShown)
-        {
-            levelUpBackground.SetActive(true);
-            _levelUpBackgroundShown = true;
-        }
-        else if (!presenting && _levelUpBackgroundShown)
-        {
-            levelUpBackground.SetActive(false);
-            _levelUpBackgroundShown = false;
-        }
+        // Reflects the whole multiplayer presenting window (every player, not just this one) — otherwise
+        // it drops the instant THIS player picks, even while teammates are still choosing and the game is
+        // still effectively paused underneath. Only tracked as a bool here now — UpdateTintOverlay() is
+        // what actually drives the shared tintScreenOverlay, reading this alongside pause/end-screen state.
+        _levelUpBackgroundShown = presenting;
 
         // The level-up screen itself (overlay + timer + card container) now ALSO spans the whole
-        // presenting window, same as levelUpBackground above — it used to close the instant THIS player
+        // presenting window, same as the background flag above — it used to close the instant THIS player
         // picked (levelUpScreen.SetActive(false) hid its overlay/timer children along with the cards),
         // which read as "the level-up screen closed early" even though other players were still choosing.
         // Only the cards themselves hide early now (below) — the timer/overlay stay up for everyone until
@@ -289,24 +302,10 @@ public class LocalUIManagerPD : MonoBehaviour
             card.gameObject.SetActive(false);
     }
 
-    public void ShowPauseCountdown(int seconds)
-    {
-        pauseCountdownText.gameObject.SetActive(true);
-        pauseCountdownText.text = $"Pausing in {seconds}...";
-    }
-
-    public void UpdatePauseCountdown(int seconds)
-    {
-        if (seconds <= 0) { pauseCountdownText.gameObject.SetActive(false); return; }
-        pauseCountdownText.text = $"Pausing in {seconds}...";
-    }
-
     public void ShowPauseScreen(bool isSinglePlayer)
     {
-        pauseCountdownText.gameObject.SetActive(false);
         if (pauseReadyButtonText != null) pauseReadyButtonText.text = "Ready Up";
         if (pauseReadyCountText != null) pauseReadyCountText.text = $"0/{NetworkManager.main.playerCount} Ready";
-        if (pauseFallbackTimerText != null) pauseFallbackTimerText.gameObject.SetActive(false);
         singlePlayerResumePanel.SetActive(isSinglePlayer);
         multiplayerPausePanel.SetActive(!isSinglePlayer);
         if (returnToLobbyButton != null)
@@ -317,7 +316,6 @@ public class LocalUIManagerPD : MonoBehaviour
     public void HidePauseScreen()
     {
         pauseScreen.SetActive(false);
-        pauseCountdownText.gameObject.SetActive(false);
     }
 
     public void UpdatePauseReadyCount(int ready, int total)
@@ -331,11 +329,12 @@ public class LocalUIManagerPD : MonoBehaviour
         SetText(pauseReadyButtonText, _controller.IsReady ? "Unready" : "Ready Up");
     }
 
+    // Stores the latest value only — see OnPresentingTimerChanged's own doc comment for why this doesn't
+    // touch multiplayerTimerText directly.
     public void SetFallbackTimer(int seconds, bool visible)
     {
-        if (pauseFallbackTimerText == null) return;
-        pauseFallbackTimerText.gameObject.SetActive(visible);
-        if (visible) pauseFallbackTimerText.text = $"Auto-resume in {seconds}s";
+        _fallbackTimerSeconds = seconds;
+        _fallbackTimerVisible = visible;
     }
 
     public void OnPauseReadyClicked()
@@ -397,6 +396,66 @@ public class LocalUIManagerPD : MonoBehaviour
         UpdateBossHealthBars();
         UpdatePauseReadyButton();
         UpdateLevelUpScreen();
+        UpdateTintOverlay();
+        UpdateMultiplayerTimer();
+    }
+
+    // Resolved fresh every frame from each system's already-current ground truth (pauseScreen/
+    // endScreenPanel's own activeSelf, _levelUpBackgroundShown) rather than each system independently
+    // toggling tintScreenOverlay from its own show/hide call site. Three separate PredictedIdentity
+    // UpdateView() calls (AugmentManagerPD, PausePD, GameManagerPD) have no guaranteed order within the
+    // same tick, so having each one flip a shared bool directly risked one clobbering another's more-
+    // current state — reading the resolved state instead sidesteps that entirely.
+    private void UpdateTintOverlay()
+    {
+        if (tintScreenOverlay == null) return;
+
+        bool wantOverlay = (endScreenPanel != null && endScreenPanel.activeSelf)
+                         || _levelUpBackgroundShown
+                         || (pauseScreen != null && pauseScreen.activeSelf);
+
+        if (wantOverlay == _tintOverlayShown) return;
+        _tintOverlayShown = wantOverlay;
+        tintScreenOverlay.SetActive(wantOverlay);
+    }
+
+    // Same "resolve every frame instead of writing from each handler" reasoning as UpdateTintOverlay()
+    // above. Priority matches the established Win/Loss > Level Up > Pause ordering (PausePD.Simulate()/
+    // AugmentManagerPD.Simulate() already enforce this at the source, so in practice at most one of these
+    // three is ever visible at once — this priority just makes the UI itself robust to any transient
+    // overlap too, rather than depending on it never happening).
+    private void UpdateMultiplayerTimer()
+    {
+        if (multiplayerTimerText == null) return;
+
+        bool visible;
+        string text = null;
+        if (_levelUpTimerVisible)
+        {
+            visible = true;
+            text = $"Time Remaining: {_levelUpTimerSeconds}s";
+        }
+        else if (_pauseCountdownVisible)
+        {
+            visible = true;
+            text = $"Pausing in {_pauseCountdownSeconds}...";
+        }
+        else if (_fallbackTimerVisible)
+        {
+            visible = true;
+            text = $"Auto-resume in {_fallbackTimerSeconds}s";
+        }
+        else
+        {
+            visible = false;
+        }
+
+        if (visible != _multiplayerTimerShown)
+        {
+            _multiplayerTimerShown = visible;
+            multiplayerTimerText.gameObject.SetActive(visible);
+        }
+        if (visible) multiplayerTimerText.text = text;
     }
 
     // Only writes when the value actually changed, so tiny prediction/rollback jitter doesn't
@@ -473,7 +532,7 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private void UpdateStats()
     {
-        SetText(statsDamageText, $" {FormatStat(_stats.WeaponDamage, 1)} ({FormatStat(_stats.WeaponDamage * _stats.EffectiveLuckFloor, 1)} - {FormatStat(_stats.WeaponDamage * _stats.LuckCeiling, 1)})");
+        SetText(statsDamageText, $" {FormatStat(_stats.Strength, 1)} ({FormatStat(_stats.Strength * _stats.EffectiveLuckFloor, 1)} - {FormatStat(_stats.Strength * _stats.LuckCeiling, 1)})");
 
         _statsSB.Clear();
         _statsSB.AppendLine($" {_stats.AttackSpeed:G4}");

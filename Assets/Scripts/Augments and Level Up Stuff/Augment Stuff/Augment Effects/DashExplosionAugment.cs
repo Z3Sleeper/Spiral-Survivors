@@ -32,10 +32,6 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
     private static readonly Collider[] _overlapResults = new Collider[32];
     private readonly HashSet<IEnemyPD> _found = new();
 
-    // Plain (not predicted State) — same "queue in Simulate-context, drain in UpdateView" split as every
-    // other damage source's own hit-feedback queue.
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
-
     protected override void OnApply()
     {
         _controller = Stats.GetComponent<PlayerControllerPD>();
@@ -61,13 +57,13 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
 
             bool isCrit = GameRandom.instance.NextFloat() < Stats.CritChance;
 
-            float baseDamage = Stats.UnpenalizedWeaponDamage * damagePercent;
+            float baseDamage = Stats.UnpenalizedStrength * damagePercent;
             float rolledDamage = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool dmgHighroll);
             if (dmgHighroll) rolledDamage *= 1f + Stats.HighrollBonus;
             if (isCrit) rolledDamage *= Stats.CritDamage;
 
             enemy.TakeDamage(rolledDamage, isCrit, Stats.owner ?? default);
-            _hitFeedbackQueue.Add((enemy, rolledDamage, isCrit, dmgHighroll));
+            Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolledDamage, isCrit = isCrit, isHighroll = dmgHighroll, attacker = Stats, isPriority = true });
 
             float baseOnHitPower = Stats.OnHitPower * onHitPowerPercent;
             float rolledOnHitPower = WeaponDamageMath.RollDamage(baseOnHitPower, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool onHitHighroll);
@@ -92,16 +88,4 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
             vfx.Launch(explosionRadius, vfxDuration);
     }
 
-    protected override void UpdateView(State viewState, State? verified)
-    {
-        base.UpdateView(viewState, verified);
-
-        if (Stats == null) return;
-
-        // Priority, like real weapon hits — this is the explosion's own direct damage, not an onhit effect
-        // it procs (those stay non-priority, matching every onhit-listener effect's own feedback).
-        foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, Stats, isPriority: true);
-        _hitFeedbackQueue.Clear();
-    }
 }

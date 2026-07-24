@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energy Reaping</color>
   description: 'Gain <color=#FFFF00>Energy</color> equal to <color=#FFFF00>2%<color=#00FF87>*</color>
-    Energy Regen</color> <color=#FF0050>On-Strike</color>.
+    Energy Regen</color> <color=#FFA000>On-Strike</color>.
 
     <color=#00FF87>*Affected
     by Luck*</color>'

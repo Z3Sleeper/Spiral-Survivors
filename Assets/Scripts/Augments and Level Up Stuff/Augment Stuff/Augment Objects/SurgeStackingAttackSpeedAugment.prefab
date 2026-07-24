@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SurgeStackingAttackSpeedAugment
   stackInterval: 1
   maxStacks: 10
-  perStackBonus: 0.15
+  perStackBonus: 0.25

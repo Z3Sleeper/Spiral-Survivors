@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: PhantomBladeOnCritAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#FF0000>Crit</color>
-  description: '<color=#FFA000>Every third <color=#FF0000>Crit Strike</color>:</color>
+  description: '<color=#FFA000>Every third <color=#FF0000>Crit</color> Strike:</color>
     <color=#FFA000>Summon</color> a <color=#8C8C8C>Phantom Blade</color> piercing
-    the nearest enemy for <color=#FF5000>90%<color=#00FF87>*</color> Damage</color>.
+    the nearest enemy for <color=#FF5000>90%<color=#00FF87>*</color> Strength</color>.
 
     <color=#8C8C8C>+10%
     Phantom Blade Damage</color>

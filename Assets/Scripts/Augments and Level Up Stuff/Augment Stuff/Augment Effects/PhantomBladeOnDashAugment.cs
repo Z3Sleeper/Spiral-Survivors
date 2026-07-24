@@ -23,15 +23,13 @@ public class PhantomBladeOnDashAugment : AugmentEffectPD<PhantomBladeOnDashAugme
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private int   bladeCount = 3;
     [SerializeField] private float damageMultiplier = 1f;
-    [SerializeField] private float bladeDamageBonus = 0.1f;
-    [SerializeField] private float dashHasteBonus = 20f;
+    [SerializeField] private float phantomBladeDamageBonus = 0.1f;
 
     private PlayerControllerPD _controller;
 
     protected override void OnApply()
     {
-        Stats.AddPhantomBladeDamageBonus(bladeDamageBonus);
-        Stats.AddDashHaste(dashHasteBonus);
+        Stats.AddPhantomBladeDamageBonus(phantomBladeDamageBonus);
 
         _controller = Stats.GetComponent<PlayerControllerPD>();
         if (_controller != null) _controller.AddDashEndedListener(OnDashEnded);

@@ -29,12 +29,6 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     [SerializeField] private Renderer[] _renderers;
 
     private CharacterStatsPD _stats;
-    // The WeaponRangedPD that fired this shot — this class deliberately isn't a WeaponBasePD<TState> (no
-    // orbit/range-scaling visuals apply to a projectile), so it rolls its own crit but has no _onCritStrike
-    // of its own to invoke. Relaying through the launcher (which does have one) keeps every weapon type's
-    // crit flowing through the same weapon-level event WeaponManagerPD/CharacterStatsPD already subscribe
-    // to, rather than reaching CharacterStatsPD directly as a special case.
-    private WeaponRangedPD _launcher;
     private Vector3 _baseScale;
     private float _speed;
     private float _maxRange;
@@ -53,7 +47,6 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     private readonly HashSet<IEnemyPD> _hitTargets = new();
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
     private readonly Collider[] _retargetResults = new Collider[16];
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit, bool isHighroll)> _hitFeedbackQueue = new();
 
     // Ally-strike detection (OnStrikeHealAllyAugment, real friendly fire, future "hit ally, do something"
     // augments) — only queried when _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true.
@@ -77,25 +70,6 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         _baseScale = transform.localScale;
     }
 
-    // Separate from WeaponBasePD<TState>'s own _onHighroll — this class is deliberately not a subclass of
-    // it, so it needs its own PredictedEvent. Constructed in LateAwake() (not Awake()) since a fresh
-    // PredictedEvent object per logical spawn is what we want here — unlike _baseScale above, there's no
-    // accumulation risk from rebuilding it every pooled reuse (nothing holds a reference to the old one
-    // across reuses, unlike an accumulating += subscription would).
-    // Private (not protected like WeaponBasePD's) — ProcessHit(), the only invoke site, lives in this same
-    // class, not a subclass. Matches CharacterStatsPD._onHeal/PlayerControllerPD._onDashStarted's
-    // private-field + public wrapper-method convention.
-    private PredictedEvent<float> _onHighroll;
-
-    public void AddHighrollListener(System.Action<float> listener) => _onHighroll.AddListener(listener);
-    public void RemoveHighrollListener(System.Action<float> listener) => _onHighroll.RemoveListener(listener);
-
-    protected override void LateAwake()
-    {
-        base.LateAwake();
-        _onHighroll = new PredictedEvent<float>(predictionManager, this);
-    }
-
     // Called by WeaponRangedPD.Fire() immediately after hierarchy.Create() returns — synchronous and
     // deterministic, same "mutate currentState right after Create()" pattern as XPOrbPD.SetValue(). Values
     // are captured once here (not re-read live from stats later), so a level-up mid-flight can't
@@ -103,11 +77,10 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // directly from the old WeaponBow.Fire() — but scale is set as an absolute multiple of _baseScale, not
     // multiplied onto the current value, since a pooled instance's current scale is whatever WeaponSize
     // left it at during its PREVIOUS life; `*=` would compound further every reuse instead of resetting.
-    // _hitTargets/_hitFeedbackQueue are plain fields too (not part of predicted State, so GetInitialState()
-    // can't reset them) — cleared here so a recycled instance doesn't inherit a previous life's hit history.
-    public void Launch(WeaponRangedPD launcher, CharacterStatsPD stats, Vector3 direction, float speed, int ricochets)
+    // _hitTargets is a plain field too (not part of predicted State, so GetInitialState() can't reset it) —
+    // cleared here so a recycled instance doesn't inherit a previous life's hit history.
+    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, int ricochets)
     {
-        _launcher = launcher;
         _stats = stats;
         _speed          = speed;
         _maxRange       = stats.WeaponRange * 1.25f;
@@ -119,7 +92,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
 
         currentState.direction           = direction;
         currentState.ricochetsRemaining  = ricochets;
-        currentState.currentDamage       = stats.WeaponDamage;
+        currentState.currentDamage       = stats.Strength;
         currentState.currentOnHitPower   = stats.OnHitPower;
 
         transform.rotation    = Quaternion.LookRotation(direction);
@@ -127,7 +100,6 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
 
         _hitTargets.Clear();
         _struckAllies.Clear();
-        _hitFeedbackQueue.Clear();
 
         // A pooled instance's previous life ends hidden (see UpdateView()'s predicted-hide below) — a
         // fresh launch needs to be visible again.
@@ -208,21 +180,18 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = GameRandom.instance.NextFloat() < _critChance;
         if (isCrit) damage *= _critDamage;
-        if (isHighroll) _onHighroll.Invoke(damage);
+        if (isHighroll) _stats.NotifyHighroll(damage);
         // state.currentDamage/currentOnHitPower are this shot's already ricochet-decayed values BEFORE this
         // hit's own decay below is applied — downstream on-hit effects see exactly what this specific hit
         // (e.g. the 3rd bounce) actually represented, not the shot's original full-power baseline.
-        if (_launcher != null)
-        {
-            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = state.currentDamage, onHitPower = state.currentOnHitPower, isCrit = isCrit };
-            _launcher.NotifyHit(hitData);
-            _launcher.NotifyStrike(hitData);
-            if (isCrit) _launcher.NotifyCritStrike(hitData);
-        }
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = state.currentDamage, onHitPower = state.currentOnHitPower, isCrit = isCrit };
+        _stats.NotifyHit(hitData);
+        _stats.NotifyStrike(hitData);
+        if (isCrit) _stats.NotifyCritStrike(hitData);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _knockback * state.currentOnHitPower);
-        _hitFeedbackQueue.Add((enemy, damage, isCrit, isHighroll));
+        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
 
         ApplyHitDropoffAndRicochet(ref state);
     }
@@ -346,15 +315,6 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         if (verified.HasValue && verified.Value.expired)
         {
             hierarchy.Delete(this);
-            return;
         }
-
-        if (_stats == null) return;
-
-        // Fire hit feedback immediately at render rate — bypasses state propagation delay, same split as
-        // WeaponMeleePD.
-        foreach (var (enemy, dmg, isCrit, isHighroll) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, _stats, isPriority: true);
-        _hitFeedbackQueue.Clear();
     }
 }

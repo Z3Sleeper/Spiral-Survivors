@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a3b8e6f5e8c3c404e9458d3791376ca8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeOnHitAugment
-  bladeDamageBonus: 0.1
-  bladeOnHitPowerPercent: 0.4
+  phantomBladeDamageBonus: 0.1
+  phantomBladeOnHitPowerPercent: 0.3

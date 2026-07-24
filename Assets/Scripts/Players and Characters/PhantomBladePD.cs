@@ -52,7 +52,6 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // Plain (not predicted State) — same "soft" tracking pattern as WeaponRangedProjectilePD._hitTargets.
     private readonly HashSet<IEnemyPD> _hitTargets = new();
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
-    private readonly List<(IEnemyPD enemy, float dmg, bool isCrit)> _hitFeedbackQueue = new();
 
     // Plain Unity Awake(), NOT LateAwake() — LateAwake() re-fires on every pooled reuse, which would
     // re-capture an already-scaled transform.localScale each reuse and compound indefinitely. Same
@@ -96,7 +95,6 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         SetRenderersEnabled(true);
 
         _hitTargets.Clear();
-        _hitFeedbackQueue.Clear();
     }
 
     protected override State GetInitialState() => default;
@@ -151,7 +149,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         // into _damage already — every enemy this blade hits sees the same crit status for its whole
         // flight, not a fresh per-hit roll.
         enemy.TakeDamage(_damage, _isCrit, _owner.owner ?? default);
-        _hitFeedbackQueue.Add((enemy, _damage, _isCrit));
+        _owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = _damage, isCrit = _isCrit, isHighroll = false, attacker = _owner, isPriority = true });
 
         // Only fires if some Phantom Blade augment actually enabled it — most blades never touch the OnHit
         // chain at all. weaponDamage uses this blade's own already-rolled damage (the closest available
@@ -196,17 +194,6 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         if (verified.HasValue && verified.Value.expired)
         {
             hierarchy.Delete(this);
-            return;
         }
-
-        if (_owner == null) return;
-
-        // Fire hit feedback immediately at render rate — bypasses state propagation delay, same split as
-        // WeaponRangedProjectilePD. Priority, like real weapon hits — this is the blade's own direct
-        // damage, not an onhit effect it procs (those stay non-priority, e.g. CritTriggerOnHitAugment/
-        // PhantomBladeOnHitAugment's own bonus-damage numbers).
-        foreach (var (enemy, dmg, isCrit) in _hitFeedbackQueue)
-            enemy.TriggerHitFeedback(dmg, isCrit, isHighroll: false, _owner, isPriority: true);
-        _hitFeedbackQueue.Clear();
     }
 }

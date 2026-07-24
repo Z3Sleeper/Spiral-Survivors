@@ -14,8 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF5000>Explosive</color> <color=#00FFFF>Entrance</color>
   description: '<color=#FFA000>On <color=#00FFFF>Dash</color> End:</color> Deal <color=#FF5000>200%<color=#00FF87>*</color>
-    unpenalized Damage</color> and trigger <color=#FF0050>On-Hit Effects</color>
-    at <color=#FF0050>200%<color=#00FF87>*</color> On-Hit Power</color> to all nearby
+    unpenalized Strength</color> and trigger <color=#FFA000>On-Hit Effects</color>
+    at <color=#FFA000>200%<color=#00FF87>*</color> On-Hit Power</color> to all nearby
     enemies.
 
     <color=#00FF87>*Affected by Luck*</color>'

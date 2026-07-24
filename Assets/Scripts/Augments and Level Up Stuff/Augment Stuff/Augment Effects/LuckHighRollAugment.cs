@@ -7,10 +7,10 @@ public class LuckHighRollAugment : AugmentEffectPD<LuckHighRollAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float highrollPenaltyReduction = 0.05f;
+    [SerializeField] private float highrollPenalty = 0.05f;
 
     protected override void OnApply()
     {
-        Stats.AddHighrollPenalty(highrollPenaltyReduction);
+        Stats.AddHighrollPenalty(highrollPenalty);
     }
 }

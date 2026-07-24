@@ -113,7 +113,13 @@ public interface IEnemyPD
 public struct ContactCooldown
 {
     public PlayerID player;
-    public float remaining;
+    // Ticks, not seconds — stored as an int specifically for the bit-packing win: PurrNet's delta-packer
+    // costs a full 33 bits for any float that changed since last snapshot, but this field changes almost
+    // every tick while any player is in contact (it rarely gets the cheap "unchanged" 1-bit case a float
+    // would), whereas a changed int only costs a zigzag-varint of the diff — a few bits per tick instead
+    // of 33. Multiplied by every enemy, every tick, this class of field was the single largest
+    // recoverable contributor to per-enemy network/CPU cost (confirmed via the PurrDiction profiler).
+    public int remaining;
 }
 
 // Common enemy simulation fields; embedded inside each enemy's TState struct.
@@ -123,7 +129,6 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public bool isDead;
     public float stunTimer;
     public bool atPreferredRange;
-    public float findTargetTimer;
     public DisposableList<ContactCooldown> contactCooldowns;
     public bool isDashing;
     public Vector3 dashDirection;
@@ -144,11 +149,6 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // resimulate correctly, a plain field mutated in-place wouldn't roll back and replay consistently.
     public float enrageCountdown;
     public bool  enraged;
-    // True while a subclass's attack routine wants _target pinned for its whole duration — see
-    // EnemyBasePD.LockTarget's own doc comment for why this exists (FindTarget()'s periodic re-scan is not
-    // gated to the Moving state, so without this an attack sequence spanning more than FindTargetInterval
-    // could have its target silently swapped mid-sequence).
-    public bool  targetLocked;
 
     // Generic "don't actually hide/delete yet" reference count — see EnemyBasePD.RequestDeathHold's own doc
     // comment. Independent scripts each request/release their own hold; hide+delete both wait until this
@@ -259,12 +259,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // its next-attack cooldown gets armed).
     protected virtual void OnEnrage() { }
 
-    // Virtual, not a plain field, so a subclass can override it with zero lifecycle-ordering risk — a
-    // plain field reassigned in some override hook could easily run after GetInitialState() already read
-    // it (same class of bug as the field-init-before-OnSpawned issue elsewhere in this project), whereas a
-    // property is always current whenever it's actually read.
-    protected virtual float FindTargetInterval => 1f;
     protected Transform _target;
+    // Mirrors _target — cached alongside it purely so Simulate() can cheaply check "is my current target
+    // still alive" every tick (a null/bool check) without re-resolving a CharacterStatsPD from the
+    // Transform. Always set together with _target in FindClosestTarget(); never assigned anywhere else.
+    private CharacterStatsPD _targetStats;
 
     // Public for cross-script reads (AddKnockbackVelocity, Stun()), not because it's meant to be hand-
     // tuned — it's fully derived from stunResistant at Awake() and, for state-driven enemies, reassigned
@@ -306,22 +305,43 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public virtual float GetDamage() => damage;
     public virtual bool CanContactDamage => true;
 
+    // Cached at the very top of Simulate() every tick (before the paused early-return, since
+    // OnContactTrigger can fire from the physics pass regardless of pause state) — OnContactTrigger itself
+    // doesn't receive delta as a parameter (it's a PredictedPhysicsCallbacks event, not Simulate() itself),
+    // but needs it to convert contactCooldown from seconds to ticks. Safe to read there: delta is a
+    // constant tick duration now that nothing manipulates Time.timeScale, so it's identical throughout
+    // Simulate() -> DoPhysicsPass() -> LateSimulate() for a given tick regardless of exactly when read.
+    private float _currentDelta;
+
     [SerializeField] private Renderer[] _renderers;
     private Color[] _originalColors;
     private bool  _wasDeadLastFrame;
-    // Plain view-layer bookkeeping, not predicted state — guards the instant predicted-hide below from
-    // running every frame once already hidden, same pattern as PhantomBladePD/WeaponRangedProjectilePD's
+    // Plain view-layer bookkeeping, not predicted state — edge-detects the instant predicted hide/unhide
+    // below (a two-way sync against viewState.isDead, not a one-way latch — see UpdateView's own comment
+    // for why this has to be reversible), same pattern as PhantomBladePD/WeaponRangedProjectilePD's
     // _hiddenOnExpire.
     private bool  _hiddenOnDeath;
+    // Same two-way edge-detect as _hiddenOnDeath, but for _physicsCollider/gameObject.layer specifically —
+    // kept as a SEPARATE flag because these are gated on isDead alone (not deathHoldCount), unlike the
+    // render/hurtbox/contactDamageCollider hide, which stays visible for the whole duration of an on-death
+    // hold (kill-launch, etc.) — see UpdateView's own comment.
+    private bool  _physicsDisabledOnDeath;
     // Edge-detected the same way _hiddenOnDeath is, just for OnDeathStop() instead — see that method's own
     // doc comment for why it fires earlier (immediately on death) and independently of _hiddenOnDeath.
     private bool  _deathStopped;
     private float _verifiedHealth;
     private float _verifiedEnrageCountdown;
-    // Edge-detected the same way _hiddenOnDeath is — drives "stay red for the whole kill-launch" below,
-    // rather than the normal brief FlashCoroutine per hit (which would fight this: it reverts to
-    // _originalColors after 0.08s regardless of whether the corpse is still mid-launch).
-    private bool  _wasKillLaunchActiveLastFrame;
+    // Edge-detected the same way _hiddenOnDeath is — drives "stay red for as long as this enemy is dead"
+    // below (kill-launch, any future on-death-hold effect, or just the ordinary instant between dying and
+    // being hidden), rather than the normal brief per-hit flash (which would fight this: it reverts to
+    // _originalColors after 0.08s regardless of whether this enemy is still dead).
+    private bool  _wasDeadForColorLastFrame;
+    // Animator.speed is engine-level playback rate, untouched by PausePD's own logical isPaused — nothing
+    // else freezes it, so a paused game would otherwise keep idle/attack clips animating in place. Edge-
+    // detected purely to avoid an unnecessary property write every frame; UpdateAnimator() itself is already
+    // safe to keep calling while paused since viewState stops changing (its own state-transition checks
+    // no-op), so this only needs to gate the Animator's own internal clip advancement.
+    private bool  _animatorPaused;
 
     // Swapped to on Die() (see its own comment) and restored on pooled reuse — captured once in Awake()
     // since that only ever runs once per GameObject lifetime, unlike the pooled-reuse init block which
@@ -333,11 +353,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private int _originalLayer;
 
     private readonly RaycastHit[] _killLaunchSweepResults = new RaycastHit[16];
-    // Queued in Simulate()-context (HandleKillLaunch), drained in UpdateView() at render rate — same
-    // "queue during simulation, fire the actual non-idempotent side effect off render/verified timing"
-    // split every weapon's own _hitFeedbackQueue already uses, so a resimulation replay of HandleKillLaunch
-    // can't spawn duplicate damage numbers for the same conceptual hit.
-    private readonly List<(IEnemyPD enemy, float damage, bool isCrit, bool isHighroll, PlayerID attackerOwner)> _killLaunchFeedbackQueue = new();
 
     // ── Subclass contract ──────────────────────────────────────────────────
     protected abstract ref EnemyBaseState GetBase(ref TState state);
@@ -365,10 +380,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         var s = default(TState);
         ref var b = ref GetBase(ref s);
         b.health = maxHealth;
-        // 0, not FindTargetInterval — a freshly spawned (or pooled-reused) enemy should search for a
-        // target on its very first tick, not sit idle for a full interval first. Only the RENEWAL after
-        // that first search (in Simulate(), below) uses the full FindTargetInterval.
-        b.findTargetTimer = 0f;
         b.contactCooldowns = DisposableList<ContactCooldown>.Create(4);
         b.killLaunchHitIds = DisposableList<PredictedObjectID>.Create(4);
         b.enrageCountdown = enrageTimer;
@@ -443,6 +454,21 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             callbacks.onTriggerEnter += OnContactTrigger;
             callbacks.onTriggerStay += OnContactTrigger;
         }
+
+        // Replaces the old _killLaunchFeedbackQueue + UpdateView()-drain pattern — see WeaponBasePD.cs's
+        // HitFeedbackData doc comment for why. Constructed fresh every logical (re)spawn, same as every
+        // other PredictedEvent in this codebase — no accumulation risk since nothing holds a stale
+        // reference to a previous life's instance across pooled reuse.
+        _onHitFeedback = new PredictedEvent<HitFeedbackData>(predictionManager, this);
+        _onHitFeedback.AddListener(OnHitFeedback);
+    }
+
+    private PredictedEvent<HitFeedbackData> _onHitFeedback;
+
+    private void OnHitFeedback(HitFeedbackData data)
+    {
+        if (data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy))
+            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.isPriority);
     }
 
     private void OnContactTrigger(GameObject other)
@@ -457,17 +483,18 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         var player = stats.owner.Value;
         var cooldowns = b.contactCooldowns;
+        int ticks = Mathf.Max(1, Mathf.RoundToInt(contactCooldown / _currentDelta));
 
         for (int i = 0; i < cooldowns.Count; i++)
         {
             if (!cooldowns[i].player.Equals(player)) continue;
-            if (cooldowns[i].remaining > 0f) return;
-            cooldowns[i] = new ContactCooldown { player = player, remaining = contactCooldown };
+            if (cooldowns[i].remaining > 0) return;
+            cooldowns[i] = new ContactCooldown { player = player, remaining = ticks };
             stats.TakeDamage(GetDamage());
             return;
         }
 
-        cooldowns.Add(new ContactCooldown { player = player, remaining = contactCooldown });
+        cooldowns.Add(new ContactCooldown { player = player, remaining = ticks });
         stats.TakeDamage(GetDamage());
     }
 
@@ -479,6 +506,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // ── Simulation ─────────────────────────────────────────────────────────
     protected override void Simulate(ref TState state, float delta)
     {
+        _currentDelta = delta;
+
         if (PausePD.instance != null && PausePD.instance.IsPaused)
         {
             // DoPhysicsPass() isn't gated by IsPaused — it keeps integrating whatever velocity the
@@ -512,8 +541,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             b.initialized = true;
             _spawnGeneration++;
             _target = null;
+            _targetStats = null;
             _wasDeadLastFrame = false;
             _hiddenOnDeath    = false;
+            _physicsDisabledOnDeath = false;
             _deathStopped     = false;
             _verifiedHealth   = maxHealth;
             gameObject.layer  = _originalLayer;
@@ -526,6 +557,22 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 _rigidbody.velocity = Vector3.zero;
                 _rigidbody.angularVelocity = Vector3.zero;
             }
+
+            // Same "previous life died mid-kill-launch" scenario as above, but for killLaunchActive itself
+            // — this was the actual gap. HandleKillLaunch only ever clears it when killLaunchRemainingDistance
+            // naturally reaches 0 (StartKillLaunch/HandleKillLaunch's own comments); if this pooled slot ever
+            // got hidden/reused before that finished, killLaunchActive stayed stuck true forever, silently
+            // inherited by every future life from this slot — Simulate()'s own `if (b.killLaunchActive)
+            // HandleKillLaunch(...)` check would then incorrectly treat a brand new, fully alive spawn as
+            // still mid-launch. This used to ALSO cause the "some enemies stay permanently red" bug back
+            // when the color-revert was gated on killLaunchActive specifically (a stuck flag meant the
+            // revert bailed out forever) — no longer possible now that the stay-red/revert logic keys off
+            // isDead instead (see UpdateView's own comment), which GetInitialState() already resets safely
+            // on every reuse regardless of whether killLaunchActive itself gets reset here. Still resetting
+            // it here regardless, for the HandleKillLaunch mis-triggering reason above.
+            b.killLaunchActive = false;
+            b.killLaunchRemainingDistance = 0f;
+            b.killLaunchHitIds.Clear();
 
             foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
             for (int i = 0; i < _renderers.Length; i++)
@@ -574,19 +621,22 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             }
         }
 
-        b.findTargetTimer -= delta;
-        if (b.findTargetTimer <= 0f)
-        {
-            b.findTargetTimer = FindTargetInterval;
-            // Skipped while targetLocked — see LockTarget's own doc comment.
-            if (!b.targetLocked) FindTarget();
-        }
+        // No periodic re-scan anymore — constantly re-scanning CharacterStatsPD.All on a timer, from every
+        // single enemy, every tick or two, was needless cost at swarm scale for a horde game where target
+        // reprioritization doesn't need to be that reactive. Instead: acquire once (this covers spawn, and
+        // covers "was null last tick" generally), then keep that target until it's gone (null or dead) —
+        // cheap, since this is just a null/bool check, not a scan. Subclasses with a discrete attack-routine
+        // state machine additionally call FindClosestTarget() once themselves right as they return to their
+        // idle/Moving state (see e.g. SpearGloomPD.EnterMoving) to reprioritize onto whoever's closest now
+        // that the routine is over, without re-scanning throughout the routine itself.
+        if (_target == null || (_targetStats != null && _targetStats.IsDead))
+            FindClosestTarget();
 
         for (int i = b.contactCooldowns.Count - 1; i >= 0; i--)
         {
             var entry = b.contactCooldowns[i];
-            entry.remaining -= delta;
-            if (entry.remaining <= 0f)
+            entry.remaining--;
+            if (entry.remaining <= 0)
                 b.contactCooldowns.RemoveAt(i);
             else
                 b.contactCooldowns[i] = entry;
@@ -607,32 +657,48 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     protected override void UpdateView(TState viewState, TState? verified)
     {
+        // Hoisted out of the animator block below — the flash-decay block further down needs the same
+        // paused check, and UpdateView()/plain Update() run at the same per-frame cadence (confirmed via
+        // PredictionManager's UpdateViewMode), so there's no reason to compute this twice.
+        bool paused = PausePD.instance != null && PausePD.instance.IsPaused;
+
         if (_animator != null)
-            UpdateAnimator(viewState);
-
-        // Fire hit feedback immediately at render rate — bypasses state propagation delay, same convention
-        // as every weapon's own _hitFeedbackQueue drain.
-        foreach (var (enemy, dmg, isCrit, isHighroll, attackerOwner) in _killLaunchFeedbackQueue)
         {
-            if (CharacterStatsPD.All.TryGetValue(attackerOwner, out var attacker))
-                enemy.TriggerHitFeedback(dmg, isCrit, isHighroll, attacker);
+            if (paused != _animatorPaused)
+            {
+                _animatorPaused = paused;
+                _animator.speed = paused ? 0f : 1f;
+            }
+            UpdateAnimator(viewState);
         }
-        _killLaunchFeedbackQueue.Clear();
 
-        // Instant, predicted hide — doesn't wait for server verification, unlike the state-critical
+        // Instant, predicted hide/unhide — doesn't wait for server verification, unlike the state-critical
         // one-shot side effects below. Same fix as PhantomBladePD/WeaponRangedProjectilePD: viewState is
         // this machine's own already-simulated prediction (identical deterministic simulation runs on
         // every machine), available immediately, whereas verified only populates for non-owner clients
         // after a network round-trip — that round-trip was the visible "corpse lingers, still visible and
-        // still hittable, after it should already be dead" delay. One-way (never un-hides here) since
-        // enemy health only ever decreases (TakeDamage's `b.health -= damage`, no enemy-side regen), so a
-        // resimulation flipping isDead back to false isn't a real scenario — a fresh pooled reuse (the
-        // `!b.initialized` block above) is what resets this for a later spawn. Also gated on
-        // deathHoldCount <= 0 — a death with no held effect in play (the overwhelming common case) still
-        // hides exactly as instantly as before, since deathHoldCount only ever becomes nonzero via Die()'s
-        // own bridging hold (see its comment), itself only placed when the killer's Stats says an effect
-        // actually needs it.
+        // still hittable, after it should already be dead" delay. A TWO-WAY sync against viewB.isDead, not
+        // a one-way latch — was previously one-way on the (documented, since-disproven) assumption that
+        // isDead reverting to false was never a real scenario. It is: a mispredicted-lethal hit (isDead
+        // true for one predicted frame, then corrected back to false once the real, non-lethal server
+        // state resolves) used to leave the enemy permanently hidden/uncollidable despite still being
+        // alive — the "invisible enemy" bug. Edge-detected both ways now so a correction actually restores
+        // visibility instead of leaving a ghost.
         ref var viewB = ref GetBase(ref viewState);
+
+        // PhysicsCollider + layer are gated on isDead ALONE (not deathHoldCount) — a dead body's physical
+        // presence (can't be re-hit, doesn't collide) should end immediately regardless of whether the
+        // render-hide below is being held up for an on-death effect (kill-launch, etc.) — moved here from
+        // Die() (which used to set these as a one-shot, unrecoverable side effect) so the same misprediction
+        // correction above also restores these instead of leaving the corpse visually alive but permanently
+        // untargetable/wrong-layer.
+        bool viewDead = viewB.isDead;
+        if (viewDead != _physicsDisabledOnDeath)
+        {
+            _physicsDisabledOnDeath = viewDead;
+            if (_physicsCollider != null) _physicsCollider.enabled = !viewDead;
+            gameObject.layer = viewDead ? _noneLayer : _originalLayer;
+        }
 
         // Stops attack telegraphs immediately on death — see OnDeathStop's own doc comment for why this is
         // deliberately NOT gated on deathHoldCount the way the render-hide block below is. Deliberately NOT
@@ -651,34 +717,83 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             OnDeathStop();
         }
 
-        if (viewB.isDead && viewB.deathHoldCount <= 0 && !_hiddenOnDeath)
+        bool shouldHide = viewB.isDead && viewB.deathHoldCount <= 0;
+        if (shouldHide != _hiddenOnDeath)
         {
-            _hiddenOnDeath = true;
+            _hiddenOnDeath = shouldHide;
             if (_renderers != null)
                 foreach (var r in _renderers)
-                    if (r != null) r.enabled = false;
-            if (_hurtbox != null) _hurtbox.enabled = false;
-            if (_physicsCollider != null) _physicsCollider.enabled = false;
-            if (_contactDamageCollider != null) _contactDamageCollider.enabled = false;
+                    if (r != null) r.enabled = !shouldHide;
+            if (_hurtbox != null) _hurtbox.enabled = !shouldHide;
+            // Not a flat !shouldHide like _hurtbox — contactColliderEnabled is a per-enemy authored toggle
+            // (some enemies never deal contact damage at all), so restoring on an un-hide has to respect it
+            // rather than forcing this back on unconditionally.
+            if (_contactDamageCollider != null) _contactDamageCollider.enabled = shouldHide ? false : contactColliderEnabled;
         }
 
-        // Stay red for the entire kill-launch, not just a brief per-hit flash — same instant/predicted
-        // timing as the hide block above (viewState, not verified) since this is purely cosmetic. Edge-
-        // detected so it only sets/reverts once each way, rather than fighting FlashCoroutine's own
-        // revert-after-0.08s (which TriggerHitFeedback skips entirely while killLaunchActive — see its own
-        // comment).
-        if (viewB.killLaunchActive && !_wasKillLaunchActiveLastFrame)
+        // Stay red for as long as this enemy is dead — not just kill-launch specifically, and not just a
+        // brief per-hit flash. Tied to viewB.isDead broadly (not viewB.killLaunchActive) so ANY current or
+        // future on-death-hold effect (kill-launch, or anything else that later uses the same generic
+        // RequestDeathHold()/deathHoldCount mechanism to linger a visible corpse) gets the same "stay red the
+        // whole time" treatment automatically, with no per-effect-specific check needed here. Same instant/
+        // predicted timing as the hide block above (viewState, not verified) since this is purely cosmetic.
+        // The "paint red" side is continuously enforced every frame isDead is true, NOT just once on the
+        // edge — the flash-revert block below can occasionally lose a same-tick ordering race against
+        // OnEnemyDeath's dispatch (see its own comment) and revert to _originalColors while still dead;
+        // painting red only once on the edge would leave that mistake uncorrected until this enemy is
+        // eventually hidden/deleted. Continuous painting here means any such mistake self-corrects on the
+        // very next frame instead. The revert side stays edge-detected (fires once, when isDead actually
+        // goes false — a misprediction correction, see the isDead-hide block's own comment) since nothing
+        // else contends for this enemy's color while it's alive.
+        if (viewB.isDead)
         {
             if (_renderers != null)
                 foreach (var r in _renderers)
                     if (r != null && r.material != null) r.material.color = Color.red;
         }
-        else if (!viewB.killLaunchActive && _wasKillLaunchActiveLastFrame && _renderers != null)
+        // !_isFlashing here too — without it, a brand new hit landing on the exact same frame a death
+        // misprediction gets corrected (isDead flips back to false) could have its fresh TriggerFlash() red
+        // silently overwritten by this revert later the same frame (TriggerFlash() runs earlier, from the
+        // attacking weapon's LateSimulate; this runs later, in this enemy's own UpdateView). If a flash is
+        // already active, it already owns the color and will revert itself correctly on its own schedule
+        // (its own revert check now correctly sees !viewB.isDead once this fires) — so just leave it alone.
+        else if (_wasDeadForColorLastFrame && !_isFlashing && _renderers != null)
         {
             for (int i = 0; i < _renderers.Length; i++)
                 if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
         }
-        _wasKillLaunchActiveLastFrame = viewB.killLaunchActive;
+        _wasDeadForColorLastFrame = viewB.isDead;
+
+        // Folded in from a separate plain Update() — see TriggerFlash()'s own doc comment for the shared-
+        // timer reasoning. Real Time.deltaTime, not tick-based delta: pure cosmetic flash, doesn't need to
+        // be resimulation-safe since TriggerFlash() itself is only ever called once per real hit (gated by
+        // the attacker's own PredictedEvent, not by anything in here). Runs from UpdateView instead of a
+        // separate Update() purely for consolidation — same per-frame cadence either way, and this keeps
+        // every cosmetic view-sync for this enemy in one place.
+        if (_isFlashing && !paused)
+        {
+            _flashTimer -= Time.deltaTime;
+            if (_flashTimer <= 0f)
+            {
+                _isFlashing = false;
+
+                // Skip the revert if this enemy is dead now — TriggerHitFeedback's own !B.isDead guard
+                // stops a NEW flash from ever starting once dead, but a flash from an earlier (non-lethal)
+                // hit can still be mid-decay when a LATER hit kills this enemy before that timer runs out
+                // (ordinary multi-hit-in-quick-succession, e.g. a multi-shot/AoE landing several hits within
+                // one ~0.08s window). Since isDead is real predicted state (not gated behind server
+                // verification the way killLaunchActive specifically is), this check sees the death
+                // immediately, no ordering ambiguity to worry about here. Without this, that stale in-flight
+                // flash would revert the corpse back to its original color moments after it died, fighting
+                // the continuous isDead-driven red-paint above — which repaints every frame regardless, so
+                // even if this guard were somehow wrong the mistake would self-correct next frame anyway,
+                // but this avoids the flicker outright. Reads viewB (not B, which the old separate Update()
+                // used) to match every other isDead check in this same method.
+                if (!viewB.isDead && _renderers != null)
+                    for (int i = 0; i < _renderers.Length; i++)
+                        if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+            }
+        }
 
         // Death is state-critical — only act on server-confirmed dead.
         if (verified.HasValue)
@@ -688,6 +803,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
             if (vb.isDead && !_wasDeadLastFrame)
             {
+                // See Die()'s own comment for why these moved here — plain static fields, only safe to
+                // mutate off a fact that's settled exactly once (server-confirmed dead, edge-detected),
+                // never from Simulate()-context where a replay would re-run this same tick's Die() call
+                // again and re-decrement.
+                ActiveCount--;
+                AdjustCategoryCount(spawnCategory, -1);
+
                 CharacterStatsPD.All.TryGetValue(vb.killerOwner, out var killer);
                 CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
                 if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(xpValue);
@@ -706,18 +828,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     // ── Movement ───────────────────────────────────────────────────────────
 
-    // Pins _target for the duration of a multi-state attack routine (dash/windup/attack/etc.) — call at the
-    // moment a subclass commits to attacking (the same tick it reads _target to decide a dash direction,
-    // stab target, etc.), and ClearTargetLock() once the routine returns to its idle/Moving state.
-    // FindTarget()'s periodic re-scan runs unconditionally on a fixed timer regardless of attack/dash
-    // sub-state (see Simulate() above) — without this, an attack sequence that spans more than
-    // FindTargetInterval (default 1s) could have _target silently reassigned to a different, now-nearer
-    // player partway through, so e.g. a dash-toward-target or a facing/attack decision made later in the
-    // same sequence could act on someone other than who the sequence actually started against.
-    protected void LockTarget(ref TState state) => GetBase(ref state).targetLocked = true;
-    protected void ClearTargetLock(ref TState state) => GetBase(ref state).targetLocked = false;
-
-    protected virtual void FindTarget()
+    // Closest-living-player scan — O(players), not O(enemies), so cheap even called from every enemy at
+    // once, but still not something to run every tick for every enemy (see Simulate()'s own comment on
+    // when this gets called). Subclasses with a discrete attack-routine state machine call this again
+    // themselves right as they return to idle/Moving (e.g. SpearGloomPD.EnterMoving), so a routine's tail
+    // end reprioritizes onto whoever's closest now instead of sitting on the target it started against.
+    protected virtual void FindClosestTarget()
     {
         float nearest = float.MaxValue;
         foreach (var p in CharacterStatsPD.All.Values)
@@ -728,6 +844,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             {
                 nearest = dist;
                 _target = p.transform;
+                _targetStats = p;
             }
         }
     }
@@ -913,14 +1030,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // false) while transiently still inactive, same as the respawn-reset/animator cases elsewhere in
         // this class.
         //
-        // Gated on !_hiddenOnDeath, not !B.isDead — a kill-launch corpse is still dead (isDead is already
-        // true for the killing blow itself, and stays true for every hit it takes while travelling) but
-        // stays visible/renderer-enabled the whole time it's held, so it should still show hit feedback for
-        // every hit it takes during that window, including the killing blow. Once actually hidden there's
-        // nothing left to flash. Also skipped entirely while B.killLaunchActive — UpdateView's own
-        // edge-detected block already holds the corpse solid red for the whole launch, and TriggerFlash's
-        // own revert-to-_originalColors would fight that.
-        if (!_hiddenOnDeath && !B.killLaunchActive && gameObject.activeInHierarchy) TriggerFlash();
+        // The damage number/SFX calls below are gated on !_hiddenOnDeath, not !B.isDead — a held corpse
+        // (kill-launch or any future similar on-death-delay effect) is still dead (isDead is already true
+        // for the killing blow itself, and stays true for every hit it takes while held) but stays visible/
+        // renderer-enabled the whole time it's held, so it should still show damage numbers/SFX for every
+        // hit it takes during that window, including the killing blow. Once actually hidden there's nothing
+        // left to show feedback on.
+        //
+        // TriggerFlash() itself, though, is skipped entirely for ANY dead enemy (not just kill-launch
+        // specifically — !B.isDead, not !B.killLaunchActive) — UpdateView's own continuous, isDead-driven
+        // red-paint (see its own comment) already owns this enemy's color for its entire remaining
+        // lifetime the instant it dies, including the killing blow's own hit (Die() already ran by the time
+        // this method processes that same hit's feedback), so a separate normal flash here would just be
+        // redundant color-painting fighting the same value.
+        if (!_hiddenOnDeath && !B.isDead && gameObject.activeInHierarchy) TriggerFlash();
         if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit, isHighroll, isPriority);
         if (attacker.isOwner && SFXManager.instance != null)
             SFXManager.instance.Play(attacker.hitSfx, transform.position, 1f, 0.05f);
@@ -929,16 +1052,26 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected virtual void Die()
     {
         B.isDead = true;
-        ActiveCount--;
-        AdjustCategoryCount(spawnCategory, -1);
 
-        // Both moved here (previously only set once the hide block finally ran) per the user's own call —
-        // a dead body's physical presence should end immediately regardless of whether hide/delete are
-        // being held up for an on-death effect. The layer swap is what actually keeps this corpse out of
-        // any layer-mask-based query (weapon hitboxes, this same kill-launch's own sphere-cast against
-        // OTHER enemies, etc.) without needing to separately toggle _hurtbox.enabled too.
-        if (_physicsCollider != null) _physicsCollider.enabled = false;
-        gameObject.layer = _noneLayer;
+        // ActiveCount/AdjustCategoryCount used to be decremented right here — but unlike B.isDead/
+        // B.deathHoldCount (real TState, correctly restored to its pre-tick value by rollback before every
+        // resimulation replay) or hierarchy.Create()'s own instance counter (verified via PredictedHierarchy
+        // source: backed by PredictedHierarchyState, same rollback protection), these are plain static
+        // fields with NO rollback awareness at all. A death tick that gets resimulated N times before
+        // settling (ordinary network-latency-driven catch-up, not even a misprediction) would decrement
+        // these N times for one real death, silently drifting them arbitrarily negative over a long match —
+        // which would eventually defeat EnemySpawnerPD's own spawn-cap checks entirely (ActiveNormalCount <
+        // maxNormalEnemies is always true once the count is negative enough). Moved to UpdateView's existing
+        // verified-state, edge-detected block below (same one RaiseOnEnemyDeath/AwardUpgradePoints already
+        // use) so this fires exactly once per real, server-confirmed death instead of once per replay.
+
+        // PhysicsCollider disable + layer swap (keeps this corpse out of any layer-mask-based query —
+        // weapon hitboxes, this same kill-launch's own sphere-cast against OTHER enemies, etc. — without
+        // needing to separately toggle _hurtbox.enabled too) used to be set here directly, but that made
+        // them an unrecoverable one-shot side effect: if this death later turned out to be a misprediction
+        // (isDead reverting to false once the real, non-lethal server state resolves), nothing ever
+        // reverted them. Moved to UpdateView's own isDead-edge-detected sync (see its own comment) instead,
+        // which runs immediately on the very same tick either way but correctly reverses if corrected.
 
         // Reserves exactly enough death-holds up front, atomically, for every effect that's going to react
         // to this death — no dependence on OnEnemyDeath listener dispatch (in UpdateView, potentially many
@@ -1030,9 +1163,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 b.killLaunchHitIds.Add(enemy.ObjectId);
                 enemy.TakeDamage(b.killLaunchDamage, b.killLaunchIsCrit, b.killerOwner);
                 // TakeDamage alone never shows a damage number (see TriggerHitFeedback's own doc comment on
-                // IEnemyPD) — queued here, drained in UpdateView(), same split every weapon's own
-                // _hitFeedbackQueue already uses.
-                _killLaunchFeedbackQueue.Add((enemy, b.killLaunchDamage, b.killLaunchIsCrit, b.killLaunchIsHighroll, b.killerOwner));
+                // IEnemyPD) — fired through _onHitFeedback rather than a queue (see HitFeedbackData's own
+                // doc comment for why a plain queue here was resimulation-unsafe).
+                if (CharacterStatsPD.All.TryGetValue(b.killerOwner, out var killLaunchAttacker))
+                    _onHitFeedback.Invoke(new HitFeedbackData { target = enemy.ObjectId, damage = b.killLaunchDamage, isCrit = b.killLaunchIsCrit, isHighroll = b.killLaunchIsHighroll, attacker = killLaunchAttacker, isPriority = false });
             }
         }
 
@@ -1180,27 +1314,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         _isFlashing = true;
         for (int i = 0; i < _renderers.Length; i++)
             if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = Color.red;
-    }
-
-    private void Update()
-    {
-        if (!_isFlashing) return;
-        _flashTimer -= Time.deltaTime;
-        if (_flashTimer > 0f) return;
-        _isFlashing = false;
-
-        // Skip the revert if a kill-launch is now active — TriggerHitFeedback's own !B.killLaunchActive
-        // guard only stops a NEW flash from starting once the launch is already underway, but the killing
-        // blow's own hit-feedback drains off the WEAPON's UpdateView, which can run before or after this
-        // enemy's own UpdateView (where OnEnemyDeath dispatch actually flips killLaunchActive true) — pure
-        // Unity script execution order, not something worth pinning down. If this flash already started
-        // before that flip landed, it would otherwise revert the corpse back to its original color shortly
-        // into a launch that's supposed to stay solid red the whole time. UpdateView's own edge-detected
-        // red/revert already owns the corpse's color for the launch's actual duration once this bails.
-        if (B.killLaunchActive) return;
-
-        for (int i = 0; i < _renderers.Length; i++)
-            if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
     }
 
     // Guards against both a null/empty _renderers array and individual entries lacking a material —

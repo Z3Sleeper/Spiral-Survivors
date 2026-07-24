@@ -1,7 +1,7 @@
 public enum StatType
 {
     MaxHealth    = 0,
-    WeaponDamage = 1,
+    Strength = 1,
     MoveSpeed    = 2,
     WeaponRange  = 3,
     AttackSpeed  = 4,
@@ -18,8 +18,8 @@ public enum StatType
     LevelUpOptions    = 17,
     LevelUpStats      = 18,
     Luck                = 19,
-    WeaponDamagePercent = 20,
-    DamagePerLevel      = 21,
+    StrengthPercent = 20,
+    StrengthPerLevel    = 21,
     MaxShield           = 22,
     ShieldRechargeTime  = 23,
 }

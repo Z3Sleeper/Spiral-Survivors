@@ -27,15 +27,21 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private TextMeshProUGUI unlockPopupText;
     [SerializeField] private AudioClip unlockSound;
 
+    // Off only for testing reconnection — see OnAllReady's own comment on the one call this gates.
+    [SerializeField] private bool lockLobbyOnMatchStart = true;
+
     private int _expectedPlayerCount;
     // Deduplicated by PlayerID rather than a raw counter — a flaky connection can retry and register a
-    // brand-new PlayerID with the server for what is physically the same reconnecting client (PurrNet mints
-    // a fresh PlayerID per completed handshake when host migration/cookies aren't in play), so a plain
-    // counter could cross _expectedPlayerCount purely from reconnect noise without every distinct player
-    // actually being present.
+    // brand-new PlayerID with the server for what is physically the same reconnecting client before the
+    // original attempt's own connection fully resolves, which mints a SECOND distinct PlayerID alongside the
+    // first (PurrNet's cookie-based reconnection only recognizes a truly NEW connection attempt as "the same
+    // player returning" — it doesn't dedupe two live, simultaneously-registering attempts from one client),
+    // so a plain counter could cross _expectedPlayerCount purely from reconnect noise without every distinct
+    // player actually being present.
     private readonly HashSet<PlayerID> _joinedPlayerIds = new();
     private bool _initializedForLobby;
     private bool _connectingToHost;
+    private Coroutine _connectRoutine;
 
     private void OnEnable()  => UnlockManager.OnUnlockQueued += OnUnlockQueuedWhileInLobby;
     private void OnDisable() => UnlockManager.OnUnlockQueued -= OnUnlockQueuedWhileInLobby;
@@ -48,6 +54,16 @@ public class LobbySceneController : MonoBehaviour
 
     private void Start()
     {
+        // PausePD.UpdateView() drives Time.timeScale (and/or predictionManager.time.timeScale) to 0 every
+        // frame while paused, and only ReturnToLobbyManager.ReturnToLobby() ever resets it back to 1 — a
+        // disconnect-triggered kick back to this scene bypasses that entirely, so if the game happened to
+        // be paused at the moment of disconnect, timeScale stays stuck at 0 forever (the Game scene's
+        // PausePD instance is simply gone, nothing left to set it back). That silently hangs every
+        // WaitForSeconds-based coroutine in this scene, including ConnectToHostWithRetry's own retry loop,
+        // with no error — the Lobby scene should never run at anything but normal timescale regardless of
+        // how we got here, so assert it unconditionally on load.
+        Time.timeScale = 1f;
+
         if (!networkManager)
             networkManager = NetworkManager.main;
 
@@ -269,7 +285,7 @@ public class LobbySceneController : MonoBehaviour
                         var hostSteamId = SteamMatchmaking.GetLobbyOwner(steamLobbyId);
                         steamTransport.address = hostSteamId.m_SteamID.ToString();
                     }
-                    StartCoroutine(ConnectToHostWithRetry());
+                    _connectRoutine = StartCoroutine(ConnectToHostWithRetry());
                 }
             }
         }
@@ -286,7 +302,13 @@ public class LobbySceneController : MonoBehaviour
 
         if (lobby.IsOwner)
         {
-            if (ulong.TryParse(lobby.LobbyId, out ulong lockLobbyId))
+            // Gated behind lockLobbyOnMatchStart (default on) rather than removed outright — locking the
+            // lobby the moment a match starts is the right long-term behavior (stops randoms from
+            // Join-by-code'ing into a match already in progress), but it's also the one thing currently
+            // stopping a dropped player from rejoining the SAME match via LobbySceneController.OnRoomUpdated's
+            // existing "lobby says Started == True, I'm not yet a client" reconnect path. Flip this off in
+            // the Inspector to test reconnection without permanently changing the normal-case behavior.
+            if (lockLobbyOnMatchStart && ulong.TryParse(lobby.LobbyId, out ulong lockLobbyId))
                 SteamMatchmaking.SetLobbyJoinable(new CSteamID(lockLobbyId), false);
             lobbyManager.SetLobbyStarted();
             if (!networkManager.isServer)
@@ -300,8 +322,17 @@ public class LobbySceneController : MonoBehaviour
             networkManager.onPlayerLeft += OnPurrNetPlayerLeft;
             TryLoadGameScene();
         }
-        else if (!networkManager.isClient && !_connectingToHost)
+        else if (!networkManager.isClient)
         {
+            // Readying up is an explicit, unambiguous "connect me now" signal — it overrides any earlier
+            // connection attempt still (or wrongly still marked as) in progress. Without this, an earlier
+            // silent reconnect attempt from OnRoomUpdated (fired the instant we rejoined the Steam lobby,
+            // since it's already marked Started == True) could exhaust all its retries and fail — e.g. from
+            // the server-side "already connected" rejection window — leaving _connectingToHost stuck true
+            // forever with nothing to reset it, permanently blocking this legitimate ready-up-triggered
+            // attempt. Stopping any still-running routine before starting a fresh one avoids two overlapping
+            // ConnectToHostWithRetry coroutines both hammering StartClient at once.
+            if (_connectRoutine != null) StopCoroutine(_connectRoutine);
             _connectingToHost = true;
             if (networkManager.transport is SteamTransport steamTransport &&
                 ulong.TryParse(lobby.LobbyId, out var lobbyIdRaw))
@@ -309,7 +340,7 @@ public class LobbySceneController : MonoBehaviour
                 var hostSteamId = SteamMatchmaking.GetLobbyOwner(new CSteamID(lobbyIdRaw));
                 steamTransport.address = hostSteamId.m_SteamID.ToString();
             }
-            StartCoroutine(ConnectToHostWithRetry());
+            _connectRoutine = StartCoroutine(ConnectToHostWithRetry());
         }
     }
 
@@ -340,12 +371,21 @@ public class LobbySceneController : MonoBehaviour
             }
 
             if (networkManager.isClient)
+            {
+                _connectingToHost = false;
+                _connectRoutine = null;
                 yield break;
+            }
 
             yield return retryWait;
         }
 
         Debug.LogError("Failed to connect to host after all attempts.");
+        // Without this, a failed attempt left _connectingToHost stuck true forever — nothing else in this
+        // class ever clears it, so every later reconnect trigger (OnRoomUpdated on the next lobby update,
+        // or OnAllReady on a later ready-up) saw "already connecting" and silently did nothing.
+        _connectingToHost = false;
+        _connectRoutine = null;
     }
 
     private void OnPurrNetPlayerJoined(PlayerID player, bool isReconnect, bool asServer)

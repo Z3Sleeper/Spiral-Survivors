@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#8C8C8C>Phantom</color> <color=#00FF00>Pain</color>
   description: '<color=#FFA000>On Damage Taken:</color> <color=#FFA000>Summon</color>
     a <color=#8C8C8C>Phantom Blade</color> piercing the nearest enemy for <color=#FF5000>10%<color=#00FF87>*</color>
-    Unpenalized Damage</color> <color=#FFA000>x Damage Taken</color>.
+    unpenalized Strength</color> <color=#FFA000>x Damage Taken</color>.
 
     <color=#8C8C8C>+10%
     Phantom Blade Damage</color>
