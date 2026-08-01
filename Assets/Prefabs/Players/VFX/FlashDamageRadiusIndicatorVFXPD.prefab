@@ -66,7 +66,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 588aece6352ef264b907a46a0265e33a, type: 2}
+  - {fileID: 2100000, guid: fb6fb98a9449f0b4b90fb5717f232044, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -134,7 +134,7 @@ GameObject:
   - component: {fileID: 2664979869671531108}
   - component: {fileID: 3292467086006023227}
   m_Layer: 0
-  m_Name: DamageRadiusIndicatorVFXPD
+  m_Name: FlashDamageRadiusIndicatorVFXPD
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -168,7 +168,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4e535d6b3a616ef43a15aa971ca8fd64, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RadiusIndicatorVFXPD
-  visual: {fileID: 7552181288352581091}
+  duration: 0.1
 --- !u!114 &3292467086006023227
 MonoBehaviour:
   m_ObjectHideFlags: 0

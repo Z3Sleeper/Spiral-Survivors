@@ -81,16 +81,8 @@ PrefabInstance:
       value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: postStabPause
-      value: 0.4
-      objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: windupDuration
-      value: 0.4
-      objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: betweenStabPause
-      value: 0.2
+      propertyPath: stabRange
+      value: 4.8
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

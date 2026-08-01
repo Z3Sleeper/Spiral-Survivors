@@ -53,7 +53,17 @@ public class XPOrbPD : PredictedIdentity<XPOrbPD.State>
         // crazy during pause and never stops" symptom: as long as the orb stayed overlapped, this fired
         // forever with nothing ever gating it off.
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
-        if (!currentState.settled || currentState.collected) return;
+        // Deliberately NOT gated on settled — an orb spawned/scattered out of bounds needs to be pushed back
+        // in regardless of whether it's already gone kinematic (MovePosition works fine either way), or it
+        // just settles in place still outside the map and sits there forever. Still skipped once attracting
+        // (moving toward a player under its own steam) or collected.
+        if (currentState.collected || currentState.attractingPlayer.HasValue) return;
+        // Held off until the scatter's own settleTimer window has elapsed — purely cosmetic (letting the
+        // little scatter-impulse tumble play out before the pull-back starts, instead of it instantly
+        // snapping/fighting the scatter from frame one), NOT a correctness gate: the callback still fires
+        // and is simply ignored below, so a still-out-of-bounds orb gets corrected the instant the timer
+        // expires, same tick it otherwise would have gone kinematic.
+        if (currentState.settleTimer > 0f) return;
 
         float delta = predictionManager.tickDelta;
 

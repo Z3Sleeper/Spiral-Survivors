@@ -33,10 +33,6 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
     [Header("Ranged")]
     [SerializeField] private GameObject projectilePrefab;
-    [SerializeField] private float projectileSpeed = 20f;
-    // Shots/sec = _stats.AttackSpeed * fireRateMultiplier — ported from the old WeaponBow, which used 12
-    // here (AttackSpeed 0.5 -> 6 shots/sec).
-    [SerializeField] private float fireRateMultiplier = 12f;
 
     private bool _initialized;
 
@@ -90,6 +86,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     protected override void UpdateView(State viewState, State? verified)
     {
         if (!_initialized) TryInit();
+        ApplyVisualAdjustments();
     }
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -117,16 +114,38 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         // Outer-track weapons (OuterTrackAugment) spin the opposite direction — see
         // WeaponMeleePD.LateSimulate's own angleSign comment for the full reasoning. No sub-arc sweep here
         // (ranged just fires at whatever's in front of it), so no startAngle reconstruction needed.
-        float   currentAngle = (IsOuterTrack ? -1f : 1f) * _stats.WeaponOrbitAngle;
-        Vector3 origin = _stats.transform.position;
+        //
+        // ArcherFocusFireAbilityPD freezes the whole ring by substituting FocusFireAimAngle (cursor-derived,
+        // shared by every weapon this owner has) for the normal ever-incrementing WeaponOrbitAngle — see
+        // CharacterStatsPD.FocusFireAimAngle's own doc comment for why only the SHARED base changes here
+        // and each weapon's own SlotIndex offset (applied inside OrbitalPosition below) still does the rest.
+        float   baseAngle    = _stats.ContinuousFire ? _stats.FocusFireAimAngle : _stats.WeaponOrbitAngle;
+        float   currentAngle = (IsOuterTrack ? -1f : 1f) * baseAngle;
+        Vector3 origin = _stats.EffectiveOrbitOrigin;
         Vector3 orbitPos = OrbitalPosition(currentAngle, origin);
         Vector3 outward  = orbitPos - origin;
         if (outward == Vector3.zero) return;
 
-        transform.SetPositionAndRotation(orbitPos, Quaternion.LookRotation(outward));
+        transform.SetPositionAndRotation(ApplyHeightLift(orbitPos), Quaternion.LookRotation(outward));
+
+        // Skipped entirely while _stats.IsWeaponsDisabled (e.g. the spin ability's leap) — the weapon keeps
+        // orbiting above (purely visual), it just never actually fires; fireTimer is deliberately left
+        // untouched too, so it resumes exactly where it left off once re-enabled rather than losing progress.
+        if (_stats.IsWeaponsDisabled) return;
 
         state.fireTimer--;
         if (state.fireTimer > 0) return;
+
+        if (_stats.ContinuousFire)
+        {
+            // No FindTarget()/LOS requirement at all — see CharacterStatsPD.ContinuousFire's own doc
+            // comment: just fires straight forward from wherever this weapon is currently aimed (see
+            // baseAngle above), target or not, every time the fire-rate timer allows. No per-target hit
+            // cooldown bookkeeping either — there's no selected target to gate.
+            Fire(transform.position + transform.forward * _stats.WeaponRange);
+            state.fireTimer = Mathf.RoundToInt(1f / Mathf.Max(0.01f, _stats.AttackSpeed * _stats.FireRate) / delta);
+            return;
+        }
 
         if (!FindTarget(transform.position, transform.forward, state.hitCooldowns, state.allyHitCooldowns, out IEnemyPD target, out CharacterStatsPD allyTarget, out Vector3 hurtboxCenter)) return;
 
@@ -136,7 +155,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         // Hard reset, not += — fireTimer can drift arbitrarily negative while no target is in the forward
         // ray (the common case for a thin raycast), and accumulating the cooldown on top of that debt
         // instead of clearing it would cause a rapid-fire burst to pay it off once a target reappears.
-        state.fireTimer = Mathf.RoundToInt(1f / Mathf.Max(0.01f, _stats.AttackSpeed * fireRateMultiplier) / delta);
+        state.fireTimer = Mathf.RoundToInt(1f / Mathf.Max(0.01f, _stats.AttackSpeed * _stats.FireRate) / delta);
     }
 
     // ── Targeting ─────────────────────────────────────────────────────────────
@@ -229,7 +248,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
             var go = hierarchy.GetGameObject(id.Value);
             if (go != null && go.TryGetComponent(out WeaponRangedProjectilePD projectile))
-                projectile.Launch(_stats, dir, projectileSpeed, ricochet);
+                projectile.Launch(_stats, dir, _stats.ProjectileSpeed, ricochet);
         }
     }
 }

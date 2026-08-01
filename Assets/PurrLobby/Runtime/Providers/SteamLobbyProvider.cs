@@ -44,6 +44,10 @@ namespace PurrLobby.Providers
         public event UnityAction<string> OnError;
         
         [SerializeField] private bool handleSteamInit = false;
+        // Steam's CallResult<T> has no built-in timeout — without this, a dropped connection or an
+        // unresponsive Steam backend at exactly the wrong moment left CreateLobbyAsync awaiting forever,
+        // with no exception and no way to recover short of restarting.
+        [SerializeField] private float createLobbyTimeoutSeconds = 15f;
 
         private Steamworks.CallResult<Steamworks.LobbyCreated_t> _LobbyCreated;
         private Steamworks.CallResult<Steamworks.LobbyEnter_t> _LobbyEnter;
@@ -91,6 +95,15 @@ namespace PurrLobby.Providers
                 if(!ioError && result.m_eResult == Steamworks.EResult.k_EResultOK)
                 {
                     lobbyId = new Steamworks.CSteamID(result.m_ulSteamIDLobby);
+                    // Set here, not after the await below resumes — this callback can still fire AFTER
+                    // CreateLobbyAsync has already given up on a timeout and returned (Steam responding late
+                    // doesn't stop the lobby from actually existing). The reactive chain that gets the
+                    // player into the lobby (OnLobbyDataUpdate -> OnLobbyUpdated -> LobbyManager.OnRoomJoined)
+                    // runs independently of this method's own return value and only needs _currentLobby to
+                    // already match by the time the SetLobbyData calls below trigger a real LobbyDataUpdate_t
+                    // — setting it late would silently drop a real, successfully-created lobby. Also closes
+                    // the same-shaped race in OnLobbyDataUpdate's own _currentLobby comparison.
+                    _currentLobby = lobbyId;
                     tcs.TrySetResult(true);
                     Steamworks.SteamMatchmaking.SetLobbyData(lobbyId, "Name", lobbyName);
                     Steamworks.SteamMatchmaking.SetLobbyData(lobbyId, "Started", "False");
@@ -99,10 +112,21 @@ namespace PurrLobby.Providers
                     tcs.TrySetResult(false);
             });
 
-            if (!await tcs.Task)
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(createLobbyTimeoutSeconds));
+            var completed = await Task.WhenAny(tcs.Task, timeoutTask);
+            if (completed == timeoutTask)
+            {
+                PurrLogger.LogWarning($"CreateLobbyAsync timed out after {createLobbyTimeoutSeconds}s — Steam never responded to CreateLobby.");
+                OnError?.Invoke("Failed to create lobby: request timed out.");
                 return new Lobby { IsValid = false };
+            }
+            if (!await tcs.Task)
+            {
+                OnError?.Invoke("Failed to create lobby: Steam rejected the request.");
+                return new Lobby { IsValid = false };
+            }
 
-            _currentLobby = lobbyId;
+            // _currentLobby is already set above (inside the success callback) — not reassigning here again.
 
             if (lobbyProperties != null)
             {
@@ -179,6 +203,10 @@ namespace PurrLobby.Providers
 
         public Task InitializeAsync()
         {
+            // TEMP diagnostic (see project_pd_backlog memory) — tracking down a "stuck on Creating Room"
+            // repro possibly tied to this callback getting disposed prematurely relative to lobby creation.
+            PurrLogger.Log($"[SteamLobbyProvider] InitializeAsync: (re)creating Steam callbacks on {GetInstanceID()}.");
+
             _avatarImageLoadedCallback = Steamworks.Callback<Steamworks.AvatarImageLoaded_t>.Create(OnAvatarImageLoaded);
             _lobbyDataUpdateCallback = Steamworks.Callback<Steamworks.LobbyDataUpdate_t>.Create(OnLobbyDataUpdate);
             _lobbyChatUpdateCallback = Steamworks.Callback<Steamworks.LobbyChatUpdate_t>.Create(OnLobbyChatUpdate);
@@ -186,7 +214,7 @@ namespace PurrLobby.Providers
 
             if (handleSteamInit)
                 HandleSteamInit();
-            
+
             return Task.CompletedTask;
         }
 
@@ -203,7 +231,7 @@ namespace PurrLobby.Providers
                 RunSteamCallbacks();
             }
         }
-        
+
         private async void RunSteamCallbacks()
         {
             var runCallbacks = true;
@@ -427,6 +455,12 @@ namespace PurrLobby.Providers
 
         public void Shutdown()
         {
+            // TEMP diagnostic (see project_pd_backlog memory) — tracking down a "stuck on Creating Room"
+            // repro possibly tied to _lobbyDataUpdateCallback getting disposed prematurely relative to
+            // lobby creation, since the "Creating Room" overlay is only dismissed via a chain that starts
+            // with this exact callback firing (OnLobbyDataUpdate -> OnLobbyUpdated -> LobbyManager.OnRoomJoined).
+            PurrLogger.Log($"[SteamLobbyProvider] Shutdown() on {GetInstanceID()} — was _lobbyDataUpdateCallback null already? {_lobbyDataUpdateCallback == null}");
+
             // Steamworks.Callback<T> registers itself into a static, process-wide dispatch table
             // (CallbackDispatcher.m_registeredCallbacks) the moment it's created — that registration is
             // completely independent of this MonoBehaviour's Unity lifecycle, so Destroy()ing this GameObject
@@ -454,6 +488,10 @@ namespace PurrLobby.Providers
         // itself idempotent.
         private void OnDestroy()
         {
+            // TEMP diagnostic (see project_pd_backlog memory) — confirms whether this GameObject is being
+            // destroyed at some unexpected point (e.g. during normal PurrLobby-panel use, not just a real
+            // scene unload), which would explain _lobbyDataUpdateCallback vanishing mid-session.
+            PurrLogger.Log($"[SteamLobbyProvider] OnDestroy() on {GetInstanceID()}.");
             Shutdown();
         }
 
@@ -608,8 +646,18 @@ namespace PurrLobby.Providers
 
         private void OnLobbyDataUpdate(Steamworks.LobbyDataUpdate_t callback)
         {
+            // TEMP diagnostic (see project_pd_backlog memory) — CreateLobbyAsync's own SetLobbyData("Name"/
+            // "Started") calls (made right after CreateLobby succeeds) can plausibly trigger this callback
+            // before CreateLobbyAsync's async continuation has actually resumed and set _currentLobby to the
+            // new lobby ID — if so, this early-return would silently drop the exact notification that
+            // dismisses the "Creating Room" overlay (OnLobbyUpdated -> ... -> LobbyManager.OnRoomJoined),
+            // with no exception anywhere, matching the stuck-on-Creating-Room symptom.
             if (_currentLobby.m_SteamID != callback.m_ulSteamIDLobby)
+            {
+                PurrLogger.Log($"[SteamLobbyProvider] OnLobbyDataUpdate: EARLY RETURN — _currentLobby ({_currentLobby.m_SteamID}) != callback lobby ({callback.m_ulSteamIDLobby}).");
                 return;
+            }
+            PurrLogger.Log($"[SteamLobbyProvider] OnLobbyDataUpdate: firing for lobby {_currentLobby.m_SteamID}.");
 
             var ownerId = Steamworks.SteamMatchmaking.GetLobbyOwner(_currentLobby).m_SteamID.ToString();
             var localId = Steamworks.SteamUser.GetSteamID().m_SteamID.ToString();

@@ -300,7 +300,6 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 6883465488274931265}
-  - {fileID: 3541637886794090097}
   - {fileID: 5513950161839650562}
   - {fileID: 2886678057887901167}
   m_Father: {fileID: 0}
@@ -320,6 +319,7 @@ MonoBehaviour:
   _rigidbody: {fileID: -8117565900580008965}
   enemyName: Spear Gloom
   moveSpeed: 12
+  attackSpeed: 1
   backpedalSpeedDivisor: 3
   maxHealth: 100
   preferredRange: 5
@@ -339,9 +339,9 @@ MonoBehaviour:
   isStunnable: 1
   _renderers:
   - {fileID: 3448404629509916890}
-  _spearHitbox: {fileID: 9054564917381773716}
   stabDamageMultiplier: 1
   stabRange: 4
+  stabWidth: 2
   windupDuration: 0.5
   stabDuration: 0.1
   betweenStabPause: 0.25
@@ -1380,73 +1380,6 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!1 &8011425690289133079
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 3541637886794090097}
-  - component: {fileID: 9054564917381773716}
-  - component: {fileID: 481921794258656167}
-  m_Layer: 15
-  m_Name: SpearHitbox
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &3541637886794090097
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8011425690289133079}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 7839943648137112170}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!65 &9054564917381773716
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8011425690289133079}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 1
-  m_ProvidesContacts: 0
-  m_Enabled: 0
-  serializedVersion: 3
-  m_Size: {x: 1, y: 0.1, z: 1}
-  m_Center: {x: 0, y: 0, z: 0}
---- !u!114 &481921794258656167
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8011425690289133079}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: b199eaec503d014489345869ebf512b0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedPhysicsCallbacks
-  _eventMask: 63
 --- !u!1 &8083332680176052889
 GameObject:
   m_ObjectHideFlags: 0

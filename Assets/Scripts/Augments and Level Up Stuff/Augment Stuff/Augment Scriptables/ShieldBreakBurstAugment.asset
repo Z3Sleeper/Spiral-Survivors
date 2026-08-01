@@ -13,13 +13,13 @@ MonoBehaviour:
   m_Name: ShieldBreakBurstAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF00FF>Break Burst</color>
-  description: '<color=#FFA000>On <color=#FF00FF>Shield</color> Break:</color> Become
-    <color=#FFA000>Invulnerable</color> for 1 second and deal <color=#FF5000>500%<color=#00FF87>*</color>
-    unpenalized Strength</color> to all surrounding enemies, <color=#FFA000>knocking
-    them back</color> and <color=#FFA000>Stunning</color> them for 3 seconds.
+  description: '<color=#FFA000>(AoE Effect) On <color=#FF00FF>Shield</color> Break:</color>
+    Become <color=#FFA000>Invulnerable for 1 second</color> then <color=#FFA000>Interrupt,
+    Knockback and Stun</color> all nearby enemies for <color=#FFA000>2 seconds</color>
+    and deal <color=#FF5000>300% unpenalized Strength</color>.
 
-    <color=#00FF87>*Affected
-    by Luck*</color>'
+    <color=#FFBE50><i>Stun
+    & Damage scale with AoE Power and Ability Power</i></color>'
   icon: {fileID: 21300000, guid: 37a9507e367a9dc4e964a6b2fa3a1d43, type: 3}
   effectPrefab: {fileID: 3310022117534731454, guid: a44f3317e8aaa1c4ca54240822ef712d, type: 3}
   multiplayerOnly: 0
@@ -28,6 +28,7 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  tags: []
+  tags:
+  - AoE Effect
   requiredTags: []
   incompatibleTags: []

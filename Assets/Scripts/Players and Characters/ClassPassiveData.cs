@@ -20,6 +20,11 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "NewClassPassive", menuName = "Spiral Survivors/Class Passive")]
 public class ClassPassiveData : ScriptableObject
 {
+    // Shown on the character-select screen's detail panel (CharacterSelectUI.RefreshCharacterDetails) —
+    // not used anywhere in actual gameplay/stat math, purely flavor/explanatory text per class.
+    [Header("Character Select Description")]
+    [TextArea(3, 6)] public string classDescription;
+
     [Header("Move Speed")]
     public float bonusMoveSpeedFlat = 0f;
     public float bonusMoveSpeedPercent = 0f;
@@ -58,9 +63,6 @@ public class ClassPassiveData : ScriptableObject
     public float totalWeaponRangePercent = 0f;
     public float totalWeaponRangePenalty = 0f;
 
-    [Header("Weapon Size")]
-    public float bonusWeaponSizePercent = 0f;
-
     [Header("Character Size")]
     // Additive stacking (matches CharacterStatsPD.AddSizePercent) — e.g. +0.25 = +25%.
     public float bonusSizePercent = 0f;
@@ -91,6 +93,16 @@ public class ClassPassiveData : ScriptableObject
     public float projectileDamageDropoffReduction = 0f;
     public float projectileOnHitDropoffReduction = 0f;
 
+    [Header("Fire Rate")]
+    public float fireRateFlat = 0f;
+    public float fireRateTotalPercent = 0f;
+    public float fireRateTotalPenalty = 0f;
+
+    [Header("Projectile Speed")]
+    public float projectileSpeedFlat = 0f;
+    public float projectileSpeedTotalPercent = 0f;
+    public float projectileSpeedTotalPenalty = 0f;
+
     [Header("Max Health")]
     public float bonusMaxHealthFlat = 0f;
     public float bonusMaxHealthPercent = 0f;
@@ -104,8 +116,7 @@ public class ClassPassiveData : ScriptableObject
     public float totalHealthRegenPenalty = 0f;
 
     [Header("Max Shield")]
-    public float bonusMaxShieldFlat = 0f;
-    public float bonusMaxShieldPercent = 0f;
+    public float bonusMaxShieldAdditive = 0f;
     public float totalMaxShieldPercent = 0f;
     public float totalMaxShieldPenalty = 0f;
 
@@ -134,9 +145,13 @@ public class ClassPassiveData : ScriptableObject
     public float totalDashHastePercent = 0f;
     public float totalDashHastePenalty = 0f;
 
-    [Header("Max SP")]
-    public float bonusMaxSPFlat = 0f;
-    public float bonusMaxSPPercent = 0f;
+    // Same shape as Dash's own dashHaste block above — see its comment for the "no separate base field"
+    // reasoning, identical here for abilityHaste.
+    [Header("Ability Haste")]
+    public float abilityHaste = 0f;
+    public float bonusAbilityHastePercent = 0f;
+    public float totalAbilityHastePercent = 0f;
+    public float totalAbilityHastePenalty = 0f;
 
     [Header("Luck")]
     public float bonusLuckFlat = 0f;

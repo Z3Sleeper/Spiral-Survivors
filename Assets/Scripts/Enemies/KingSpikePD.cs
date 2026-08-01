@@ -132,14 +132,25 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         if (dashJustEnded)
         {
             state.chargesRemaining--;
-            if (state.chargesRemaining > 0) EnterBetweenCharges(ref state);
-            else                             EnterSpikeBurstWindup(ref state);
+            // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the charge
+            // that just ended above, but stops the chain from continuing into another one, falling through
+            // to the spike burst phase instead (see IsCrowdControlled's own doc comment).
+            if (state.chargesRemaining > 0 && !IsCrowdControlled) EnterBetweenCharges(ref state);
+            else                                                  EnterSpikeBurstWindup(ref state);
         }
 
         state.attackCooldownTimer -= delta;
-        state.stateTimer          -= delta;
 
         var ss = GetSpikeState(ref state);
+
+        // stateTimer scales live with EffectiveAttackSpeed (which includes any active slow) for
+        // ChargeWindup/BetweenCharges, same pattern as every other enemy's own windup/recovery timers —
+        // King Spike is slowable like everyone else. SpikeBurstWindup is the one deliberate exception (per
+        // the user's own call, matching "SpikeBurst uninterruptable"/"RemoteSpikeBurst ignores stuns" —
+        // both already fully CC-immune categories): it stays on a fixed real-time clock, achieved simply by
+        // never reading EffectiveAttackSpeed for it rather than any cross-cutting immunity flag (see
+        // EffectiveAttackSpeed's own doc comment). Moving doesn't meaningfully use stateTimer either way.
+        state.stateTimer -= delta * (ss == KingSpikeState.SpikeBurstWindup ? 1f : EffectiveAttackSpeed);
 
         switch (ss)
         {
@@ -157,6 +168,8 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
                     Vector3.Distance(transform.position, _target.position) <= chargeDistance)
                 {
                     state.chargesRemaining = chargesPerAttack;
+                    // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
+                    CaptureAttackAnchor(ref state);
                     EnterChargeWindup(ref state);
                 }
                 break;
@@ -166,7 +179,25 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
                 break;
 
             case KingSpikeState.BetweenCharges:
-                if (state.stateTimer <= 0f) EnterChargeWindup(ref state);
+                // Outside the ongoing window (ongoing ends the moment a single Charging finishes) — safe to
+                // read live _target here, deciding whether/how the NEXT charge in the chain proceeds.
+                if (state.stateTimer <= 0f)
+                {
+                    if (_target == null)
+                    {
+                        // No valid target for another charge — skip straight to Spike Burst instead of
+                        // winding up at nobody. Unlike every other multi-stage enemy, this does NOT abort
+                        // to Moving: SpikeBurstWindup/FireSpikeBurst/RemoteSpikeBurstPD never need a target
+                        // (always hit every player directly via CharacterStatsPD.All), so there's no reason
+                        // to cut the sequence short.
+                        EnterSpikeBurstWindup(ref state);
+                    }
+                    else
+                    {
+                        CaptureAttackAnchor(ref state);
+                        EnterChargeWindup(ref state);
+                    }
+                }
                 break;
 
             case KingSpikeState.SpikeBurstWindup:
@@ -214,7 +245,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
     private void EnterChargeWindup(ref State state)
     {
-        var snapDir = SnapFaceTarget(ref state);
+        var snapDir = SnapFaceAnchor(ref state);
         if (snapDir != Vector3.zero) state.chargeDirection = snapDir;
         _chargeDirectionSnapshot = state.chargeDirection;
         state.stateTimer = chargeWindupDuration;
@@ -261,6 +292,21 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         if (state.b.enraged) state.attackCooldownTimer = attackCooldown;
         SetSpikeState(ref state, KingSpikeState.Moving);
     }
+
+    // No dedicated EnterMoving() exists on this boss (unlike every other enemy) — FireSpikeBurst() above is
+    // the only place that already transitions back to Moving, and it ALSO fires the burst itself, so it's
+    // not reusable here. Charges reset for the next attack cycle, same as every other enemy's own
+    // EnterMoving. Doesn't touch remoteSequenceActive/remoteBurstsSpawned — those only ever get armed from
+    // FireSpikeBurst, which CanBeInterrupted below already keeps this from ever running during.
+    protected override void OnInterrupted()
+    {
+        currentState.chargesRemaining = chargesPerAttack;
+        SetSpikeState(ref currentState, KingSpikeState.Moving);
+    }
+
+    // SpikeBurstWindup specifically is NOT interruptible (per design) — the actual spike burst/remote wave
+    // sequence can't be cancelled once committed. Charge/ChargeWindup/BetweenCharges are still fair game.
+    protected override bool CanBeInterrupted => GetSpikeState(ref currentState) != KingSpikeState.SpikeBurstWindup;
 
     // ── Remote bursts ────────────────────────────────────────────────────────
 
@@ -332,16 +378,20 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
             chargeWindupIndicator.transform.rotation = Quaternion.LookRotation(_chargeDirectionSnapshot);
         }
 
+        // Live, every frame regardless of the _lastVisualState-gated block below — reacts immediately to
+        // EffectiveAttackSpeed changing mid-windup (a slow landing/expiring), same reasoning as every other
+        // attack-speed-scaled enemy's own live fill. spikeBurstFill deliberately keeps the old self-timed
+        // StartFill below instead — SpikeBurstWindup's own timer is never attack-speed-scaled in the first
+        // place (see HandleActiveState's own comment), so a live progress calc here would be pointless.
+        if (chargeWindupFill != null && ss == KingSpikeState.ChargeWindup)
+            chargeWindupFill.SetProgress(1f - Mathf.Clamp01(viewState.stateTimer / chargeWindupDuration));
+
         if (ss == _lastVisualState) return;
         _lastVisualState = ss;
 
         if (chargeWindupIndicator != null)
             chargeWindupIndicator.SetActive(ss == KingSpikeState.ChargeWindup);
-        if (chargeWindupFill != null)
-        {
-            if (ss == KingSpikeState.ChargeWindup) chargeWindupFill.StartFill(chargeWindupDuration);
-            else                                    chargeWindupFill.ResetFill();
-        }
+        if (chargeWindupFill != null && ss != KingSpikeState.ChargeWindup) chargeWindupFill.ResetFill();
 
         if (spikeBurstIndicator != null)
             spikeBurstIndicator.SetActive(ss == KingSpikeState.SpikeBurstWindup);

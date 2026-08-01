@@ -1,0 +1,172 @@
+using PurrNet.Prediction;
+using UnityEngine;
+
+// Rogue's second class ability, built on the IAbilityPD architecture — drops enemy aggro by going invisible
+// (CharacterStatsPD.SetInvisible) and grants +50% total move speed, both for the same fixed duration. Gated
+// by a cooldown, same shape as RogueSpinAbilityPD (see that file for the template this mirrors) — the two
+// slots are otherwise functionally identical now, this one just doesn't force a special action while active.
+// EnemyBasePD/EnemySpawnerPD already react to SetInvisible immediately (the taunt/invisible enemy-targeting
+// work) — this ability only needs to flip the flag on and back off, all the actual retargeting behavior
+// already exists. The visual fade (CharacterStatsPD's own model-renderer alpha) is likewise driven
+// generically off the invisible flag itself, not by this ability directly.
+public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State>, IAbilityPD
+{
+    public struct State : IPredictedData<State>
+    {
+        public float activeTimer;
+        public bool  isActive;
+        public float cooldownTimer;
+        public void Dispose() { }
+    }
+
+    [SerializeField] private Sprite icon;
+    [SerializeField] private string abilityName = "Vanish";
+    [SerializeField, TextArea] private string description = "Become invisible and gain +50% Total Move Speed for 3 seconds.";
+    [SerializeField] private float cooldown = 20f;
+    // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full
+    // value throughout the invisibility window) — see Simulate(). true: cooldown starts ticking
+    // immediately at cast, running concurrently with the active window.
+    [SerializeField] private bool cooldownStartsOnCast = false;
+    // Which action-bar slot this occupies — Inspector-configurable per character rather than hardcoded per
+    // class, so which ability goes where is a prefab-authoring choice, not a recompile.
+    [SerializeField] private AbilitySlot slot = AbilitySlot.Ability2;
+    [SerializeField] private string[] tags;
+    // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
+    [SerializeField] private bool activeSurgeBlock = false;
+
+    [Header("Effect")]
+    [SerializeField] private float duration = 3f;
+    [SerializeField] private float moveSpeedTotalPercent = 0.5f;
+
+    private CharacterStatsPD _stats;
+    // Snapshotted at cast time (moveSpeedTotalPercent * AbilityPower at that instant) rather than recomputed
+    // live at both Activate() and the end-of-active reversal — if CharacterStatsPD.AbilityPower changed
+    // mid-buff (a future augment picked up during the window), reading it live a second time at the end
+    // would add and subtract two different amounts, permanently drifting MoveSpeed. Same "fixed for the
+    // whole active window" reasoning as RogueSpinAbilityPD's own cast-time snapshots (_weaponCountAtCast etc).
+    private float _appliedMoveSpeedTotalPercent;
+
+    // The local-only screen tint toggle routes through PredictedEvent, not a raw call directly in
+    // Simulate()/Activate() — same reasoning as every other one-shot side effect in this codebase: a
+    // resimulated tick could otherwise retrigger it multiple times.
+    private PredictedEvent _onActiveStarted;
+    private PredictedEvent _onActiveEnded;
+
+    protected override State GetInitialState() => default;
+
+    private void Awake()
+    {
+        _stats = GetComponent<CharacterStatsPD>();
+    }
+
+    protected override void LateAwake()
+    {
+        base.LateAwake();
+        _onActiveStarted = new PredictedEvent(predictionManager, this);
+        _onActiveStarted.AddListener(() =>
+        {
+            // Only the local owning client's own screen shows the tint — LocalUIManagerPD is already
+            // scoped to whichever player this machine owns, so gating on isOwner here is sufficient.
+            if (isOwner) LocalUIManagerPD.instance?.SetInvisibleTintVisible(true);
+        });
+
+        _onActiveEnded = new PredictedEvent(predictionManager, this);
+        _onActiveEnded.AddListener(() =>
+        {
+            if (isOwner) LocalUIManagerPD.instance?.SetInvisibleTintVisible(false);
+        });
+    }
+
+    public bool IsReady => _stats != null && !currentState.isActive && currentState.cooldownTimer <= 0f;
+    public bool IsActive => currentState.isActive;
+    // Only ever flips invisibility/movespeed — never touches movement, so it never locks dash or the
+    // other ability slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
+    public bool ForcesSpecialAction => false;
+    public bool ActiveSurgeBlock => activeSurgeBlock;
+    // Same underlying window as IsActive for this ability (the whole invisibility buff) — see
+    // IAbilityPD.AbilityIsActive's own doc comment for why these are separate interface members even
+    // though they agree here.
+    public bool AbilityIsActive => currentState.isActive;
+    public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
+    public float CooldownDuration => EffectiveCooldown;
+    public float BaseCooldownDuration => cooldown;
+    public bool CooldownStartsOnCast => cooldownStartsOnCast;
+    public Sprite Icon => icon;
+    public string Name => abilityName;
+    public string Description => description;
+    public string[] Tags => tags;
+    public AbilitySlot Slot => slot;
+
+    // Same formula as CharacterStatsPD.DashCooldown (baseCooldown / (1 + haste/100)) — a haste augment
+    // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
+    // EffectiveAbilityHaste ever goes negative (a penalty).
+    private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
+
+    public void Activate()
+    {
+        if (!IsReady || _stats == null) return;
+
+        // AbilityPower's interpretation for this ability: scales both the buff strength and the buff
+        // duration — see CharacterStatsPD.AbilityPower's own doc comment.
+        float abilityPower = _stats.AbilityPower;
+        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent * abilityPower;
+
+        currentState.activeTimer   = duration * abilityPower;
+        currentState.isActive      = true;
+        currentState.cooldownTimer = EffectiveCooldown;
+        // Direct cross-identity mutation, same pattern as PausePD.SetPlayerReady()/CharacterStatsPD.
+        // StartSurge() — safe since Activate() is only ever called from PlayerControllerPD's own Simulate(),
+        // deterministically, identically on every machine.
+        // See IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract — RemoveSurgeBlock's
+        // matching call sits in Simulate()'s own end-of-active block below.
+        if (activeSurgeBlock)
+        {
+            _stats.ForceEndSurge();
+            _stats.AddSurgeBlock();
+        }
+        _stats.SetInvisible(true);
+        _stats.AddMoveSpeedTotalPercent(_appliedMoveSpeedTotalPercent);
+
+        _onActiveStarted.Invoke();
+        // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
+        // Skipped entirely at 0 (raw, un-hasted) cooldown — an ability that can be spammed with no downtime
+        // shouldn't be firing "a real ability cast" notifications on every cycle (PhantomBladeOnAbilityStartAugment
+        // and any future listener would otherwise see it fire far more often than intended).
+        if (cooldown > 0f) _stats.NotifyAbilityStart(this);
+    }
+
+    public void NotifyActivationBlocked() { }
+
+    protected override void Simulate(ref State state, float delta)
+    {
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole active
+        // window below) or only once that window ends (state.isActive false) — see the field's own doc
+        // comment. Either way Activate() already set cooldownTimer to its full value at cast time. Same
+        // shape as RogueSpinAbilityPD.Simulate().
+        if (state.cooldownTimer > 0f && (cooldownStartsOnCast || !state.isActive))
+            state.cooldownTimer -= delta;
+
+        if (!state.isActive) return;
+
+        state.activeTimer -= delta;
+        // Death force-ends the buff early — see ExeBigAxeAbilityPD.Simulate()'s own identical comment for
+        // the full reasoning (same shape here: a dead caster gets nothing from Invisible/MoveSpeed, and the
+        // cooldown otherwise couldn't start ticking until this window ends anyway).
+        bool forceEndOnDeath = _stats != null && _stats.IsDead;
+        if (state.activeTimer > 0f && !forceEndOnDeath) return;
+
+        state.isActive = false;
+        if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
+        if (_stats != null)
+        {
+            _stats.SetInvisible(false);
+            _stats.AddMoveSpeedTotalPercent(-_appliedMoveSpeedTotalPercent);
+        }
+        _onActiveEnded.Invoke();
+        // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
+        // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.
+        if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
+    }
+}

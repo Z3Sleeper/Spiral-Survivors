@@ -567,6 +567,7 @@ MonoBehaviour:
   _rigidbody: {fileID: 5392799678339745330}
   enemyName: King Spike
   moveSpeed: 10
+  attackSpeed: 1
   backpedalSpeedDivisor: 3
   maxHealth: 12500
   preferredRange: 0
@@ -602,10 +603,10 @@ MonoBehaviour:
   spikeBurstIndicator: {fileID: 4686410381492106149}
   spikeBurstFill: {fileID: 8658849789107406530}
   remoteBurstPrefab: {fileID: 5351432771132445161, guid: 0596e4734b5af4648bbbf092a61ea0a2, type: 3}
-  remoteBurstOffsetRadius: 1.5
+  remoteBurstOffsetRadius: 3
   remoteBurstRadius: 6
   remoteBurstCount: 4
-  remoteBurstInterval: 1.5
+  remoteBurstInterval: 1
   remoteChargeTime: 1.5
 --- !u!54 &-6973549993052189348
 Rigidbody:

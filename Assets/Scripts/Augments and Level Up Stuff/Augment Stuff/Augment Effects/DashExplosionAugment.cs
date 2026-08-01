@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -13,6 +12,18 @@ using UnityEngine;
 // dashHaste bonus (removed per the "no training wheels" balance pass). Subscribes directly to this player's
 // own PlayerControllerPD._onDashEnded, same per-owner-instance cross-player-safety reasoning as
 // PhantomBladeOnDashAugment.
+//
+// "AoE Effects" tag (2026-07-25): damage/onHitPower scale with Stats.AreaEffectPower, radius (and the VFX
+// showing it) scale with Stats.AreaEffectSize, and the whole cast can repeat Stats.AreaEffectCount times
+// total via retriggerRate. Every cast — including AreaEffectCount == 1, i.e. always today, since nothing
+// grants it above 1 yet — goes through a spawned AreaEffectPD, one dedicated, fully self-contained instance
+// PER dash, rather than tracking chain data inside this augment's own State (so back-to-back dashes each get
+// their own independent chain instead of sharing one overwritable slot) or splitting into a separate
+// direct-cast path (which would mean every cast parameter needs threading through two call sites kept in
+// sync by hand). Pooled on the prefab, so the common single-cast case costs a pooled reactivate, not a real
+// spawn. AreaEffectPD itself isn't Dash-specific (the same generic chain every "AoE Effects" caller uses,
+// enemy- or ally-targeting, damage or not) — see its own doc comment for why that couldn't just be a List<T>
+// inside a single State struct.
 public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
@@ -20,17 +31,19 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
     [SerializeField] private float damagePercent     = 2f;
     [SerializeField] private float onHitPowerPercent = 2f;
     [SerializeField] private float explosionRadius   = 5f;
+    // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
+    [SerializeField] private float retriggerRate     = 0.5f;
 
     [Header("VFX")]
+    // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
     [SerializeField] private GameObject radiusVFXPrefab;
-    [SerializeField] private float      vfxDuration = 0.3f;
+
+    // Spawned on every dash (see OnDashEnded) — pooled, so this is cheap even when AreaEffectCount is just
+    // 1. Must be registered in PredictedPrefabs.asset like any other spawned effect.
+    [Header("Chain (spawned on every dash)")]
+    [SerializeField] private GameObject chainPrefab;
 
     private PlayerControllerPD _controller;
-
-    // Static, not instance — scratch overlap buffer, same "shared, immediately drained within one
-    // synchronous call" pattern as PhantomBladeSummonHelper._overlapResults.
-    private static readonly Collider[] _overlapResults = new Collider[32];
-    private readonly HashSet<IEnemyPD> _found = new();
 
     protected override void OnApply()
     {
@@ -47,45 +60,20 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
     private void OnDashEnded()
     {
         if (Stats == null || Stats.IsDead) return;
+        if (chainPrefab == null) return;
 
-        _found.Clear();
-        int n = Physics.OverlapSphereNonAlloc(Stats.transform.position, explosionRadius, _overlapResults, CombatLayerMasks.EnemyHurtboxMask);
-        for (int i = 0; i < n; i++)
-        {
-            var enemy = _overlapResults[i].GetComponent<IEnemyPD>();
-            if (enemy == null || enemy._isDead || !_found.Add(enemy)) continue;
+        Vector3 castPosition = Stats.transform.position;
+        float radius = explosionRadius * Stats.AreaEffectSize;
+        int totalCasts = Mathf.Max(1, Stats.AreaEffectCount);
 
-            bool isCrit = GameRandom.instance.NextFloat() < Stats.CritChance;
+        var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
+        if (!chainId.HasValue) return;
 
-            float baseDamage = Stats.UnpenalizedStrength * damagePercent;
-            float rolledDamage = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool dmgHighroll);
-            if (dmgHighroll) rolledDamage *= 1f + Stats.HighrollBonus;
-            if (isCrit) rolledDamage *= Stats.CritDamage;
-
-            enemy.TakeDamage(rolledDamage, isCrit, Stats.owner ?? default);
-            Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolledDamage, isCrit = isCrit, isHighroll = dmgHighroll, attacker = Stats, isPriority = true });
-
-            float baseOnHitPower = Stats.OnHitPower * onHitPowerPercent;
-            float rolledOnHitPower = WeaponDamageMath.RollDamage(baseOnHitPower, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool onHitHighroll);
-            if (onHitHighroll) rolledOnHitPower *= 1f + Stats.HighrollBonus;
-
-            // isCrit inherited from this same hit, matching every other onhit-notify call site.
-            Stats.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolledDamage, onHitPower = rolledOnHitPower, isCrit = isCrit });
-        }
-
-        SpawnRadiusVFX();
+        var go = hierarchy.GetGameObject(chainId.Value);
+        // hasKnockback: true, knockback left at its default (null) — resolves to Stats.Knockback exactly,
+        // deliberately NOT scaled by Stats.AreaEffectPower (per the "AoE Effects" default rules).
+        if (go != null && go.TryGetComponent(out AreaEffectPD chain))
+            chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
+                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true);
     }
-
-    private void SpawnRadiusVFX()
-    {
-        if (radiusVFXPrefab == null) return;
-
-        var id = hierarchy.Create(radiusVFXPrefab, Stats.transform.position, Quaternion.identity);
-        if (!id.HasValue) return;
-
-        var go = hierarchy.GetGameObject(id.Value);
-        if (go != null && go.TryGetComponent(out RadiusIndicatorVFXPD vfx))
-            vfx.Launch(explosionRadius, vfxDuration);
-    }
-
 }

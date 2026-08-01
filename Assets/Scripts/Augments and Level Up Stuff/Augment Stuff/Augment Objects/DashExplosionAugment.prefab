@@ -47,5 +47,7 @@ MonoBehaviour:
   damagePercent: 2
   onHitPowerPercent: 2
   explosionRadius: 5
+  retriggerRate: 0.5
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
   vfxDuration: 0.1
+  chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}

@@ -14,7 +14,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AbilityTagDatabase
   tags:
   - On-Hit Effect
-  - Phantom Blade Generator
+  - Phantom Blade
   - Size Increase
   - Size Decrease
   - Stacking
+  - AoE Effect

@@ -16,9 +16,32 @@ public class CharacterSelectUI : MonoBehaviour
     [SerializeField] private Transform colorPickerContainer;
     [SerializeField] private GameObject colorSwatchPrefab;
 
+    [Header("Character Detail Panel")]
+    [SerializeField] private TextMeshProUGUI characterDescriptionText;
+    [SerializeField] private AugmentCardUI detailAugmentCardPrefab;
+    [SerializeField] private Transform detailAugmentContent;
+
+    // Named fields (one per class), not a raw array — an array element's position is easy to mix up when
+    // wiring buttons in the Inspector with no label to check against; these get folded into an internal,
+    // CharacterRegistry-index-aligned array in Awake() so the rest of the highlight logic can still just
+    // work off a plain index.
+    [Header("Character Buttons (selection highlight)")]
+    [SerializeField] private Image knightButtonImage;
+    [SerializeField] private Image rogueButtonImage;
+    [SerializeField] private Image archerButtonImage;
+    [SerializeField] private Image bladeweaverButtonImage;
+    [SerializeField] private Image executionerButtonImage;
+    [SerializeField] private Image randomButtonImage;
+    [SerializeField] private Color selectedButtonColor = Color.green;
+
+    private Image[] _characterButtonImages;
+    private Color[] _characterButtonDefaultColors;
+    private Color _randomButtonDefaultColor;
+
     private readonly Dictionary<string, int> _charSelections = new();
     private readonly Dictionary<string, int> _colorSelections = new();
     private readonly Dictionary<string, long> _powerLevels = new();
+    private readonly List<AugmentCardUI> _detailAugmentPool = new();
     private bool _isRandom;
     private bool _localIsReady;
 
@@ -27,6 +50,35 @@ public class CharacterSelectUI : MonoBehaviour
         if (instance != null) { Destroy(gameObject); return; }
         instance = this;
         BuildColorPicker();
+
+        // Order matches CharacterRegistry's prefab index order (Knight=0, Rogue=1, Archer=2, Bladeweaver=3,
+        // Executioner=4) — this is the one place that mapping needs to be kept correct, not the Inspector.
+        _characterButtonImages = new[]
+        {
+            knightButtonImage, rogueButtonImage, archerButtonImage, bladeweaverButtonImage, executionerButtonImage
+        };
+        _characterButtonDefaultColors = new Color[_characterButtonImages.Length];
+        for (int i = 0; i < _characterButtonImages.Length; i++)
+            if (_characterButtonImages[i] != null) _characterButtonDefaultColors[i] = _characterButtonImages[i].color;
+
+        if (randomButtonImage != null) _randomButtonDefaultColor = randomButtonImage.color;
+    }
+
+    private void UpdateCharacterButtonHighlight(int selectedIndex)
+    {
+        for (int i = 0; i < _characterButtonImages.Length; i++)
+        {
+            if (_characterButtonImages[i] == null) continue;
+            _characterButtonImages[i].color = i == selectedIndex ? selectedButtonColor : _characterButtonDefaultColors[i];
+        }
+        if (randomButtonImage != null) randomButtonImage.color = _randomButtonDefaultColor;
+    }
+
+    private void UpdateRandomButtonHighlight()
+    {
+        for (int i = 0; i < _characterButtonImages.Length; i++)
+            if (_characterButtonImages[i] != null) _characterButtonImages[i].color = _characterButtonDefaultColors[i];
+        if (randomButtonImage != null) randomButtonImage.color = selectedButtonColor;
     }
 
     private void BuildColorPicker()
@@ -245,6 +297,14 @@ public class CharacterSelectUI : MonoBehaviour
         GameStartData.LocalCharacterIndex = UnityEngine.Random.Range(0, CharacterRegistry.instance.PrefabCount());
         _charSelections[GameStartData.LocalUserId] = -1;
 
+        // Deliberately doesn't reveal the just-rolled character's description/augments — same
+        // surprise-until-match-start convention the player list already follows for Random (shows "Random"
+        // there too, never the actual rolled character). The Random button itself turning green is the only
+        // visible confirmation of the pick now that there's no separate name text.
+        if (characterDescriptionText != null) characterDescriptionText.text = string.Empty;
+        PopulateDetailAugments(null, null);
+        UpdateRandomButtonHighlight();
+
         if (lobbyManager != null)
         {
             var lobby = lobbyManager.CurrentLobby;
@@ -252,6 +312,88 @@ public class CharacterSelectUI : MonoBehaviour
                 SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "char", "-1");
             RefreshFromLobby(lobby);
         }
+    }
+
+    // Updates the character-select detail panel (button highlight/description/starting-augment cards) for
+    // whichever character index is currently selected — called on manual pick (SelectCharacter) and once at
+    // initial join for the default Knight pick (LobbySceneController.InitializeForLobby), since that path
+    // sets GameStartData.LocalCharacterIndex directly rather than going through SelectCharacter.
+    public void RefreshCharacterDetails(int characterIndex)
+    {
+        var prefab = CharacterRegistry.instance != null ? CharacterRegistry.instance.GetPredictedPrefab(characterIndex) : null;
+        if (prefab == null) return;
+
+        UpdateCharacterButtonHighlight(characterIndex);
+
+        var stats = prefab.GetComponent<CharacterStatsPD>();
+        if (characterDescriptionText != null)
+            characterDescriptionText.text = stats != null ? stats.ClassDescription : string.Empty;
+
+        // GetComponents, not GetComponent — a character can carry both an Ability1-slot and an Ability2-slot
+        // component (e.g. Rogue's RogueSpinAbilityPD + RogueVanishAbilityPD), and a plain single
+        // GetComponent would only ever surface one of them.
+        PopulateDetailAugments(prefab.GetComponents<IAbilityPD>(), stats != null ? stats.ClassPassiveAugments : null);
+    }
+
+    private void PopulateDetailAugments(IAbilityPD[] abilities, AugmentData[] augments)
+    {
+        if (detailAugmentCardPrefab == null || detailAugmentContent == null) return;
+
+        // Nulls filtered out first (rather than skipped mid-loop) so pool index i always lines up with
+        // "the i-th card that should currently be visible" — skipping in place would leave a stale
+        // previously-active card sitting at that pool slot, untouched by either this loop or the trailing
+        // deactivation pass below.
+        int count = 0;
+
+        // Ability cards go first, ahead of the passive augment cards, matching how they take priority in the
+        // player's actual kit (input-driven, always available) over passives (passive, always-on). Ordered
+        // Ability1 before Ability2 so the card order matches the input labeling regardless of component
+        // order on the prefab.
+        if (abilities != null)
+        {
+            foreach (var ability in abilities)
+            {
+                if (ability == null || ability.Slot != AbilitySlot.Ability1) continue;
+                var ability1Card = GetDetailCard(count);
+                ability1Card.gameObject.SetActive(true);
+                ability1Card.AbilitySetup(ability.Name, ability.Description, ability.Icon);
+                ability1Card.SetInteractive(false);
+                count++;
+            }
+            foreach (var ability in abilities)
+            {
+                if (ability == null || ability.Slot != AbilitySlot.Ability2) continue;
+                var ability2Card = GetDetailCard(count);
+                ability2Card.gameObject.SetActive(true);
+                ability2Card.AbilitySetup(ability.Name, ability.Description, ability.Icon);
+                ability2Card.SetInteractive(false);
+                count++;
+            }
+        }
+
+        if (augments != null)
+        {
+            foreach (var augment in augments)
+            {
+                if (augment == null) continue;
+                var card = GetDetailCard(count);
+                card.gameObject.SetActive(true);
+                card.AugmentSetup(augment, count);
+                card.SetInteractive(false);
+                count++;
+            }
+        }
+
+        for (int i = count; i < _detailAugmentPool.Count; i++)
+            _detailAugmentPool[i].gameObject.SetActive(false);
+    }
+
+    private AugmentCardUI GetDetailCard(int index)
+    {
+        if (index < _detailAugmentPool.Count) return _detailAugmentPool[index];
+        var card = Instantiate(detailAugmentCardPrefab, detailAugmentContent);
+        _detailAugmentPool.Add(card);
+        return card;
     }
 
     public void OnReadyClicked()
@@ -326,6 +468,7 @@ public class CharacterSelectUI : MonoBehaviour
         _isRandom = false;
         GameStartData.LocalCharacterIndex = index;
         _charSelections[GameStartData.LocalUserId] = index;
+        RefreshCharacterDetails(index);
 
         if (lobbyManager == null) return;
         var lobby = lobbyManager.CurrentLobby;

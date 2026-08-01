@@ -1,4 +1,5 @@
 using PurrNet;
+using PurrNet.Packing;
 using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
@@ -18,13 +19,23 @@ public class PausePD : PredictedIdentity<PausePD.State>
     // stuck player can't hold the whole group paused indefinitely — force-unpauses when it expires.
     [SerializeField] private float readyFallbackDuration = 30f;
 
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public bool isPaused;
         public float pauseCountdown;
         public float readyFallbackTimer;
         public DisposableList<PlayerID> readyPlayers;
         public void Dispose() => readyPlayers.Dispose();
+
+        // Was missing entirely — every rollback snapshot fell back to the slow serialize/deserialize
+        // round-trip instead of this cheap direct field-copy. See EnemyBaseState.Duplicate's own doc
+        // comment for the full reasoning.
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.readyPlayers = readyPlayers.Duplicate();
+            return copy;
+        }
     }
 
     // Also true while a level-up needs picks, or the game has ended (won/lost) — folding both in here

@@ -44,6 +44,16 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private static readonly int WindupSpeedHash = Animator.StringToHash("WindupSpeed");
     private static readonly int LeapSpeedHash   = Animator.StringToHash("LeapSpeed");
 
+    // Baseline "clip length / baseline duration" ratios, cached instead of SetFloat'd directly — both need
+    // to be re-derived live every frame (ratio * EffectiveAttackSpeed, see UpdateView) instead of set once
+    // at spawn, same reasoning as every other attack-speed-scaled enemy in this pass. The leap's own actual
+    // traversal speed needs no separate handling here at all — it's driven directly by
+    // state.stateTimer / leapDuration (see HandleActiveState's Leaping case), and stateTimer's decrement
+    // rate is already scaled by EffectiveAttackSpeed below, so the arc lerp itself speeds up/slows down for
+    // free, same effect as scaling dash speed for every other enemy's own attack-speed-scaled dash.
+    private float _windupClipRate;
+    private float _leapClipRate;
+
     [Header("Leap Settings")]
     public float landDamageMultiplier = 1f;
     [SerializeField] private float landRadius       = 3f;
@@ -55,12 +65,17 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     [SerializeField] private float landingDuration  = 0.1f;
     [SerializeField] private int   leapsPerAttack   = 1;
     [SerializeField] private float leapOffsetRadius = 1f;
-    [SerializeField] private Transform _model;        // bobbed vertically (cosmetic only) during Leaping
+    // Bobbed vertically (cosmetic only) during Leaping — deliberately a dedicated wrapper (YAxisMovers),
+    // not the raw model mesh transform directly: PurrDiction's PredictedTransform tracks a hurtbox/root
+    // structure of its own, and driving a transform it also touches fights it (same "YAxisMovers, not
+    // Visuals" fix RogueSpinAbilityPD's leap needed for the player). Everything that should visually rise with
+    // the leap (model, shell, indicators, etc.) lives under this one wrapper instead.
+    [SerializeField] private Transform _yAxisMovers;
     [SerializeField] private GameObject   _windupIndicator;
     [SerializeField] private WindupFillPD _windupFill;
 
-    private Vector3 _modelRestPosition;
-    private bool    _modelRestPositionCaptured;
+    private Vector3 _yAxisMoversRestPosition;
+    private bool    _yAxisMoversRestPositionCaptured;
 
     // Plain (not predicted State) shadow of state.leapTarget, written in lockstep inside EnterWindup() —
     // the same deterministic Simulate() call that decides leapTarget itself, so this is available
@@ -92,15 +107,15 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
         // Guarded to a single real capture per instance, same reasoning as _windupIndicatorParent above —
         // UpdateView() bails out immediately on death (before it ever reaches the branch that resets
-        // _model back to rest), so a Leaper that dies mid-Leaping (model arc-bobbed up) gets pooled with
-        // its model still elevated. An unconditional recapture here would then bake that elevated position
+        // _yAxisMovers back to rest), so a Leaper that dies mid-Leaping (arc-bobbed up) gets pooled with
+        // its visuals still elevated. An unconditional recapture here would then bake that elevated position
         // in as the new "rest" position for the rest of this instance's pooled life — OnRespawnReset()
-        // would keep dutifully "resetting" the model back to a wrong, floating baseline. This is what
-        // caused the "leaper stuck floating" bug.
-        if (!_modelRestPositionCaptured && _model != null)
+        // would keep dutifully "resetting" it back to a wrong, floating baseline. This is what caused the
+        // "leaper stuck floating" bug.
+        if (!_yAxisMoversRestPositionCaptured && _yAxisMovers != null)
         {
-            _modelRestPosition = _model.localPosition;
-            _modelRestPositionCaptured = true;
+            _yAxisMoversRestPosition = _yAxisMovers.localPosition;
+            _yAxisMoversRestPositionCaptured = true;
         }
 
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
@@ -121,9 +136,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
             if (clip.name == "Leaper Gloom Windup")
-                _animator.SetFloat(WindupSpeedHash, clip.length / windupDuration);
+                _windupClipRate = clip.length / windupDuration;
             else if (clip.name == "Leaper Gloom Leap")
-                _animator.SetFloat(LeapSpeedHash, clip.length / leapDuration);
+                _leapClipRate = clip.length / leapDuration;
         }
     }
 
@@ -131,8 +146,12 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
+        // attackCooldownTimer: untouched — pacing between attack sequences, not execution speed.
+        // stateTimer: scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own comment on
+        // the identical pattern. This is also what drives the Leaping arc lerp below, so the leap's own
+        // traversal speed scales for free too.
         state.attackCooldownTimer -= delta;
-        state.stateTimer          -= delta;
+        state.stateTimer          -= delta * EffectiveAttackSpeed;
 
         var ss = GetLeapState(ref state);
 
@@ -279,7 +298,13 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private void EnterPostLand(ref State state)
     {
         state.leapsRemaining--;
-        if (state.leapsRemaining > 0)
+        // _target != null guard matters here — EnterWindup() silently no-ops on a null target (it needs one
+        // to compute leapTarget), so without this check a target lost mid-chain left the enemy stuck forever
+        // in Landing (leapsRemaining spiraling negative every tick, never actually transitioning out).
+        // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the leap
+        // that's already resolved above, but stops the chain from continuing into another one, falling
+        // through to PostLeap instead (see IsCrowdControlled's own doc comment).
+        if (state.leapsRemaining > 0 && _target != null && !IsCrowdControlled)
         {
             EnterWindup(ref state);
         }
@@ -299,6 +324,17 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         FindClosestTarget();
         SetLeapState(ref state, LeapState.Moving);
     }
+
+    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
+    // it runs out of leapsRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    protected override void OnInterrupted() => EnterMoving(ref currentState);
+
+    // Mid-Leaping specifically is NOT interruptible (per design) — the leaper is already mid-air on a fixed
+    // kinematic arc lerp with both its collider AND hurtbox disabled (see HandleActiveState's own comment),
+    // so there's no sensible "cancel and snap back to idle" here even if something did reach in. Windup
+    // (stationary, hittable) and every other phase are still fair game.
+    protected override bool CanBeInterrupted => GetLeapState(ref currentState) != LeapState.Leaping;
+
 
     // ── View ───────────────────────────────────────────────────────────────
     private LeapState _lastVisualState = (LeapState)(-1);
@@ -331,18 +367,41 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
         // Purely cosmetic arc bob — safe off viewState (a transient misprediction here is an imperceptible
         // visual wobble, not a discrete value that needs to be exactly right).
-        if (_model != null)
+        if (_yAxisMovers != null)
         {
             if (ss == LeapState.Leaping)
             {
                 float t = 1f - Mathf.Clamp01(viewState.stateTimer / leapDuration);
                 float arcY = Mathf.Sin(t * Mathf.PI) * leapArcHeight;
-                _model.localPosition = _modelRestPosition + new Vector3(0f, arcY, 0f);
+                _yAxisMovers.localPosition = _yAxisMoversRestPosition + new Vector3(0f, arcY, 0f);
             }
             else
             {
-                _model.localPosition = _modelRestPosition;
+                _yAxisMovers.localPosition = _yAxisMoversRestPosition;
             }
+        }
+
+        // Live, every frame regardless of the _lastVisualState-gated block below — reacts immediately to
+        // EffectiveAttackSpeed changing mid-state, same reasoning as every other attack-speed-scaled enemy
+        // in this pass. The fill spans both Windup and Leaping as one combined span (see its own comment
+        // further down for why), so progress is "how far into the combined windup+leap baseline are we,"
+        // computed from whichever of the two states we're currently in rather than a single self-timed
+        // StartFill(windupDuration + leapDuration) call that would go stale the instant attack speed
+        // changes mid-span.
+        if (_windupFill != null)
+        {
+            float combined = windupDuration + leapDuration;
+            if (ss == LeapState.Windup)
+                _windupFill.SetProgress((windupDuration - viewState.stateTimer) / combined);
+            else if (ss == LeapState.Leaping)
+                _windupFill.SetProgress((windupDuration + (leapDuration - viewState.stateTimer)) / combined);
+        }
+        if (_animator != null)
+        {
+            if (ss == LeapState.Windup)
+                _animator.SetFloat(WindupSpeedHash, _windupClipRate * EffectiveAttackSpeed);
+            else if (ss == LeapState.Leaping)
+                _animator.SetFloat(LeapSpeedHash, _leapClipRate * EffectiveAttackSpeed);
         }
 
         if (ss == _lastVisualState) return;
@@ -365,18 +424,10 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
         if (_windupIndicator != null)
             _windupIndicator.SetActive(ss == LeapState.Windup || ss == LeapState.Leaping);
-        if (_windupFill != null)
-        {
-            // Spans both Windup and Leaping (windup + leap duration), not just the windup phase — matches
-            // old Leaper's windupFill.StartFill(windupDuration + leapDuration). Only (re)started on the
-            // Moving->Windup entering edge and only reset once the whole span is over (isWindupOrLeap goes
-            // false, i.e. Leaping->Landing) — checking `ss == LeapState.Windup` directly instead would
-            // reset it right as Windup->Leaping happens (ss is no longer Windup at that transition), wiping
-            // the fill back to zero the instant the leap actually begins instead of letting it keep
-            // counting toward landing. This was the "windup fill is wonky" bug.
-            if (isWindupOrLeap && !wasWindupOrLeap) _windupFill.StartFill(windupDuration + leapDuration);
-            else if (!isWindupOrLeap)                _windupFill.ResetFill();
-        }
+        // Reset once the whole Windup+Leaping span is over (Leaping->Landing) — the live SetProgress block
+        // above already covers driving it forward throughout both states, this just clears it back to 0 on
+        // the way out (Landing/PostLeap/Moving all have nothing to show).
+        if (_windupFill != null && !isWindupOrLeap) _windupFill.ResetFill();
 
         if (_animator == null) return;
         switch (ss)
@@ -410,7 +461,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         currentState.leapsRemaining      = leapsPerAttack;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.stateTimer          = 0f;
-        if (_model != null) _model.localPosition = _modelRestPosition;
+        if (_yAxisMovers != null) _yAxisMovers.localPosition = _yAxisMoversRestPosition;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.ResetFill();
         // In case death happened mid-Windup/Leaping, while the indicator was unparented — a fresh reuse

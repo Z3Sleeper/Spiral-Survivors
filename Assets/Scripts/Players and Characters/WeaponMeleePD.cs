@@ -101,7 +101,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         // reconstruction below (startAngle), which otherwise assumes the angle is decreasing.
         float   angleSign   = IsOuterTrack ? -1f : 1f;
         float   currentAngle = angleSign * _stats.WeaponOrbitAngle;
-        Vector3 origin = _stats.transform.position;
+        Vector3 origin = _stats.EffectiveOrbitOrigin;
         Vector3 orbitPos = OrbitalPosition(currentAngle, origin);
         Vector3 outward  = orbitPos - origin;
         if (outward == Vector3.zero) return;
@@ -170,7 +170,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
                 Vector3 stepOutward = stepPos - origin;
                 if (stepOutward == Vector3.zero) continue;
 
-                transform.SetPositionAndRotation(stepPos, Quaternion.LookRotation(stepOutward));
+                transform.SetPositionAndRotation(ApplyHeightLift(stepPos), Quaternion.LookRotation(stepOutward));
                 hb.GetPositionAndRotation(out segCenter, out segRot);
                 segCenter += segRot * Vector3.forward * centerShift;
 
@@ -206,7 +206,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         }
         else
         {
-            transform.SetPositionAndRotation(orbitPos, Quaternion.LookRotation(outward));
+            transform.SetPositionAndRotation(ApplyHeightLift(orbitPos), Quaternion.LookRotation(outward));
             hb.GetPositionAndRotation(out center, out hitboxRot);
             center += hitboxRot * Vector3.forward * centerShift;
         }
@@ -232,18 +232,24 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         // Pure cooldown gate — an enemy standing continuously inside the hitbox gets rehit as soon as its
         // cooldown clears, no need to actually separate first. HitCooldown is a fraction of a full weapon
         // rotation, which is enough on its own to handle continuous-overlap cases sanely.
-        foreach (var enemy in _touchedThisTick)
+        // Skipped entirely while _stats.IsWeaponsDisabled (e.g. the spin ability's leap) — the weapon keeps
+        // orbiting above (purely visual), it just never actually connects; cooldowns are deliberately left
+        // unconsumed too, so nothing is wasted on a hit that wouldn't have counted anyway.
+        if (!_stats.IsWeaponsDisabled)
         {
-            if (HitCooldownMath.TryStart(state.hitCooldowns, enemy.ObjectId, HitCooldown, delta))
-                Hit(enemy);
-        }
-
-        if (detectAllies)
-        {
-            foreach (var ally in _touchedAlliesThisTick)
+            foreach (var enemy in _touchedThisTick)
             {
-                if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
-                    HitAlly(ally);
+                if (HitCooldownMath.TryStart(state.hitCooldowns, enemy.ObjectId, HitCooldown, delta))
+                    Hit(enemy);
+            }
+
+            if (detectAllies)
+            {
+                foreach (var ally in _touchedAlliesThisTick)
+                {
+                    if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
+                        HitAlly(ally);
+                }
             }
         }
 
@@ -253,6 +259,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     protected override void UpdateView(State viewState, State? verified)
     {
         if (!_initialized) TryInit();
+        ApplyVisualAdjustments();
     }
 
     // ── Hit ───────────────────────────────────────────────────────────────────

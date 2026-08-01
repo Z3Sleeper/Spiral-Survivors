@@ -30,7 +30,7 @@ AnimationClip:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    path: Visuals/ScaledVisuals/Model/Left Arm
+    path: Visuals/ScaledVisuals/YAxisMovers/Model/Left Arm
   - curve:
       serializedVersion: 2
       m_Curve:
@@ -46,7 +46,7 @@ AnimationClip:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    path: Visuals/ScaledVisuals/Model/Right Arm
+    path: Visuals/ScaledVisuals/YAxisMovers/Model/Right Arm
   m_ScaleCurves: []
   m_FloatCurves: []
   m_PPtrCurves: []
@@ -58,7 +58,7 @@ AnimationClip:
   m_ClipBindingConstant:
     genericBindings:
     - serializedVersion: 2
-      path: 3616881140
+      path: 4109781991
       attribute: 1
       script: {fileID: 0}
       typeID: 4
@@ -67,7 +67,7 @@ AnimationClip:
       isIntCurve: 0
       isSerializeReferenceCurve: 0
     - serializedVersion: 2
-      path: 532068502
+      path: 2603326010
       attribute: 1
       script: {fileID: 0}
       typeID: 4
@@ -114,7 +114,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.x
-    path: Visuals/ScaledVisuals/Model/Left Arm
+    path: Visuals/ScaledVisuals/YAxisMovers/Model/Left Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -135,7 +135,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.y
-    path: Visuals/ScaledVisuals/Model/Left Arm
+    path: Visuals/ScaledVisuals/YAxisMovers/Model/Left Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -156,7 +156,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.z
-    path: Visuals/ScaledVisuals/Model/Left Arm
+    path: Visuals/ScaledVisuals/YAxisMovers/Model/Left Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -177,7 +177,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.x
-    path: Visuals/ScaledVisuals/Model/Right Arm
+    path: Visuals/ScaledVisuals/YAxisMovers/Model/Right Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -198,7 +198,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.y
-    path: Visuals/ScaledVisuals/Model/Right Arm
+    path: Visuals/ScaledVisuals/YAxisMovers/Model/Right Arm
     classID: 4
     script: {fileID: 0}
     flags: 0
@@ -219,7 +219,7 @@ AnimationClip:
       m_PostInfinity: 2
       m_RotationOrder: 4
     attribute: m_LocalPosition.z
-    path: Visuals/ScaledVisuals/Model/Right Arm
+    path: Visuals/ScaledVisuals/YAxisMovers/Model/Right Arm
     classID: 4
     script: {fileID: 0}
     flags: 0

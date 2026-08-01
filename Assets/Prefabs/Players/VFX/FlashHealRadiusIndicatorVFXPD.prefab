@@ -134,7 +134,7 @@ GameObject:
   - component: {fileID: 2664979869671531108}
   - component: {fileID: 3292467086006023227}
   m_Layer: 0
-  m_Name: HealRadiusIndicatorVFXPD
+  m_Name: FlashHealRadiusIndicatorVFXPD
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -168,6 +168,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4e535d6b3a616ef43a15aa971ca8fd64, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RadiusIndicatorVFXPD
+  duration: 0.1
 --- !u!114 &3292467086006023227
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -90,6 +90,14 @@ public interface IEnemyPD
     void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
+    // multiplier is how much of normal move speed remains while active (e.g. 0.5 = half speed), not a
+    // separate "50% slower" subtraction — see EnemyBasePD.Slow()/EffectiveMoveSpeed's own doc comments.
+    void Slow(float multiplier, float duration);
+    // Cancels this enemy's current active-attack-sequence (if any) outright and returns it to Moving/idle —
+    // see EnemyBasePD.Interrupt()'s own doc comment. Call this BEFORE a paired Stun()/AddKnockbackVelocity
+    // on the same hit (e.g. AreaEffectCastHelper's own interrupt param), never after — see Interrupt()'s
+    // own doc comment for why the ordering matters.
+    void Interrupt();
     void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false);
 
     // Lets a spawner mark a freshly hierarchy.Create()'d enemy with which category spawned it (deciding
@@ -106,6 +114,12 @@ public interface IEnemyPD
     // doc comment. Die() already reserved this effect's death-hold via the killer's killEventCount; the
     // caller doesn't need to request or track one itself, only trust HandleKillLaunch to release it.
     void StartKillLaunch(Vector3 direction, float speed, float distance, float damage, bool isCrit = false, bool isHighroll = false);
+
+    // Called by EnemySpawnerPD (the enemy-targeting hub) whenever ANY player's taunt/invisible state
+    // changes — generic regardless of concrete TState, same reason this interface exists at all. See
+    // EnemyBasePD<TState>'s own implementation for the actual reaction logic.
+    void OnPlayerTauntChanged(CharacterStatsPD player, bool isTaunting);
+    void OnPlayerInvisibleChanged(CharacterStatsPD player, bool isInvisible);
 }
 
 // Per-target contact damage cooldown — contact damage repeats over time (unlike a one-shot attack),
@@ -128,12 +142,30 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public float health;
     public bool isDead;
     public float stunTimer;
+    // Separate from stunTimer above — stunTimer is the shared BEHAVIORAL gate (set by both a true Stun()
+    // call and AddKnockbackVelocity's own derived micro-stun), but the yellow stun tint (EnemyBasePD.
+    // UpdateView) should only show for a real Stun(), never for ordinary knockback. Always <= stunTimer by
+    // construction (Stun() sets both from the same resisted duration via Mathf.Max, AddKnockbackVelocity's
+    // ApplyStun call never touches this one) — see ApplyStun's own isTrueStun param.
+    public float trueStunTimer;
+    // Independent of stunTimer above — a slow reduces move speed rather than stopping it outright, so it
+    // ticks down on its own timer regardless of whether the enemy is also currently stunned. 1 = full speed
+    // (no slow); lower means slower, e.g. 0.5 = half speed — only meaningful while slowTimer > 0 (see
+    // EnemyBasePD.EffectiveMoveSpeed/Slow()'s own doc comments for how these combine and merge with a new
+    // application).
+    public float slowTimer;
+    public float slowMultiplier;
     public bool atPreferredRange;
     public DisposableList<ContactCooldown> contactCooldowns;
     public bool isDashing;
     public Vector3 dashDirection;
     public Vector3 dashDestination;
     public float    dashSpeed;
+    // Captured once at the start of an "ongoing" attack (dash-to-target, or windup entered directly because
+    // already in range) via EnemyBasePD.CaptureAttackAnchor — see that method's own doc comment. Facing
+    // during the ongoing window reads THIS, not a live _target, so a mid-attack retarget (taunt/invisible)
+    // never redirects an attack that's already committed; it only affects the NEXT attack in a chain.
+    public Vector3 attackAnchorPosition;
     // Always exactly one killer — overwritten unconditionally on every TakeDamage call (not just the lethal
     // one), so by the time Die() runs this already reflects whoever landed the actual final blow. Never a
     // list/multiple; there's no scenario in this game where more than one player is credited for one kill.
@@ -219,6 +251,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     [Header("Stats")]
     public float moveSpeed = 6f;
     [NonSerialized] public float baseMoveSpeed;
+    // Does nothing on its own here — EnemyBasePD has no generic attack-cooldown system (every subclass owns
+    // its own attack timing/state machine entirely independently, see OnEnrage's own doc comment), so a base
+    // enemy never reads this at all. A subclass that wants attack speed to matter reads EffectiveAttackSpeed
+    // itself wherever it currently uses a flat attack-cooldown/windup duration (e.g. divide by it, same shape
+    // as any other rate stat), and how exactly attackSpeed shapes that cadence is left entirely up to it.
+    public float attackSpeed = 1f;
     public float backpedalSpeedDivisor = 3f;
     public float maxHealth = 30f;
     [NonSerialized] public float baseHealth;
@@ -238,10 +276,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public bool contactColliderEnabled = true;
     public float contactCooldown = 0.5f;
     public bool stunResistant = false;
-    // Dual-purpose: reduces knockback velocity (AddKnockbackVelocity) AND reduces the duration of any
-    // other stun source (Stun()) — except the stun knockback itself produces, which is deliberately exempt
-    // since that duration is already derived from the already-reduced knockback velocity; applying this
-    // resist a second time on top of that would double-dip the same resistance against the same hit.
+    // Reduces knockback velocity (AddKnockbackVelocity) AND reduces the duration of any other stun source
+    // (Stun()) — except the stun knockback itself produces, which is deliberately exempt since that duration
+    // is already derived from the already-reduced knockback velocity; applying this resist a second time on
+    // top of that would double-dip the same resistance against the same hit. Slow() is the one exception to
+    // the "reduces duration" rule — a slow's duration always lands in full; this instead reduces the slow's
+    // POTENCY (how much speed it actually takes away), see Slow()'s own doc comment for the exact math.
     [Range(0f, 1f)] public float crowdControlResist = 0f;
     public bool showDamageNumbers = true;
     // Nudges damage number spawn points along world-space +Y/+Z (not this enemy's own orientation) by
@@ -263,7 +303,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Mirrors _target — cached alongside it purely so Simulate() can cheaply check "is my current target
     // still alive" every tick (a null/bool check) without re-resolving a CharacterStatsPD from the
     // Transform. Always set together with _target in FindClosestTarget(); never assigned anywhere else.
-    private CharacterStatsPD _targetStats;
+    // Protected (not private) — subclasses with multi-stage attacks (Spear/Leaper/Dagger/Shooter/KingSpike/
+    // Blitz) read this directly at their between-stage transitions to check IsInvisible before deciding
+    // whether to reprioritize early.
+    protected CharacterStatsPD _targetStats;
 
     // Public for cross-script reads (AddKnockbackVelocity, Stun()), not because it's meant to be hand-
     // tuned — it's fully derived from stunResistant at Awake() and, for state-driven enemies, reassigned
@@ -271,7 +314,38 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // alongside stunResistant, which actually is one.
     [HideInInspector] public bool isStunnable = true;
     public bool IsStunned => B.stunTimer > 0f;
-    protected virtual bool IsReadyToAttack => false;
+    // True only for a real Stun() call, never AddKnockbackVelocity's own derived micro-stun (see
+    // EnemyBaseState.trueStunTimer's own doc comment). A true stun always lands even mid-attack-sequence
+    // without interrupting whatever's already committed (see ApplyStun/Simulate()'s own comments) — a
+    // subclass with a multi-attack chain (e.g. BlitzGloomPD's blitzesRemaining, SpearGloomPD's
+    // spearAttacksRemaining) reads this at its own "continue chaining into another attack, or stop"
+    // checkpoint, so a true stun landing mid-sequence still lets the CURRENT attack action finish, but
+    // skips chaining into the next one and falls through to its terminal/post-attack state instead — which
+    // is what flips isStunnable back to true and lets Simulate()'s freeze actually take hold afterward.
+    public bool IsTrueStunned => B.trueStunTimer > 0f;
+    public bool IsSlowed => B.slowTimer > 0f;
+    // Shared "should a multi-attack chain skip continuing into another attack" signal — a Slow() now gets
+    // the exact same mid-attack treatment a true Stun() does (always lands immediately, IsStunned/IsSlowed
+    // read true right away even mid-attack-sequence, never interrupts whatever's already committed, but
+    // stops the chain from continuing into another attack) — see IsTrueStunned's own doc comment for the
+    // full reasoning, which applies identically to a Slow now. Each subclass's own "continue chaining or
+    // fall through to the terminal/post-attack state" checkpoint reads this instead of IsTrueStunned alone.
+    public bool IsCrowdControlled => IsTrueStunned || IsSlowed;
+    // moveSpeed scaled down by whatever slow is currently active (1f = no active slow) — the only thing
+    // HandleMovement's own AddForce calls should read instead of the raw moveSpeed field, so a slow actually
+    // affects ordinary chase/backpedal movement. Dash-style burst movement (BlitzGloomPD/DaggerGloomPD/
+    // SpearGloomPD/ShooterGloomPD's own dashSpeedMultiplier, KingSpikePD's charge) deliberately reads
+    // baseMoveSpeed directly instead, same as it already bypasses even KingSpikePD's own enrage moveSpeed
+    // override — a slow affects normal movement, not those separately-tuned burst speeds.
+    public float EffectiveMoveSpeed => moveSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f);
+    // Same slow-multiply shape as EffectiveMoveSpeed — every slow now doubles as an attack-speed slow (per
+    // the user's own call: one shared multiplier drives both), so a subclass just swaps its own flat
+    // attackSpeed read for this one wherever it paces its attacks and gets the slow interaction for free.
+    // No class-wide "immune" flag exists here on purpose — a phase that should ignore attack speed/slow
+    // (e.g. KingSpikePD's SpikeBurstWindup) achieves that simply by never reading this property for that
+    // phase's own timer, same as every other CC exception in this codebase (isStunnable toggling,
+    // CanBeInterrupted overrides) is a concrete, situated decision rather than a cross-cutting bool.
+    public float EffectiveAttackSpeed => attackSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f);
     public bool _isDead => B.isDead;
     public bool WasKilledByCrit => B.killedByCrit;
 
@@ -336,6 +410,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // being hidden), rather than the normal brief per-hit flash (which would fight this: it reverts to
     // _originalColors after 0.08s regardless of whether this enemy is still dead).
     private bool  _wasDeadForColorLastFrame;
+    // Same edge-detection role as _wasDeadForColorLastFrame, for the yellow true-stun tint below — tracks
+    // whether THIS frame's revert-to-original should fire (only when transitioning from tinted to neither
+    // dead, flashing, nor stunned; see that block's own comment).
+    private bool  _wasStunTintedLastFrame;
     // Animator.speed is engine-level playback rate, untouched by PausePD's own logical isPaused — nothing
     // else freezes it, so a paused game would otherwise keep idle/attack clips animating in place. Edge-
     // detected purely to avoid an unnecessary property write every frame; UpdateAnimator() itself is already
@@ -461,6 +539,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // reference to a previous life's instance across pooled reuse.
         _onHitFeedback = new PredictedEvent<HitFeedbackData>(predictionManager, this);
         _onHitFeedback.AddListener(OnHitFeedback);
+
+        EnemySpawnerPD.instance?.RegisterEnemy(this);
     }
 
     private PredictedEvent<HitFeedbackData> _onHitFeedback;
@@ -501,6 +581,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected override void Destroyed()
     {
         KillGraph();
+        EnemySpawnerPD.instance?.UnregisterEnemy(this);
     }
 
     // ── Simulation ─────────────────────────────────────────────────────────
@@ -602,10 +683,29 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             return;
         }
 
+        // Independent of stunTimer below — a slow still counts down while stunned (see the field's own doc
+        // comment), unlike trueStunTimer which only ticks inside the stun branch itself.
+        if (b.slowTimer > 0f) b.slowTimer -= delta;
+
         if (b.stunTimer > 0f)
         {
             b.stunTimer -= delta;
-            return;
+            // Always <= stunTimer (see the field's own doc comment), so this never outlives the branch above.
+            // Ticks down here regardless of isStunnable below — a true stun lands (and starts counting down)
+            // the instant it's applied even mid-attack (see ApplyStun's own doc comment), not just once the
+            // freeze below actually starts suppressing movement.
+            if (b.trueStunTimer > 0f) b.trueStunTimer -= delta;
+
+            // Only freezes everything else below (movement, attack-sequence progression, enrage,
+            // target-scan) while NOT currently protected by an attack-sequence (isStunnable — see each
+            // subclass's own per-tick assignment, e.g. BlitzGloomPD.HandleActiveState). A true stun landing
+            // mid-attack is still recorded/ticking above (and tints yellow via trueStunTimer), but
+            // HandleActiveState/HandleDash below keep running as normal so whatever's already committed
+            // finishes uninterrupted — see IsTrueStunned's own doc comment for where each subclass's own
+            // multi-attack chain-check plugs in to skip chaining into ANOTHER attack instead of interrupting
+            // the current one. Once the subclass's own terminal/post-attack state flips isStunnable back to
+            // true, this freeze takes hold on that later tick if the stun is still active.
+            if (isStunnable) return;
         }
 
         // enrageTimer <= 0 means "not configured" for this enemy — never ticks, OnEnrage() never fires,
@@ -627,10 +727,25 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // covers "was null last tick" generally), then keep that target until it's gone (null or dead) —
         // cheap, since this is just a null/bool check, not a scan. Subclasses with a discrete attack-routine
         // state machine additionally call FindClosestTarget() once themselves right as they return to their
-        // idle/Moving state (see e.g. SpearGloomPD.EnterMoving) to reprioritize onto whoever's closest now
-        // that the routine is over, without re-scanning throughout the routine itself.
+        // idle/Moving state (see e.g. SpearGloomPD.EnterMoving), to reprioritize without re-scanning every
+        // tick throughout the routine itself. Taunt/invisibility changes are handled separately and
+        // immediately via OnPlayerTauntChanged/OnPlayerInvisibleChanged below (pushed by EnemySpawnerPD the
+        // instant either flag flips), not by polling here.
+        //
+        // Reassigning _target here (including nulling it, explicitly rather than relying on
+        // FindClosestTarget's own "leave untouched if nothing found" behavior) is always safe to do
+        // immediately, mid-attack included — it never interrupts anything. An attack already underway reads
+        // its own captured attackAnchorPosition (see CaptureAttackAnchor), not this live _target/_targetStats
+        // pair, so reassigning who's "next" here has no effect on whatever's already in flight. Each
+        // subclass's own attack-routine state machine is what decides, at its own natural between-attacks
+        // checkpoint, whether _target being null (or changed) means the chain ends here or continues onto a
+        // new target — never forced from this generic point.
         if (_target == null || (_targetStats != null && _targetStats.IsDead))
+        {
+            _target = null;
+            _targetStats = null;
             FindClosestTarget();
+        }
 
         for (int i = b.contactCooldowns.Count - 1; i >= 0; i--)
         {
@@ -795,6 +910,28 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             }
         }
 
+        // Yellow "true stun" tint — see EnemyBaseState.trueStunTimer's own doc comment for why this is
+        // separate from ordinary knockback (which also ticks the shared stunTimer, but never trueStunTimer).
+        // Dead-red and a fresh hit-flash both take priority: this only paints yellow when neither of those
+        // is already claiming the color this frame, checked AFTER the flash-timer block above so a flash
+        // that just expired this same tick is already reflected in _isFlashing. Continuously repainted every
+        // frame it's active (not edge-triggered), same self-correcting reasoning as the dead-red paint above.
+        bool wantStunTint = !viewB.isDead && !_isFlashing && viewB.trueStunTimer > 0f;
+        if (wantStunTint)
+        {
+            if (_renderers != null)
+                foreach (var r in _renderers)
+                    if (r != null && r.material != null) r.material.color = Color.yellow;
+        }
+        // Only reverts once the enemy is neither dead nor flashing — if either of those just started this
+        // same frame, that block already owns the color (red) and this must not stomp it back to original.
+        else if (_wasStunTintedLastFrame && !viewB.isDead && !_isFlashing && _renderers != null)
+        {
+            for (int i = 0; i < _renderers.Length; i++)
+                if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+        }
+        _wasStunTintedLastFrame = wantStunTint;
+
         // Death is state-critical — only act on server-confirmed dead.
         if (verified.HasValue)
         {
@@ -833,20 +970,93 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // when this gets called). Subclasses with a discrete attack-routine state machine call this again
     // themselves right as they return to idle/Moving (e.g. SpearGloomPD.EnterMoving), so a routine's tail
     // end reprioritizes onto whoever's closest now instead of sitting on the target it started against.
+    // Invisible players are never valid candidates at all. Among the rest, a taunting player is always
+    // preferred over a non-taunting one (closest-taunting wins if multiple are taunting); only falls back to
+    // closest-overall when nobody valid is taunting. Leaves _target/_targetStats untouched (not nulled) if
+    // no valid candidate exists at all, same as before this change — callers already handle a stale/dead
+    // _targetStats by calling this again next tick.
     protected virtual void FindClosestTarget()
     {
-        float nearest = float.MaxValue;
+        float nearestAny = float.MaxValue;
+        Transform anyTarget = null;
+        CharacterStatsPD anyStats = null;
+
+        float nearestTaunting = float.MaxValue;
+        Transform tauntingTarget = null;
+        CharacterStatsPD tauntingStats = null;
+
         foreach (var p in CharacterStatsPD.All.Values)
         {
-            if (p.IsDead) continue;
+            // Taunt trumps invisible — an invisible-but-taunting player is still a valid (in fact preferred)
+            // candidate, only a non-taunting invisible player is excluded entirely.
+            if (p.IsDead || (p.IsInvisible && !p.IsTaunting)) continue;
             float dist = Vector3.Distance(transform.position, p.transform.position);
-            if (dist < nearest)
+            if (dist < nearestAny)
             {
-                nearest = dist;
-                _target = p.transform;
-                _targetStats = p;
+                nearestAny = dist;
+                anyTarget = p.transform;
+                anyStats = p;
+            }
+            if (p.IsTaunting && dist < nearestTaunting)
+            {
+                nearestTaunting = dist;
+                tauntingTarget = p.transform;
+                tauntingStats = p;
             }
         }
+
+        if (tauntingTarget != null)
+        {
+            _target = tauntingTarget;
+            _targetStats = tauntingStats;
+        }
+        else if (anyTarget != null)
+        {
+            _target = anyTarget;
+            _targetStats = anyStats;
+        }
+    }
+
+    // Called by EnemySpawnerPD (the enemy-targeting hub) the instant any player's taunt state changes —
+    // immediate reaction, not polled. Taunt starting overrides everything (even that player's own
+    // invisibility) — every enemy snaps straight onto them. Taunt ending only matters if that player is
+    // ALSO currently invisible: they lose their taunt-granted immunity, so anyone targeting them needs to
+    // retarget away right now instead of waiting to notice later.
+    public void OnPlayerTauntChanged(CharacterStatsPD player, bool isTaunting)
+    {
+        if (isTaunting)
+        {
+            if (player.IsDead) return;
+            _target = player.transform;
+            _targetStats = player;
+            return;
+        }
+
+        if (player.IsInvisible) RetargetAwayFrom(player);
+    }
+
+    // Called by EnemySpawnerPD the instant any player's invisible state changes. Becoming visible again
+    // never needs a forced reaction (nobody was wrongly avoiding them). Becoming invisible only matters to
+    // enemies currently targeting them, and only if they're not ALSO taunting (taunt trumps invisible).
+    public void OnPlayerInvisibleChanged(CharacterStatsPD player, bool isInvisible)
+    {
+        if (!isInvisible || player.IsTaunting) return;
+        RetargetAwayFrom(player);
+    }
+
+    // Shared by both handlers above — only acts if THIS enemy is actually targeting the now-invalid player.
+    // Explicitly nulls _target/_targetStats first (unlike FindClosestTarget's own "leave untouched if
+    // nothing found" behavior) so that if no valid replacement exists, the target genuinely becomes null.
+    // Never interrupts an attack already in progress — see CaptureAttackAnchor's own doc comment for why
+    // reassigning _target here is always safe to do immediately, mid-attack included. HandleMovement already
+    // stops moving on a null target for anyone idling in Moving; a subclass mid-attack-routine picks up the
+    // null/changed _target at its own next between-attacks checkpoint, not here.
+    private void RetargetAwayFrom(CharacterStatsPD invalidPlayer)
+    {
+        if (_targetStats != invalidPlayer) return;
+        _target = null;
+        _targetStats = null;
+        FindClosestTarget();
     }
 
     protected virtual void HandleMovement(ref TState state, float delta)
@@ -873,20 +1083,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 if (distToTarget > preferredRange + rangeToleranceFar)
                 {
                     b.atPreferredRange = false;
-                    _rigidbody.AddForce(dir * (moveSpeed * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(dir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
                 }
                 else if (distToTarget < preferredRange - rangeToleranceClose)
                 {
                     b.atPreferredRange = false;
-                    _rigidbody.AddForce(-dir * (moveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(-dir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
                 }
             }
             else
             {
                 if (distToTarget > preferredRange)
-                    _rigidbody.AddForce(dir * (moveSpeed * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(dir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
                 else if (distToTarget < preferredRange)
-                    _rigidbody.AddForce(-dir * (moveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(-dir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
 
                 if (Mathf.Abs(distToTarget - preferredRange) <= 0.1f)
                     b.atPreferredRange = true;
@@ -894,11 +1104,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
         else
         {
-            _rigidbody.AddForce(dir * (moveSpeed * delta * 5f), ForceMode.VelocityChange);
+            _rigidbody.AddForce(dir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
         }
     }
 
     // ── Dash helpers (for subclasses) ──────────────────────────────────────
+    // speed here is expected to already exclude attack-speed scaling (e.g. baseMoveSpeed * a subclass's own
+    // dashSpeedMultiplier) — HandleDash below applies EffectiveAttackSpeed live, every tick, on top of
+    // whatever gets stored here, so every dasher gets live-reactive dash speed for free without needing to
+    // pre-multiply it in themselves or re-issue a new StartDash call when attack speed changes mid-dash.
     protected void StartDashToTarget(ref TState state, float speed, float stopDistance)
     {
         if (_target == null) return;
@@ -943,7 +1157,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             return;
         }
 
-        _rigidbody.velocity = b.dashDirection * b.dashSpeed;
+        // Live, not baked in at dash-start — see StartDashToTarget/StartDashToPoint's own doc comment.
+        _rigidbody.velocity = b.dashDirection * b.dashSpeed * EffectiveAttackSpeed;
         _rigidbody.MoveRotation(Quaternion.LookRotation(b.dashDirection));
     }
 
@@ -967,6 +1182,41 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         _rigidbody.MoveRotation(Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir.normalized), 10f * delta));
     }
 
+    // Call at the exact moment an "ongoing" attack begins (dash-to-target, or a windup entered directly
+    // because already in range) — snapshots _target's CURRENT position so the rest of that attack can keep
+    // reading it even if _target itself gets reassigned mid-attack (taunt override, or an invisible-retarget
+    // finding a replacement). A taunt/invisible change during an ongoing attack still updates _target
+    // immediately (so the NEXT attack in a chain uses it) but must never redirect the CURRENT one — see the
+    // "ongoing attack must complete" requirement this exists for.
+    protected void CaptureAttackAnchor(ref TState state)
+    {
+        if (_target != null) GetBase(ref state).attackAnchorPosition = _target.position;
+    }
+
+    // Anchor-based counterparts to SnapFaceTarget/FaceTargetSmooth — use these instead, everywhere facing
+    // happens DURING an ongoing attack (after CaptureAttackAnchor already ran for it). The plain _target-
+    // based versions above remain correct for facing that happens OUTSIDE an ongoing window (e.g. Spear's
+    // BetweenStabs/PostStab facing, which is deliberately preparing for whatever the NEXT attack should use).
+    protected Vector3 SnapFaceAnchor(ref TState state)
+    {
+        Vector3 anchor = GetBase(ref state).attackAnchorPosition;
+        Vector3 dir = anchor - transform.position;
+        dir.y = 0;
+        if (dir == Vector3.zero) return Vector3.zero;
+        dir.Normalize();
+        _rigidbody.MoveRotation(Quaternion.LookRotation(dir));
+        return dir;
+    }
+
+    protected void FaceAnchorSmooth(ref TState state, float delta)
+    {
+        Vector3 anchor = GetBase(ref state).attackAnchorPosition;
+        Vector3 dir = anchor - transform.position;
+        dir.y = 0;
+        if (dir == Vector3.zero) return;
+        _rigidbody.MoveRotation(Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(dir.normalized), 10f * delta));
+    }
+
     protected bool TargetInRange()
     {
         if (_target == null) return false;
@@ -985,26 +1235,25 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         // Execute — CharacterStatsPD.TakeDamage is the single choke point every damage source (any weapon,
         // Phantom Blade, onhit effect, AOE augment, etc.) already funnels through, so hooking it here
-        // covers a crit (or, in the future, ANY hit — see CharacterStatsPD.execute's own doc comment) from
-        // anything uniformly, with no per-call-site changes needed anywhere else. Bosses use a separately
-        // reduced threshold (BossExecuteThreshold/BossCritExecuteThreshold, -80%) instead of the raw
-        // player-facing one, so a boss doesn't get finished off nearly as easily as a normal/elite enemy.
+        // covers a crit (or, in the future, ANY hit — see CharacterStatsPD.executeThreshold's own doc
+        // comment) from anything uniformly, with no per-call-site changes needed anywhere else. Bosses use
+        // separately reduced thresholds (BossExecuteThreshold/BossCritExecuteThreshold, -80% each) instead
+        // of the raw player-facing ones, so a boss doesn't get finished off nearly as easily as a normal/
+        // elite enemy — both are already the same 0.2 multiplier, so summing the two REDUCED values below
+        // is equivalent to reducing the (unreduced) sum, no separate boss-combined constant needed.
+        // critExecuteThreshold is ADDITIVE on top of executeThreshold on a crit, not an independent
+        // trip-wire — e.g. 25% execute + 15% crit-execute means non-crits execute at 25%, crits execute at
+        // the combined 40%. A non-crit hit only ever sees the plain executeThreshold.
         if (b.health > 0f && CharacterStatsPD.All.TryGetValue(attackerOwner, out var attackerStats) && attackerStats.Execute)
         {
             bool isBoss = spawnCategory == EnemySpawnCategory.Boss;
 
-            // Plain "any hit" execute — futureproofing, nothing sets attackerStats.execute yet.
             float executeThresh = isBoss ? attackerStats.BossExecuteThreshold : attackerStats.executeThreshold;
-            if (b.health <= maxHealth * executeThresh)
-                b.health = 0f;
+            if (isCrit)
+                executeThresh += isBoss ? attackerStats.BossCritExecuteThreshold : attackerStats.critExecuteThreshold;
 
-            // Crit-gated execute — what CritExecuteAugment actually turns on.
-            if (isCrit && b.health > 0f)
-            {
-                float critExecuteThresh = isBoss ? attackerStats.BossCritExecuteThreshold : attackerStats.critExecuteThreshold;
-                if (b.health <= maxHealth * critExecuteThresh)
-                    b.health = 0f;
-            }
+            if (executeThresh > 0f && b.health <= maxHealth * executeThresh)
+                b.health = 0f;
         }
 
         if (b.health <= 0)
@@ -1181,14 +1430,122 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Public stun entry point — every caller outside this class goes through here, so crowdControlResist
     // applies uniformly to any non-knockback CC source. AddKnockbackVelocity below calls ApplyStun()
     // directly instead, bypassing this reduction (see crowdControlResist's own doc comment for why).
-    public void Stun(float duration) => ApplyStun(duration * (1f - crowdControlResist));
+    // isTrueStun: true — this is a real Stun() call, so the yellow stun tint (UpdateView) should track it,
+    // unlike AddKnockbackVelocity's own derived micro-stun. A true stun ALWAYS lands (see ApplyStun's own
+    // doc comment) — it just doesn't interrupt whatever attack is already committed; see Simulate()'s own
+    // isStunnable-gated freeze and IsTrueStunned for where each subclass's own multi-attack chain-check
+    // reacts to it instead.
+    //
+    // A caller that actually wants to CANCEL whatever attack is in progress (rather than merely stun once
+    // it's over) pairs this with a preceding Interrupt() call instead of relying on Stun() alone — see
+    // Interrupt()'s own doc comment for why the ordering matters. KnightAreaStunHealAbilityPD/
+    // ShieldBreakBurstAugment do this today (via AreaEffectCastHelper's own interrupt param); not every
+    // future true stun needs to.
+    public void Stun(float duration) => ApplyStun(duration * (1f - crowdControlResist), isTrueStun: true);
 
-    private void ApplyStun(float duration)
+    private void ApplyStun(float duration, bool isTrueStun = false)
     {
-        if (_isDead || stunResistant || !isStunnable) return;
-        if (IsReadyToAttack) return;
+        if (_isDead || stunResistant) return;
+        // A knockback-derived micro-stun (isTrueStun: false) still can't land mid-attack — unlike a true
+        // stun, which always lands regardless (see Stun()'s own doc comment) — but this is effectively a
+        // no-op guard in practice: AddKnockbackVelocity already independently requires isStunnable before
+        // ever calling this, so re-checking it here only matters if some future non-knockback caller ever
+        // reuses isTrueStun: false directly.
+        if (!isTrueStun && !isStunnable) return;
         B.stunTimer = Mathf.Max(B.stunTimer, duration);
+        if (isTrueStun) B.trueStunTimer = Mathf.Max(B.trueStunTimer, duration);
     }
+
+    // Public slow entry point — unlike Stun(), crowdControlResist does NOT touch duration here; a slow
+    // always lands for its full requested duration. Instead it reduces the slow's POTENCY: multiplier is
+    // "how much of normal speed remains" (e.g. 0.35 = a 65% slow), so the amount actually being taken away
+    // is (1 - multiplier) — that's the piece crowdControlResist shrinks, then the result is converted back
+    // into a multiplier. This is the same "convert to amount-removed, scale, convert back" shape
+    // ArcherArrowRainAbilityPD's own AreaEffectPower/AbilityPower slow scaling uses, so resist stacks with
+    // it the same intuitive way (a resist can only ever pull a slow BACK toward 1x, never past it).
+    //
+    // Also now doubles as an attack-speed slow — see EffectiveAttackSpeed's own doc comment — since this is
+    // the one shared multiplier both EffectiveMoveSpeed and EffectiveAttackSpeed read.
+    //
+    // Same "always lands, even mid-attack-sequence" treatment as a true Stun() (per the user's own call — a
+    // Slow no longer gets blocked by isStunnable/attack-state at all). It still never interrupts whatever
+    // attack is already committed (nothing here touches HandleActiveState/HandleDash), it just means
+    // IsSlowed reads true immediately regardless of attack state, and — via IsCrowdControlled — stops a
+    // multi-attack chain from continuing into another attack the same way a true stun does.
+    public void Slow(float multiplier, float duration)
+    {
+        float slowAmount = 1f - multiplier;
+        float resistedAmount = slowAmount * (1f - crowdControlResist);
+        ApplySlow(1f - resistedAmount, duration);
+    }
+
+    private void ApplySlow(float multiplier, float duration)
+    {
+        if (_isDead || stunResistant) return;
+
+        // 90% is the max possible slow (10% speed floor) — clamped here, not at each call site, so any
+        // caller can safely send an arbitrarily extreme value (e.g. a stacked 999% slow from AreaEffectPower/
+        // AbilityPower scaling) without needing its own clamp, and so the strength-comparison logic right
+        // below always compares already-clamped values.
+        multiplier = Mathf.Max(0.1f, multiplier);
+
+        // A weaker slow (multiplier closer to 1) landing while a stronger one is still active doesn't water
+        // it down early — only adopts the new multiplier if it's at least as strong (lower) as whatever's
+        // currently active, or the previous slow has already expired. Duration always extends to the longer
+        // of the two regardless, same "never shortens what's already active" reasoning as Stun's own
+        // Mathf.Max — a fresh weak slow still tops up how much longer the existing strong one lasts.
+        if (B.slowTimer <= 0f || multiplier <= B.slowMultiplier)
+            B.slowMultiplier = multiplier;
+        B.slowTimer = Mathf.Max(B.slowTimer, duration);
+    }
+
+    // Cancels this enemy's current active-attack-sequence outright (as opposed to a true Stun(), which now
+    // deliberately lets it finish — see IsTrueStunned's own doc comment). A no-op entirely if this specific
+    // phase isn't interruptible (see CanBeInterrupted's own doc comment, e.g. LeaperGloomPD mid-Leaping,
+    // KingSpikePD's SpikeBurstWindup) or if already dead.
+    //
+    // Un-kinematic/collider/hurtbox restore happens FIRST, before anything else (including OnInterrupted()
+    // below) — a caller pairing this with a knockback/stun on the same hit (e.g. AreaEffectCastHelper's own
+    // interrupt param, applied before its per-enemy damage/knockback/onEnemyHit block) needs the rigidbody
+    // already non-kinematic by the time that knockback's own velocity assignment runs, or it gets silently
+    // eaten by AddKnockbackVelocity's own "not supported on a kinematic body" guard — see that method's own
+    // comment. isStunnable flips back to true here for the same reason: a paired Stun()/Slow() call right
+    // after this one must not itself get blocked by this enemy still reading as attack-protected.
+    //
+    // Windup indicators and attack animations are NOT explicitly touched here — every subclass's own
+    // UpdateView already declaratively re-derives both from its own stateId every view tick (see e.g.
+    // SpearGloomPD.UpdateView's switch), so resetting that state machine via OnInterrupted() below is
+    // already the whole story; no separate indicator/animator-specific code needed.
+    public void Interrupt()
+    {
+        if (_isDead || !CanBeInterrupted) return;
+
+        B.isDashing = false;
+
+        if (_rigidbody != null)
+        {
+            _rigidbody.isKinematic = false;
+            _rigidbody.velocity = Vector3.zero;
+            _rigidbody.angularVelocity = Vector3.zero;
+        }
+        if (_physicsCollider != null) _physicsCollider.enabled = true;
+        if (_hurtbox != null) _hurtbox.enabled = true;
+
+        isStunnable = !stunResistant;
+
+        OnInterrupted();
+    }
+
+    // Override to reset this enemy's own attack-sequence state machine back to Moving/idle (typically its
+    // own EnterMoving(ref currentState), same terminal transition its own attack-chain already uses when it
+    // naturally runs out of attacks) — see Interrupt()'s own doc comment. No-op by default.
+    protected virtual void OnInterrupted() { }
+
+    // False while in a phase Interrupt() should never be able to cancel — true (interruptible) by default
+    // for every other attack phase. Only two phases in the whole roster are exempt (per design): LeaperGloomPD
+    // mid-Leaping (its own override) and KingSpikePD's SpikeBurstWindup/burst itself (its own override) —
+    // every other windup/dash/stab/spin/charge is fair game.
+    protected virtual bool CanBeInterrupted => true;
 
     // Called by a spawner right after hierarchy.Create() returns, telling this instance which category
     // spawned it. spawnCategory is [NonSerialized] and always starts Normal — LateAwake() has already
@@ -1246,8 +1603,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // spin, etc.) means this rigidbody can already be kinematic when a knockback source (e.g.
         // ShieldBreakBurstAugment's AoE) hits, and PredictedRigidbody's velocity setter throws ("not
         // supported") if attempted on an already-kinematic body. The stun below still applies regardless —
-        // ApplyStun's own IsReadyToAttack guard already decides whether an active attack sequence should be
-        // interruptible, independent of whether the physical push could happen.
+        // this method's own isStunnable guard above already decided whether this knockback (and the derived
+        // micro-stun it produces) should apply at all, independent of whether the physical push could happen.
         if (!_rigidbody.isKinematic)
         {
             // Zeroed first rather than added to, so knockback doesn't have to fight whatever velocity the

@@ -1,0 +1,121 @@
+using UnityEngine;
+
+// Which action-bar slot a component occupies — a real enum rather than a bool so a third/fourth slot can be
+// added later (and so two components claiming the same slot on one GameObject is a visible, named mistake
+// instead of a silently-overloaded "true/false" with no room to grow). See IAbilityPD.Slot's own doc comment.
+public enum AbilitySlot
+{
+    Ability1,
+    Ability2,
+}
+
+// Shared by every class-unique ability component (mirrors IWeaponPD/IEnemyPD's role as the generic contract
+// PlayerControllerPD talks to without needing to know which concrete class it's holding). IsReady is the
+// gate PlayerControllerPD checks before forwarding a press into Activate() — the underlying cooldown state
+// behind IsReady is entirely owned by the implementing component, not PlayerControllerPD. Covers both
+// action-bar slots (Ability1 and Ability2) — every character's two active abilities are functionally
+// identical at this interface's level (both cooldown-gated, distinguishing themselves only via Slot below),
+// so a single interface covers both rather than needing two near-duplicate ones.
+public interface IAbilityPD
+{
+    bool IsReady { get; }
+    void Activate();
+
+    // True for the whole window an already-activated ability is in its special/locking state (RogueSpinAbilityPD's
+    // leap) — distinct from IsReady, which also reads false while merely on cooldown, and distinct from
+    // AbilityIsActive below, which tracks the ability's whole active duration rather than specifically the
+    // locking portion of it. Combined with ForcesSpecialAction below by PlayerControllerPD.IsLockedOut to
+    // decide whether this instance being active should block dash/other abilities right now.
+    bool IsActive { get; }
+
+    // Whether this ability, while IsActive, forces the player into a special action that should mutually
+    // exclude with dash and any other locking ability (e.g. RogueSpinAbilityPD's leap — moves the player,
+    // disables weapons, flips the orbit). False for one that doesn't touch movement at all (e.g.
+    // RogueVanishAbilityPD — just flips invisibility/movespeed) — PlayerControllerPD.IsLockedOut (and the
+    // equivalent Simulate()-level gate) only locks dash/other slots out while THIS is true AND IsActive,
+    // never for a merely-active non-locking ability. Constant per concrete type, not state-dependent.
+    bool ForcesSpecialAction { get; }
+
+    // Whether this ability, while active, should cancel an in-progress Surge and prevent a new one from
+    // starting for its whole active window — independent of ForcesSpecialAction (an ability can block Surge
+    // without forcing a special action, e.g. BWBladeDanceAbilityPD, which never touches player movement at
+    // all) and independent of IsWeaponsDisabled (a separate, orthogonal toggle — see its own doc comment).
+    // Constant per concrete type, not state-dependent, same as ForcesSpecialAction. For an ability with no
+    // active window at all (e.g. ArcherArrowRainAbilityPD/KnightAreaStunHealAbilityPD — AbilityIsActive is
+    // always false) this is moot in practice, same as CooldownStartsOnCast's own doc comment notes for that
+    // case — still exposed uniformly so the toggle exists on every implementer, ready to become meaningful
+    // if that ability ever gains a real active window later. Each concrete implementer that DOES have an
+    // active window owns calling CharacterStatsPD.ForceEndSurge()/AddSurgeBlock() at the very top of its own
+    // Activate() (before anything else that might read Surge-dependent stats — see RogueSpinAbilityPD's own
+    // comment for why that ordering matters) and CharacterStatsPD.RemoveSurgeBlock() at its own
+    // end-of-active-window point, both gated on this flag — this is intentionally NOT centralized/
+    // auto-detected by PlayerControllerPD, matching the same "the caller decides, by calling explicitly
+    // alongside its own Activate()/end-of-active logic" precedent as NotifyDashStarted/NotifyDashEnded.
+    bool ActiveSurgeBlock { get; }
+
+    // True for the whole window this ability is "doing its thing" — RogueSpinAbilityPD's whole leap,
+    // RogueVanishAbilityPD's whole invisibility/movespeed buff. Distinct from IsActive above: IsActive is
+    // specifically the special/locking-movement signal PlayerControllerPD.IsLockedOut cares about, while
+    // this is the generic "ability's active duration" signal — used to gate when the cooldown timer starts
+    // ticking (see the concrete implementer's own cooldownStartsOnCast field) and as a general hook point
+    // for any future "do something while this ability is active" effect. Today's two abilities happen to
+    // have IsActive and AbilityIsActive span the exact same window (both driven by the same underlying
+    // active-timer), but a future ability could decouple them — e.g. a brief locking dash at the start of a
+    // longer, non-locking buff.
+    bool AbilityIsActive { get; }
+
+    // Called by PlayerControllerPD when a press was seen but IsReady was false, so the component itself can
+    // report/log its own "still on cooldown" feedback — PlayerControllerPD never invokes Activate() in that
+    // case, so this is the only hook the component gets for that outcome.
+    void NotifyActivationBlocked();
+
+    // Generic, regardless of concrete ability, so LocalUIManagerPD's ability UI (cooldown fill/text) never
+    // needs to know which class it's reading — same reason every member above already exists. Every
+    // implementer has a real cooldown now (no more resource-gated exception), so these are always
+    // meaningful.
+    float CooldownRemaining { get; }
+    float CooldownDuration { get; }
+    // The raw, un-hasted cooldown value (the concrete implementer's own tunable `cooldown` field) — distinct
+    // from CooldownDuration above, which is scaled by CharacterStatsPD.EffectiveAbilityHaste for the actual
+    // countdown/UI fill. For effects that scale off "how much cooldown this ability is designed around"
+    // (e.g. PhantomBladeOnAbilityStartAugment, a 6s-base-cooldown ability dealing more than a 2s one)
+    // rather than the player's current haste, which would make the effect's own power swing with a stat
+    // that has nothing to do with the design intent.
+    float BaseCooldownDuration { get; }
+
+    // false (the default on every implementer): CooldownRemaining only starts ticking down once
+    // AbilityIsActive goes false — the cooldown reflects "time since the ability ended". true: it starts
+    // ticking immediately at cast, running concurrently with the active window instead. Each concrete
+    // implementer owns its own `cooldownStartsOnCast` Inspector field and the Simulate()-level gating that
+    // reads it (see e.g. RogueSpinAbilityPD.Simulate()'s own comment) — this is just the read-only surface
+    // PlayerControllerPD/UI could query generically. For an ability with no active window at all (e.g.
+    // KnightAreaStunHealAbilityPD, which is instantaneous — AbilityIsActive is always false) the two
+    // settings are indistinguishable in practice: the cooldown always starts immediately at cast either
+    // way, since there's no active window to wait out. The field is still exposed there so the toggle
+    // exists uniformly across every ability, ready to become meaningful if that ability ever gains a real
+    // active window later.
+    bool CooldownStartsOnCast { get; }
+    Sprite Icon { get; }
+
+    // A character can carry one of each (an Ability1-slot component and an Ability2-slot component) on the
+    // same GameObject, which makes a plain GetComponent<IAbilityPD>() ambiguous — PlayerControllerPD/
+    // CharacterSelectUI/AugmentManagerPD all use GetComponents<IAbilityPD>() plus this to route each
+    // instance to the right slot instead of guessing from component order. Each character is only ever meant
+    // to carry one component per AbilitySlot value — nothing enforces that at compile time. Concrete
+    // implementers expose this as a plain [SerializeField], not a hardcoded constant, so which slot an
+    // ability occupies is an Inspector/prefab-authoring choice rather than baked into the class — which also
+    // means a copy-pasted prefab could end up with both components left on the same slot; whichever one
+    // GetComponents finds last wins silently in that case, so it's worth checking after duplicating a
+    // character prefab.
+    AbilitySlot Slot { get; }
+
+    // For display-only contexts (character select's detail panel) that want to show the ability in an
+    // augment-card-style layout alongside the class's passive augments.
+    string Name { get; }
+    string Description { get; }
+
+    // Matched against AugmentData.requiredTags by AugmentManagerPD.HasPickedAugmentForEachTag, same
+    // AbilityTagDatabase strings augments themselves use — an ability is "always picked" from match start,
+    // so it can satisfy an augment's tag requirement without the player needing to have picked anything yet.
+    string[] Tags { get; }
+}

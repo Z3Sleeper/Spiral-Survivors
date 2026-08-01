@@ -40,7 +40,7 @@ public class WeaponManagerPD : MonoBehaviour
         _stats             = stats;
         _currentCount      = stats.WeaponCount;
         _currentRange      = stats.WeaponRange;
-        _currentSize       = stats.WeaponSize;
+        _currentSize       = stats.bonusSizePercent;
         _weaponPrefabScale = weaponPrefab.transform.localScale;
         if (stats.isServer) _pendingSpawn = stats.WeaponCount;
     }
@@ -138,8 +138,22 @@ public class WeaponManagerPD : MonoBehaviour
             weapon.hitboxTarget.localScale = new Vector3(s.x, s.y, r / rootZ);
             if (weapon.rangeScaleTarget != null)
             {
+                // Both terms divided by rootZ uniformly, not just the r term — the character-radius
+                // clearance is a WORLD-space quantity (transform.lossyScale.x already IS the character's
+                // current world scale), but this whole expression is written in the weapon's own LOCAL
+                // space, which Unity implicitly re-multiplies by rootZ (the weapon's own Size-driven scale)
+                // when resolving hitboxTarget's world position from its local one. Previously only r was
+                // divided by rootZ before that implicit multiply, so it came back out as exactly r (correct,
+                // scale-invariant) — but the character-radius term came back out as
+                // transform.lossyScale.x*0.5f*rootZ instead of the intended transform.lossyScale.x*0.5f,
+                // compounding with the weapon's OWN Size-driven scale on top of already including the
+                // character's Size once directly through lossyScale.x. That's what pulled the hitbox's near
+                // edge back past the handle at higher Size (confirmed against a screenshot where it visibly
+                // intruded into the hurtbox) while staying correct at Size 1 (rootZ's multiplier was 1, so
+                // the bug was invisible there) — dividing it too keeps the clearance scaling linearly with
+                // just the character's own Size, not the weapon's Size on top of that.
                 var p = weapon.hitboxTarget.localPosition;
-                weapon.hitboxTarget.localPosition = new Vector3(p.x, p.y, r / (2f * rootZ) - transform.lossyScale.x * 0.5f);
+                weapon.hitboxTarget.localPosition = new Vector3(p.x, p.y, (r * 0.5f - transform.lossyScale.x * 0.5f) / rootZ);
             }
         }
         else
@@ -156,21 +170,22 @@ public class WeaponManagerPD : MonoBehaviour
 
     // Farthest current outer hit-detection edge across every registered weapon (both rings) — used by
     // PlayerRangeIndicatorPD so the ring always reflects whichever weapon actually reaches furthest right
-    // now, not a guessed stat formula. See IWeaponPD.GetOuterReach for the per-weapon-type math.
+    // now, not a guessed stat formula. See IWeaponPD.GetOuterReach for the per-weapon-type math — purely
+    // design/stat-derived (no origin needed here at all), so this stays stable regardless of where any
+    // weapon's orbit is actually currently centered.
     public bool TryGetFarthestWeaponReach(out float reach)
     {
         reach = 0f;
         bool found = false;
-        Vector3 origin = _stats.transform.position;
 
         foreach (var weapon in _weapons)
         {
-            float d = weapon.GetOuterReach(origin);
+            float d = weapon.GetOuterReach();
             if (!found || d > reach) { reach = d; found = true; }
         }
         foreach (var weapon in _outerWeapons)
         {
-            float d = weapon.GetOuterReach(origin);
+            float d = weapon.GetOuterReach();
             if (!found || d > reach) { reach = d; found = true; }
         }
         return found;
@@ -186,11 +201,34 @@ public class WeaponManagerPD : MonoBehaviour
                 a.Apply(c);
     }
 
+    // Every owned weapon, both rings — see IWeaponPD.SetRenderersEnabled's own doc comment. Driven
+    // generically off death (see LateUpdate's own edge detection below) rather than any specific ability, so
+    // every character's weapons hide/show the same way regardless of class.
+    public void SetWeaponsVisible(bool visible)
+    {
+        foreach (var weapon in _weapons) weapon.SetRenderersEnabled(visible);
+        foreach (var weapon in _outerWeapons) weapon.SetRenderersEnabled(visible);
+    }
+
+    // Edge-detected (not "while dead"), same _wasDeadLastFrame pattern PlayerControllerPD's own
+    // physics-collider toggle already uses — fires SetWeaponsVisible exactly once per death/revive
+    // transition instead of every frame.
+    private bool _wasDeadLastFrame;
+
     // ── LateUpdate: stat monitoring only ─────────────────────────────────────
 
     private void LateUpdate()
     {
-        if (_stats == null || _stats.IsDead) return;
+        if (_stats == null) return;
+
+        bool isDead = _stats.IsDead;
+        if (isDead != _wasDeadLastFrame)
+        {
+            _wasDeadLastFrame = isDead;
+            SetWeaponsVisible(!isDead);
+        }
+
+        if (isDead) return;
 
         if (_pendingSpawn > 0)
         {
@@ -226,9 +264,9 @@ public class WeaponManagerPD : MonoBehaviour
             foreach (var weapon in _outerWeapons) SetupWeaponRange(weapon);
         }
 
-        if (_stats.WeaponSize != _currentSize)
+        if (_stats.bonusSizePercent != _currentSize)
         {
-            _currentSize = _stats.WeaponSize;
+            _currentSize = _stats.bonusSizePercent;
             foreach (var weapon in _weapons)
             {
                 weapon.transform.localScale = _weaponPrefabScale * _currentSize;

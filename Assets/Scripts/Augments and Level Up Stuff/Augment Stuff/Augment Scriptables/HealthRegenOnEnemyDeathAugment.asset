@@ -13,10 +13,8 @@ MonoBehaviour:
   m_Name: HealthRegenOnEnemyDeathAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Life Reaping</color>
-  description: '<color=#FFA000>On Enemy Death:</color> <color=#7DFF00>Heal for 10%<color=#00FF87>*</color>
+  description: <color=#FFA000>On Enemy Death:</color> <color=#7DFF00>Heal for 10%
     of your Health Regen</color>.
-
-    <color=#00FF87>*Affected by Luck*</color>'
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   effectPrefab: {fileID: 6200633609429510449, guid: 999eb86d3c84b914bbc64e23795fe732, type: 3}
   multiplayerOnly: 0

@@ -1,0 +1,37 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: AreaEffectCountAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#FFA000>Bombardment</color>
+  description: '<color=#FFA000>+1 AoE Multicast</color>
+
+    <color=#FFA000>+30%
+    AoE Power</color>
+
+    <color=#FFBE50><i>AoE Power is divided by AoE Multicast</i></color>
+
+    <color=#FFBE50><i>AoE
+    Power amplifies AoE Effects in unique ways</i></color>'
+  icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
+  effectPrefab: {fileID: 8959468082845968245, guid: 3854ad32cc3dcc64db76165f29d5bdec, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags:
+  - AoE Effect
+  requiredTags:
+  - AoE Effect
+  incompatibleTags: []

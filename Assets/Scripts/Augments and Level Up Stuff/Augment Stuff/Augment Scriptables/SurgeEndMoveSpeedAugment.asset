@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energized</color> <color=#FFFFFF>Escape</color>
   description: '<color=#FFA000>On <color=#FFFF00>Surge</color> End:</color> Gain
-    <color=#FFFFFF>30% Total Move Speed</color> for 2 seconds.
+    <color=#FFFFFF>25% Total Move Speed</color> for 2 seconds.
 
     Buff ends early
     if a new <color=#FFFF00>Surge</color> is started.'

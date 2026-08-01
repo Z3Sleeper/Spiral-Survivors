@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using PurrNet.Packing;
 using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
@@ -16,7 +17,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         public GameObject[] pleb;
     }
 
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public bool isActive;
         public float spawnInterval;
@@ -41,6 +42,18 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             currentSetIndices.Dispose();
             previousSetIndices.Dispose();
             activeBosses.Dispose();
+        }
+
+        // Was missing entirely — every rollback snapshot fell back to the slow serialize/deserialize
+        // round-trip instead of this cheap direct field-copy. See EnemyBaseState.Duplicate's own doc
+        // comment for the full reasoning.
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.currentSetIndices = currentSetIndices.Duplicate();
+            copy.previousSetIndices = previousSetIndices.Duplicate();
+            copy.activeBosses = activeBosses.Duplicate();
+            return copy;
         }
     }
 
@@ -93,6 +106,46 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // RNG or per-client state involved, so it's identical on every machine without needing to live in
     // predicted State (same category as spawnIntervalQ1 etc. being plain fields read directly in Simulate()).
     private float[] _eliteSchedule;
+
+    // ── Enemy-targeting hub (taunt/invisible immediate reaction) ────────────────
+    // Every currently-alive enemy registers itself here (LateAwake) and unregisters on death/despawn
+    // (Destroyed) — a plain HashSet add/remove, not an event subscription, so enemies never need to know
+    // about players at all. Subscribing to up to 4 players' own taunt/invisible PredictedEvents here once,
+    // then fanning out to this set directly, means the fan-out runs as plain synchronous C# inside that
+    // ALREADY-verified player-side event callback — it inherits that event's resimulation-safety for free,
+    // no extra PredictedEvent layer needed on the enemy side. See project memory for the full reasoning.
+    private readonly HashSet<IEnemyPD> _activeEnemies = new();
+    private readonly HashSet<CharacterStatsPD> _subscribedPlayers = new();
+
+    public void RegisterEnemy(IEnemyPD enemy) => _activeEnemies.Add(enemy);
+    public void UnregisterEnemy(IEnemyPD enemy) => _activeEnemies.Remove(enemy);
+
+    // Players don't exist yet in CharacterStatsPD.All at this object's own LateAwake() (they register from
+    // PlayerDataPD.Simulate(), which only starts running once actual per-tick simulation begins) — so this
+    // is checked every Simulate() tick instead, cheap since CharacterStatsPD.All is capped at 4 players and
+    // _subscribedPlayers.Add() short-circuits (skipping the listener-registration work) for anyone already
+    // subscribed. Once subscribed, a player's own two PredictedEvents call back into these forever, so this
+    // never re-subscribes the same player twice.
+    private void SubscribeNewPlayers()
+    {
+        foreach (var player in CharacterStatsPD.All.Values)
+        {
+            if (!_subscribedPlayers.Add(player)) continue;
+            var p = player;
+            p.AddTauntChangedListener(isTaunting => OnPlayerTauntChanged(p, isTaunting));
+            p.AddInvisibleChangedListener(isInvisible => OnPlayerInvisibleChanged(p, isInvisible));
+        }
+    }
+
+    private void OnPlayerTauntChanged(CharacterStatsPD player, bool isTaunting)
+    {
+        foreach (var enemy in _activeEnemies) enemy.OnPlayerTauntChanged(player, isTaunting);
+    }
+
+    private void OnPlayerInvisibleChanged(CharacterStatsPD player, bool isInvisible)
+    {
+        foreach (var enemy in _activeEnemies) enemy.OnPlayerInvisibleChanged(player, isInvisible);
+    }
 
     // The most robust of the several reset points (see EnemyBasePD.ResetActiveCounts()) — fires exactly
     // once per Game scene load, on every machine, with zero network dependency and before any enemy could
@@ -165,6 +218,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
     protected override void Simulate(ref State state, float delta)
     {
+        SubscribeNewPlayers();
+
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
         if (!state.isActive)

@@ -29,16 +29,8 @@ PrefabInstance:
       value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: leapDuration
-      value: 0.32
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: postLeapPause
-      value: 0.4
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: windupDuration
-      value: 0.32
+      propertyPath: leapsPerAttack
+      value: 2
       objectReference: {fileID: 0}
     - target: {fileID: 3285713333976428323, guid: 39e35a18b925c6444ab288f082127594, type: 3}
       propertyPath: m_LocalPosition.x

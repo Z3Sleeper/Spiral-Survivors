@@ -245,6 +245,17 @@ public static class ProgressionManager
     public static bool CanUpgradeBaseStat(StatType statType) =>
         GetBaseStatTier(statType) < GetMaxBaseTier(statType) && AvailablePoints >= GetBaseStatUpgradeCost(statType);
 
+    // Used to flag the "Upgrade Shop" button itself (not the individual stat buttons inside it) whenever
+    // there's anything worth buying — safe to run over every StatType since GetStatCosts' default case
+    // (empty array) makes CanUpgradeBaseStat/IsStatUnlocked naturally false for anything outside the shop.
+    public static bool AnyBaseStatAffordable()
+    {
+        foreach (StatType stat in System.Enum.GetValues(typeof(StatType)))
+            if (IsStatUnlocked(stat) && CanUpgradeBaseStat(stat))
+                return true;
+        return false;
+    }
+
     public static bool TryUpgradeBaseStat(StatType statType)
     {
         if (!CanUpgradeBaseStat(statType)) return false;

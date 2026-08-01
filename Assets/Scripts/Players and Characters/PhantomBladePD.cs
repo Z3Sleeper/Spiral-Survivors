@@ -38,13 +38,17 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     private bool  _isCrit;
     private float _speed;
     private float _maxRange;
-    // Baked in at Summon() time from CharacterStatsPD.phantomBladeOnHitEnabled/OnHitPowerPercent, same
-    // "one-shot bonus baked in at spawn" pattern as _damage/size — false/0 unless PhantomBladeOnHitAugment
-    // (or a future family member) has granted it, in which case this blade fires OnHit for every enemy it
-    // strikes. Kept as a separate bool rather than gating off _onHitPowerPercent > 0 (see
-    // CharacterStatsPD.phantomBladeOnHitEnabled's own doc comment for why).
+    // Baked in at Summon() time from CharacterStatsPD.phantomBladeOnHitEnabled, same "one-shot bonus baked
+    // in at spawn" pattern as _damage/size — false unless PhantomBladeOnHitAugment (or a future family
+    // member) has granted it, in which case this blade fires OnHit for every enemy it strikes. Kept as a
+    // separate bool rather than gating off _onHitPower > 0 (see CharacterStatsPD.phantomBladeOnHitEnabled's
+    // own doc comment for why).
     private bool  _onHitEnabled;
-    private float _onHitPowerPercent;
+    // Fully resolved once at Summon() time (see its own comment) — (penalized-or-unpenalized OnHitPower) *
+    // baseDamageMultiplier * phantomBladeOnHitPowerPercent, reused for every enemy this blade hits rather
+    // than recomputed per hit, same "baked in once, reused for the whole flight" convention as _damage/
+    // _isCrit above.
+    private float _onHitPower;
     // Plain view-layer bookkeeping, not predicted state — guards SetRenderersEnabled(false) from running
     // every single frame once already hidden (harmless either way, just avoids redundant work).
     private bool _hiddenOnExpire;
@@ -72,7 +76,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // again to end up radius past it on the opposite side). Speed is derived from that distance and the
     // fixed travelTime, rather than travelTime being derived from a fixed speed, so every blade takes the
     // same time to finish its flight regardless of size.
-    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit)
+    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit, bool usePenalizedOnHitPower, float baseDamageMultiplier)
     {
         float radius = BaseSpawnRadius * sizeMultiplier;
 
@@ -82,7 +86,16 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         _maxRange = radius * 2f;
         _speed = _maxRange / travelTime;
         _onHitEnabled = owner.phantomBladeOnHitEnabled;
-        _onHitPowerPercent = owner.phantomBladeOnHitPowerPercent;
+        // usePenalizedOnHitPower picks between the WeaponCount-divided OnHitPower (only PhantomBladeOnCritAugment's
+        // blades, matching how that same augment already uses divided Strength for this blade's own damage)
+        // and the Unpenalized variant (every other augment's blades, and a Carnival copy of one of them) —
+        // see PhantomBladeSummonHelper.SummonAtTarget's own doc comment. baseDamageMultiplier is the exact
+        // same ratio (e.g. 6f for "600% Strength") that augment used to roll this blade's own damage, so a
+        // blade given a bigger/smaller cut of Strength scaling gets a proportionally bigger/smaller cut of
+        // OnHitPower too, instead of every blade reporting the same flat onHitPower regardless of how strong
+        // that particular summon was tuned to be.
+        float onHitPowerBase = usePenalizedOnHitPower ? owner.OnHitPower : owner.UnpenalizedOnHitPower;
+        _onHitPower = onHitPowerBase * baseDamageMultiplier * owner.phantomBladeOnHitPowerPercent;
 
         transform.localScale = _baseScale * sizeMultiplier;
 
@@ -153,11 +166,11 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
 
         // Only fires if some Phantom Blade augment actually enabled it — most blades never touch the OnHit
         // chain at all. weaponDamage uses this blade's own already-rolled damage (the closest available
-        // analog to "this hit's damage" for a non-weapon hit source); onHitPower is read live off the
-        // owner's current stat, same as weapons do, scaled by the percent baked in at spawn.
+        // analog to "this hit's damage" for a non-weapon hit source); onHitPower uses _onHitPower, fully
+        // resolved once at Summon() time (see its own doc comment).
         if (_onHitEnabled)
         {
-            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _damage, onHitPower = _owner.OnHitPower * _onHitPowerPercent, isCrit = _isCrit };
+            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _damage, onHitPower = _onHitPower, isCrit = _isCrit };
             _owner.NotifyHit(hitData);
         }
     }

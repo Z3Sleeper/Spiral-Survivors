@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4125eb0e372e00f47aea4692273c2f74, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AttackSpeedAugment
-  bonusAttackSpeedPercent: 0.25
-  bonusAttackSpeedTotalPercent: 0.15
+  attackSpeedFlat: 0.25
+  attackSpeedTotalPercent: 0.15

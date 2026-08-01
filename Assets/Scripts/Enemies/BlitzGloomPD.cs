@@ -69,12 +69,28 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         if (dashJustEnded)
         {
             state.blitzesRemaining--;
-            if (state.blitzesRemaining > 0) EnterWindup(ref state);
-            else                             EnterPostBlitz(ref state);
+            // _target == null guard matters here — without it, a chain that lost its target mid-way would
+            // charge again in whatever the PREVIOUS charge's stale direction was (SnapFaceAnchor no-ops
+            // on a zero direction, leaving blitzDirection untouched) instead of ending the chain.
+            // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the dash
+            // that just ended above, but stops the chain from continuing into another one, falling through
+            // to PostBlitz instead (see IsCrowdControlled's own doc comment).
+            if (state.blitzesRemaining > 0 && _target != null && !IsCrowdControlled)
+            {
+                CaptureAttackAnchor(ref state);
+                EnterWindup(ref state);
+            }
+            else EnterPostBlitz(ref state);
         }
 
+        // attackCooldownTimer: untouched — pacing between attack sequences, not execution speed.
+        // stateTimer: scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own comment on
+        // the identical pattern. Note the actual Blitz dash itself needs no separate handling here at all:
+        // CanContactDamage is gated to the whole Blitzing state, and HandleDash already applies
+        // EffectiveAttackSpeed live to the dash's own velocity (see EnemyBasePD.HandleDash), so "attack
+        // speed = dash speed" already holds for free.
         state.attackCooldownTimer -= delta;
-        state.stateTimer          -= delta;
+        state.stateTimer          -= delta * EffectiveAttackSpeed;
 
         var ss = GetBlitzState(ref state);
 
@@ -85,6 +101,8 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
                 if (state.attackCooldownTimer <= 0f && TargetInRange())
                 {
                     state.blitzesRemaining = blitzesPerAttack;
+                    // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
+                    CaptureAttackAnchor(ref state);
                     EnterWindup(ref state);
                 }
                 break;
@@ -129,7 +147,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 
     private void EnterWindup(ref State state)
     {
-        var snapDir = SnapFaceTarget(ref state);
+        var snapDir = SnapFaceAnchor(ref state);
         if (snapDir != Vector3.zero) state.blitzDirection = snapDir;
         state.stateTimer = windupDuration;
         SetBlitzState(ref state, BlitzState.Windup);
@@ -160,6 +178,11 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         SetBlitzState(ref state, BlitzState.Moving);
     }
 
+    // Every Blitz phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
+    // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
+    // of blitzesRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    protected override void OnInterrupted() => EnterMoving(ref currentState);
+
     // ── View ──────────────────────────────────────────────────────────────────
     private BlitzState _lastVisualState = (BlitzState)(-1);
 
@@ -178,15 +201,17 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         if (windupIndicator != null) IndicatorMath.ApplyLineTransform(windupIndicator.transform, blitzDistance);
 
         var ss = (BlitzState)viewState.stateId;
+
+        // Live, every frame regardless of the _lastVisualState-gated block below — see SpearGloomPD's own
+        // comment on the identical live-fill pattern.
+        if (windupFill != null && ss == BlitzState.Windup)
+            windupFill.SetProgress(1f - Mathf.Clamp01(viewState.stateTimer / windupDuration));
+
         if (ss == _lastVisualState) return;
         _lastVisualState = ss;
 
         if (windupIndicator != null) windupIndicator.SetActive(ss == BlitzState.Windup);
-        if (windupFill != null)
-        {
-            if (ss == BlitzState.Windup) windupFill.StartFill(windupDuration);
-            else                          windupFill.ResetFill();
-        }
+        if (windupFill != null && ss != BlitzState.Windup) windupFill.ResetFill();
     }
 
     protected override void OnDeathStop()

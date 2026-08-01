@@ -23,7 +23,8 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 1
   requiredAugments: []
-  tags: []
+  tags:
+  - On-Hit Effect
   requiredTags:
   - On-Hit Effect
   incompatibleTags: []

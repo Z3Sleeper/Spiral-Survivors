@@ -314,6 +314,10 @@ namespace PurrLobby
             {
                 EnsureProviderSet();
                 var room = await _currentProvider.CreateLobbyAsync(maxPlayers, roomProperties);
+                // A failed/timed-out CreateLobbyAsync returns an invalid Lobby (see its own OnError-then-return
+                // path) — must not fire OnRoomUpdated with it, same guard the reactive _onLobbyUpdatedHandler
+                // above already applies (!room.IsValid) — listeners assume a successful room's data is populated.
+                if (!room.IsValid) return;
                 _currentLobby = room;
                 OnRoomUpdated?.Invoke(room);
             });

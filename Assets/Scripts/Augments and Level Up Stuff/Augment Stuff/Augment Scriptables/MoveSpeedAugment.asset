@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#FFFFFF>Swift</color>
   description: '<color=#FFFFFF>+1.25 Move Speed
 
-    +15% Move Speed</color>'
+    +15% Bonus Move Speed</color>'
   icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}
   effectPrefab: {fileID: 8145950092033668273, guid: 1d51772f8d84979429b61e725cfac360, type: 3}
   multiplayerOnly: 0
@@ -24,4 +24,6 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  additionalRequirementGroups: []
+  tags: []
+  requiredTags: []
+  incompatibleTags: []

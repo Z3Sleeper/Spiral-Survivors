@@ -27,6 +27,11 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
 
     [SerializeField] private Vector3 arrowHalfExtents = new(0.1f, 0.1f, 0.25f);
     [SerializeField] private Renderer[] _renderers;
+    // Visual-only target for the mid-height lift below — a dedicated child (e.g. this prefab's "Model", the
+    // parent of every visible mesh piece), NOT this projectile's own root transform (that's the real,
+    // hit-detection-relevant flight position LateSimulate() moves every tick). Optional: leave unassigned
+    // and this projectile simply never lifts, no error.
+    [SerializeField] private Transform visualHeightTarget;
 
     private CharacterStatsPD _stats;
     private Vector3 _baseScale;
@@ -61,21 +66,41 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
 
     // Plain Unity Awake(), NOT PredictedIdentity's LateAwake() override — LateAwake() is PD's own
     // "logical spawn" hook and DOES re-fire on every pooled reuse (confirmed: caching _baseScale there
-    // caused it to re-capture an already-WeaponSize-scaled transform.localScale each reuse, compounding
+    // caused it to re-capture an already-Size-scaled transform.localScale each reuse, compounding
     // indefinitely). Raw Unity Awake() is guaranteed to fire exactly once per real GameObject instance
     // even under SetActive-based pooling, same reason EnemyBasePD's own private Awake() (not its
     // LateAwake() override) is where it caches prefab-level things like _animator/baseHealth once.
     private void Awake()
     {
         _baseScale = transform.localScale;
+
+        // Same "correct for the player's default 1x1x1-unit sphere" constant WeaponBasePD.
+        // ApplyVisualAdjustments() lifts orbiting weapon models by — this projectile's own root spawns at
+        // the firing weapon's un-lifted, ground-level position (WeaponRangedPD.Fire()'s `transform.position`
+        // reads the weapon root, not its own visually-lifted model), so the visual mesh needs the same
+        // compensating offset to render at the same mid-body height the bow model appears to fire from. No
+        // explicit * bonusSizePercent here (deliberately — "no size mods", matching ApplyVisualAdjustments'
+        // own reasoning): this is a LOCAL offset, and Launch() below already scales this projectile's own
+        // root by stats.bonusSizePercent, so Unity's ordinary parent-child scale inheritance applies that
+        // multiply for free. Set once here, not in Launch() — this value never changes per-launch (no
+        // per-shot state it could depend on), and Awake() is guaranteed to fire exactly once per real
+        // GameObject instance even under this projectile's own SetActive-based pooling (see this method's
+        // own comment above), so a pooled reuse can never re-run this and drift — same reasoning already
+        // established for _baseScale right above. The assignment itself is also absolute (not relative,
+        // unlike a hypothetical `+=`), so even a repeat call couldn't compound it regardless.
+        if (visualHeightTarget != null)
+        {
+            var p = visualHeightTarget.localPosition;
+            visualHeightTarget.localPosition = new Vector3(p.x, WeaponVisualConstants.BaseMidHeightLift, p.z);
+        }
     }
 
     // Called by WeaponRangedPD.Fire() immediately after hierarchy.Create() returns — synchronous and
     // deterministic, same "mutate currentState right after Create()" pattern as XPOrbPD.SetValue(). Values
     // are captured once here (not re-read live from stats later), so a level-up mid-flight can't
-    // retroactively change an already-loosed shot's damage. WeaponSize scaling and color application port
+    // retroactively change an already-loosed shot's damage. Size scaling and color application port
     // directly from the old WeaponBow.Fire() — but scale is set as an absolute multiple of _baseScale, not
-    // multiplied onto the current value, since a pooled instance's current scale is whatever WeaponSize
+    // multiplied onto the current value, since a pooled instance's current scale is whatever bonusSizePercent
     // left it at during its PREVIOUS life; `*=` would compound further every reuse instead of resetting.
     // _hitTargets is a plain field too (not part of predicted State, so GetInitialState() can't reset it) —
     // cleared here so a recycled instance doesn't inherit a previous life's hit history.
@@ -96,7 +121,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         currentState.currentOnHitPower   = stats.OnHitPower;
 
         transform.rotation    = Quaternion.LookRotation(direction);
-        transform.localScale  = _baseScale * stats.WeaponSize;
+        transform.localScale  = _baseScale * stats.bonusSizePercent;
 
         _hitTargets.Clear();
         _struckAllies.Clear();

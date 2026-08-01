@@ -67,5 +67,84 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      insertIndex: 2
+      addedObject: {fileID: -5367519288955201469}
+    - targetCorrespondingSourceObject: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      insertIndex: 3
+      addedObject: {fileID: -4890662838761607972}
   m_SourcePrefab: {fileID: 100100000, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+--- !u!4 &2534175426824249865 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 6013572356293349534, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+  m_PrefabInstance: {fileID: 8097387663534551703}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &8058231238311545800 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+  m_PrefabInstance: {fileID: 8097387663534551703}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &-5367519288955201469
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8058231238311545800}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6fca7441a0c6b0446809d99fdf625f3c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TestBurstPD
+  icon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}
+  abilityName: <color=#FF0050>Ability:\nEviscerate</color>
+  description: '<color=#00FFFF>Somersault forward</color>, <color=#FFA000>Striking</color>
+    with your <color=#FFA000>Weapons</color> <color=#FFA000>5 times</color> with
+    damage multiplied by <color=#FF0050>Attack Speed</color>.
+
+    <color=#FFBE50><i>Damage
+    scales with Ability Power</i></color>
+
+    <color=#FFBE50>Cooldown: 6 seconds</color>'
+  cooldown: 6
+  cooldownStartsOnCast: 0
+  slot: 1
+  tags: []
+  duration: 0.75
+  postActiveInvincibilityGrace: 0.1
+  dashSpeed: 10
+  visuals: {fileID: 2534175426824249865}
+  leapHeight: 2
+  damageRadiusSizeMultiplier: 1.25
+  spinRate: 1080
+  hitCountPerWeapon: 5
+  spinAbilityDamageMultiplier: 1
+--- !u!114 &-4890662838761607972
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8058231238311545800}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bec21f9c06164634da1ccd3a3a60ddda, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::InvisibilityAbilityPD
+  icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}
+  abilityName: <color=#FFFFFF>Ability:\nVanish</color>
+  description: 'Become <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>25%
+    total Move Speed</color> for <color=#FFA000>3 seconds</color>.
+
+    <color=#FFBE50><i>Move
+    Speed & Duration scale with Ability Power</i></color>
+
+    <color=#FFBE50>Cooldown:
+    15 seconds</color>'
+  cooldown: 15
+  cooldownStartsOnCast: 0
+  slot: 0
+  tags: []
+  duration: 2
+  moveSpeedTotalPercent: 0.25

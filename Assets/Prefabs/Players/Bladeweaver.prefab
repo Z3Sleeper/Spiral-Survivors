@@ -20,9 +20,57 @@ PrefabInstance:
       propertyPath: weaponPrefab
       value: 
       objectReference: {fileID: 2942187867930129664, guid: 56a521b14c2adcc4fa610a1ef89f0310, type: 3}
+    - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1357578059376289040, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1357578059376289040, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1357578059376289040, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1357578059376289040, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
       value: Bladeweaver
+      objectReference: {fileID: 0}
+    - target: {fileID: 3078761316220393339, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3078761316220393339, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3078761316220393339, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3078761316220393339, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4433399181805987514, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_LocalPosition.x
@@ -64,8 +112,113 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 7873927479541248489, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7873927479541248489, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7873927479541248489, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7873927479541248489, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7989371212444044817, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7989371212444044817, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7989371212444044817, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7989371212444044817, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      insertIndex: 2
+      addedObject: {fileID: 4511305823857616270}
+    - targetCorrespondingSourceObject: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      insertIndex: 3
+      addedObject: {fileID: 1727344734638112781}
   m_SourcePrefab: {fileID: 100100000, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+--- !u!1 &3529459938880667348 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+  m_PrefabInstance: {fileID: 3418246054912149387}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &4511305823857616270
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3529459938880667348}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8206a63e2859ee64e979ee041f29c32e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BWBladeDanceAbilityPD
+  icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
+  abilityName: <color=#FFA000>Ability:\nBlade Dance</color>
+  description: 'Send your <color=#FFA000>Blades</color> to the target location. They
+    stay there for <color=#FFA000>3 seconds</color> before recalling. <color=#FFA000>Recast</color>
+    to recall early.
+
+    <color=#FFBE50><i>Ability Haste & Power grant Attack Speed
+    during this</i>
+
+    Cooldown: None</color>'
+  cooldown: 0
+  cooldownStartsOnCast: 0
+  slot: 1
+  tags: []
+  activeSurgeBlock: 0
+  castRangeMultiplier: 2
+  travelSpeed: 50
+  holdDuration: 3
+  attackSpeedPercentPerHaste: 0.01
+--- !u!114 &1727344734638112781
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3529459938880667348}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6142891b254748f45b6366a5338afd79, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BWBlinkAbilityPD
+  icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
+  abilityName: <color=#00FFFF>Ability:\nBlade Blink</color>
+  description: 'Instantly <color=#00FFFF>Blink</color> to your <color=#FFA000>Blades</color>
+    and gain <color=#FFFFFF>+25% Total Move Speed</color> for <color=#FFA000>2 seconds</color>.
+
+    Only
+    usable while <color=#FFA000>Blade Dance</color> is active.
+
+    <color=#FFBE50><i>Buff
+    & Duration scale with Ability Power</i>
+
+    Cooldown: 6 seconds</color>'
+  cooldown: 6
+  cooldownStartsOnCast: 0
+  slot: 0
+  tags: []
+  activeSurgeBlock: 0
+  duration: 2
+  moveSpeedTotalPercent: 0.25

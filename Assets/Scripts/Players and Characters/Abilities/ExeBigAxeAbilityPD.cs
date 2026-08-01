@@ -1,0 +1,163 @@
+using PurrNet.Prediction;
+using UnityEngine;
+
+// Executioner's first class ability, built on the IAbilityPD architecture — gated by a cooldown, same
+// single-active-window shape as KnightBigBuffAbilityPD (that file is the template this mirrors): three stat
+// grants applied at cast, all reversed with the identical snapshotted values once the active window ends.
+// Never touches movement (ForcesSpecialAction is false).
+//
+// Originally also granted a CharacterStatsPD.OuterXZMultiplier bonus (tripling the axe's outer hit zone) —
+// scrapped once it turned out to look bad even working exactly as intended (a proportionally bigger
+// axehead just doesn't read well at 3x). Swapped for a flat +50% Total Weapon Range grant instead
+// (AddWeaponRangeTotalPercent, same call KnightBigBuffAbilityPD's own range buff uses). The OuterXZ system
+// itself (CharacterStatsPD.OuterXZMultiplier, WeaponAxePD's own read sites) is untouched and still fully
+// functional — just unused by this ability now — in case it's useful again later.
+//
+// CharacterStatsPD.AbilityPower scales the potency of all three grants AND the buff's own duration, same
+// convention as RogueVanishAbilityPD/KnightBigBuffAbilityPD — each snapshotted at cast time so a live
+// AbilityPower change mid-buff can't desync the add/subtract pair or leave the active timer running against
+// a duration that no longer matches what was granted.
+public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, IAbilityPD
+{
+    public struct State : IPredictedData<State>
+    {
+        public float activeTimer;
+        public bool  isActive;
+        public float cooldownTimer;
+        public void Dispose() { }
+    }
+
+    [SerializeField] private Sprite icon;
+    [SerializeField] private string abilityName = "Big Axe";
+    [SerializeField, TextArea] private string description =
+        "Wield a massive axe for 10 seconds, gaining +50% Total Weapon Range, +25% Execute Threshold and +25% Crit Chance.";
+    [SerializeField] private float cooldown = 30f;
+    // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
+    // throughout the buff window) — see Simulate(). true: cooldown starts ticking immediately at cast,
+    // running concurrently with the active window. Same convention/default as KnightBigBuffAbilityPD's own.
+    [SerializeField] private bool cooldownStartsOnCast = false;
+    // Which action-bar slot this occupies — Inspector-configurable per character rather than hardcoded per
+    // class, so which ability goes where is a prefab-authoring choice, not a recompile.
+    [SerializeField] private AbilitySlot slot = AbilitySlot.Ability1;
+    [SerializeField] private string[] tags;
+    // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
+    [SerializeField] private bool activeSurgeBlock = false;
+
+    [Header("Effect")]
+    [SerializeField] private float duration = 10f;
+    [SerializeField] private float weaponRangeTotalPercent = 0.5f;
+    [SerializeField] private float executeThresholdPercent = 0.25f;
+    [SerializeField] private float critChancePercent       = 0.25f;
+
+    private CharacterStatsPD _stats;
+
+    // Snapshotted at cast time (base * AbilityPower at that instant), same reasoning as
+    // KnightBigBuffAbilityPD's own applied-percent fields — reversed with the identical values at buff-end
+    // regardless of whether AbilityPower changed mid-buff.
+    private float _appliedWeaponRangeTotalPercent;
+    private float _appliedExecuteThreshold;
+    private float _appliedCritChance;
+
+    protected override State GetInitialState() => default;
+
+    private void Awake()
+    {
+        _stats = GetComponent<CharacterStatsPD>();
+    }
+
+    public bool IsReady => _stats != null && !currentState.isActive && currentState.cooldownTimer <= 0f;
+    public bool IsActive => currentState.isActive;
+    // Only ever flips stat totals — never touches movement, so it never locks dash or the other ability
+    // slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
+    public bool ForcesSpecialAction => false;
+    public bool ActiveSurgeBlock => activeSurgeBlock;
+    // Same underlying window as IsActive for this ability (the whole buff) — see IAbilityPD.
+    // AbilityIsActive's own doc comment for why these are separate interface members even though they
+    // agree here.
+    public bool AbilityIsActive => currentState.isActive;
+    public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
+    public float CooldownDuration => EffectiveCooldown;
+    public float BaseCooldownDuration => cooldown;
+    public bool CooldownStartsOnCast => cooldownStartsOnCast;
+    public Sprite Icon => icon;
+    public string Name => abilityName;
+    public string Description => description;
+    public string[] Tags => tags;
+    public AbilitySlot Slot => slot;
+
+    // Same formula as CharacterStatsPD.DashCooldown (baseCooldown / (1 + haste/100)) — a haste augment
+    // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
+    // EffectiveAbilityHaste ever goes negative (a penalty).
+    private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
+
+    public void Activate()
+    {
+        if (!IsReady || _stats == null) return;
+
+        // AbilityPower's interpretation for this ability: scales both the potency of all three grants AND
+        // the buff's own duration, same as KnightBigBuffAbilityPD — see class doc comment.
+        float abilityPower = _stats.AbilityPower;
+        _appliedWeaponRangeTotalPercent = weaponRangeTotalPercent * abilityPower;
+        _appliedExecuteThreshold        = executeThresholdPercent * abilityPower;
+        _appliedCritChance              = critChancePercent * abilityPower;
+
+        currentState.activeTimer   = duration * abilityPower;
+        currentState.isActive      = true;
+        currentState.cooldownTimer = EffectiveCooldown;
+
+        // See IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract — RemoveSurgeBlock's
+        // matching call sits in Simulate()'s own end-of-active block below.
+        if (activeSurgeBlock)
+        {
+            _stats.ForceEndSurge();
+            _stats.AddSurgeBlock();
+        }
+
+        // Direct cross-identity mutation, same pattern as KnightBigBuffAbilityPD.Activate() — safe since
+        // Activate() is only ever called from PlayerControllerPD's own Simulate(), deterministically,
+        // identically on every machine.
+        _stats.AddWeaponRangeTotalPercent(_appliedWeaponRangeTotalPercent);
+        _stats.AddExecuteThresholdPercent(_appliedExecuteThreshold);
+        _stats.AddCritChanceFlat(_appliedCritChance);
+
+        // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
+        // Skipped entirely at 0 (raw, un-hasted) cooldown — see BWBladeDanceAbilityPD's own identical guard
+        // for the full reasoning (moot here at the default 30s cooldown, kept for consistency).
+        if (cooldown > 0f) _stats.NotifyAbilityStart(this);
+    }
+
+    public void NotifyActivationBlocked() { }
+
+    protected override void Simulate(ref State state, float delta)
+    {
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole active
+        // window below) or only once that window ends (state.isActive false) — see the field's own doc
+        // comment. Either way Activate() already set cooldownTimer to its full value at cast time. Same
+        // shape as KnightBigBuffAbilityPD.Simulate().
+        if (state.cooldownTimer > 0f && (cooldownStartsOnCast || !state.isActive))
+            state.cooldownTimer -= delta;
+
+        if (!state.isActive) return;
+
+        state.activeTimer -= delta;
+        // Death force-ends the buff early — a dead caster gets no benefit from Range/Execute/Crit Chance
+        // sitting on a corpse, and the cooldown otherwise couldn't even start ticking (cooldownStartsOnCast
+        // is false by default here, so cooldownTimer only ticks once state.isActive goes false — see the
+        // condition above). _stats.IsDead is part of currentState, so every machine forces the same end tick.
+        bool forceEndOnDeath = _stats != null && _stats.IsDead;
+        if (state.activeTimer > 0f && !forceEndOnDeath) return;
+
+        state.isActive = false;
+        if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
+        if (_stats != null)
+        {
+            _stats.AddWeaponRangeTotalPercent(-_appliedWeaponRangeTotalPercent);
+            _stats.AddExecuteThresholdPercent(-_appliedExecuteThreshold);
+            _stats.AddCritChanceFlat(-_appliedCritChance);
+        }
+        // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
+        if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
+    }
+}

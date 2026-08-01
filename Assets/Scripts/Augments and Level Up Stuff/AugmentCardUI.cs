@@ -50,4 +50,20 @@ public class AugmentCardUI : MonoBehaviour
         LocalUIManagerPD.instance.HideAllCards();
         LocalUIManagerPD.instance.RequestPick(_cardIndex);
     }
+
+    // For display-only contexts (e.g. an encyclopedia/browse list) where OnPicked's LocalUIManagerPD.instance
+    // call wouldn't have anything valid to hit — this only touches interactability, never the onClick wiring
+    // itself, so a real pick flow calling AugmentSetup/StatAugmentSetup afterward is unaffected.
+    public void SetInteractive(bool interactive) => pickButton.interactable = interactive;
+
+    // For showing a class's IAbilityPD in the same card layout as its passive augments (character select's
+    // detail panel) — there's no AugmentData asset backing an ability, so this takes the raw display fields
+    // directly instead. Always paired with SetInteractive(false) by the caller, same as the passive cards.
+    public void AbilitySetup(string title, string description, Sprite icon)
+    {
+        pickButton.onClick.RemoveAllListeners();
+        augmentImage.sprite = icon;
+        titleText.text = title;
+        descriptionText.text = description;
+    }
 }

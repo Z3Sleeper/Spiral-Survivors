@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b72d6b94d51c3024287ce37d2dde036e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeDualWeildAugment
-  weaponCountMultiplier: 2
-  damageBonus: 0.3
-  onHitPowerBonus: 0.3
+  bonusWeaponCountMultiplier: 2
+  totalStrengthPercent: 0.3
+  totalOnHitPowerPercent: 0.3

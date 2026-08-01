@@ -45,6 +45,14 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private static readonly int PostSpinSpeedHash  = Animator.StringToHash("PostSpinSpeed");
 
     private float _postSpinClipLength;
+    // Baseline "clip length / baseline duration" ratios, cached instead of SetFloat'd directly — every one
+    // of Dagger's own attack beats scales with attack speed (unlike SpearGloomPD's Stab, which stays fixed
+    // because it gates a lingering hitbox; Dagger's Spin damage is a one-shot check that already resolved
+    // the instant EnterSpin() ran, so there's no window to protect — see SpearGloomPD's own doc comment for
+    // the full reasoning), so both need to be re-derived live every frame (ratio * EffectiveAttackSpeed,
+    // see UpdateView) instead of set once at spawn.
+    private float _windupClipRate;
+    private float _spinClipRate;
 
     [Header("Dagger Settings")]
     public float spinDamageMultiplier = 1f;
@@ -83,9 +91,9 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
             if (clip.name == "Dagger Gloom Windup")
-                _animator.SetFloat(WindupSpeedHash, clip.length / windupDuration);
+                _windupClipRate = clip.length / windupDuration;
             else if (clip.name == "Dagger Gloom Spin")
-                _animator.SetFloat(SpinSpeedHash, clip.length / spinDuration);
+                _spinClipRate = clip.length / spinDuration;
             else if (clip.name == "Dagger Gloom PostSpin")
                 _postSpinClipLength = clip.length;
         }
@@ -97,8 +105,11 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     {
         if (dashJustEnded) EnterWindup(ref state);
 
+        // attackCooldownTimer: untouched — pacing between attack sequences, not execution speed.
+        // stateTimer: scaled live by EffectiveAttackSpeed every tick (not pre-divided once at state entry)
+        // — reacts immediately if attack speed changes mid-state, same as SpearGloomPD's own stateTimer.
         state.attackCooldownTimer -= delta;
-        state.stateTimer          -= delta;
+        state.stateTimer          -= delta * EffectiveAttackSpeed;
 
         var ss = GetDaggerState(ref state);
 
@@ -111,6 +122,8 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
                     float dist = Vector3.Distance(transform.position, _target.position);
                     if (dist <= preferredRange * 2f)
                     {
+                        // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
+                        CaptureAttackAnchor(ref state);
                         if (dist > preferredRange / 2f) EnterDashToTarget(ref state);
                         else                             EnterWindup(ref state);
                     }
@@ -124,18 +137,31 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
             case DaggerState.Spinning:
                 if (state.stateTimer <= 0f)
                 {
-                    if (state.attacksRemaining > 0) EnterBetweenSpins(ref state);
-                    else                             EnterPostSpin(ref state);
+                    // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the
+                    // spin that just finished above, but stops the chain from continuing into another one,
+                    // falling through to PostSpin instead (see IsCrowdControlled's own doc comment).
+                    if (state.attacksRemaining > 0 && !IsCrowdControlled) EnterBetweenSpins(ref state);
+                    else                                                  EnterPostSpin(ref state);
                 }
                 break;
 
             case DaggerState.BetweenSpins:
+                // Outside the ongoing window (ongoing ends the moment Spinning finishes) — safe to read
+                // live _target here, since this is deciding what the NEXT attack (if any) should use.
                 if (state.stateTimer <= betweenSpinPause * 0.5f) FaceTargetSmooth(delta);
                 if (state.stateTimer <= 0f)
                 {
-                    float dist = _target != null ? Vector3.Distance(transform.position, _target.position) : 0f;
-                    if (_target != null && dist > preferredRange / 2f) EnterDashToTarget(ref state);
-                    else                                                EnterWindup(ref state);
+                    if (_target == null)
+                    {
+                        EnterPostSpin(ref state);
+                    }
+                    else
+                    {
+                        CaptureAttackAnchor(ref state);
+                        float dist = Vector3.Distance(transform.position, _target.position);
+                        if (dist > preferredRange / 2f) EnterDashToTarget(ref state);
+                        else                             EnterWindup(ref state);
+                    }
                 }
                 break;
 
@@ -175,7 +201,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private void EnterWindup(ref State state)
     {
         state.stateTimer = windupDuration;
-        SnapFaceTarget(ref state);
+        SnapFaceAnchor(ref state);
         SetDaggerState(ref state, DaggerState.Windup);
     }
 
@@ -235,6 +261,11 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         SetDaggerState(ref state, DaggerState.Moving);
     }
 
+    // Every Dagger phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
+    // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
+    // of attacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    protected override void OnInterrupted() => EnterMoving(ref currentState);
+
     // ── View ───────────────────────────────────────────────────────────────
     private DaggerState _lastVisualState = (DaggerState)(-1);
 
@@ -250,15 +281,28 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         if (_windupIndicator != null) IndicatorMath.ApplyRadialTransform(_windupIndicator.transform, spinRadius);
 
         var ss = (DaggerState)viewState.stateId;
+
+        // Live, every frame regardless of the _lastVisualState-gated block below — reacts immediately to
+        // EffectiveAttackSpeed changing mid-state, same reasoning as SpearGloomPD's own live block.
+        if (_windupFill != null && ss == DaggerState.Windup)
+            _windupFill.SetProgress(1f - Mathf.Clamp01(viewState.stateTimer / windupDuration));
+        if (_animator != null)
+        {
+            if (ss == DaggerState.Windup)
+                _animator.SetFloat(WindupSpeedHash, _windupClipRate * EffectiveAttackSpeed);
+            else if (ss == DaggerState.Spinning)
+                _animator.SetFloat(SpinSpeedHash, _spinClipRate * EffectiveAttackSpeed);
+            else if (ss == DaggerState.BetweenSpins)
+                _animator.SetFloat(PostSpinSpeedHash, (_postSpinClipLength / betweenSpinPause) * EffectiveAttackSpeed);
+            else if (ss == DaggerState.PostSpin)
+                _animator.SetFloat(PostSpinSpeedHash, (_postSpinClipLength / postSpinPause) * EffectiveAttackSpeed);
+        }
+
         if (ss == _lastVisualState) return;
         _lastVisualState = ss;
 
         if (_windupIndicator != null) _windupIndicator.SetActive(ss == DaggerState.Windup);
-        if (_windupFill != null)
-        {
-            if (ss == DaggerState.Windup) _windupFill.StartFill(windupDuration);
-            else                          _windupFill.ResetFill();
-        }
+        if (_windupFill != null && ss != DaggerState.Windup) _windupFill.ResetFill();
 
         if (_animator == null) return;
         switch (ss)
@@ -273,11 +317,9 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
                 _animator.Play(DaggerSpinHash, 0, 0f);
                 break;
             case DaggerState.BetweenSpins:
-                _animator.SetFloat(PostSpinSpeedHash, _postSpinClipLength / betweenSpinPause);
                 _animator.Play(DaggerPostSpinHash, 0, 0f);
                 break;
             case DaggerState.PostSpin:
-                _animator.SetFloat(PostSpinSpeedHash, _postSpinClipLength / postSpinPause);
                 _animator.Play(DaggerPostSpinHash, 0, 0f);
                 break;
         }

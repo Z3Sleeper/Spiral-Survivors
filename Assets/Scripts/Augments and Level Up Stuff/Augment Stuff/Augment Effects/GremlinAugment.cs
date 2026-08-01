@@ -15,12 +15,12 @@ public class GremlinAugment : AugmentEffectPD<GremlinAugment.State>
 
     [SerializeField] private float bonusSizePercent        = -0.2f;
     [SerializeField] private float attackSpeedTotalPercent = 0.1f;
-    [SerializeField] private float totalMoveSpeedPercent   = 0.1f;
+    [SerializeField] private float bonusMoveSpeedTotalPercent   = 0.1f;
 
     protected override void OnApply()
     {
         Stats.AddSizePercent(bonusSizePercent);
         Stats.AddAttackSpeedTotalPercent(attackSpeedTotalPercent);
-        Stats.AddMoveSpeedTotalPercent(totalMoveSpeedPercent);
+        Stats.AddMoveSpeedTotalPercent(bonusMoveSpeedTotalPercent);
     }
 }

@@ -22,4 +22,5 @@ public enum StatType
     StrengthPerLevel    = 21,
     MaxShield           = 22,
     ShieldRechargeTime  = 23,
+    AbilityHaste        = 24,
 }

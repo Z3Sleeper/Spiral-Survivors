@@ -19,7 +19,15 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private GameObject settingsPanel;
     [SerializeField] private GameObject upgradePanel;
     [SerializeField] private GameObject creditsPanel;
+    [SerializeField] private GameObject encyclopediaPanel;
     [SerializeField] private GameObject[] upgradeButtons;
+    // The "Upgrade Shop" button's own text (possibly more than one copy across scenes/panels, same reason
+    // upgradeButtons above is an array) — turns green whenever any base stat is both unlocked and
+    // affordable, as a "you can buy something" nudge. Original color cached per-entry at Start() and
+    // restored when nothing's affordable, rather than assuming a hardcoded "normal" color.
+    [SerializeField] private TextMeshProUGUI[] upgradeButtonTexts;
+    [SerializeField] private Color affordableUpgradeColor = Color.green;
+    private Color[] _upgradeButtonDefaultColors;
     [SerializeField] private ViewManager viewManager;
 
     [Header("Unlock Popup")]
@@ -71,6 +79,14 @@ public class LobbySceneController : MonoBehaviour
         foreach (var btn in upgradeButtons)
             if (btn != null) btn.SetActive(shopUnlocked);
 
+        if (upgradeButtonTexts != null)
+        {
+            _upgradeButtonDefaultColors = new Color[upgradeButtonTexts.Length];
+            for (int i = 0; i < upgradeButtonTexts.Length; i++)
+                if (upgradeButtonTexts[i] != null) _upgradeButtonDefaultColors[i] = upgradeButtonTexts[i].color;
+        }
+        RefreshUpgradeButtonAffordability();
+
         if (unlockPopup != null)
         {
             if (UnlockManager.HasPending)
@@ -83,6 +99,7 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.OnRoomLeft.AddListener(OnRoomLeft);
         lobbyManager.OnRoomUpdated.AddListener(OnRoomUpdated);
         lobbyManager.OnAllReady.AddListener(OnAllReady);
+        lobbyManager.OnError.AddListener(OnLobbyError);
 
         if (lobbyManager.CurrentLobby.IsValid)
         {
@@ -109,6 +126,15 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.OnRoomLeft.RemoveListener(OnRoomLeft);
         lobbyManager.OnRoomUpdated.RemoveListener(OnRoomUpdated);
         lobbyManager.OnAllReady.RemoveListener(OnAllReady);
+        lobbyManager.OnError.RemoveListener(OnLobbyError);
+    }
+
+    // e.g. CreateLobbyAsync timing out or Steam rejecting the request — bail back to the main PurrLobby
+    // menu instead of leaving whatever loading overlay (CreatingRoomView, etc.) stuck on screen forever.
+    private void OnLobbyError(string message)
+    {
+        Debug.LogWarning($"[LobbySceneController] Lobby error: {message}");
+        if (viewManager != null) viewManager.ShowView<MainMenuView>();
     }
 
     private void OnApplicationQuit()
@@ -169,8 +195,34 @@ public class LobbySceneController : MonoBehaviour
         upgradePanel.SetActive(false);
         if (ulong.TryParse(lobbyManager.CurrentLobby.LobbyId, out ulong lobbyIdRaw))
             SteamMatchmaking.SetLobbyMemberData(new CSteamID(lobbyIdRaw), "power", ProgressionManager.SpentPoints.ToString());
+        RefreshUpgradeButtonAffordability();
     }
 
+    // Checked once on scene load and once again whenever the shop closes (rather than continuously) — the
+    // only things that can change affordability are purchases made INSIDE the shop, so re-checking anywhere
+    // else would just be redundant work.
+    private void RefreshUpgradeButtonAffordability()
+    {
+        if (upgradeButtonTexts == null) return;
+        bool affordable = ProgressionManager.AnyBaseStatAffordable();
+        for (int i = 0; i < upgradeButtonTexts.Length; i++)
+        {
+            if (upgradeButtonTexts[i] == null) continue;
+            upgradeButtonTexts[i].color = affordable ? affordableUpgradeColor : _upgradeButtonDefaultColors[i];
+        }
+    }
+
+    public void OnEncyclopediaClicked()
+    {
+        if (characterSelectPanel.activeInHierarchy)
+            lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
+        encyclopediaPanel.SetActive(true);
+    }
+
+    public void OnEncyclopediaBackClicked()
+    {
+        encyclopediaPanel.SetActive(false);
+    }
 
     public void OnCreditsClicked()
     {
@@ -216,6 +268,7 @@ public class LobbySceneController : MonoBehaviour
             SteamMatchmaking.SetLobbyMemberData(steamLobby, "power", ProgressionManager.SpentPoints.ToString());
         }
         CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0, GameStartData.LocalColorIndex);
+        CharacterSelectUI.instance?.RefreshCharacterDetails(0);
         CharacterSelectUI.instance?.RefreshFromLobby(lobby);
         ShowCharacterSelect();
     }

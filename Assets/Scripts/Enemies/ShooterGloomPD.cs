@@ -4,11 +4,12 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Ported from _OldSystemArchive/Enemies/ShooterGloom.cs. Waits at preferred range, fires on cooldown; if
-// the player gets too close first dashes away. EnemyBasePD only re-targets on spawn or when the current
-// target goes null/dead (no periodic re-scan), so the whole DashingAway/Windup/Shooting/BetweenShots/
-// PostShot sequence stays aimed at the same player it committed to throughout — no locking needed.
-// Multishot uses the shared MultishotMath formula (WeaponBasePD.cs) — same behavior as the player's own
-// WeaponRangedPD.
+// the player gets too close first dashes away. The DashingAway/Windup/Shooting sequence for one shot (or
+// one multishot burst) is an "ongoing attack" (see EnemyBasePD.CaptureAttackAnchor) — it always resolves
+// against whichever target it committed to when it started, even if _target gets reassigned mid-sequence
+// (taunt/invisible). BetweenShots re-evaluates _target fresh for whether/where the NEXT shot in the chain
+// aims. Multishot uses the shared MultishotMath formula (WeaponBasePD.cs) — same behavior as the player's
+// own WeaponRangedPD.
 public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -29,14 +30,6 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     }
 
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;
-    protected override bool IsReadyToAttack
-    {
-        get
-        {
-            var ss = (ShooterState)currentState.shooterStateId;
-            return ss != ShooterState.Moving && ss != ShooterState.PostShot;
-        }
-    }
 
     private static readonly int IdleHash     = Animator.StringToHash("Idle");
     private static readonly int WindupHash   = Animator.StringToHash("ShooterWindup");
@@ -80,6 +73,15 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     // gun/hat material at runtime, same manual-per-variant convention as projectileScale above.
     [SerializeField] private Material projectileMaterial;
 
+    // Baseline "clip length / baseline duration" ratios, cached instead of SetFloat'd directly — every one
+    // of Shooter's own attack beats scales with attack speed (Shooting's damage is a one-shot projectile
+    // spawn that already resolved the instant EnterShooting() ran, so there's no lingering window to
+    // protect — see SpearGloomPD's own doc comment for the fixed-vs-scaled reasoning), so all three need to
+    // be re-derived live every frame (ratio * EffectiveAttackSpeed, see UpdateView) instead of set once.
+    private float _windupClipRate;
+    private float _shootClipRate;
+    private float _postShotClipRate;
+
     [Header("Multishot")]
     // 0 = fire 1 bullet straight, no extra shots. See MultishotMath (WeaponBasePD.cs) for exactly how extra
     // shots fan out — one always center, the rest split left-first between the two sides.
@@ -115,11 +117,11 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         foreach (var clip in _animator.runtimeAnimatorController.animationClips)
         {
             if (clip.name == "Shooter Gloom Windup")
-                _animator.SetFloat(WindupSpeedHash, clip.length / windupDuration);
+                _windupClipRate = clip.length / windupDuration;
             else if (clip.name == "Shooter Gloom Shoot")
-                _animator.SetFloat(ShootSpeedHash, clip.length / shootDuration);
+                _shootClipRate = clip.length / shootDuration;
             else if (clip.name == "Shooter Gloom PostShot")
-                _animator.SetFloat(PostShotSpeedHash, clip.length / postShotPause);
+                _postShotClipRate = clip.length / postShotPause;
         }
     }
 
@@ -127,8 +129,12 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     {
         if (dashJustEnded) EnterWindup(ref state);
 
+        // attackCooldownTimer: untouched — pacing between attack sequences, not execution speed.
+        // shooterStateTimer: scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own
+        // comment on the identical pattern. DashingAway needs no separate handling — HandleDash already
+        // applies EffectiveAttackSpeed live to the dash's own velocity.
         state.attackCooldownTimer -= delta;
-        state.shooterStateTimer   -= delta;
+        state.shooterStateTimer   -= delta * EffectiveAttackSpeed;
 
         var ss = GetShooterState(ref state);
 
@@ -139,6 +145,8 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 if (state.attackCooldownTimer <= 0f && TargetInRange())
                 {
                     state.shotsRemaining = shotsPerAttack;
+                    // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
+                    CaptureAttackAnchor(ref state);
                     float dist = Vector3.Distance(transform.position, _target.position);
                     if (dist < minAttackRange) EnterDashAway(ref state, dist);
                     else                        EnterWindup(ref state);
@@ -157,17 +165,32 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
             case ShooterState.Shooting:
                 if (state.shooterStateTimer <= 0f)
                 {
-                    if (state.shotsRemaining > 0) EnterBetweenShots(ref state);
-                    else                           EnterPostShot(ref state);
+                    // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the
+                    // shot that just finished above, but stops the chain from continuing into another one,
+                    // falling through to PostShot instead (see IsCrowdControlled's own doc comment).
+                    if (state.shotsRemaining > 0 && !IsCrowdControlled) EnterBetweenShots(ref state);
+                    else                                                EnterPostShot(ref state);
                 }
                 break;
 
             case ShooterState.BetweenShots:
                 // No minAttackRange re-check here — the dash-away decision is made once, up front in
                 // Moving (see below), and this multishot burst commits to firing all of shotsPerAttack
-                // regardless of how close the target gets in between shots.
+                // regardless of how close the target gets in between shots. Outside the ongoing window
+                // (ongoing ends the moment Shooting finishes) — safe to read live _target here.
                 if (state.shooterStateTimer <= betweenShotPause * 0.5f) FaceTargetSmooth(delta);
-                if (state.shooterStateTimer <= 0f) EnterWindup(ref state);
+                if (state.shooterStateTimer <= 0f)
+                {
+                    if (_target == null)
+                    {
+                        EnterPostShot(ref state);
+                    }
+                    else
+                    {
+                        CaptureAttackAnchor(ref state);
+                        EnterWindup(ref state);
+                    }
+                }
                 break;
 
             case ShooterState.PostShot:
@@ -218,7 +241,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     private void EnterWindup(ref State state)
     {
         state.shooterStateTimer = windupDuration;
-        SnapFaceTarget(ref state);
+        SnapFaceAnchor(ref state);
         SetShooterState(ref state, ShooterState.Windup);
     }
 
@@ -227,7 +250,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         state.shooterStateTimer = shootDuration;
         state.shotsRemaining--;
         SetShooterState(ref state, ShooterState.Shooting);
-        FireShots();
+        FireShots(ref state);
     }
 
     private void EnterBetweenShots(ref State state)
@@ -251,14 +274,23 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         SetShooterState(ref state, ShooterState.Moving);
     }
 
+    // Every Shooter phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
+    // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
+    // of shotsRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    protected override void OnInterrupted() => EnterMoving(ref currentState);
+
     // ── Firing ────────────────────────────────────────────────────────────────
 
-    private void FireShots()
+    // Aims at the captured attackAnchorPosition (see CaptureAttackAnchor's own doc comment), not live
+    // _target — this is the actual functional reason the anchor exists for Shooter specifically: unlike
+    // Leaper/Dagger's position-based self-centered AoEs, a shot is a genuinely directional projectile that
+    // WOULD visibly redirect toward a different player mid-windup if it read _target live.
+    private void FireShots(ref State state)
     {
-        if (projectilePrefab == null || _target == null) return;
+        if (projectilePrefab == null) return;
 
         Vector3 origin  = transform.position;
-        Vector3 baseDir = _target.position - origin;
+        Vector3 baseDir = state.b.attackAnchorPosition - origin;
         baseDir.y = 0f;
         baseDir.Normalize();
         if (baseDir == Vector3.zero) return;
@@ -289,6 +321,19 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         if (!gameObject.activeInHierarchy) return;
 
         var ss = (ShooterState)viewState.shooterStateId;
+
+        // Live, every frame regardless of the _lastVisualState-gated block below — see SpearGloomPD's own
+        // comment on the identical live-animator-speed pattern.
+        if (_animator != null)
+        {
+            if (ss == ShooterState.Windup)
+                _animator.SetFloat(WindupSpeedHash, _windupClipRate * EffectiveAttackSpeed);
+            else if (ss == ShooterState.Shooting)
+                _animator.SetFloat(ShootSpeedHash, _shootClipRate * EffectiveAttackSpeed);
+            else if (ss == ShooterState.PostShot)
+                _animator.SetFloat(PostShotSpeedHash, _postShotClipRate * EffectiveAttackSpeed);
+        }
+
         if (ss == _lastVisualState) return;
         _lastVisualState = ss;
 

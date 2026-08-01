@@ -59,6 +59,13 @@ public class WindupFillPD : MonoBehaviour
         Apply(0f);
     }
 
+    // Drives the fill directly off a caller-computed 0..1 progress value instead of this component's own
+    // self-timed StartFill/Update loop above — for callers whose underlying duration isn't fixed (e.g. an
+    // enemy's attack-speed-scaled windup, where a slow landing/expiring mid-windup changes how fast the
+    // real remaining time drains). Bypasses _filling entirely so the two driving modes never fight over the
+    // same frame — a caller should pick one mode per fill and stick to it.
+    public void SetProgress(float t01) => Apply(Mathf.Clamp01(t01));
+
     private void Update()
     {
         if (!_filling) return;

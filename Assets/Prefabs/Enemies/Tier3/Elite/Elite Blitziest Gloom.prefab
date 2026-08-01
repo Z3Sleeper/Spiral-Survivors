@@ -81,12 +81,8 @@ PrefabInstance:
       value: 18
       objectReference: {fileID: 0}
     - target: {fileID: 8155659428454058234, guid: 85488a841a962ae4a9a0ea80b412b47c, type: 3}
-      propertyPath: postBlitzPause
-      value: 0.32
-      objectReference: {fileID: 0}
-    - target: {fileID: 8155659428454058234, guid: 85488a841a962ae4a9a0ea80b412b47c, type: 3}
-      propertyPath: windupDuration
-      value: 0.32
+      propertyPath: blitzesPerAttack
+      value: 3
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

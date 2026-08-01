@@ -15,6 +15,15 @@ using UnityEngine;
 // deterministically, on every machine — same reasoning that already makes _onHighroll/_onHeal safe
 // elsewhere in this codebase).
 //
+// Crit-progress divide (2026-07-26): a naive "+1 per crit, need 3" blows up under high WeaponCount/
+// weaponTracks/Multishot — more simultaneous projectiles/weapons means more crit EVENTS for the same
+// number of actual attacks, so blades would summon far faster than intended for anyone stacking those
+// stats (Archer's multishot in particular). Each crit now increments by the SAME divisor Strength/
+// OnHitPower already auto-divide by (weaponTracks * WeaponCount * (1f + Multishot)), so total blade
+// output tracks actual attacks made, not raw crit event count. _critCount is a float for this reason —
+// overflow past critsNeeded is preserved via subtraction (not reset to 0), so fractional progress from a
+// high-division-count hit isn't discarded on the tick that finally crosses the threshold.
+//
 // Targeting deliberately does NOT use the crit event's own target payload (which enemy actually got hit)
 // — per the user's call, this targets the closest enemies instead, same convention as
 // PhantomBladePassiveAugment/PhantomBladeOnDashAugment, with bladeCount exposed the same way. The crit
@@ -27,13 +36,9 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
         public void Dispose() { }
     }
 
-    // Large enough to reliably reach enemies out at EnemySpawnerPD's own max spawn distance (40) with room
-    // to spare — not exposed as its own tunable, matching PhantomBladePassiveAugment/PhantomBladeOnDashAugment.
-    private const float TargetSearchRadius = 50f;
-
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
-    [SerializeField] private int   critsPerBlade = 3;
+    [SerializeField] private int   critsNeeded = 3;
     [SerializeField] private int   bladeCount = 1;
     [SerializeField] private float baseDamageMultiplier = 0.75f;
 
@@ -41,10 +46,12 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
 
     protected override void OnApply()
     {
-        // Matches old's exact size += 0.5f * phantomBladeDamageBonus ratio (OnSummon handler in both
-        // PhantomBladePassiveAugment and PhantomBladeOnCritAugment).
         Stats.AddPhantomBladeDamageBonus(phantomBladeDamageBonus);
-        Stats.AddPhantomBladeSizeBonus(0.5f * phantomBladeDamageBonus);
+        // Same additive amount as the damage bonus above — every Phantom Blade augment granting "+X%
+        // Phantom Blade Damage" grants the identical "+X% Phantom Blade Size" too (1:1, not a derived
+        // fraction — this used to be half the damage bonus, bumped to match it exactly). Only
+        // PhantomBladeSizeAugment itself touches the separate multiplicative Percent tier.
+        Stats.AddPhantomBladeSizeBonus(phantomBladeDamageBonus);
         Stats.AddCritStrikeListener(OnCritStrike);
     }
 
@@ -56,17 +63,20 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
 
     private void OnCritStrike(WeaponHitData data)
     {
-        if (++_critCount < critsPerBlade) return;
-        _critCount = 0;
+        _critCount += 1;
+        if (_critCount < critsNeeded) return;
+        _critCount -= critsNeeded;
 
         if (phantomBladePrefab == null) return;
 
-        // usePenalizedDamage: true — this augment's trigger frequency itself scales with WeaponCount (more
-        // weapons means more hits means more crits), unlike Passive/OnDash which trigger at a fixed rate.
-        // Using the WeaponCount-divided Strength here (instead of the family's usual
-        // UnpenalizedStrength) offsets that so total blade output stays flat as weapon count grows
-        // instead of ballooning — see PhantomBladeSummonHelper.SummonAtTarget's own comment.
+        // usePenalizedDamage: true, usePenalizedOnHitPower: true — this augment's trigger frequency itself
+        // scales with WeaponCount (more weapons means more hits means more crits), unlike Passive/OnDash
+        // which trigger at a fixed rate. Using the WeaponCount-divided Strength (blade damage) and
+        // WeaponCount-divided OnHitPower (this blade's own onhit-trigger power, if PhantomBladeOnHitAugment
+        // is active) instead of the family's usual Unpenalized variants offsets that so total output stays
+        // flat as weapon count grows instead of ballooning — see PhantomBladeSummonHelper.SummonAtTarget's
+        // own comment.
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, TargetSearchRadius, bladeCount, baseDamageMultiplier, usePenalizedDamage: true);
+            Stats.transform.position, bladeCount, baseDamageMultiplier, usePenalizedDamage: true, usePenalizedOnHitPower: true);
     }
 }

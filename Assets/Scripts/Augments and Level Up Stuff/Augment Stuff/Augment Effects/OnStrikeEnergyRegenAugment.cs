@@ -15,7 +15,7 @@ public class OnStrikeEnergyRegenAugment : AugmentEffectPD<OnStrikeEnergyRegenAug
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // 0.1f = 10% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
-    [SerializeField] private float onStrikeEnergyPercent = 0.1f;
+    [SerializeField] private float onStrikeEnergyRegenPercent = 0.1f;
 
     protected override void OnApply()
     {
@@ -30,8 +30,15 @@ public class OnStrikeEnergyRegenAugment : AugmentEffectPD<OnStrikeEnergyRegenAug
 
     private void OnStrike(WeaponHitData data)
     {
+        // No energy while already surging — this used to be able to feed its own Surge (strike during Surge
+        // -> gain energy -> Surge again immediately once it ends), which felt underwhelming at a low
+        // regen-to-onstrike ratio and outright overpowered (near-permanent Surge uptime) at a normal one.
+        // Blocking generation during Surge removes that self-sustain loop entirely rather than trying to
+        // find a "correct" ratio in between.
+        if (Stats.IsSurging) return;
+
         // Anything that deals/restores an amount rolls luck variance — no exceptions.
-        float baseGain = Stats.MaxEnergy * onStrikeEnergyPercent * data.onHitPower;
+        float baseGain = Stats.EnergyRegen * onStrikeEnergyRegenPercent * data.onHitPower;
         float rolled = WeaponDamageMath.RollDamage(baseGain, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
 

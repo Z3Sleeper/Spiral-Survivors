@@ -8,13 +8,17 @@ using UnityEngine;
 // PhantomBladeCarnivalAugment can spawn an exact duplicate without re-rolling luck variance. target uses
 // PredictedObjectID (not a raw IEnemyPD reference), matching WeaponHitData's own target field, so
 // listeners resolve it the same TryGetComponent<IEnemyPD>(predictionManager, ...) way OnHitDamageAugment
-// already does.
+// already does. usePenalizedOnHitPower/baseDamageMultiplier are carried along too so a Carnival copy of
+// e.g. a PBCrit-triggered summon uses the same penalized/unpenalized OnHitPower AND the same onhit-power
+// scale its original blade would — see SummonAtTarget's own doc comment for what these actually control.
 public struct PhantomBladeSummonData
 {
     public PredictedObjectID target;
     public float damage;
     public float size;
     public bool isCrit;
+    public bool usePenalizedOnHitPower;
+    public float baseDamageMultiplier;
 }
 
 // Shared by every Phantom Blade summoning augment — PhantomBladeOnCritAugment already knows its single
@@ -24,21 +28,33 @@ public struct PhantomBladeSummonData
 // each one carrying its own copy that could silently drift out of sync.
 public static class PhantomBladeSummonHelper
 {
-    private static readonly Collider[] _overlapResults = new Collider[32];
+    // Shared by every "closest enemies" Phantom Blade augment (Passive/OnDash/OnDamaged/OnCrit) — was
+    // duplicated as each augment's own local TargetSearchRadius const (all at 50f) before being centralized
+    // and reduced here (2026-07-26), so the whole family's effective range changes in one place from now on.
+    public const float TargetSearchRadius = 25f;
+
+    // Physics.OverlapSphereNonAlloc does NOT return colliders in distance order — it fills this buffer in
+    // whatever order the physics broad-phase happens to traverse, then simply stops once full. A "closest
+    // N" pick that only sorts AFTER the query silently breaks once the true candidate count exceeds this
+    // buffer size: some genuinely-closer enemies never even make it into the array, while a farther one
+    // that happened to be returned early can win the sort among only the truncated subset. 128 (up from a
+    // prior 32) makes this vastly less likely for a real 4-player swarm/boss-fight enemy count within
+    // searchRadius, at negligible extra cost (just array size, not real cost unless actually filled).
+    private static readonly Collider[] _overlapResults = new Collider[128];
     private static readonly List<IEnemyPD> _found = new();
 
-    // Finds up to `summonCount` closest, unique, alive enemies within `searchRadius` of `origin` and
+    // Finds up to `summonCount` closest, unique, alive enemies within TargetSearchRadius of `origin` and
     // summons one blade at each — nearest first. If fewer valid enemies exist than `summonCount`, the
     // excess blades all target the closest one (index 0) instead, per the family's stated design (unique
     // targets are preferred, but never wasting a summon just because targets ran out).
     public static void SummonAtClosestEnemies(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, Vector3 origin, float searchRadius, int summonCount, float baseDamageMultiplier,
-        bool usePenalizedDamage = false)
+        CharacterStatsPD stats, Vector3 origin, int summonCount, float baseDamageMultiplier,
+        bool usePenalizedDamage = false, bool usePenalizedOnHitPower = false)
     {
         if (phantomBladePrefab == null || summonCount <= 0) return;
 
         _found.Clear();
-        int n = Physics.OverlapSphereNonAlloc(origin, searchRadius, _overlapResults, CombatLayerMasks.EnemyHurtboxMask);
+        int n = Physics.OverlapSphereNonAlloc(origin, TargetSearchRadius, _overlapResults, CombatLayerMasks.EnemyHurtboxMask);
         for (int i = 0; i < n; i++)
         {
             var enemy = _overlapResults[i].GetComponent<IEnemyPD>();
@@ -53,7 +69,8 @@ public static class PhantomBladeSummonHelper
         for (int i = 0; i < summonCount; i++)
         {
             var target = _found[i < _found.Count ? i : 0];
-            SummonAtTarget(hierarchy, phantomBladePrefab, stats, target, baseDamageMultiplier, usePenalizedDamage: usePenalizedDamage);
+            SummonAtTarget(hierarchy, phantomBladePrefab, stats, target, baseDamageMultiplier,
+                usePenalizedDamage: usePenalizedDamage, usePenalizedOnHitPower: usePenalizedOnHitPower);
         }
     }
 
@@ -62,13 +79,14 @@ public static class PhantomBladeSummonHelper
     // explicitly suppressed) so PhantomBladeCarnivalAugment (or any future listener) can react.
     public static void SummonAtTarget(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
         CharacterStatsPD stats, IEnemyPD target, float baseDamageMultiplier, bool notifySummon = true,
-        bool usePenalizedDamage = false)
+        bool usePenalizedDamage = false, bool usePenalizedOnHitPower = false)
     {
         // Two separate multiplicative layers, not one combined pool — every non-size Phantom Blade
         // augment's own +size% sums additively into phantomBladeSizeBonus first, then
         // phantomBladeSizeBonusPercent (PhantomBladeSizeAugment's own bonus) scales that already-combined
-        // total, then phantomBladeSizePenalty (e.g. PhantomBladeCarnivalAugment's own tradeoff) scales it
-        // down again. Same shape as the damage calc below.
+        // total, then phantomBladeSizePenalty scales it down again for any future tradeoff augment that
+        // wants one (nothing currently calls MultiplyPhantomBladeSizePenalty — PhantomBladeCarnivalAugment's
+        // own tradeoff only touches the DAMAGE penalty, not this one). Same shape as the damage calc below.
         float size = (1f + stats.phantomBladeSizeBonus) * stats.phantomBladeSizeBonusPercent * stats.phantomBladeSizePenalty;
 
         float rolled = WeaponDamageMath.RollDamage(baseDamageMultiplier, stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, out bool isHighroll);
@@ -85,34 +103,38 @@ public static class PhantomBladeSummonHelper
         // again for tradeoff augments like PhantomBladeCarnivalAugment.
         //
         // usePenalizedDamage picks between UnpenalizedStrength (no WeaponCount divide) and Strength
-        // (divides by WeaponCount) as the base. Passive/OnDash trigger at a fixed rate independent of
-        // WeaponCount, so they use the undivided total same as always. OnCrit is the one exception — its
-        // trigger frequency itself scales with WeaponCount (more weapons = more hits = more crits), so
-        // pairing that with undivided damage would make total blade output balloon with more weapons
-        // instead of holding flat the way weapon damage itself does; PhantomBladeOnCritAugment opts into
-        // the divided Strength to offset its own trigger-rate scaling.
+        // (divides by WeaponCount) as the base — this is always Strength, never OnHitPower; a blade's own
+        // damage stays weapon-adjacent regardless of what summoned it. Passive/OnDash trigger at a fixed
+        // rate independent of WeaponCount, so they use the undivided total same as always. OnCrit is the
+        // one exception — its trigger frequency itself scales with WeaponCount (more weapons = more hits =
+        // more crits), so pairing that with undivided damage would make total blade output balloon with
+        // more weapons instead of holding flat the way weapon damage itself does; PhantomBladeOnCritAugment
+        // opts into the divided Strength to offset its own trigger-rate scaling.
         float strengthBase = usePenalizedDamage ? stats.Strength : stats.UnpenalizedStrength;
         float damage = rolled * strengthBase
             * (1f + stats.phantomBladeDamageBonus) * stats.phantomBladeDamageBonusPercent * stats.phantomBladeDamagePenalty;
 
-        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit);
+        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, usePenalizedOnHitPower, baseDamageMultiplier);
 
         // Structurally recursion-proof, not just guarded: SummonCopyAtTarget (below) never calls back into
         // SummonAtTarget, so there is no path from a copy back into this notify no matter how many
         // "hit summon, do something" listeners end up subscribed.
         if (notifySummon)
-            stats.NotifyPhantomBladeSummon(new PhantomBladeSummonData { target = target.ObjectId, damage = damage, size = size, isCrit = isCrit });
+            stats.NotifyPhantomBladeSummon(new PhantomBladeSummonData { target = target.ObjectId, damage = damage, size = size, isCrit = isCrit, usePenalizedOnHitPower = usePenalizedOnHitPower, baseDamageMultiplier = baseDamageMultiplier });
     }
 
     // "Exact copy" of an already-resolved primary summon — same damage/size/crit status (no fresh roll),
     // but a brand new random radial offset (via SpawnBlade below) so it visibly flies in from a different
-    // direction. Deliberately never notifies _onPhantomBladeSummon itself, and deliberately doesn't accept
-    // a baseDamageMultiplier to roll its own damage — PhantomBladeCarnivalAugment calls this specifically
-    // so its own secondary blade can't recursively trigger another copy.
+    // direction. Deliberately never notifies _onPhantomBladeSummon itself, and deliberately doesn't roll
+    // its own fresh damage — PhantomBladeCarnivalAugment calls this specifically so its own secondary blade
+    // can't recursively trigger another copy. usePenalizedOnHitPower/baseDamageMultiplier are carried over
+    // from the original summon's PhantomBladeSummonData so the copy's own onhit-trigger power (if
+    // PhantomBladeOnHitAugment is active) matches whichever augment originally summoned it exactly.
     public static void SummonCopyAtTarget(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit)
+        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit, bool usePenalizedOnHitPower,
+        float baseDamageMultiplier)
     {
-        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit);
+        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, usePenalizedOnHitPower, baseDamageMultiplier);
     }
 
     // Fixed-radius, random-angle offset around the target — matches old (Random.insideUnitCircle.normalized
@@ -120,7 +142,8 @@ public static class PhantomBladeSummonHelper
     // convention as KingSpikePD's remote-burst offset. Shared by both the primary and copy paths, so every
     // call (including a Carnival copy of the same primary summon) independently rolls its own fresh angle.
     private static void SpawnBlade(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit)
+        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit, bool usePenalizedOnHitPower,
+        float baseDamageMultiplier)
     {
         float radius = PhantomBladePD.BaseSpawnRadius * size;
         float angle     = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
@@ -132,6 +155,6 @@ public static class PhantomBladeSummonHelper
         if (!id.HasValue) return;
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out PhantomBladePD blade))
-            blade.Summon(stats, damage, size, isCrit);
+            blade.Summon(stats, damage, size, isCrit, usePenalizedOnHitPower, baseDamageMultiplier);
     }
 }

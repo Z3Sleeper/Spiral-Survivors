@@ -15,12 +15,10 @@ MonoBehaviour:
   displayName: <color=#8C8C8C>Phantom</color> <color=#FF0000>Crit</color>
   description: '<color=#FFA000>Every third <color=#FF0000>Crit</color> Strike:</color>
     <color=#FFA000>Summon</color> a <color=#8C8C8C>Phantom Blade</color> piercing
-    the nearest enemy for <color=#FF5000>90%<color=#00FF87>*</color> Strength</color>.
+    the nearest enemy for <color=#FF5000>90% Strength</color>.
 
     <color=#8C8C8C>+10%
-    Phantom Blade Damage</color>
-
-    <color=#00FF87>*Affected by Luck*</color>'
+    Phantom Blade Damage and Size</color>'
   icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   effectPrefab: {fileID: 5535341184026080922, guid: d1a0e5aea57cad3459af3cf6a77645c1, type: 3}
   multiplayerOnly: 0
@@ -30,6 +28,6 @@ MonoBehaviour:
   requiredCount: 2147483647
   requiredAugments: []
   tags:
-  - Phantom Blade Generator
+  - Phantom Blade
   requiredTags: []
   incompatibleTags: []

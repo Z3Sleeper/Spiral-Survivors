@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1d157a5ebd22ede44afa9c553acbb735, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiShotAugment
-  bonusShots: 2
-  damagePenalty: 0.55
-  onHitPenalty: 0.55
+  bonusMultishotFlat: 2
+  totalStrengthPercent: 0.2
+  totalOnHitPowerPercent: 0.2

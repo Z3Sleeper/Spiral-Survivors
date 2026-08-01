@@ -12,56 +12,89 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 009657d7a5a7e3844b9ada055b0289d0, type: 3}
   m_Name: ArcherPassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
+  classDescription: Projectiles pierce but lose 10% Total Damage/On-Hit Power each
+    hit.
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0
-  bonusWeaponDamageFlat: 0
-  bonusWeaponDamagePercent: 0
-  bonusWeaponDamagePenalty: 0
+  totalMoveSpeedPercent: 0
+  totalMoveSpeedPenalty: 0
+  bonusStrengthFlat: 0
+  bonusStrengthPercent: 0
+  bonusStrengthPenalty: 0
+  totalStrengthPercent: 0
+  totalStrengthPenalty: 0
   bonusWeaponRadiusFlat: 0
   bonusWeaponRadiusPercent: 0
-  attackSpeedPercent: 0
+  totalWeaponRadiusPercent: 0
+  totalWeaponRadiusPenalty: 0
+  attackSpeedFlat: 0
   attackSpeedTotalPercent: 0
   attackSpeedPenalty: 0
   bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
-  bonusWeaponRangeFlat: 10
+  bonusWeaponRangeFlat: 0
   bonusWeaponRangePercent: 0
   weaponRangePenalty: 0
-  bonusWeaponSizePercent: 0
+  totalWeaponRangePercent: 0
+  totalWeaponRangePenalty: 0
   bonusSizePercent: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 0
+  totalCritChancePercent: 0
+  totalCritChancePenalty: 0
   bonusCritDamageFlat: 0
   bonusCritDamagePercent: 0
   bonusRicochetFlat: 0
   bonusRicochetPercent: 0
+  totalRicochetPercent: 0
+  totalRicochetPenalty: 0
   bonusMultishotFlat: 0
   bonusMultishotPercent: 0
+  totalMultishotPercent: 0
+  totalMultishotPenalty: 0
   projectileDamageDropoffReduction: 0
   projectileOnHitDropoffReduction: 0
+  fireRateFlat: 0
+  fireRateTotalPercent: 0
+  fireRateTotalPenalty: 0
+  projectileSpeedFlat: 0
+  projectileSpeedTotalPercent: 0
+  projectileSpeedTotalPenalty: 0
   bonusMaxHealthFlat: 0
   bonusMaxHealthPercent: 0
+  totalMaxHealthPercent: 0
+  totalMaxHealthPenalty: 0
   bonusHealthRegenFlat: 0
   bonusHealthRegenPercent: 0
-  bonusMaxShieldFlat: 0
-  bonusMaxShieldPercent: 0
+  totalHealthRegenPercent: 0
+  totalHealthRegenPenalty: 0
+  bonusMaxShieldAdditive: 0
+  totalMaxShieldPercent: 0
+  totalMaxShieldPenalty: 0
   bonusMaxEnergyFlat: 0
   bonusMaxEnergyPercent: 0
   bonusEnergyRegenFlat: 0
   bonusEnergyRegenPercent: 0
   energyRegenPenalty: 0
+  totalEnergyRegenPercent: 0
+  totalEnergyRegenPenalty: 0
   bonusSurgeCostFlat: 0
   bonusSurgeCostPercent: 0
-  surgeEffectiveness: 1
-  surgeEffectivenessPenalty: 0
   surgeAttackSpeedPenalty: 0
   dashHaste: 0
-  bonusMaxSPFlat: 0
-  bonusMaxSPPercent: 0
+  bonusDashHastePercent: 0
+  totalDashHastePercent: 0
+  totalDashHastePenalty: 0
+  abilityHaste: 0
+  bonusAbilityHastePercent: 0
+  totalAbilityHastePercent: 0
+  totalAbilityHastePenalty: 0
   bonusLuckFlat: 0
   bonusLuckPercent: 0
   luckPenalty: 0
+  totalLuckPercent: 0
+  totalLuckPenalty: 0
   bonusLuckFloorPercent: 0
   luckFloorPenalty: 0
   bonusLuckCeilingPercent: 0
@@ -74,6 +107,8 @@ MonoBehaviour:
   knockbackPenalty: 0
   bonusOnHitPowerMultiplier: 1
   bonusOnHitPowerPenalty: 0
+  totalOnHitPowerPercent: 0
+  totalOnHitPowerPenalty: 0
   stackPowerPercent: 0
   stackPowerPenalty: 0
   xpMultiplier: 0
@@ -86,4 +121,4 @@ MonoBehaviour:
   damageReductionPercent: 0
   damageReductionPenalty: 0
   passiveAugments:
-  - {fileID: 11400000, guid: 94fa35a120eb4bb4380c81ffda61a684, type: 2}
+  - {fileID: 11400000, guid: 458061ebe64d57245b6cd1b6c58eedc6, type: 2}

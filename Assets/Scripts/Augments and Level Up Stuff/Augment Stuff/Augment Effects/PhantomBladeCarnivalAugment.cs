@@ -15,12 +15,10 @@ public class PhantomBladeCarnivalAugment : AugmentEffectPD<PhantomBladeCarnivalA
 
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private float phantomBladeDamagePenalty = 0.35f;
-    [SerializeField] private float phantomBladeSizePenalty   = 0.35f;
 
     protected override void OnApply()
     {
         Stats.MultiplyPhantomBladeDamagePenalty(1f - phantomBladeDamagePenalty);
-        Stats.MultiplyPhantomBladeSizePenalty(1f - phantomBladeSizePenalty);
         Stats.AddPhantomBladeSummonListener(OnPhantomBladeSummon);
     }
 
@@ -35,6 +33,6 @@ public class PhantomBladeCarnivalAugment : AugmentEffectPD<PhantomBladeCarnivalA
         if (phantomBladePrefab == null) return;
         if (!data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy) || enemy._isDead) return;
 
-        PhantomBladeSummonHelper.SummonCopyAtTarget(hierarchy, phantomBladePrefab, Stats, enemy, data.damage, data.size, data.isCrit);
+        PhantomBladeSummonHelper.SummonCopyAtTarget(hierarchy, phantomBladePrefab, Stats, enemy, data.damage, data.size, data.isCrit, data.usePenalizedOnHitPower, data.baseDamageMultiplier);
     }
 }

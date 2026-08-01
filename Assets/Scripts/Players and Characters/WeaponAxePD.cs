@@ -23,16 +23,16 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     [Header("Zone Half-Extents (normalized, multiplied by weapon scale)")]
     [SerializeField] private float innerXExtent = 0.1f;
-    [SerializeField] private float outerXExtent = 0.375f;
+    [SerializeField] private float outerXZExtent = 0.375f;
     [SerializeField] private float yExtent = 0.1f;
 
     [SerializeField] [Range(0f, 1f)] private float handleRatio = 0.6f;
-    [SerializeField] private float outerXRangeScaleRatio = 0.75f;
+    [SerializeField] private float outerXZRangeScaleRatio = 0.75f;
     [SerializeField] private Transform outerBladeVisual;
     // Rescales outerBladeVisual's local width to visually match the outer zone's actual extent as
     // WeaponRange changes — purely cosmetic, weapon-specific, not a character stat (unlike the old
     // system, where this lived on CharacterStats).
-    [SerializeField] private bool outerXScalesWithRange = false;
+    [SerializeField] private bool outerXZScalesWithRange = false;
 
     [Header("Handle Damage")]
     [SerializeField] private float innerDamageMultiplier = 0.5f;
@@ -41,6 +41,13 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     private bool _initialized;
     private float _baseOuterBladeLocalScaleX;
+    // Cached alongside X (see Awake()) so OuterXZMultiplier can scale the visual mesh's Z too, matching
+    // ComputeZones's own capsuleRadius treatment — read fresh from this cached base each frame in
+    // UpdateOuterBladeVisual(), never from the transform's own current (already-scaled) value, or repeated
+    // calls would compound the multiplier geometrically instead of applying it once. Y is deliberately left
+    // alone (no cache needed) — OuterXZMultiplier only ever scales X/Z (a bigger axehead reaching wider and
+    // further), never Y (which would just make it thicker, not bigger).
+    private float _baseOuterBladeLocalScaleZ;
 
     private readonly RaycastHit[] _innerSweep   = new RaycastHit[16];
     private readonly RaycastHit[] _outerSweep   = new RaycastHit[16];
@@ -63,7 +70,12 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     private void Awake()
     {
-        if (outerBladeVisual != null) _baseOuterBladeLocalScaleX = outerBladeVisual.localScale.x;
+        if (outerBladeVisual != null)
+        {
+            var s = outerBladeVisual.localScale;
+            _baseOuterBladeLocalScaleX = s.x;
+            _baseOuterBladeLocalScaleZ = s.z;
+        }
     }
 
     protected override void LateAwake()
@@ -117,7 +129,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         // WeaponMeleePD.LateSimulate's own angleSign comment for the full reasoning.
         float   angleSign   = IsOuterTrack ? -1f : 1f;
         float   currentAngle = angleSign * _stats.WeaponOrbitAngle;
-        Vector3 origin = _stats.transform.position;
+        Vector3 origin = _stats.EffectiveOrbitOrigin;
         Vector3 orbitPos = OrbitalPosition(currentAngle, origin);
         Vector3 outward  = orbitPos - origin;
         if (outward == Vector3.zero) return;
@@ -157,7 +169,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                 Vector3 stepOutward = stepPos - origin;
                 if (stepOutward == Vector3.zero) continue;
 
-                transform.SetPositionAndRotation(stepPos, Quaternion.LookRotation(stepOutward));
+                transform.SetPositionAndRotation(ApplyHeightLift(stepPos), Quaternion.LookRotation(stepOutward));
                 var newSegZones = ComputeZones(hb);
 
                 Vector3 innerDelta = newSegZones.innerCenter - segZones.innerCenter;
@@ -215,7 +227,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         }
         else
         {
-            transform.SetPositionAndRotation(orbitPos, Quaternion.LookRotation(outward));
+            transform.SetPositionAndRotation(ApplyHeightLift(orbitPos), Quaternion.LookRotation(outward));
             zones = ComputeZones(hb);
         }
 
@@ -254,18 +266,22 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         // cooldown clears, no need to actually separate first. HitCooldown is a fraction of a full weapon
         // rotation, which is enough on its own to handle continuous-overlap cases sanely. An enemy
         // overlapping both zones this tick still counts as an outer hit (outer wins the tie-break).
-        foreach (var enemy in _touchedThisTick)
+        // Skipped entirely while _stats.IsWeaponsDisabled — see WeaponMeleePD's own equivalent comment.
+        if (!_stats.IsWeaponsDisabled)
         {
-            if (HitCooldownMath.TryStart(state.hitCooldowns, enemy.ObjectId, HitCooldown, delta))
-                Hit(enemy, _outerHitsThisTick.Contains(enemy));
-        }
-
-        if (detectAllies)
-        {
-            foreach (var ally in _touchedAlliesThisTick)
+            foreach (var enemy in _touchedThisTick)
             {
-                if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
-                    HitAlly(ally, _outerAlliesThisTick.Contains(ally));
+                if (HitCooldownMath.TryStart(state.hitCooldowns, enemy.ObjectId, HitCooldown, delta))
+                    Hit(enemy, _outerHitsThisTick.Contains(enemy));
+            }
+
+            if (detectAllies)
+            {
+                foreach (var ally in _touchedAlliesThisTick)
+                {
+                    if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
+                        HitAlly(ally, _outerAlliesThisTick.Contains(ally));
+                }
             }
         }
 
@@ -283,20 +299,31 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         float sx = hb.lossyScale.x;
         float sy = hb.lossyScale.y;
 
+        // Null-guarded, not a plain _stats.OuterXZMultiplier read — OnDrawGizmos() below calls ComputeZones()
+        // directly, unguarded, which can run in the editor before this weapon's own _stats has ever been
+        // resolved (e.g. viewing the prefab in isolation, not in a live scene).
+        float outerXZMultiplier = _stats != null ? _stats.OuterXZMultiplier : 1f;
+
         Vector3 innerCenter = hb.position - hb.forward * bladeHZ;
         Vector3 outerCenter = hb.position + hb.forward * handleHZ;
-        float outerX = outerXScalesWithRange
-            ? outerXExtent * Mathf.Lerp(sx, fullRange, outerXRangeScaleRatio)
-            : outerXExtent * sx;
-        float capsuleRadius     = bladeHZ;
-        float capsuleHalfHeight = Mathf.Max(0f, outerX - capsuleRadius);
+        float outerXZ = (outerXZScalesWithRange
+            ? outerXZExtent * Mathf.Lerp(sx, fullRange, outerXZRangeScaleRatio)
+            : outerXZExtent * sx) * outerXZMultiplier;
+        // capsuleRadius scaled by the SAME multiplier as outerXZ — a capsule's radius is its reach in every
+        // direction perpendicular to its own segment (forward/back along hb.forward, up/down along hb.up),
+        // so scaling only outerXZ (the segment's own half-length, i.e. how far apart the two end-spheres
+        // sit) just stretches the zone sideways into a thin bar without growing it, rather than growing the
+        // whole outer zone proportionally the way a bigger axehead actually should look/hit. See
+        // UpdateOuterBladeVisual's own matching Y/Z scale for why the visual needs the identical treatment.
+        float capsuleRadius     = bladeHZ * outerXZMultiplier;
+        float capsuleHalfHeight = Mathf.Max(0f, outerXZ - capsuleRadius);
 
         // Extends the capsule's own forward reach to match hitboxTip's visual reach — same technique as
         // WeaponMeleePD's box (see GetHitboxTipExtraReach's own comment): shifting outerCenter forward and
         // growing capsuleRadius by the same half-extra-reach amount nets a far edge exactly tipExtra
         // further out while the near edge (relative to outerCenter) stays fixed, the shift terms cancelling
         // out identically to the melee case. Applied after capsuleHalfHeight above so it doesn't feed back
-        // into the outerX-derived side width. Growing capsuleRadius does also widen the capsule's reach
+        // into the outerXZ-derived side width. Growing capsuleRadius does also widen the capsule's reach
         // perpendicular to hb.right (up/down and past the endpoints) slightly, an unavoidable consequence
         // of a capsule's radius being uniform in every direction perpendicular to its own line segment —
         // no separate "length" knob exists the way a box's half-extents give per-axis independence. 0 when
@@ -318,10 +345,11 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     protected override void UpdateView(State viewState, State? verified)
     {
         if (!_initialized) TryInit();
+        ApplyVisualAdjustments();
 
         // Purely cosmetic (outer blade visual width) — render rate, not simulation, since it has no
         // gameplay effect and doesn't need to be replay-consistent.
-        if (outerXScalesWithRange && outerBladeVisual != null && _stats != null)
+        if (outerXZScalesWithRange && outerBladeVisual != null && _stats != null)
             UpdateOuterBladeVisual();
     }
 
@@ -330,16 +358,28 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         Transform hb = hitboxTarget != null ? hitboxTarget : transform;
         float fullRange = _stats.WeaponRange;
         float sx = hb.lossyScale.x;
-        float outerX = outerXExtent * Mathf.Lerp(sx, fullRange, outerXRangeScaleRatio);
-        float baseOuter = outerXExtent * sx;
-        float hitboxRatio = baseOuter > 0f ? outerX / baseOuter : 1f;
+        float outerXZ = outerXZExtent * Mathf.Lerp(sx, fullRange, outerXZRangeScaleRatio);
+        float baseOuter = outerXZExtent * sx;
+        float hitboxRatio = baseOuter > 0f ? outerXZ / baseOuter : 1f;
         // rangeScaleTarget's X is already multiplied by parentXRatio via ScaleModel — divide it out.
         float parentXRatio = xRangeScaleRatio > 0f
             ? Mathf.Lerp(1f, fullRange / Mathf.Max(0.001f, designOrbit * transform.localScale.z), xRangeScaleRatio)
             : 1f;
         float localRatio = parentXRatio > 0.001f ? hitboxRatio / parentXRatio : hitboxRatio;
-        var vs = outerBladeVisual.localScale;
-        outerBladeVisual.localScale = new Vector3(_baseOuterBladeLocalScaleX * localRatio, vs.y, vs.z);
+        // OuterXZMultiplier applied here, at the end, rather than folded into outerXZ/baseOuter above — both
+        // of those would need it equally (it's flat, not range-driven), so baking it into the ratio between
+        // them would just cancel it right back out. Matches ComputeZones's own read of the same stat, so
+        // the visual can never drift out of sync with the actual hitbox capsule. Z scales from it too now
+        // (not just X) — same "grow the whole outer zone proportionally, not just stretch it sideways"
+        // reasoning as ComputeZones's own capsuleRadius fix; read from the cached _baseOuterBladeLocalScaleZ
+        // (set once in Awake()), never the transform's own current scale, or this would compound every
+        // frame. Y is deliberately left as the transform's own current value, untouched — OuterXZMultiplier
+        // only ever grows X/Z (a bigger axehead reaching wider and further), never Y (thickness).
+        Vector3 vs = outerBladeVisual.localScale;
+        outerBladeVisual.localScale = new Vector3(
+            _baseOuterBladeLocalScaleX * localRatio * _stats.OuterXZMultiplier,
+            vs.y,
+            _baseOuterBladeLocalScaleZ * _stats.OuterXZMultiplier);
     }
 
     // ── Hit ───────────────────────────────────────────────────────────────────

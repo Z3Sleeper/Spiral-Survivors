@@ -18,11 +18,17 @@ public class RadiusIndicatorVFXPD : PredictedIdentity<RadiusIndicatorVFXPD.State
         public void Dispose() { }
     }
 
+    // Self-contained, not caller-supplied — this VFX owns its own playback timing, same convention as any
+    // other prefab-authored effect (particle systems/animations tune their own duration on the asset, not
+    // via a gameplay parameter threaded in from whatever triggered them). Callers only ever supply what's
+    // actually gameplay-derived: the radius.
+    [SerializeField] private float duration = 0.1f;
+
     private float _radius;
 
     // Called immediately after hierarchy.Create() returns — same "mutate currentState right after Create()"
     // pattern as every other spawned effect in this codebase (RemoteSpikeBurstPD.Launch(), XPOrbPD.SetValue()).
-    public void Launch(float radius, float duration)
+    public void Launch(float radius)
     {
         _radius = radius;
         currentState.timer = duration;
@@ -34,6 +40,7 @@ public class RadiusIndicatorVFXPD : PredictedIdentity<RadiusIndicatorVFXPD.State
     protected override void Simulate(ref State state, float delta)
     {
         if (state.expired) return;
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         state.timer -= delta;
         if (state.timer <= 0f) state.expired = true;
     }

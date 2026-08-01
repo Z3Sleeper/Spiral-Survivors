@@ -21,6 +21,14 @@ public class SurgeWeaponCountAugment : AugmentEffectPD<SurgeWeaponCountAugment.S
     // onhit-triggered effects need different tuning than raw weapon damage.
     [SerializeField] private float totalOnHitPowerPercent = 0.3f;
 
+    // Plain, not State — mutated only from PredictedEvent listener callbacks, same role/reasoning as
+    // SurgeEndMoveSpeedAugment's own _bonusActive. Without this, picking this augment WHILE already Surging
+    // subscribes to both events but misses the OnSurgeStarted that already fired for the current Surge — so
+    // when that Surge ends, OnSurgeEnded still fires and unconditionally DIVIDES/subtracts a bonus that was
+    // never actually granted, corrupting WeaponCount/Strength/OnHitPower (this was the "picking it mid-surge
+    // wipes all my weapons" bug).
+    private bool _surgeBonusGranted;
+
     protected override void OnApply()
     {
         Stats.AddSurgeStartedListener(OnSurgeStarted);
@@ -39,6 +47,9 @@ public class SurgeWeaponCountAugment : AugmentEffectPD<SurgeWeaponCountAugment.S
 
     private void OnSurgeStarted()
     {
+        if (_surgeBonusGranted) return;
+        _surgeBonusGranted = true;
+
         Stats.MultiplyWeaponCountMultiplier(bonusWeaponCountMultiplier);
         Stats.AddStrengthTotalPercent(totalStrengthPercent);
         // Same additive-into-1f Total-tier pattern as AddStrengthTotalPercent — exactly inverted on Surge
@@ -48,6 +59,9 @@ public class SurgeWeaponCountAugment : AugmentEffectPD<SurgeWeaponCountAugment.S
 
     private void OnSurgeEnded()
     {
+        if (!_surgeBonusGranted) return;
+        _surgeBonusGranted = false;
+
         Stats.DivideWeaponCountMultiplier(bonusWeaponCountMultiplier);
         Stats.AddStrengthTotalPercent(-totalStrengthPercent);
         Stats.AddOnHitPowerTotalPercent(-totalOnHitPowerPercent);

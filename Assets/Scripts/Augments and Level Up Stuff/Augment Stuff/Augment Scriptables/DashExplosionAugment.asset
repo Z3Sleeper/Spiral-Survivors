@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: DashExplosionAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF5000>Explosive</color> <color=#00FFFF>Entrance</color>
-  description: '<color=#FFA000>On <color=#00FFFF>Dash</color> End:</color> Deal <color=#FF5000>200%<color=#00FF87>*</color>
-    unpenalized Strength</color> and trigger <color=#FFA000>On-Hit Effects</color>
-    at <color=#FFA000>200%<color=#00FF87>*</color> On-Hit Power</color> to all nearby
-    enemies.
+  description: '<color=#FFA000>(AoE Effect) On <color=#00FFFF>Dash</color> End:</color>
+    Deal <color=#FF5000>200% unpenalized Strength</color> and trigger <color=#FFA000>On-Hit
+    Effects</color> at <color=#FFA000>200% On-Hit Power</color> on all nearby enemies.
 
-    <color=#00FF87>*Affected by Luck*</color>'
+    <color=#FFBE50><i>Damage
+    scales with AoE Power</i></color>'
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   effectPrefab: {fileID: 3922366251959986115, guid: a6f2b8790a9fdc0459a00805e92228f8, type: 3}
   multiplayerOnly: 0
@@ -27,6 +27,7 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  tags: []
+  tags:
+  - AoE Effect
   requiredTags: []
   incompatibleTags: []

@@ -13,10 +13,7 @@ MonoBehaviour:
   m_Name: OnHitHealHealthRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Therapeutic Strikes</color>
-  description: '<color=#7DFF00>Heal 10%<color=#00FF87>*</color> Health Regen</color>
-    <color=#FFA000>On-Hit</color>.
-
-    <color=#00FF87>*Affected by Luck*</color>'
+  description: <color=#FFA000>On-Hit:</color> <color=#7DFF00>Heal 10% Health Regen</color>.
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   effectPrefab: {fileID: 4271127026077503740, guid: 1e3887ea2479e1f4a9d45183236aac46, type: 3}
   multiplayerOnly: 0

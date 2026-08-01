@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using PurrNet;
+using PurrNet.Packing;
 using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
@@ -45,7 +46,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     public static event System.Action<int, bool> OnPresentingTimerChanged;
 
 
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public int levelBeingProcessed;
         public bool isPresenting;
@@ -65,6 +66,17 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         {
             picks.Dispose();
             pickedAugments.Dispose();
+        }
+
+        // Was missing entirely — every rollback snapshot fell back to the slow serialize/deserialize
+        // round-trip instead of this cheap direct field-copy. See EnemyBaseState.Duplicate's own doc
+        // comment for the full reasoning.
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.picks = picks.Duplicate();
+            copy.pickedAugments = pickedAugments.Duplicate();
+            return copy;
         }
     }
 
@@ -583,16 +595,35 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         return metCount >= needed;
     }
 
-    // Every tag must have at least one already-picked augment carrying it — matched by exact string
-    // equality against AugmentData.tags, not tied to any specific augment by name, so a new augment
-    // carrying an existing tag automatically satisfies any requirement for that tag without needing to be
-    // individually added anywhere.
+    // Every tag must be carried by either an already-picked augment, or the player's own class ability
+    // (abilities are "always picked" from match start — no augment card needed) — matched by exact string
+    // equality against AugmentData.tags/IAbilityPD.Tags, not tied to any specific augment by name, so a new
+    // augment (or ability) carrying an existing tag automatically satisfies any requirement for that tag
+    // without needing to be individually added anywhere.
     private bool HasPickedAugmentForEachTag(string[] requiredTags, PlayerID player)
     {
         if (requiredTags == null || requiredTags.Length == 0) return true;
 
+        // GetComponents, not GetComponent — a character can carry both an Ability1-slot and an Ability2-slot
+        // component (e.g. Rogue's RogueSpinAbilityPD + RogueVanishAbilityPD), and a plain single
+        // GetComponent would only ever surface one of them, silently missing whichever one actually carries
+        // the tag.
+        IAbilityPD[] abilities = null;
+        if (CharacterStatsPD.All.TryGetValue(player, out var stats))
+            abilities = stats.GetComponents<IAbilityPD>();
+
+        bool HasAbilityTag(string tag)
+        {
+            if (abilities == null) return false;
+            foreach (var ability in abilities)
+                if (ability?.Tags != null && System.Array.IndexOf(ability.Tags, tag) >= 0) return true;
+            return false;
+        }
+
         foreach (var tag in requiredTags)
         {
+            if (HasAbilityTag(tag)) continue;
+
             bool found = false;
             for (int i = 0; i < currentState.pickedAugments.Count && !found; i++)
             {

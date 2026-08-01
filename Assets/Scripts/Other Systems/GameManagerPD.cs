@@ -1,4 +1,5 @@
 using PurrNet;
+using PurrNet.Packing;
 using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
@@ -14,7 +15,7 @@ public struct PlayerSetupTimer
 
 public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public bool gameStarted;
         public float currentXP;
@@ -53,6 +54,18 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
             readyPlayers.Dispose();
             endReadyPlayers.Dispose();
             setupTimers.Dispose();
+        }
+
+        // Was missing entirely — every rollback snapshot fell back to the slow serialize/deserialize
+        // round-trip instead of this cheap direct field-copy. See EnemyBaseState.Duplicate's own doc
+        // comment for the full reasoning.
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.readyPlayers = readyPlayers.Duplicate();
+            copy.endReadyPlayers = endReadyPlayers.Duplicate();
+            copy.setupTimers = setupTimers.Duplicate();
+            return copy;
         }
     }
 

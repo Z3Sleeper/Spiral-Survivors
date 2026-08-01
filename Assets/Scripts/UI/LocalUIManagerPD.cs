@@ -25,13 +25,33 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private GameObject statsUIExpanded;
     [SerializeField] private TextMeshProUGUI statsWordsTextExpanded;
     [SerializeField] private TextMeshProUGUI statsNumbersTextExpanded;
-    [SerializeField] private Slider spBar;
-    [SerializeField] private TextMeshProUGUI spText;
     [SerializeField] private Slider xpBar;
     [SerializeField] private TextMeshProUGUI xpText;
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI bossTimerText;
     [SerializeField] private TextMeshProUGUI upgradePointsText;
+    // Rogue's invisibility ability's screen tint — this manager is already per-local-client only, so a
+    // caller just needs to gate on its own isOwner before calling this (see RogueVanishAbilityPD); no
+    // further "is this really me" check needed here.
+    [SerializeField] private GameObject invisibleTintOverlay;
+
+    [Header("Ability1 UI")]
+    [SerializeField] private Image ability1CDFill;
+    [SerializeField] private GameObject ability1OnCooldownBG;
+    [SerializeField] private Image ability1Icon;
+    [SerializeField] private TextMeshProUGUI ability1CooldownText;
+    private bool _ability1CooldownUIShown;
+    private bool _ability1CooldownTextShown;
+
+    // Same shape as Ability1 UI above — both slots are functionally identical now (cooldown-gated
+    // IAbilityPD), so Ability2 gets the same fill/BG/text treatment.
+    [Header("Ability2 UI")]
+    [SerializeField] private Image ability2CDFill;
+    [SerializeField] private GameObject ability2OnCooldownBG;
+    [SerializeField] private Image ability2Icon;
+    [SerializeField] private TextMeshProUGUI ability2CooldownText;
+    private bool _ability2CooldownUIShown;
+    private bool _ability2CooldownTextShown;
 
     [Header("Boss UI")]
     // Pooled per-boss health bar, one instance per currently-alive boss — supports any number spawned
@@ -84,6 +104,8 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private CharacterStatsPD _stats;
     private PlayerControllerPD _controller;
+    private IAbilityPD _ability1;
+    private IAbilityPD _ability2;
     private bool _isRanged;
 
     private void Awake()
@@ -181,10 +203,31 @@ public class LocalUIManagerPD : MonoBehaviour
             augmentListPanel.SetActive(visible);
     }
 
+    public void SetInvisibleTintVisible(bool visible)
+    {
+        if (invisibleTintOverlay != null)
+            invisibleTintOverlay.SetActive(visible);
+    }
+
     public void SetPlayer(CharacterStatsPD stats)
     {
         _stats = stats;
         _controller = stats.GetComponent<PlayerControllerPD>();
+        // A character can carry one of each (Ability1 slot + Ability2 slot) on the same GameObject — both
+        // implement IAbilityPD, so a plain GetComponent<IAbilityPD>() would resolve ambiguously between
+        // them. GetComponents + Slot routes each instance to the right slot instead.
+        foreach (var a in stats.GetComponents<IAbilityPD>())
+        {
+            switch (a.Slot)
+            {
+                case AbilitySlot.Ability1: _ability1 = a; break;
+                case AbilitySlot.Ability2: _ability2 = a; break;
+            }
+        }
+        // Icon is fixed for the whole match (this player's class doesn't change), so it's set once here
+        // rather than re-applied every frame like the cooldown fill/text below.
+        if (ability1Icon != null) ability1Icon.sprite = _ability1?.Icon;
+        if (ability2Icon != null) ability2Icon.sprite = _ability2?.Icon;
         _isRanged = stats.GetComponent<WeaponManagerPD>().IsRanged;
         statsWordsTextExpanded.text = _isRanged
             ? "Dash Cooldown:\nLuck Variance:\nHighroll Bonus:\nRicochet:\nMultishot:"
@@ -385,10 +428,11 @@ public class LocalUIManagerPD : MonoBehaviour
         UpdateHealthRegen();
         UpdateDamageReduction();
         UpdateDash();
+        UpdateAbility1();
+        UpdateAbility2();
         UpdateEnergy();
         UpdateStats();
         UpdateStatsExpanded();
-        UpdateSP();
         UpdateXP();
         UpdateUpgradePoints();
         UpdateRunClock();
@@ -510,7 +554,7 @@ public class LocalUIManagerPD : MonoBehaviour
     {
         float percent = (1f - _stats.DamageReduction) * 100f;
         string sign = percent >= 0f ? "+" : "";
-        SetText(damageReductionText, $"<b>{sign}{percent:F0}% DR</b>");
+        SetText(damageReductionText, $"<b>{sign}{percent:F0}%\nDR</b>");
     }
 
     private void UpdateDash()
@@ -519,6 +563,83 @@ public class LocalUIManagerPD : MonoBehaviour
             ? 1f - (_controller.currentState.chargeRegenTimer / _stats.DashCooldown)
             : 1f);
         SetText(dashChargesText, $"<b>{_controller.currentState.currentCharges}</b>");
+    }
+
+    // Characters without an ability yet (nothing assigned _ability1) just leave this whole panel however
+    // it was left in the editor — every field access below is null-guarded via the early return.
+    private void UpdateAbility1()
+    {
+        if (_ability1 == null) return;
+
+        // CDFill now sits transparent on top of the ability icon and DEPLETES over the cooldown — full
+        // (1) the instant the cooldown starts, draining to empty (0) as it becomes ready, the opposite of
+        // the old "fills up as it becomes ready" direction. 0f fallback (not 1f) for a degenerate
+        // zero-duration cooldown, since "no cooldown to deplete" should read as already-empty/ready.
+        SetFill(ability1CDFill, _ability1.CooldownDuration > 0f
+            ? _ability1.CooldownRemaining / _ability1.CooldownDuration
+            : 0f);
+
+        // Tied to CooldownRemaining directly, NOT "!IsReady" — an ability can be unready for a reason that
+        // isn't a running cooldown at all (e.g. BWBlinkAbilityPD, only castable while Blade Dance is active
+        // — IsReady reads false the rest of the time with CooldownRemaining already sitting at 0). Using
+        // !IsReady here made the countdown text show a permanent, misleading "0.0s" in exactly that case.
+        // Also excludes AbilityIsActive — a buff ability (ExeBigAxeAbilityPD, RogueVanishAbilityPD,
+        // BWBlinkAbilityPD, etc.) already sets cooldownTimer to its full value the INSTANT it's cast, then
+        // (with the default cooldownStartsOnCast = false) holds it there unticked for the whole active
+        // window — so CooldownRemaining reads > 0 throughout the buff too, not just once the real cooldown
+        // actually starts counting down. Without this exclusion the text/fill would show a misleading
+        // stuck-at-full countdown for the buff's own duration instead of staying hidden until the buff ends
+        // and the cooldown genuinely begins ticking.
+        bool onCooldown = _ability1.CooldownRemaining > 0f && !_ability1.AbilityIsActive;
+        // BG is shown more broadly — real cooldown, any OTHER not-ready reason, or merely locked out
+        // (dashing, or a locking ability elsewhere is active — see PlayerControllerPD.IsLockedOut's own doc
+        // comment) — even though the ability itself may otherwise be fully ready. The countdown TEXT and
+        // the CDFill overlay itself both stay tied to actual cooldown only (onCooldown above) — neither a
+        // lockout nor a non-cooldown IsReady gate has a timer/depletion to show, so both would just read as
+        // stale/wrong if they followed the BG here.
+        bool showBG = !_ability1.IsReady || (_controller != null && _controller.IsLockedOut);
+        if (showBG != _ability1CooldownUIShown)
+        {
+            _ability1CooldownUIShown = showBG;
+            if (ability1OnCooldownBG != null) ability1OnCooldownBG.SetActive(showBG);
+        }
+        if (onCooldown != _ability1CooldownTextShown)
+        {
+            _ability1CooldownTextShown = onCooldown;
+            if (ability1CooldownText != null) ability1CooldownText.gameObject.SetActive(onCooldown);
+            // Hidden entirely once ready (not just drained to 0) so the icon reads clean/unobstructed —
+            // same onCooldown edge as the text above, since both should always change together.
+            if (ability1CDFill != null) ability1CDFill.gameObject.SetActive(onCooldown);
+        }
+        if (onCooldown) SetText(ability1CooldownText, $"{_ability1.CooldownRemaining:F1}s");
+    }
+
+    // Identical shape to UpdateAbility1 above — both slots are functionally the same now (cooldown-gated
+    // IAbilityPD), see that method's own comments for the reasoning.
+    private void UpdateAbility2()
+    {
+        if (_ability2 == null) return;
+
+        SetFill(ability2CDFill, _ability2.CooldownDuration > 0f
+            ? _ability2.CooldownRemaining / _ability2.CooldownDuration
+            : 0f);
+
+        // See UpdateAbility1's own identical comments for why this is CooldownRemaining (not !IsReady) AND
+        // excludes AbilityIsActive (not just "> 0f").
+        bool onCooldown = _ability2.CooldownRemaining > 0f && !_ability2.AbilityIsActive;
+        bool showBG = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut);
+        if (showBG != _ability2CooldownUIShown)
+        {
+            _ability2CooldownUIShown = showBG;
+            if (ability2OnCooldownBG != null) ability2OnCooldownBG.SetActive(showBG);
+        }
+        if (onCooldown != _ability2CooldownTextShown)
+        {
+            _ability2CooldownTextShown = onCooldown;
+            if (ability2CooldownText != null) ability2CooldownText.gameObject.SetActive(onCooldown);
+            if (ability2CDFill != null) ability2CDFill.gameObject.SetActive(onCooldown);
+        }
+        if (onCooldown) SetText(ability2CooldownText, $"{_ability2.CooldownRemaining:F1}s");
     }
 
     private void UpdateEnergy()
@@ -545,6 +666,11 @@ public class LocalUIManagerPD : MonoBehaviour
         _statsSB.AppendLine($" {_stats.Luck:G4}");
         _statsSB.AppendLine($" {Mathf.Min(_stats.HighrollChance * 100f, 100f):0.##}%");
         _statsSB.AppendLine($" {_stats.OnHitPower * 100f:G4}%");
+        // Same raw-number convention as EffectiveDashHaste above (no % suffix) — both are the same
+        // baseCooldown / (1 + haste/100) shaped stat, just for abilities instead of dash.
+        _statsSB.AppendLine($" {_stats.EffectiveAbilityHaste:G4}");
+        // Same 1f-baseline-as-percent convention as OnHitPower above (default multiplier 1f reads as 100%).
+        _statsSB.AppendLine($" {_stats.AbilityPower * 100f:G4}%");
         SetText(statsNumbersText, _statsSB.ToString());
     }
 
@@ -560,12 +686,6 @@ public class LocalUIManagerPD : MonoBehaviour
             _statsExpandedSB.AppendLine($" {_stats.Multishot}");
         }
         SetText(statsNumbersTextExpanded, _statsExpandedSB.ToString());
-    }
-
-    private void UpdateSP()
-    {
-        SetSlider(spBar, _stats.UISP / _stats.MaxSP);
-        SetText(spText, _stats.UISP >= _stats.MaxSP ? "<b>BURST</b>" : $"<b>{(int)_stats.UISP}/{(int)_stats.MaxSP}</b>");
     }
 
     private void UpdateXP()

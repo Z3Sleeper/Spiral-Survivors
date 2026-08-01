@@ -14,11 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Secret Weapon</color>
   description: '<color=#FFA000>While <color=#FFFF00>Surging</color>:</color> <color=#FFA000>+100%
-    Weapons</color>, <color=#FF5000>+30% Strength</color> and <color=#FF0050>+30%
+    Weapons</color>, <color=#FF5000>+30% Total Strength</color> and <color=#FFA000>+30%
     On-Hit Power</color>.
 
-    <color=#FFBE50><i>(Strength & On-Hit Power are divided
-    by Weapon Count)</i></color>'
+    <color=#FFBE50><i>Strength & On-Hit Power are divided
+    by Weapon Count</i></color>'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 5489089648639806987, guid: 9450586d5b1b20f49be8db9a16ea0e19, type: 3}
   multiplayerOnly: 0

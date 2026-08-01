@@ -15,10 +15,6 @@ public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamage
         public void Dispose() { }
     }
 
-    // Large enough to reliably reach enemies out at EnemySpawnerPD's own max spawn distance (40) with room
-    // to spare — not exposed as its own tunable, matching PhantomBladePassiveAugment/PhantomBladeOnDashAugment.
-    private const float TargetSearchRadius = 50f;
-
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private int   bladeCount = 1;
     [SerializeField] private float damageMultiplier = 0.1f;
@@ -26,9 +22,12 @@ public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamage
 
     protected override void OnApply()
     {
-        // Matches PhantomBladeOnCritAugment's exact size += 0.5f * phantomBladeDamageBonus ratio.
         Stats.AddPhantomBladeDamageBonus(phantomBladeDamageBonus);
-        Stats.AddPhantomBladeSizeBonus(0.5f * phantomBladeDamageBonus);
+        // Same additive amount as the damage bonus above — every Phantom Blade augment granting "+X%
+        // Phantom Blade Damage" grants the identical "+X% Phantom Blade Size" too (1:1, not a derived
+        // fraction — this used to be half the damage bonus, bumped to match it exactly). Only
+        // PhantomBladeSizeAugment itself touches the separate multiplicative Percent tier.
+        Stats.AddPhantomBladeSizeBonus(phantomBladeDamageBonus);
         Stats.AddDamagedListener(OnDamaged);
     }
 
@@ -43,6 +42,6 @@ public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamage
         if (Stats == null || Stats.IsDead) return;
 
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, TargetSearchRadius, bladeCount, (damageMultiplier * amount));
+            Stats.transform.position, bladeCount, (damageMultiplier * amount));
     }
 }

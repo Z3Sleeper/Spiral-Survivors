@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PhantomBladeSizeAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#FFA000>Deluxe</color>
-  description: '<color=#8C8C8C>+100% Total Phantom Blade Size
+  description: '<color=#8C8C8C>+50% Total Phantom Blade Size
 
     +30% Total Phantom
     Blade Damage</color>'
@@ -25,6 +25,8 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 1
   requiredAugments: []
-  tags: []
+  tags:
+  - Phantom Blade
   requiredTags:
-  - Phantom Blade Generator
+  - Phantom Blade
+  incompatibleTags: []

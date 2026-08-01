@@ -26,7 +26,7 @@ Transform:
   m_GameObject: {fileID: 5155215969780600670}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 898.21686, y: 615.1983, z: 0}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e8d04588651e93f4898529eb4051300a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeEndMoveSpeedAugment
-  totalMoveSpeedPercent: 0.3
+  totalMoveSpeedPercent: 0.25
   buffDuration: 2
   buffIcon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}

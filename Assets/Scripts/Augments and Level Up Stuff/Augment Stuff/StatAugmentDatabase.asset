@@ -67,3 +67,9 @@ MonoBehaviour:
     value: 5
     prependText: +
     appendText: 
+  - statType: 24
+    displayName: Ability Haste
+    color: {r: 1, g: 0.7058824, b: 1, a: 1}
+    value: 5
+    prependText: +
+    appendText: 

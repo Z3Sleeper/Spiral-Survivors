@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 009657d7a5a7e3844b9ada055b0289d0, type: 3}
   m_Name: BladeweaverPassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
+  classDescription: 
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0
@@ -20,23 +21,22 @@ MonoBehaviour:
   bonusStrengthFlat: 0
   bonusStrengthPercent: 0
   bonusStrengthPenalty: 0
-  totalStrengthPercent: 0.5
+  totalStrengthPercent: 0
   totalStrengthPenalty: 0
-  bonusWeaponRadiusFlat: 3
+  bonusWeaponRadiusFlat: 0
   bonusWeaponRadiusPercent: 0
   totalWeaponRadiusPercent: 0
   totalWeaponRadiusPenalty: 0
   attackSpeedFlat: 0
   attackSpeedTotalPercent: 0
   attackSpeedPenalty: 0
-  bonusWeaponCountFlat: 2
+  bonusWeaponCountFlat: 0
   bonusWeaponCountMultiplier: 1
   bonusWeaponRangeFlat: 0
   bonusWeaponRangePercent: 0
   weaponRangePenalty: 0
-  totalWeaponRangePercent: -0.5
+  totalWeaponRangePercent: 0
   totalWeaponRangePenalty: 0
-  bonusWeaponSizePercent: 0
   bonusSizePercent: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 0
@@ -54,6 +54,12 @@ MonoBehaviour:
   totalMultishotPenalty: 0
   projectileDamageDropoffReduction: 0
   projectileOnHitDropoffReduction: 0
+  fireRateFlat: 0
+  fireRateTotalPercent: 0
+  fireRateTotalPenalty: 0
+  projectileSpeedFlat: 0
+  projectileSpeedTotalPercent: 0
+  projectileSpeedTotalPenalty: 0
   bonusMaxHealthFlat: 0
   bonusMaxHealthPercent: 0
   totalMaxHealthPercent: 0
@@ -62,8 +68,7 @@ MonoBehaviour:
   bonusHealthRegenPercent: 0
   totalHealthRegenPercent: 0
   totalHealthRegenPenalty: 0
-  bonusMaxShieldFlat: 0
-  bonusMaxShieldPercent: 0
+  bonusMaxShieldAdditive: 0
   totalMaxShieldPercent: 0
   totalMaxShieldPenalty: 0
   bonusMaxEnergyFlat: 0
@@ -80,8 +85,10 @@ MonoBehaviour:
   bonusDashHastePercent: 0
   totalDashHastePercent: 0
   totalDashHastePenalty: 0
-  bonusMaxSPFlat: 0
-  bonusMaxSPPercent: 0
+  abilityHaste: 0
+  bonusAbilityHastePercent: 0
+  totalAbilityHastePercent: 0
+  totalAbilityHastePenalty: 0
   bonusLuckFlat: 0
   bonusLuckPercent: 0
   luckPenalty: 0
@@ -112,4 +119,5 @@ MonoBehaviour:
   revivePower: 0
   damageReductionPercent: 0
   damageReductionPenalty: 0
-  passiveAugments: []
+  passiveAugments:
+  - {fileID: 11400000, guid: 7a357355e931d2c48bd3048e4e4601c7, type: 2}

@@ -30,7 +30,10 @@ public class PlayerRangeIndicatorPD : MonoBehaviour
         // Reads the actual farthest currently-registered weapon's own hit-detection edge (see
         // WeaponManagerPD.TryGetFarthestWeaponReach/IWeaponPD.GetOuterReach) instead of approximating from
         // WeaponRadius/WeaponRange directly — exact for every weapon model, including per-prefab visual
-        // offsets a stat-only formula can't see.
+        // offsets a stat-only formula can't see. No freeze-while-disabled special case needed here anymore
+        // — GetOuterReach is now purely design/stat-derived (never reads live transform position), so it no
+        // longer fluctuates during a flipped orbit (RogueSpinAbilityPD's leap) or a relocated one
+        // (BWBladeDanceAbilityPD) the way the old live-distance formula did.
         if (!weaponManager.TryGetFarthestWeaponReach(out float radius)) return;
 
         // Compensate for the player's own Size scaling (AddSizePercent scales the root transform directly,

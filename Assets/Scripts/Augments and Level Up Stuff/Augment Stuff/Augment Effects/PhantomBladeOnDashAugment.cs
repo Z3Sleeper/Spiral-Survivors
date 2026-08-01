@@ -16,10 +16,6 @@ public class PhantomBladeOnDashAugment : AugmentEffectPD<PhantomBladeOnDashAugme
         public void Dispose() { }
     }
 
-    // Large enough to reliably reach enemies out at EnemySpawnerPD's own max spawn distance (40) with room
-    // to spare — not exposed as its own tunable, matching PhantomBladePassiveAugment.
-    private const float TargetSearchRadius = 50f;
-
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private int   bladeCount = 3;
     [SerializeField] private float damageMultiplier = 1f;
@@ -30,6 +26,10 @@ public class PhantomBladeOnDashAugment : AugmentEffectPD<PhantomBladeOnDashAugme
     protected override void OnApply()
     {
         Stats.AddPhantomBladeDamageBonus(phantomBladeDamageBonus);
+        // Same additive amount as the damage bonus above — every Phantom Blade augment granting "+X%
+        // Phantom Blade Damage" grants the identical "+X% Phantom Blade Size" too (1:1, not a derived
+        // fraction). Only PhantomBladeSizeAugment itself touches the separate multiplicative Percent tier.
+        Stats.AddPhantomBladeSizeBonus(phantomBladeDamageBonus);
 
         _controller = Stats.GetComponent<PlayerControllerPD>();
         if (_controller != null) _controller.AddDashEndedListener(OnDashEnded);
@@ -46,6 +46,6 @@ public class PhantomBladeOnDashAugment : AugmentEffectPD<PhantomBladeOnDashAugme
         if (Stats == null || Stats.IsDead) return;
 
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, TargetSearchRadius, bladeCount, damageMultiplier);
+            Stats.transform.position, bladeCount, damageMultiplier);
     }
 }

@@ -12,11 +12,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: OnHitDamageAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FF5000>Serrated Blade</color>
-  description: 'Deal <color=#FF5000>20%<color=#00FF87>*</color> unpenalized Strength</color>
-    <color=#FFA000>On-Hit</color>.
-
-    <color=#00FF87>*Affected by Luck*</color>'
+  displayName: <color=#FF5000>Skilled Bladework</color>
+  description: <color=#FFA000>On-Hit:</color> Deal <color=#FF5000>20% unpenalized
+    Strength</color>.
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 2541422106565567577, guid: 9e65551e96eaaee479d8967adc7ca86b, type: 3}
   multiplayerOnly: 0

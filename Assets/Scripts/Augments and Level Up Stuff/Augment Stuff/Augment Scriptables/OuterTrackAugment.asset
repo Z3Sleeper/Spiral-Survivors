@@ -21,8 +21,8 @@ MonoBehaviour:
     <color=#FFA000>+60%
     On-Hit Power</color>
 
-    <color=#FFBE50><i>(Strength & On-Hit Power are divided
-    by Weapon Count)</i></color>'
+    <color=#FFBE50><i>Strength & On-Hit Power are divided
+    by Weapon Count</i></color>'
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 2849589214751653731, guid: 9717396f46b52a64384661412fb91029, type: 3}
   multiplayerOnly: 0

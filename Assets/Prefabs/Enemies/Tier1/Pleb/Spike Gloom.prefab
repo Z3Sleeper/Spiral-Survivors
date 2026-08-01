@@ -461,7 +461,6 @@ MonoBehaviour:
   isStunnable: 1
   _renderers:
   - {fileID: 3448404629509916890}
-  findTargetInterval: 5
 --- !u!54 &-6973549993052189348
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -1231,7 +1230,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7600638646727349221}
   - component: {fileID: 3528644101431230945}
-  m_Layer: 12
+  m_Layer: 8
   m_Name: PhysicsCollider
   m_TagString: Untagged
   m_Icon: {fileID: 0}

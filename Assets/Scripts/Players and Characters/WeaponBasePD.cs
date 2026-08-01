@@ -27,9 +27,17 @@ public interface IWeaponPD
     void Init(CharacterStatsPD stats);
     void InitModelVisuals();
     void ScaleModel(float range);
-    // Real-world distance from origin to this weapon's own current outer hit-detection edge — see
-    // WeaponBasePD's shared implementation for why one formula covers every weapon type.
-    float GetOuterReach(Vector3 origin);
+    // Instant visual-only toggle (renderer.enabled, not GameObject.SetActive — same reasoning as
+    // ExeAxeThrowProjectilePD/WeaponRangedProjectilePD's own _renderers: SetActive(false) would also stop
+    // this weapon's own PredictedIdentity Simulate/LateSimulate from running, which still needs to happen
+    // while hidden, e.g. a hidden weapon still orbits so it's back in the right place the instant it's shown
+    // again). See WeaponManagerPD.SetWeaponsVisible for the per-player entry point that drives this.
+    void SetRenderersEnabled(bool value);
+    // Nominal (design/stat-derived) distance from wherever this weapon's orbit is currently centered to its
+    // own outer hit-detection edge — see WeaponBasePD's shared implementation for why one formula covers
+    // every weapon type, and for why this deliberately never reads any live transform position (no origin
+    // parameter here on purpose).
+    float GetOuterReach();
 }
 
 // Shared payload for both the OnHit (every weapon hit) and OnCrit (the subset of hits that also crit)
@@ -252,6 +260,22 @@ public static class CombatLayerMasks
     public static readonly int PlayerHurtboxMask = LayerMask.GetMask("Player");
 }
 
+// Non-generic home for constants shared across the weapon system regardless of TState — WeaponBasePD<TState>
+// itself is generic, so a bare WeaponBasePD.Member reference doesn't resolve without specifying TState (even
+// for a member that has nothing to do with TState at all). WeaponRangedProjectilePD deliberately doesn't
+// inherit WeaponBasePD<TState> (see its own class doc comment) but still needs the exact same height-lift
+// value for its own model, hence pulling it out here instead.
+public static class WeaponVisualConstants
+{
+    // How far above the player's true origin a weapon/projectile's MODEL renders — visual only, never
+    // applied to a real hit-detection-relevant position. 0.5 is correct for the player's default 1x1x1-unit
+    // sphere. Not exposed for tuning — this ratio is never meant to change per weapon. See
+    // WeaponBasePD.ApplyVisualAdjustments/ApplyHeightLift and WeaponRangedProjectilePD.Awake() for the two
+    // different ways this gets applied (LOCAL offset under an already-Size-scaled parent vs. an explicit
+    // WORLD-space multiply, respectively — see each call site's own comment for why the two differ).
+    public const float BaseMidHeightLift = 0.5f;
+}
+
 public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponPD
     where TState : struct, IPredictedData<TState>
 {
@@ -289,6 +313,11 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     [SerializeField] private bool      hitboxTipScalesWithY = false;
     [SerializeField] private bool      hitboxTipScalesWithZ = false;
 
+    // Every visible mesh piece on this weapon — see IWeaponPD.SetRenderersEnabled's own doc comment for why
+    // this toggles Renderer.enabled rather than SetActive. Optional: leave empty and this weapon simply
+    // never hides, no error.
+    [SerializeField] private Renderer[] _renderers;
+
     private float     _hiltEdgeLocal;
     private float     _baseRangeScaleX;
     private float[]   _baseYScales;
@@ -325,6 +354,13 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     [System.NonSerialized] public WeaponManagerPD _manager;
 
     public virtual void Init(CharacterStatsPD stats) => _stats = stats;
+
+    public void SetRenderersEnabled(bool value)
+    {
+        if (_renderers == null) return;
+        for (int i = 0; i < _renderers.Length; i++)
+            if (_renderers[i] != null) _renderers[i].enabled = value;
+    }
 
     public void InitModelVisuals()
     {
@@ -364,8 +400,11 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
                     _baseXScales[i] = xScaleFollowers[i].localScale.x;
         }
 
+        // lossyScale (world), not localScale — see GetHitboxTipExtraReach's own comment for why the ratio
+        // needs to reflect the tip's actual WORLD-space growth (including the weapon root's own Size-driven
+        // scale), not just its local scale relative to its immediate parent.
         if (hitboxTip != null)
-            _hitboxTipBaseScale = hitboxTip.localScale;
+            _hitboxTipBaseScale = hitboxTip.lossyScale;
     }
 
     public void ScaleModel(float range)
@@ -373,7 +412,15 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         if (rangeScaleTarget == null && rangeFollowers == null && (yScaleFollowers == null || yScaleFollowers.Length == 0)) return;
         float rootZ       = transform.localScale.z;
         float rangePart   = range / rootZ - designOrbit;
-        float visualFront = rangePart - tipOffset;
+        // tipOffset divided by rootZ too, same as range above — it's a world-unit-at-authored-scale
+        // constant (like meleeHalfExtents/hitboxTipOffset), but visualFront itself is a LOCAL value Unity
+        // re-multiplies by rootZ when resolving rangeScaleTarget's world scale/position. Left undivided,
+        // tipOffset's effect came back out as tipOffset*rootZ in world space instead of staying constant —
+        // compounding with the weapon's own Size-driven scale, the same bug class as SetupWeaponRange's
+        // hitboxTarget position fix. Only looks like "tipOffset should just be 0" at whatever one size
+        // happens to cancel the error; every other size still drifts (confirmed: correct at one size, tip
+        // visibly overshoots the hitbox at a bigger one).
+        float visualFront = rangePart - tipOffset / rootZ;
 
         float xRatio = xRangeScaleRatio > 0f
             ? Mathf.Lerp(1f, range / Mathf.Max(0.001f, designOrbit * rootZ), xRangeScaleRatio)
@@ -436,6 +483,69 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // left to hide behind one.
     protected void NotifyHitFeedback(HitFeedbackData data) => _stats.NotifyHitFeedback(data);
 
+    // See WeaponVisualConstants.BaseMidHeightLift's own doc comment for what this value means and why it
+    // lives outside this generic class. Never applied to OrbitalPosition()'s actual returned position (that
+    // would also lift the hitbox itself, since hitboxTarget hangs off the same real transform, and tilt
+    // LookRotation(outward) upward since `outward` would pick up a Y component it shouldn't have). In
+    // ApplyVisualAdjustments() (LOCAL offset), a bigger/smaller player (Size augments) already scales this
+    // for free via the weapon's own scale inheritance (weapon root's own localScale includes bonusSizePercent
+    // — see WeaponManagerPD's own RegisterWeapon/LateUpdate) — no explicit multiply needed there.
+    // ApplyHeightLift() (WORLD position, used only while flipped) DOES still need an
+    // explicit * bonusSizePercent, since a world assignment inherits no parent scale at all.
+
+    // Visual-only target for the mid-height lift above — a dedicated child (e.g. the weapon's "Model"),
+    // NOT this weapon's own root `transform` (that's the real, hitbox-relevant orbit position every
+    // LateSimulate computes). Optional: weapons with nothing wired here simply never rise, no error.
+    [SerializeField] private Transform visualHeightTarget;
+
+    // Local rotation visualHeightTarget's model tips to while _stats.IsOrbitFlipped — same flag
+    // OrbitalPosition's own plane-tip uses (see its own doc comment), reused here rather than a separate
+    // flag since both are the same "weapon looks tipped on its side" visual, just applied to two different
+    // transforms (this weapon's own orbit-position math vs. the model's own local rotation). Sign (-90, not
+    // 90) must always match OrbitFlipTip's own sign below and CharacterStatsPD.ModelSidewaysTipRotation's —
+    // negated on purpose (not a sign-flip of the underlying orbit rotation itself, which would also reverse
+    // the player's ordinary idle spin/weapon orbit direction, shared via weaponOrbitAngle) so the burst spins
+    // the opposite way while everything about normal (non-burst) orbiting stays untouched.
+    private static readonly Quaternion ModelTipRotation = Quaternion.Euler(0f, 0f, -90f);
+
+    // Called from each subclass's own UpdateView() — purely cosmetic, so it's safe off viewState/every
+    // frame rather than needing to be gated to the verified pass. Writes LOCAL position/rotation, not world
+    // — visualHeightTarget's actual parent is already the weapon's own PredictedTransform-smoothed "Visuals"
+    // child, so a local offset rides along with whatever smoothing that parent already provides every frame
+    // instead of fighting/bypassing it. An earlier version of the height lift wrote world .position directly
+    // (computed from this weapon's raw, tick-quantized root) specifically so it would track fast movement
+    // during the burst without lagging — that turned out to reintroduce ordinary-movement jitter (overriding
+    // world position every frame bypasses the smoothing entirely), so it's back to a plain local offset until
+    // the burst-visuals question (tracking the lift itself during fast movement) is revisited separately.
+    protected void ApplyVisualAdjustments()
+    {
+        if (visualHeightTarget == null || _stats == null) return;
+        Vector3 p = visualHeightTarget.localPosition;
+        // 0 while flipped, not the usual lift — ApplyHeightLift() already bakes the equivalent mid-height
+        // compensation directly into the REAL position during the flip (see its own doc comment), so an
+        // extra local offset here would double it up. It'd also be wrong on its own during the flip
+        // specifically: this is a LOCAL offset under a parent whose rotation now swings through a much wider
+        // range (the vertical sweep) than the normal flat orbit ever does, so a fixed local "up" resolves to
+        // a different world direction at every point in that sweep instead of staying vertical.
+        //
+        // No explicit * bonusSizePercent here (unlike the flipped/world-space case in ApplyHeightLift,
+        // which genuinely needs it) — visualHeightTarget is a LOCAL offset, and Unity already re-multiplies
+        // any local offset by this weapon's own current scale (the weapon root's own localScale, set from
+        // bonusSizePercent — see WeaponManagerPD's own RegisterWeapon/LateUpdate) when resolving to world
+        // position. An earlier version of this method wrote WORLD
+        // .position directly (see this method's own doc comment above for why that changed), where an
+        // explicit multiply really was required since a world assignment inherits no parent scale at all —
+        // multiplying again here after switching to a local offset applied bonusSizePercent TWICE (once
+        // explicitly, once implicitly via the hierarchy), compounding quadratically instead of scaling
+        // linearly with the player's actual size (confirmed via a Titan-augment Knight: weapon floated far
+        // too high, well beyond just "proportionally bigger"). Leaving this a plain constant lets the
+        // hierarchy's own scale inheritance do 100% of the size-scaling, exactly like it already does for
+        // every other unscaled child on this weapon.
+        float localLift = _stats.IsOrbitFlipped ? 0f : WeaponVisualConstants.BaseMidHeightLift;
+        visualHeightTarget.localPosition = new Vector3(p.x, localLift, p.z);
+        visualHeightTarget.localRotation = _stats.IsOrbitFlipped ? ModelTipRotation : Quaternion.identity;
+    }
+
     protected override void LateAwake()
     {
         base.LateAwake();
@@ -451,10 +561,26 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // direction (see WeaponMeleePD.LateSimulate's own angleSign comment for why the sign has to be applied
     // at the call site, not in here) — so only the SlotIndex-based offset term below actually varies
     // between weapons on the SAME ring.
-    protected Vector3 OrbitalPosition(float baseAngle, Vector3 origin)
+    // 90° around Z — tips the normal flat (Y=0) orbit offset into a vertical plane instead, applied only
+    // when _stats.IsOrbitFlipped (e.g. the spin ability's leap). Combined with a yaw first (see
+    // OrbitalPosition below) so the tip happens relative to the current travel direction, not a fixed
+    // world axis — same composed-rotation approach an earlier, reverted WeaponHolder-parenting attempt at
+    // this used, just applied as a pure math offset here instead of a live Unity parent transform. Negative
+    // (mirrors which side of the vertical circle bobs up vs down) rather than reversing weaponOrbitAngle's
+    // own rotation direction, which is shared with ordinary idle spin/orbit — see ModelTipRotation's own
+    // doc comment above for the full reasoning.
+    private static readonly Quaternion OrbitFlipTip = Quaternion.Euler(0f, 0f, -90f);
+
+    // Design/stat-derived orbit radius — the distance from origin this weapon's own root sits at while
+    // orbiting normally, computed purely from WeaponRadius/WeaponRange/character clearance/designOrbit.
+    // Deliberately reads no live transform position at all, so it stays stable regardless of where the
+    // orbit's actual center currently is — see GetOuterReach's own doc comment for why that distinction
+    // matters (BWBladeDanceAbilityPD's own orbit-origin override was producing a wildly fluctuating range
+    // indicator before this was split out, since the old formula measured live distance to wherever the
+    // weapon currently happened to be instead of this nominal, always-consistent value). Shared by
+    // OrbitalPosition below and GetOuterReach so the two can never drift apart.
+    private float NominalOrbitRadius()
     {
-        int   total     = _manager != null ? Mathf.Max(1, IsOuterTrack ? _manager.OuterWeaponCount : _manager.WeaponCount) : 1;
-        float rad       = (baseAngle + 360f / total * SlotIndex) * Mathf.Deg2Rad;
         float halfRange = rangeScaleTarget != null
             ? designOrbit * RootScale.z
             : (IsMelee ? RangeValue / 2f : 0.25f);
@@ -462,8 +588,56 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         // (WeaponRadius + WeaponRange) instead of straight from the player — dynamically rescales with
         // range automatically since both are live stats, recomputed every frame this runs.
         float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
-        float radius = weaponRadiusOffset + _stats.transform.lossyScale.x * 0.5f + halfRange;
-        return origin + new Vector3(Mathf.Cos(rad) * radius, 0f, Mathf.Sin(rad) * radius);
+        return weaponRadiusOffset + _stats.transform.lossyScale.x * 0.5f + halfRange;
+    }
+
+    protected Vector3 OrbitalPosition(float baseAngle, Vector3 origin)
+    {
+        int   total = _manager != null ? Mathf.Max(1, IsOuterTrack ? _manager.OuterWeaponCount : _manager.WeaponCount) : 1;
+        float rad   = (baseAngle + 360f / total * SlotIndex) * Mathf.Deg2Rad;
+        float radius = NominalOrbitRadius();
+        Vector3 flatOffset = new(Mathf.Cos(rad) * radius, 0f, Mathf.Sin(rad) * radius);
+
+        // Mathematically a no-op whenever IsOrbitFlipped is false (the common case) — nothing here changes
+        // for ordinary movement, so there's no "forgot to turn something off" risk the way a separate moving
+        // parent transform had. OrbitFacingYaw (already set by whichever effect enabled the flip, e.g.
+        // RogueSpinAbilityPD) orients the tip to the current travel direction, same facing every other part
+        // of the leap (model tip, body facing) already uses.
+        //
+        // Deliberately does NOT fold in SpecialHeightOffset here — every call site computes `outward =
+        // orbitPos - origin` from this return value to feed LookRotation, and origin (the player's real,
+        // never-lifted transform) doesn't rise the way a lifted orbitPos would, so outward would pick up an
+        // artificial upward skew (the weapon ends up facing "up" toward where it thinks the ground/origin
+        // is, since origin is now "beneath" it) — the exact same class of mistake BaseMidHeightLift's own
+        // doc comment already flagged for the visual-only lift. SpecialHeightOffset gets added separately,
+        // by ApplyHeightLift() below, only to the FINAL position actually written to the transform, after
+        // outward/rotation has already been computed from this un-lifted result.
+        if (_stats.IsOrbitFlipped)
+        {
+            Quaternion tip = Quaternion.Euler(0f, _stats.OrbitFacingYaw, 0f) * OrbitFlipTip;
+            return origin + tip * flatOffset;
+        }
+        return origin + flatOffset;
+    }
+
+    // Adds SpecialHeightOffset (e.g. the spin ability's leap arc), plus — while flipped — the same
+    // BaseMidHeightLift compensation the visual-only lift normally applies, to a position that's ALREADY
+    // been used to compute outward/rotation. Call this only on the value actually passed to
+    // transform.SetPositionAndRotation(), never on anything an `outward` calculation still needs to derive
+    // from. See OrbitalPosition's own doc comment for why neither offset can just live inside it.
+    //
+    // The mid-height term specifically fixes the flipped orbit's vertical circle centering on the player's
+    // ground-level pivot (origin) instead of roughly mid-body height — without it, the top of the swing
+    // doesn't reach as high as it visually should and the bottom dips well below the ground/sphere, since
+    // origin.y is the player's real pivot, not the visible sphere's middle (same gap BaseMidHeightLift
+    // always existed to compensate for in the normal flat-orbit case, just needed here on the REAL position
+    // instead of only a visual-only child, since weapons don't need to stay hit-detection-accurate at ground
+    // level while flipped — IsWeaponsDisabled already means they're not dealing damage at all right now).
+    protected Vector3 ApplyHeightLift(Vector3 position)
+    {
+        float lift = _stats.SpecialHeightOffset;
+        if (_stats.IsOrbitFlipped) lift += WeaponVisualConstants.BaseMidHeightLift * _stats.bonusSizePercent;
+        return position + Vector3.up * lift;
     }
 
     // Used by PlayerRangeIndicatorPD to show players exactly where their weapons can actually hit, without
@@ -472,40 +646,65 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // (whose farthest reach past hb.position works out to exactly hb.lossyScale.z * 0.5 once the
     // handle/blade ratio split cancels out — see WeaponAxePD.ComputeZones) both reduce to the same "half of
     // hb.lossyScale.z past hb.position" formula, so one shared implementation covers both without needing
-    // per-subclass overrides. hb.forward always points radially outward from the player (LookRotation(
-    // outward) is set every tick in LateSimulate), so a scalar distance-plus-half-extent is exact, not an
-    // approximation. Ranged weapons have no melee-style fixed hitbox at all — their real reach is
-    // target-acquisition range (WeaponRangedPD.FindTarget), whose raycast pulls its origin back by 1 unit
-    // and extends range by +1 to compensate, exactly cancelling out — so the real reach past the weapon's
-    // own live position is just WeaponRange. Measuring from transform.position directly (like the melee
-    // branch measures from hb.position) rather than reconstructing it from WeaponRadius/track offset keeps
-    // this exact regardless of orbit clearance terms, instead of dropping them like a stats-only formula
-    // would.
-    public float GetOuterReach(Vector3 origin)
+    // per-subclass overrides.
+    //
+    // Built entirely off NominalOrbitRadius() (design/stat-derived — WeaponRadius, WeaponRange, character
+    // clearance, designOrbit) plus hb.lossyScale/GetHitboxTipExtraReach/hitboxLocalOffset below (all
+    // scale- or LOCAL-position-derived, never derived from this weapon's actual live WORLD
+    // transform.position/hb.position). Used to measure Vector3.Distance(origin, hb.position) instead, which
+    // is exact while a weapon is orbiting normally (that live distance equals NominalOrbitRadius() +
+    // hitboxLocalOffset by construction — see each of their own doc comments) but goes wrong the instant
+    // anything relocates the orbit's real center away from a flat, origin-centered circle: the flipped
+    // vertical orbit (RogueSpinAbilityPD's leap — already separately worked around by
+    // PlayerRangeIndicatorPD freezing the ring while IsWeaponsDisabled) and BWBladeDanceAbilityPD's own
+    // orbit-origin override (NOT covered by that freeze, since weapons stay fully enabled/functional during
+    // the dance — this was the actual bug: the ring visibly grew and shrank as the live distance between
+    // the player and the blades' real, relocated position swung wildly). Purely nominal/local math
+    // sidesteps both cases at once, no special-casing needed for either — WORLD position is what's
+    // radioactive here, not local offsets, which stay meaningful regardless of where the orbit center is.
+    public float GetOuterReach()
     {
         if (!IsMelee)
-            return Vector3.Distance(origin, transform.position) + _stats.WeaponRange;
+            return NominalOrbitRadius() + _stats.WeaponRange;
 
         Transform hb = hitboxTarget != null ? hitboxTarget : transform;
         // hitboxTip's own pivot tracks the same range-driven position as hb's far edge (both derive from
         // the same WeaponRange-based math, via rangeFollowers/SetupWeaponRange respectively), so its extra
         // length is added directly on top rather than measured from a second, separate origin.
-        return Vector3.Distance(origin, hb.position) + hb.lossyScale.z * 0.5f + GetHitboxTipExtraReach();
+        //
+        // hitboxLocalOffset accounts for WeaponManagerPD.SetupWeaponRange's own hitboxTarget.localPosition.z
+        // reassignment (xRangeScaleRatio > 0 path only — see its own comment) — hitboxTarget can sit shifted
+        // forward from the weapon ROOT by a WeaponRange-driven amount, which NominalOrbitRadius() has no way
+        // to know about (it only knows where the root itself orbits). Read directly off the transform rather
+        // than re-deriving SetupWeaponRange's own formula, so this can never drift out of sync with whatever
+        // that method actually computed. This is safe to read live despite GetOuterReach otherwise avoiding
+        // live position entirely (see class-level doc comment above) — it's a purely LOCAL, parent-relative
+        // offset, unrelated to where the orbit's real center currently is, so it's just as immune to
+        // BWBladeDanceAbilityPD's own orbit-origin override as everything else this method reads.
+        float hitboxLocalOffset = hitboxTarget != null ? hitboxTarget.localPosition.z * transform.lossyScale.z : 0f;
+        return NominalOrbitRadius() + hitboxLocalOffset + hb.lossyScale.z * 0.5f + GetHitboxTipExtraReach();
     }
 
     // Shared by GetOuterReach above and WeaponMeleePD's own hit-detection box, so the actual hitbox and the
     // cosmetic range indicator can never drift apart — the real extra forward reach hitboxTip contributes
     // right now, scaled by (current / base) per marked axis rather than the raw current scale (see
     // _hitboxTipBaseScale's own comment for why). 0 if no tip is assigned.
+    //
+    // lossyScale (world), not localScale — hitboxTip's LOCAL scale only reflects range-driven changes
+    // (xzScaleFollowers's own xRatio), completely missing the weapon root's own Size-driven scale, which
+    // hitboxTip inherits as an ordinary descendant. Using localScale here meant the computed extra reach
+    // actually shrank as Size grew (xRatio's own formula divides by rootZ), the opposite of what a bigger
+    // weapon's tip needs — confirmed against a screenshot where the hitbox/range indicator fell increasingly
+    // short of the visual tip. lossyScale captures the tip's true world-space size, Size included.
     protected float GetHitboxTipExtraReach()
     {
         if (hitboxTip == null || hitboxTipOffset == 0f) return 0f;
 
         float ratio = 0f;
         int   axisCount = 0;
-        if (hitboxTipScalesWithX && _hitboxTipBaseScale.x > 0f) { ratio += hitboxTip.localScale.x / _hitboxTipBaseScale.x; axisCount++; }
-        if (hitboxTipScalesWithY && _hitboxTipBaseScale.y > 0f) { ratio += hitboxTip.localScale.y / _hitboxTipBaseScale.y; axisCount++; }
-        if (hitboxTipScalesWithZ && _hitboxTipBaseScale.z > 0f) { ratio += hitboxTip.localScale.z / _hitboxTipBaseScale.z; axisCount++; }
+        if (hitboxTipScalesWithX && _hitboxTipBaseScale.x > 0f) { ratio += hitboxTip.lossyScale.x / _hitboxTipBaseScale.x; axisCount++; }
+        if (hitboxTipScalesWithY && _hitboxTipBaseScale.y > 0f) { ratio += hitboxTip.lossyScale.y / _hitboxTipBaseScale.y; axisCount++; }
+        if (hitboxTipScalesWithZ && _hitboxTipBaseScale.z > 0f) { ratio += hitboxTip.lossyScale.z / _hitboxTipBaseScale.z; axisCount++; }
         return hitboxTipOffset * (axisCount > 0 ? ratio / axisCount : 1f);
     }
 
