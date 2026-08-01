@@ -90,6 +90,16 @@ public struct HitFeedbackData
     public bool isHighroll;
     public CharacterStatsPD attacker;
     public bool isPriority;
+
+    // Lets a hit source override the default per-attacker hitSfx entirely — false (default) means "play
+    // attacker.hitSfx as normal," exactly what every existing call site already gets for free without
+    // setting either field. true hands the choice to the SOURCE: sfx left null means explicitly silent
+    // (e.g. ArcherArrowRainAbilityPD, whose 20 ticks * every enemy in radius would otherwise spam
+    // attacker.hitSfx into an unlistenable wall of noise), or a specific clip plays that instead of the
+    // attacker's own. Any future source with the same "many simultaneous/rapid hits" shape (other AoE
+    // ticks, DoTs, etc.) should use this rather than inventing its own ad-hoc SFX-suppression mechanism.
+    public bool overrideSfx;
+    public AudioClip sfx;
 }
 
 // Shared damage-roll formula, non-generic so it's usable by anything that needs it without inheriting
@@ -254,9 +264,10 @@ public static class HitCooldownMath
 public static class CombatLayerMasks
 {
     public static readonly int EnemyHurtboxMask = LayerMask.GetMask("Enemy");
-    // Only ever queried when a weapon's owner has allyStrikeHitEnabled or allyStrikeDamageEnabled (any
-    // "hit ally, do something" augment, e.g. OnStrikeHealAllyAugment, or real friendly fire) — every other
-    // weapon skips the extra query entirely, so this costs nothing for players without either.
+    // Every weapon always queries this alongside EnemyHurtboxMask now — ally-hit detection ("canContactAllies")
+    // is permanently on, not gated behind an enable flag (see CharacterStatsPD.NotifyAllyStrike's own doc
+    // comment). Real friendly-fire damage was removed from the project entirely; a touched ally only ever
+    // fires the _onAllyStrike notification, never TakeDamage.
     public static readonly int PlayerHurtboxMask = LayerMask.GetMask("Player");
 }
 
@@ -478,7 +489,7 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // the OWNING identity to still exist to be resimulated — a despawned weapon can never satisfy that,
     // permanently dropping the notification on other clients. _stats outlives every weapon it owns for the
     // whole match, so routing through it instead removes that race. Subclasses (WeaponMeleePD.Hit(),
-    // WeaponAxePD.Hit(), WeaponRangedProjectilePD.ProcessHit()) call _stats.NotifyHighroll/NotifyCritStrike/
+    // WeaponAxePD.Hit(), WeaponRangedProjectilePD.ProcessHit()) call _stats.NotifyStrikeHighroll/NotifyCritStrike/
     // NotifyHit/NotifyStrike directly rather than through a wrapper here, since there's no weapon-local state
     // left to hide behind one.
     protected void NotifyHitFeedback(HitFeedbackData data) => _stats.NotifyHitFeedback(data);

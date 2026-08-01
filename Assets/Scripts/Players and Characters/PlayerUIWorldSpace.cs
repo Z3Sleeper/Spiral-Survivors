@@ -3,6 +3,22 @@ using UnityEngine.UI;
 
 public class PlayerUIWorldSpace : MonoBehaviour
 {
+    // The "WorldspaceUI" Canvas — this script sits on a sibling/parent "UI Wrapper" GameObject, not the
+    // Canvas itself, so this can't be a GetComponent<Canvas>() shortcut. Its worldCamera is assigned at
+    // runtime in Start() (see WorldSpaceUICameraPD's own doc comment for why this can't be a static
+    // Inspector reference on the prefab — the camera lives in the scene, not the prefab asset).
+    [SerializeField] private Canvas worldspaceCanvas;
+    // Whichever transform actually carries the panel's fixed height-above-head offset (most likely the
+    // "WorldspaceUI" Canvas's own transform) — its authored local Y is cached once in Start() and re-scaled
+    // live by the character's current Size (bonusSizePercent) every frame in Update(), so the panel keeps
+    // sitting proportionally above the head as Size grows instead of staying pinned at a fixed world height
+    // and eventually getting clipped into by a bigger character. Leave unassigned and this simply never
+    // adjusts, no error. Deliberately NOT inherited automatically via ordinary Unity scale-inheritance —
+    // WorldspaceUI/UI Wrapper's own localScale is kept fixed (not multiplied by bonusSizePercent the way
+    // Model/weapons are) specifically so the UI panel itself doesn't visually grow/distort with character
+    // Size, only its position needs the manual correction here.
+    [SerializeField] private Transform verticalOffsetTarget;
+    private float _baseVerticalOffsetY;
     [SerializeField] private Slider healthBar;
     [SerializeField] private Slider shieldBar;
     [SerializeField] private GameObject dashUI;
@@ -20,6 +36,14 @@ public class PlayerUIWorldSpace : MonoBehaviour
     // visibility, but CDFill (transparent, sitting on top of the icon) should only show for actual
     // cooldown, not a lockout with nothing to deplete — see UpdateAbility1's own comment.
     private bool _ability1CDFillShown;
+    // DurationUI (DurationBG + DurationBar) — hidden by default in the prefab, shown only while
+    // IAbilityPD.HasActiveWindow AND AbilityIsActive are both true (permanently never for an ability with no
+    // active window at all — see IAbilityPD.HasActiveWindow's own doc comment), DurationBar's fillAmount
+    // counting DOWN from 1 to 0 over ActiveTimeRemaining/ActiveTimeDuration. Same shape as
+    // LocalUIManagerPD's own identical duration-bar treatment.
+    [SerializeField] private GameObject ability1DurationUI;
+    [SerializeField] private Image ability1DurationBar;
+    private bool _ability1DurationUIShown;
 
     // Same shape as Ability1 UI above — both slots are functionally identical now (cooldown-gated
     // IAbilityPD). No cooldown text here either, matching this world-space UI's existing textless design.
@@ -29,6 +53,9 @@ public class PlayerUIWorldSpace : MonoBehaviour
     [SerializeField] private Image ability2Icon;
     private bool _ability2CooldownUIShown;
     private bool _ability2CDFillShown;
+    [SerializeField] private GameObject ability2DurationUI;
+    [SerializeField] private Image ability2DurationBar;
+    private bool _ability2DurationUIShown;
 
     private CharacterStatsPD _stats;
     private PlayerControllerPD _controller;
@@ -53,6 +80,13 @@ public class PlayerUIWorldSpace : MonoBehaviour
         }
         _camera = Camera.main;
 
+        // See worldspaceCanvas/WorldSpaceUICameraPD's own doc comments for why this has to be assigned here
+        // rather than in the Inspector.
+        if (worldspaceCanvas != null) worldspaceCanvas.worldCamera = WorldSpaceUICameraPD.instance;
+
+        // Captured once — see verticalOffsetTarget's own doc comment.
+        if (verticalOffsetTarget != null) _baseVerticalOffsetY = verticalOffsetTarget.localPosition.y;
+
         if (dashUI != null) dashUI.SetActive(true);
         if (energyUI != null) energyUI.SetActive(true);
         // Icon is fixed for the whole match (this character's class doesn't change), so it's set once here
@@ -64,6 +98,14 @@ public class PlayerUIWorldSpace : MonoBehaviour
     private void Update()
     {
         if (_stats == null) return;
+
+        // Keeps the panel proportionally above the head as Size changes — see verticalOffsetTarget's own
+        // doc comment for why this can't just be ordinary Unity scale-inheritance.
+        if (verticalOffsetTarget != null)
+        {
+            var p = verticalOffsetTarget.localPosition;
+            verticalOffsetTarget.localPosition = new Vector3(p.x, _baseVerticalOffsetY * _stats.bonusSizePercent, p.z);
+        }
 
         if (healthBar != null)
             healthBar.value = _stats.MaxHealth > 0f ? _stats.UIHealth / _stats.MaxHealth : 0f;
@@ -126,6 +168,22 @@ public class PlayerUIWorldSpace : MonoBehaviour
             _ability1CooldownUIShown = onCooldown;
             if (ability1OnCooldownBG != null) ability1OnCooldownBG.SetActive(onCooldown);
         }
+
+        // See ability1DurationUI's own doc comment — HasActiveWindow gates this permanently, not just
+        // "isn't active right now".
+        bool showDuration = _ability1.HasActiveWindow && _ability1.AbilityIsActive;
+        if (showDuration != _ability1DurationUIShown)
+        {
+            _ability1DurationUIShown = showDuration;
+            if (ability1DurationUI != null) ability1DurationUI.SetActive(showDuration);
+        }
+        if (showDuration && ability1DurationBar != null)
+        {
+            float fill = _ability1.ActiveTimeDuration > 0f
+                ? _ability1.ActiveTimeRemaining / _ability1.ActiveTimeDuration
+                : 0f;
+            if (!Mathf.Approximately(ability1DurationBar.fillAmount, fill)) ability1DurationBar.fillAmount = fill;
+        }
     }
 
     // Identical shape to UpdateAbility1 above — both slots are functionally the same now.
@@ -155,6 +213,22 @@ public class PlayerUIWorldSpace : MonoBehaviour
         {
             _ability2CooldownUIShown = onCooldown;
             if (ability2OnCooldownBG != null) ability2OnCooldownBG.SetActive(onCooldown);
+        }
+
+        // See ability1DurationUI's own doc comment — HasActiveWindow gates this permanently, not just
+        // "isn't active right now".
+        bool showDuration = _ability2.HasActiveWindow && _ability2.AbilityIsActive;
+        if (showDuration != _ability2DurationUIShown)
+        {
+            _ability2DurationUIShown = showDuration;
+            if (ability2DurationUI != null) ability2DurationUI.SetActive(showDuration);
+        }
+        if (showDuration && ability2DurationBar != null)
+        {
+            float fill = _ability2.ActiveTimeDuration > 0f
+                ? _ability2.ActiveTimeRemaining / _ability2.ActiveTimeDuration
+                : 0f;
+            if (!Mathf.Approximately(ability2DurationBar.fillAmount, fill)) ability2DurationBar.fillAmount = fill;
         }
     }
 

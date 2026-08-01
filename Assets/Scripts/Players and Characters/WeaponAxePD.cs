@@ -57,10 +57,11 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private readonly HashSet<IEnemyPD>            _touchedThisTick  = new();
     private readonly HashSet<IEnemyPD>            _outerHitsThisTick = new();
 
-    // Ally-strike detection (OnStrikeHealAllyAugment, real friendly fire) — only populated/queried when
-    // _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true. _outerAlliesThisTick mirrors
-    // _outerHitsThisTick's tie-break (an ally touching both zones counts as outer) so handle touches still
-    // heal/damage for less, matching Hit()'s own innerOnHitPowerMultiplier/innerDamageMultiplier treatment.
+    // Ally-strike detection (OnStrikeHealAllyAugment and future "hit ally, do something" augments) — always
+    // runs now, no enable gate (see CharacterStatsPD.NotifyAllyStrike's own doc comment).
+    // _outerAlliesThisTick mirrors _outerHitsThisTick's tie-break (an ally touching both zones counts as
+    // outer) so handle touches still trigger a weaker onHitPower, matching Hit()'s own
+    // innerOnHitPowerMultiplier treatment.
     private readonly HashSet<CharacterStatsPD>           _touchedAlliesThisTick = new();
     private readonly HashSet<CharacterStatsPD>           _outerAlliesThisTick   = new();
 
@@ -140,7 +141,6 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         _outerHitsThisTick.Clear();
         _touchedAlliesThisTick.Clear();
         _outerAlliesThisTick.Clear();
-        bool detectAllies = _stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled;
 
         (Vector3 innerCenter, Vector3 innerExt, Vector3 outerPoint1, Vector3 outerPoint2, float capsuleRadius, Quaternion rot) zones;
 
@@ -184,15 +184,12 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                         if (e != null) _touchedThisTick.Add(e);
                     }
 
-                    if (detectAllies)
+                    int ac = Physics.BoxCastNonAlloc(segZones.innerCenter, newSegZones.innerExt, innerDelta / id,
+                        _innerSweep, newSegZones.rot, id, CombatLayerMasks.PlayerHurtboxMask);
+                    for (int i = 0; i < ac; i++)
                     {
-                        int ac = Physics.BoxCastNonAlloc(segZones.innerCenter, newSegZones.innerExt, innerDelta / id,
-                            _innerSweep, newSegZones.rot, id, CombatLayerMasks.PlayerHurtboxMask);
-                        for (int i = 0; i < ac; i++)
-                        {
-                            var a = _innerSweep[i].collider.GetComponent<CharacterStatsPD>();
-                            if (a != null) _touchedAlliesThisTick.Add(a);
-                        }
+                        var a = _innerSweep[i].collider.GetComponent<CharacterStatsPD>();
+                        if (a != null) _touchedAlliesThisTick.Add(a);
                     }
                 }
 
@@ -208,15 +205,12 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                         if (e != null) { _touchedThisTick.Add(e); _outerHitsThisTick.Add(e); }
                     }
 
-                    if (detectAllies)
+                    int ac = Physics.CapsuleCastNonAlloc(segZones.outerPoint1, segZones.outerPoint2, newSegZones.capsuleRadius,
+                        p1Delta / od, _outerSweep, od, CombatLayerMasks.PlayerHurtboxMask);
+                    for (int i = 0; i < ac; i++)
                     {
-                        int ac = Physics.CapsuleCastNonAlloc(segZones.outerPoint1, segZones.outerPoint2, newSegZones.capsuleRadius,
-                            p1Delta / od, _outerSweep, od, CombatLayerMasks.PlayerHurtboxMask);
-                        for (int i = 0; i < ac; i++)
-                        {
-                            var a = _outerSweep[i].collider.GetComponent<CharacterStatsPD>();
-                            if (a != null) { _touchedAlliesThisTick.Add(a); _outerAlliesThisTick.Add(a); }
-                        }
+                        var a = _outerSweep[i].collider.GetComponent<CharacterStatsPD>();
+                        if (a != null) { _touchedAlliesThisTick.Add(a); _outerAlliesThisTick.Add(a); }
                     }
                 }
 
@@ -245,21 +239,18 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
             if (e != null) { _touchedThisTick.Add(e); _outerHitsThisTick.Add(e); }
         }
 
-        if (detectAllies)
+        int aic = Physics.OverlapBoxNonAlloc(zones.innerCenter, zones.innerExt, _innerOverlap, zones.rot, CombatLayerMasks.PlayerHurtboxMask);
+        for (int i = 0; i < aic; i++)
         {
-            int aic = Physics.OverlapBoxNonAlloc(zones.innerCenter, zones.innerExt, _innerOverlap, zones.rot, CombatLayerMasks.PlayerHurtboxMask);
-            for (int i = 0; i < aic; i++)
-            {
-                var a = _innerOverlap[i].GetComponent<CharacterStatsPD>();
-                if (a != null) _touchedAlliesThisTick.Add(a);
-            }
+            var a = _innerOverlap[i].GetComponent<CharacterStatsPD>();
+            if (a != null) _touchedAlliesThisTick.Add(a);
+        }
 
-            int aoc = Physics.OverlapCapsuleNonAlloc(zones.outerPoint1, zones.outerPoint2, zones.capsuleRadius, _outerOverlap, CombatLayerMasks.PlayerHurtboxMask);
-            for (int i = 0; i < aoc; i++)
-            {
-                var a = _outerOverlap[i].GetComponent<CharacterStatsPD>();
-                if (a != null) { _touchedAlliesThisTick.Add(a); _outerAlliesThisTick.Add(a); }
-            }
+        int aoc = Physics.OverlapCapsuleNonAlloc(zones.outerPoint1, zones.outerPoint2, zones.capsuleRadius, _outerOverlap, CombatLayerMasks.PlayerHurtboxMask);
+        for (int i = 0; i < aoc; i++)
+        {
+            var a = _outerOverlap[i].GetComponent<CharacterStatsPD>();
+            if (a != null) { _touchedAlliesThisTick.Add(a); _outerAlliesThisTick.Add(a); }
         }
 
         // Pure cooldown gate — an enemy standing continuously inside a zone gets rehit as soon as its
@@ -275,13 +266,10 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                     Hit(enemy, _outerHitsThisTick.Contains(enemy));
             }
 
-            if (detectAllies)
+            foreach (var ally in _touchedAlliesThisTick)
             {
-                foreach (var ally in _touchedAlliesThisTick)
-                {
-                    if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
-                        HitAlly(ally, _outerAlliesThisTick.Contains(ally));
-                }
+                if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
+                    HitAlly(ally, _outerAlliesThisTick.Contains(ally));
             }
         }
 
@@ -392,7 +380,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = isOuter && GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
-        if (isHighroll) _stats.NotifyHighroll(damage);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
         // baseDamage already accounts for innerDamageMultiplier on handle (inner) hits, and onHitPower gets
         // the equivalent innerOnHitPowerMultiplier treatment — downstream on-hit effects see the actual
         // per-hit damage/power this hit represented, not a flat re-read of Strength/OnHitPower.
@@ -407,30 +395,14 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
     }
 
-    // allyStrikeHitEnabled and allyStrikeDamageEnabled are independent, same as WeaponMeleePD.HitAlly.
-    // Real friendly fire mirrors Hit()'s own inner/outer damage split (handle hits deal less) but never
-    // crits/knocks back — CharacterStatsPD.TakeDamage doesn't support either for players.
+    // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been
+    // removed from the project entirely (see CharacterStatsPD.NotifyAllyStrike's own doc comment). Handle
+    // (inner) touches still report the weaker onHitPower, matching Hit()'s own treatment.
     private void HitAlly(CharacterStatsPD ally, bool isOuter)
     {
-        // Self-exclusion lives here, not just in NotifyAllyStrike — the direct TakeDamage call below
-        // bypasses that guard entirely, so without this a weapon whose own overlap query happens to catch
-        // its wielder's own collider (plausible for anything spawning/orbiting close to the caster) could
-        // deal real friendly-fire damage to itself.
         if (ally == _stats || ally.IsDead) return;
-
-        if (_stats.allyStrikeDamageEnabled)
-        {
-            float baseDamage = isOuter ? _stats.Strength : _stats.Strength * innerDamageMultiplier;
-            float damage = RollDamage(baseDamage, out bool isHighroll);
-            if (isHighroll) damage *= 1f + _stats.HighrollBonus;
-            ally.TakeDamage(damage);
-        }
-
-        if (_stats.allyStrikeHitEnabled)
-        {
-            float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
-            _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = onHitPower });
-        }
+        float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
+        _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = onHitPower });
     }
 
     // ── Gizmos ────────────────────────────────────────────────────────────────

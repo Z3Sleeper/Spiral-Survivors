@@ -174,17 +174,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BWBladeDanceAbilityPD
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   abilityName: <color=#FFA000>Ability:\nBlade Dance</color>
-  description: 'Send your <color=#FFA000>Blades</color> to the target location. They
-    stay there for <color=#FFA000>3 seconds</color> before recalling. <color=#FFA000>Recast</color>
-    to recall early.
+  description: 'Send your <color=#FFA000>Blades</color> to target location within
+    <color=#3278FF>2x Range</color>. They stay there for <color=#FFA000>3 seconds</color>
+    before recalling. <color=#FFA000>Recast</color> to recall early.
 
-    <color=#FFBE50><i>Ability Haste & Power grant Attack Speed
-    during this</i>
+    <color=#FFBE50><i>Ability
+    Haste & Power grant Attack Speed during this</i>
 
-    Cooldown: None</color>'
-  cooldown: 0
+    Cooldown: 3 seconds</color>'
+  cooldown: 3
   cooldownStartsOnCast: 0
-  slot: 1
+  slot: 0
   tags: []
   activeSurgeBlock: 0
   castRangeMultiplier: 2
@@ -217,8 +217,9 @@ MonoBehaviour:
     Cooldown: 6 seconds</color>'
   cooldown: 6
   cooldownStartsOnCast: 0
-  slot: 0
+  slot: 1
   tags: []
   activeSurgeBlock: 0
   duration: 2
   moveSpeedTotalPercent: 0.25
+  postBlinkInvincibility: 0.2

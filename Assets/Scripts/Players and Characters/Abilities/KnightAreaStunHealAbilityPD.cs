@@ -59,8 +59,9 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // +30% bonuses just add to +60% total).
     [SerializeField] private float stunDuration = 2f;
     // Flat percent of the caster's own MaxHealth healed per enemy actually hit, BEFORE AreaEffectPower/
-    // AbilityPower scale the total (see Activate()) — not luck-rolled (a direct stat grant, same convention
-    // as every other non-rolled effect in this codebase).
+    // AbilityPower scale the total (see Activate()) — passed to Stats.Heal() as a raw amount, same as every
+    // other heal source now; Heal() itself rolls luck variance and HealPower/CritHealPower internally, no
+    // separate roll needed here.
     [SerializeField] private float healPercentPerEnemy = 0.03f;
     // Flat knockback override, NOT derived from Stats.Knockback (unlike ShieldBreakBurstAugment's own
     // Stats.Knockback * multiplier) — this ability's oomph is a fixed push regardless of the caster's own
@@ -108,6 +109,10 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // Always false, for the same reason as IsActive above — NotifyAbilityStart/NotifyAbilityEnd both fire
     // from within the same Activate() call instead of bracketing an observable window.
     public bool AbilityIsActive => false;
+    // No active window at all — instantaneous cast, see class doc comment.
+    public bool HasActiveWindow => false;
+    public float ActiveTimeRemaining => 0f;
+    public float ActiveTimeDuration => 0f;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -168,7 +173,8 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
                         {
                             if (hitCount <= 0) return;
                             _stats.Heal(hitCount * healPercentPerEnemy * _stats.MaxHealth * (_stats.AreaEffectPower + _stats.AbilityPower - 1f));
-                        });
+                        },
+                        vfxPerCast: true);
             }
         }
 

@@ -301,10 +301,13 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // _target != null guard matters here — EnterWindup() silently no-ops on a null target (it needs one
         // to compute leapTarget), so without this check a target lost mid-chain left the enemy stuck forever
         // in Landing (leapsRemaining spiraling negative every tick, never actually transitioning out).
+        // IsTargetStillValid — a target that went invisible-and-non-taunting since the LAST leap in this
+        // chain landed shouldn't get chained into another one against them; see that property's own doc
+        // comment. The leap that already resolved above is untouched either way.
         // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the leap
         // that's already resolved above, but stops the chain from continuing into another one, falling
         // through to PostLeap instead (see IsCrowdControlled's own doc comment).
-        if (state.leapsRemaining > 0 && _target != null && !IsCrowdControlled)
+        if (state.leapsRemaining > 0 && _target != null && IsTargetStillValid && !IsCrowdControlled)
         {
             EnterWindup(ref state);
         }

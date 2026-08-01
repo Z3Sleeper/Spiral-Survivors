@@ -98,7 +98,7 @@ public interface IEnemyPD
     // on the same hit (e.g. AreaEffectCastHelper's own interrupt param), never after — see Interrupt()'s
     // own doc comment for why the ordering matters.
     void Interrupt();
-    void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false);
+    void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false, bool overrideSfx = false, AudioClip sfxOverride = null);
 
     // Lets a spawner mark a freshly hierarchy.Create()'d enemy with which category spawned it (deciding
     // which Active*Count bucket it counts against) and apply co-op/elite stat scaling, generically,
@@ -204,6 +204,17 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // hit the same target every tick it stays overlapped.
     public DisposableList<PredictedObjectID> killLaunchHitIds;
 
+    // Declumping — see EnemyBasePD.HandleSeparation's own doc comment for the full mechanism. Ticks, not
+    // seconds (same reasoning as every other per-tick countdown in this codebase — cheap zigzag-varint diff
+    // vs a float's flat 33-bit cost). Seeded with a random initial offset in LateAwake() so a whole pack
+    // spawned at once doesn't all recompute on the same tick.
+    public int separationCheckTimer;
+    // Fixed per-instance fallback push direction (degrees) for the exact-same-coordinate case, where "push
+    // away from the other guy" is mathematically undefined — see HandleSeparation's own comment. Randomized
+    // once per spawn/reuse, not derived live, so it stays stable across this instance's whole life rather
+    // than changing every time the check happens to fire.
+    public float personalPushAngle;
+
     // Lets the packer duplicate this struct via a direct field-copy during snapshot/history/rollback
     // operations instead of falling back to a full serialize/deserialize round-trip — see
     // purrnet.dev/docs/client-side-prediction/disposable-collections. With potentially 50-100+ enemies
@@ -271,6 +282,29 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // other generic code (e.g. HandleKillLaunch's sphere-cast radius) can read without needing its own
     // separate per-enemy tunable. Default 1, hand-tuned per enemy prefab.
     public float size = 1f;
+
+    // ── Declumping ────────────────────────────────────────────────────────────
+    // With enemy-enemy collision deliberately disabled project-wide for performance, nothing was ever
+    // pushing overlapping enemies apart — herding a pack onto one player is a totally valid, intended
+    // strategy, but with nothing to separate them they can end up literally stacked at the exact same
+    // coordinate, which looks wrong and makes them hard to read as individuals. Applies to every enemy type
+    // uniformly (started as a SpikeGloomPD-only fix, generalized here once proven cheap and unobtrusive) —
+    // none of these three are Inspector-tunable, deliberately: this is a shared correction, not a per-prefab
+    // authoring choice. separationRadius scales with size (a bigger enemy needs a bigger personal-space
+    // radius); separationForce deliberately does NOT (a harder shove isn't obviously "more correct" for a
+    // bigger enemy the way a bigger detection radius is, and a flat force keeps the correction subtle
+    // regardless of size).
+    private const int   SeparationCheckInterval = 8;
+    private const float SeparationRadiusPerSize = 1f;
+    private const float SeparationForce = 8f;
+    // Cached between checks and re-applied as a small continuous force every tick in between — smoother-
+    // looking than an abrupt kick only on the tick the check itself runs, and self-decays to zero once
+    // neighbors are far enough apart to stop overlapping on the next check. Plain, not predicted State:
+    // deterministically re-derived from other enemies' own (rollback-tracked) positions and this instance's
+    // own EnemyBaseState.personalPushAngle every time it's actually recomputed, so every machine (and every
+    // resimulation replay) reproduces the identical value on the identical tick.
+    private Vector3 _separationPush;
+    private readonly Collider[] _separationOverlapResults = new Collider[16];
 
     [Header("Contact Damage")]
     public bool contactColliderEnabled = true;
@@ -540,6 +574,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         _onHitFeedback = new PredictedEvent<HitFeedbackData>(predictionManager, this);
         _onHitFeedback.AddListener(OnHitFeedback);
 
+        // Declumping seed — re-rolled on every real spawn AND every pooled reuse (LateAwake() re-fires on
+        // both, unlike OnRespawnReset() which only some subclasses' own overrides chain back to base for) —
+        // see EnemyBaseState.separationCheckTimer/personalPushAngle's own doc comments.
+        ref var declumpState = ref GetBase(ref currentState);
+        declumpState.separationCheckTimer = GameRandom.instance.Next(0, SeparationCheckInterval);
+        declumpState.personalPushAngle    = GameRandom.instance.NextFloat(0f, 360f);
+
         EnemySpawnerPD.instance?.RegisterEnemy(this);
     }
 
@@ -548,7 +589,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private void OnHitFeedback(HitFeedbackData data)
     {
         if (data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy))
-            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.isPriority);
+            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.isPriority, data.overrideSfx, data.sfx);
     }
 
     private void OnContactTrigger(GameObject other)
@@ -682,6 +723,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             if (b.killLaunchActive) HandleKillLaunch(ref b, delta);
             return;
         }
+
+        // Unconditional, ahead of the stun-freeze return below — declumping is a passive spatial correction,
+        // not an "action" a stun/attack-lock should block, and it should keep working even for an enemy
+        // that's currently stunned or mid-attack. See HandleSeparation's own doc comment.
+        HandleSeparation(ref b, delta);
 
         // Independent of stunTimer below — a slow still counts down while stunned (see the field's own doc
         // comment), unlike trueStunTimer which only ticks inside the stun branch itself.
@@ -977,6 +1023,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // _targetStats by calling this again next tick.
     protected virtual void FindClosestTarget()
     {
+        // Skip the distance-check loop below entirely when nobody in the whole game is even a legal
+        // candidate right now (e.g. the last player standing is invisible-and-not-taunting) — this is the
+        // common case a null-target enemy's every-tick retry (see EnemyBasePD.Simulate()'s own comment on
+        // that fallback) would otherwise burn a full scan on for nothing, every tick, for every such enemy,
+        // for however long that window lasts. See CharacterStatsPD.AnyValidTargetExists's own doc comment.
+        if (!CharacterStatsPD.AnyValidTargetExists) return;
+
         float nearestAny = float.MaxValue;
         Transform anyTarget = null;
         CharacterStatsPD anyStats = null;
@@ -1108,6 +1161,87 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
     }
 
+    // ── Declumping ────────────────────────────────────────────────────────────
+
+    // Ticks the per-instance stagger timer and, every SeparationCheckInterval ticks, recomputes this
+    // enemy's own push-away-from-neighbors vector — cached in _separationPush and re-applied here as a small
+    // continuous force every tick in between checks (see that field's own doc comment for why). Deliberately
+    // not every enemy re-checking every tick: with up to maxNormalEnemies (plus elites/bosses) potentially
+    // alive and overlapping at once, that would be real, avoidable physics-query cost that scales with total
+    // enemy count instead of staying flat — the random per-instance seed on separationCheckTimer (see
+    // LateAwake()) spreads the population's checks evenly across ticks instead of all landing on the same one.
+    private void HandleSeparation(ref EnemyBaseState b, float delta)
+    {
+        b.separationCheckTimer--;
+        if (b.separationCheckTimer <= 0)
+        {
+            b.separationCheckTimer = SeparationCheckInterval;
+            RecomputeSeparationPush(ref b);
+        }
+
+        // isKinematic-guarded — a kinematic window (windup/charge/leap, several subclasses have one) can't
+        // take a velocity-change force at all; the next check after that window ends picks the push back up.
+        if (_separationPush != Vector3.zero && _rigidbody != null && !_rigidbody.isKinematic)
+            _rigidbody.AddForce(_separationPush * delta, ForceMode.VelocityChange);
+    }
+
+    // Any enemy counts as a neighbor to push away from here, not just this enemy's own type — pushing off of
+    // every enemy type equally is the intended behavior, not something that needs filtering down to "my own
+    // kind" specifically.
+    private void RecomputeSeparationPush(ref EnemyBaseState b)
+    {
+        _separationPush = Vector3.zero;
+
+        float radius = SeparationRadiusPerSize * size;
+        if (radius <= 0f) return;
+
+        int n = Physics.OverlapSphereNonAlloc(transform.position, radius, _separationOverlapResults, CombatLayerMasks.EnemyHurtboxMask);
+        if (n <= 0) return;
+
+        Vector3 combined = Vector3.zero;
+        bool anyNeighbor = false;
+
+        for (int i = 0; i < n; i++)
+        {
+            var other = _separationOverlapResults[i].GetComponent<IEnemyPD>();
+            if (other == null || other._isDead || other.transform == transform) continue;
+
+            Vector3 away = transform.position - other.transform.position;
+            away.y = 0f;
+            float dist = away.magnitude;
+
+            Vector3 pushDir;
+            float weight;
+            if (dist < 0.001f)
+            {
+                // Exact/near-exact overlap — "away from them" is undefined (zero-length vector), so fall
+                // back to this enemy's own fixed personal angle instead. Without this, a perfect N-way stack
+                // would have every member computing the same undefined zero vector forever and never
+                // actually separate.
+                pushDir = Quaternion.Euler(0f, b.personalPushAngle, 0f) * Vector3.forward;
+                weight = 1f;
+            }
+            else
+            {
+                pushDir = away / dist;
+                // Stronger the closer/more-overlapping they are (full weight at 0 distance, fading to 0 right
+                // at radius) — the worst case (identical coordinates) needs to resolve FASTEST, not slowest.
+                weight = Mathf.Clamp01(1f - dist / radius);
+            }
+
+            combined += pushDir * weight;
+            anyNeighbor = true;
+        }
+
+        if (!anyNeighbor) return;
+        // Clamped, not left to grow with neighbor count — an enemy buried in the middle of a deep pile
+        // touches many neighbors at once, and summing every one of their unit push vectors uncapped would
+        // scale the resulting force with however many are found instead of staying a bounded "how hard am I
+        // being pushed" value.
+        if (combined.sqrMagnitude > 1f) combined.Normalize();
+        _separationPush = combined * SeparationForce;
+    }
+
     // ── Dash helpers (for subclasses) ──────────────────────────────────────
     // speed here is expected to already exclude attack-speed scaling (e.g. baseMoveSpeed * a subclass's own
     // dashSpeedMultiplier) — HandleDash below applies EffectiveAttackSpeed live, every tick, on top of
@@ -1223,6 +1357,19 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         return Vector3.Distance(transform.position, _target.position) <= preferredRange + rangeToleranceFar;
     }
 
+    // Same validity rule FindClosestTarget uses to decide who's even a candidate (dead, or invisible without
+    // taunt, is never valid) — but checked against the CURRENTLY-locked target instead of scanning for a new
+    // one. Every multi-hit attack chain's own "Remaining > 0, keep going" continuation check (e.g.
+    // LeaperGloomPD.EnterPostLand, SpearGloomPD's BetweenStabs gate) should also gate on this: an attack
+    // already resolving must still complete uninterrupted (see CaptureAttackAnchor's own doc comment for that
+    // contract — untouched by this), but deciding whether to chain into ANOTHER hit against a target that's
+    // gone invisible-and-non-taunting since the last hit is exactly the same decision FindClosestTarget would
+    // already make for a fresh acquisition, so a chain shouldn't get to skip it just because it's already
+    // mid-routine. Without this, invisibility only ever stopped a chain from STARTING against someone, never
+    // from continuing an already-started one against them.
+    protected bool IsTargetStillValid =>
+        _targetStats != null && !_targetStats.IsDead && (!_targetStats.IsInvisible || _targetStats.IsTaunting);
+
     // ── Combat ─────────────────────────────────────────────────────────────
     public virtual void TakeDamage(float damage, bool isCrit = false, PlayerID attackerOwner = default)
     {
@@ -1271,7 +1418,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // jumps this hit's damage number to the front of DamageNumberManager's queue for this enemy+attacker
     // ahead of whatever's already waiting, so real weapon damage always reads first regardless of how many
     // onhit effects also fired off the same hit.
-    public void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false)
+    public void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false, bool overrideSfx = false, AudioClip sfxOverride = null)
     {
         // PD weapons (WeaponMeleePD, WeaponRangedProjectilePD) queue hit feedback in Simulate()/
         // LateSimulate() but only drain and fire it here in UpdateView(), at render rate — by the time it
@@ -1295,7 +1442,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (!_hiddenOnDeath && !B.isDead && gameObject.activeInHierarchy) TriggerFlash();
         if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit, isHighroll, isPriority);
         if (attacker.isOwner && SFXManager.instance != null)
-            SFXManager.instance.Play(attacker.hitSfx, transform.position, 1f, 0.05f);
+        {
+            AudioClip clip = overrideSfx ? sfxOverride : attacker.hitSfx;
+            SFXManager.instance.Play(clip, transform.position, 1f, 0.05f);
+        }
     }
 
     protected virtual void Die()

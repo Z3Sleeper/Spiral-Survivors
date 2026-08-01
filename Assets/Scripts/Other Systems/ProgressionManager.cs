@@ -5,7 +5,7 @@ using UnityEngine;
 
 public static class ProgressionManager
 {
-    private const int    CurrentSaveVersion = 3;
+    private const int    CurrentSaveVersion = 4;
     private const string SaveFileName       = "progression.json";
 
     private const int   BaseFee       = 50;
@@ -197,7 +197,7 @@ public static class ProgressionManager
     {
         if (statType == StatType.Strength) return true;
         int[] costs = GetStatCosts(statType);
-        return costs.Length > 0 && TotalPoints >= costs[0] * 5 + BaseFee;
+        return costs.Length > 0 && TotalPoints >= costs[0] * 10 + BaseFee;
     }
 
     public static int GetBaseStatTier(StatType statType) =>

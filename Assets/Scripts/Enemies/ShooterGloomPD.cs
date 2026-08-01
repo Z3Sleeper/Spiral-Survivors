@@ -165,10 +165,12 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
             case ShooterState.Shooting:
                 if (state.shooterStateTimer <= 0f)
                 {
+                    // IsTargetStillValid — a target that went invisible-and-non-taunting since the last shot
+                    // shouldn't get chained into another one against them; see that property's own doc comment.
                     // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the
                     // shot that just finished above, but stops the chain from continuing into another one,
                     // falling through to PostShot instead (see IsCrowdControlled's own doc comment).
-                    if (state.shotsRemaining > 0 && !IsCrowdControlled) EnterBetweenShots(ref state);
+                    if (state.shotsRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenShots(ref state);
                     else                                                EnterPostShot(ref state);
                 }
                 break;

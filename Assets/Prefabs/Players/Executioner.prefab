@@ -94,21 +94,21 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ExeBigAxeAbilityPD
   icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
   abilityName: <color=#FF0000>Ability:\nExecution Time</color>
-  description: 'For <color=#FFA000>5 seconds</color>, gain <color=#3278FF>+50% Total
+  description: 'For <color=#FFA000>8 seconds</color>, gain <color=#3278FF>+100% Total
     Range</color>, <color=#FFA000>+25% Execute Threshold</color> and <color=#FF0000>+25%
     Crit Chance</color>.
 
     <color=#FFBE50><i>Buffs and Duration scale with Ability
     Power</i></color>
 
-    <color=#FFBE50>Cooldown: 15 seconds</color>'
-  cooldown: 15
+    <color=#FFBE50>Cooldown: 20 seconds</color>'
+  cooldown: 20
   cooldownStartsOnCast: 0
-  slot: 0
+  slot: 1
   tags: []
   activeSurgeBlock: 0
-  duration: 5
-  weaponRangeTotalPercent: 0.5
+  duration: 8
+  weaponRangeTotalPercent: 1
   executeThresholdPercent: 0.25
   critChancePercent: 0.25
 --- !u!114 &-5547753293085439714
@@ -123,24 +123,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e8f81627b04fa9045ab7281eec796a4b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ExeAxeThrowAbilityPD
-  icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
-  abilityName: <color=#FF0000>Ability:\nAxe Toss</color>
-  description: 'Throw an axe dealing <color=#FF5000>150% unpenalized Strength</color>.
-    Has <color=#FF0000>+100% Crit Damage</color>.
+  icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
+  abilityName: <color=#FF5000>Ability:\nAxe Toss</color>
+  description: 'Throw a returning axe <color=#3278FF>5x Range</color> ahead, dealing
+    <color=#FF5000>100% unpenalized Strength</color>. Has <color=#FF0000>+100% Crit
+    Damage</color>.
 
-    <color=#FFBE50><i>Damage scales
-    with Ability Power</i></color>
+    <color=#FFBE50><i>Damage scales with Ability Power</i></color>
 
-    <color=#FFBE50><i>Range & Size scale with
-    Range</i></color>
+    <color=#FFBE50><i>Size
+    scales with Range</i></color>
 
-    <color=#FFBE50>Cooldown: 4 seconds</color>'
-  cooldown: 4
+    <color=#FFBE50>Cooldown: 8 seconds</color>'
+  cooldown: 8
   cooldownStartsOnCast: 0
-  slot: 1
+  slot: 0
   tags: []
   activeSurgeBlock: 0
-  strengthPercent: 3
+  strengthPercent: 1
   maxRangeMultiplier: 5
   projectileSpeed: 20
   projectilePrefab: {fileID: 2942187867930129664, guid: 3917a023e9490874693890b5efd7102b, type: 3}

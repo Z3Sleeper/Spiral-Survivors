@@ -27,11 +27,8 @@ public class OnHitHealHealthRegenAugment : AugmentEffectPD<OnHitHealHealthRegenA
 
     private void OnHit(WeaponHitData data)
     {
-        // Anything that deals/restores an amount rolls luck variance — no exceptions.
-        float baseHeal = Stats.HealthRegen * onHitHealPercent * data.onHitPower;
-        float rolled = WeaponDamageMath.RollDamage(baseHeal, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
-        if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
-
-        Stats.Heal(rolled);
+        // Anything that deals/restores an amount rolls luck variance — no exceptions. Heal() itself rolls it
+        // now, so this just passes the raw amount through.
+        Stats.Heal(Stats.HealthRegen * onHitHealPercent * data.onHitPower);
     }
 }

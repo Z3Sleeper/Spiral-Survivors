@@ -11,6 +11,12 @@ using UnityEngine;
 // collider, which would cause frequent near-misses. If it finds one but IS on cooldown, it doesn't fire and
 // doesn't reset the cooldown, so it retries every subsequent tick until the cooldown clears. Ported from
 // the old WeaponBow.GetTargetPosition()/Fire().
+//
+// Enemies only, deliberately — this weapon never aims at an ally, so "hit ally, do something" augments
+// (OnStrikeHealAllyAugment etc.) only ever trigger off WeaponRangedProjectilePD's own flight-path sweep
+// grazing an ally standing between the shooter and its real (enemy) target, a pure "happy accident" of
+// positioning. To land one on purpose you either line an ally up in that path yourself or use something
+// like ArcherFocusFireAbilityPD, which fires in a fixed direction with no target-seeking at all.
 public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 {
     public struct State : IPredictedData<State>
@@ -20,12 +26,10 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         // Allowed to go arbitrarily negative (see the reset comment below), same as it always could as a
         // float — an int just represents that identical "debt" in tick units instead of seconds.
         public int fireTimer;
-        public DisposableList<HitCooldownEntry>     hitCooldowns;
-        public DisposableList<AllyHitCooldownEntry> allyHitCooldowns;
+        public DisposableList<HitCooldownEntry> hitCooldowns;
         public void Dispose()
         {
             hitCooldowns.Dispose();
-            allyHitCooldowns.Dispose();
         }
     }
 
@@ -41,13 +45,6 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     // enemy along the way (e.g. it was standing behind the intended target), that's fine; the cooldown
     // only gates target SELECTION, not the projectile's own hit detection.
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
-
-    // Ally targeting (OnStrikeHealAllyAugment, real friendly fire, future "hit ally, do something"
-    // augments) — only ever populated/queried when _stats.allyStrikeHitEnabled or
-    // _stats.allyStrikeDamageEnabled is true. Separate from hitCooldowns since an ally is a
-    // CharacterStatsPD, not an IEnemyPD; same per-target cooldown-gates-SELECTION-only reasoning as the
-    // enemy list above. This weapon only ever picks a target and fires toward it — the actual heal/damage
-    // happens once the launched WeaponRangedProjectilePD physically reaches the target.
 
     private readonly RaycastHit[] _rayResults = new RaycastHit[16];
 
@@ -80,7 +77,6 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     protected override State GetInitialState() => new()
     {
         hitCooldowns = DisposableList<HitCooldownEntry>.Create(4),
-        allyHitCooldowns = DisposableList<AllyHitCooldownEntry>.Create(4),
     };
 
     protected override void UpdateView(State viewState, State? verified)
@@ -109,7 +105,6 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         // a replayed tick could see a target's cooldown already expired and pick it again, choosing a
         // different target than the original tick actually did — a guaranteed misprediction every time.
         HitCooldownMath.Tick(state.hitCooldowns);
-        HitCooldownMath.Tick(state.allyHitCooldowns);
 
         // Outer-track weapons (OuterTrackAugment) spin the opposite direction — see
         // WeaponMeleePD.LateSimulate's own angleSign comment for the full reasoning. No sub-arc sweep here
@@ -147,10 +142,9 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
             return;
         }
 
-        if (!FindTarget(transform.position, transform.forward, state.hitCooldowns, state.allyHitCooldowns, out IEnemyPD target, out CharacterStatsPD allyTarget, out Vector3 hurtboxCenter)) return;
+        if (!FindTarget(transform.position, transform.forward, state.hitCooldowns, out IEnemyPD target, out Vector3 hurtboxCenter)) return;
 
-        if (target != null) HitCooldownMath.TryStart(state.hitCooldowns, target.ObjectId, HitCooldown, delta);
-        else                 HitCooldownMath.TryStart(state.allyHitCooldowns, allyTarget.owner ?? default, HitCooldown, delta);
+        HitCooldownMath.TryStart(state.hitCooldowns, target.ObjectId, HitCooldown, delta);
         Fire(hurtboxCenter);
         // Hard reset, not += — fireTimer can drift arbitrarily negative while no target is in the forward
         // ray (the common case for a thin raycast), and accumulating the cooldown on top of that debt
@@ -165,25 +159,18 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     // inside/past it. Enemies currently on hitCooldowns are skipped so the ray "sees past" them to
     // whatever's next in line, same reason the old WeaponBow tracked _initialHitCooldowns.
     //
-    // Single combined raycast against Enemy + (when detectAllies) Player layers, so an ally competes
-    // for "closest valid target" on exactly the same footing as an enemy — the exact same targeting logic,
-    // just with a wider mask, rather than a separate ally-only pass. enemy/ally outputs are mutually
-    // exclusive (whichever the closest valid hit turned out to be); the caller branches cooldown
-    // bookkeeping off which one came back non-null.
+    // Enemy layer only — this weapon never aims at an ally (see this file's own top-of-file comment for
+    // why); an ally standing in the ray's path is simply invisible to target SELECTION, the same as any
+    // other collider outside the mask.
     private bool FindTarget(Vector3 from, Vector3 forward, DisposableList<HitCooldownEntry> hitCooldowns,
-        DisposableList<AllyHitCooldownEntry> allyHitCooldowns, out IEnemyPD enemy, out CharacterStatsPD ally, out Vector3 hurtboxCenter)
+        out IEnemyPD enemy, out Vector3 hurtboxCenter)
     {
         Vector3 origin = from - forward * 1f;
         float   range  = _stats.WeaponRange + 1f;
-        bool    detectAllies = _stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled;
-        int     mask = detectAllies
-            ? CombatLayerMasks.EnemyHurtboxMask | CombatLayerMasks.PlayerHurtboxMask
-            : CombatLayerMasks.EnemyHurtboxMask;
 
-        int   n        = Physics.RaycastNonAlloc(origin, forward, _rayResults, range, mask);
+        int   n        = Physics.RaycastNonAlloc(origin, forward, _rayResults, range, CombatLayerMasks.EnemyHurtboxMask);
         float bestDist = float.MaxValue;
         enemy = null;
-        ally  = null;
         hurtboxCenter = default;
 
         for (int i = 0; i < n; i++)
@@ -192,25 +179,12 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
             var collider = _rayResults[i].collider;
 
             var e = collider.GetComponent<IEnemyPD>();
-            if (e != null)
-            {
-                if (e._isDead || HitCooldownMath.IsOnCooldown(hitCooldowns, e.ObjectId)) continue;
-                bestDist      = _rayResults[i].distance;
-                enemy         = e;
-                ally          = null;
-                hurtboxCenter = collider.bounds.center;
-                continue;
-            }
-
-            if (!detectAllies) continue;
-            var a = collider.GetComponent<CharacterStatsPD>();
-            if (a == null || a == _stats || a.IsDead || HitCooldownMath.IsOnCooldown(allyHitCooldowns, a.owner ?? default)) continue;
+            if (e == null || e._isDead || HitCooldownMath.IsOnCooldown(hitCooldowns, e.ObjectId)) continue;
             bestDist      = _rayResults[i].distance;
-            enemy         = null;
-            ally          = a;
+            enemy         = e;
             hurtboxCenter = collider.bounds.center;
         }
-        return enemy != null || ally != null;
+        return enemy != null;
     }
 
     // ── Fire ──────────────────────────────────────────────────────────────────

@@ -9,6 +9,32 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 {
     public static readonly Dictionary<PlayerID, CharacterStatsPD> All = new();
 
+    // True if at least one player is currently a legal enemy-targeting candidate — same rule
+    // EnemyBasePD.FindClosestTarget/IsTargetStillValid already use (not dead, and either visible or
+    // taunting). Recomputed inline at every point that can actually flip it — SetTaunting, SetInvisible,
+    // the death transition in TakeDamage, Revive(), plus PlayerDataPD's own All[owner]=stats/All.Remove
+    // (joining/disconnecting changes candidacy just as much as an in-place flag flip) — rather than polled;
+    // cheap enough (≤4 players) to just recompute outright on each of those rare events. Lets
+    // FindClosestTarget's every caller — including EnemyBasePD.Simulate()'s once-per-tick "target is null"
+    // fallback, which can run for every active enemy every tick — skip its own O(players) distance-check
+    // loop entirely with one O(1) bool read when nothing valid exists anywhere right now (e.g. the last
+    // player standing goes invisible).
+    public static bool AnyValidTargetExists { get; private set; }
+
+    // Public, not private — see the doc comment above for every call site.
+    public static void RefreshAnyValidTargetExists()
+    {
+        foreach (var p in All.Values)
+        {
+            if (!p.currentState.isDead && (!p.currentState.invisible || p.currentState.taunting))
+            {
+                AnyValidTargetExists = true;
+                return;
+            }
+        }
+        AnyValidTargetExists = false;
+    }
+
     // Static, not per-instance PredictedEvent — fired from EnemyBasePD.UpdateView() off verified state with
     // its own edge-detection (isDead && !_wasDeadLastFrame), the same hand-rolled pattern already
     // established as functionally equivalent to PredictedEvent (see GameManagerPD.OnGameEnded), so it's
@@ -133,11 +159,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float baseLuckFloor = 0.5f;
     public float baseLuckCeiling = 1.5f;
     // The "floor" of a highroll — a roll landing in the top (1 - Highroll) fraction of its own window
-    // snaps up to the max and invokes the hitting player's own CharacterStatsPD._onHighroll (a PredictedEvent,
-    // rollback-safe, called via NotifyHighroll from whatever weapon/effect actually rolled the hit). Same
-    // base+bonus+penalty
-    // convention as every other stat here, so a future augment/passive can push it (e.g. toward 1.0 = never
-    // highrolls, or lower = highrolls more often) without touching WeaponDamageMath itself.
+    // snaps up to the max. Currently only ever notified via NotifyStrikeHighroll (see _onStrikeHighroll's
+    // own doc comment) — every weapon/strike damage source calls it, heals do not (yet; heals already apply
+    // the highroll snap/HighrollBonus to their own roll, just don't broadcast a notification for it — see
+    // CharacterStatsPD.Heal's own doc comment). Same base+bonus+penalty convention as every other stat here,
+    // so a future augment/passive can push it (e.g. toward 1.0 = never highrolls, or lower = highrolls more
+    // often) without touching WeaponDamageMath itself.
     public float baseHighroll = 0.95f;
     // Bonus damage applied WHEN a hit highrolls — separate from baseHighroll (which only decides whether a
     // roll counts as one). Applies as (1 + HighrollBonus) before crit, so the two stack multiplicatively
@@ -364,6 +391,20 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // damage/effect strength/buff duration up (or down, via the penalty term).
     [HideInInspector] public float abilityPowerMultiplier = 1f;
     [HideInInspector] public float abilityPowerPenalty = 1f;
+
+    // Same Percent*Penalty shape — HealPower scales every heal this character receives (see Heal()'s own
+    // formula), regardless of source (regen, DashHealAugment, KnightAreaStunHealAbilityPD, etc. — anything
+    // that funnels through the shared Heal() choke point gets this for free). CritHealPower ONLY applies on
+    // top of it when a given heal happens to roll a "crit heal" (against CritChance, same roll every heal
+    // always makes — see Heal()'s own comment for why no separate enable flag is needed): additively
+    // combined as HealPower + CritHealPower - 1f, same "1 + sum of bonuses" stacking convention
+    // AreaEffectPower/AbilityPower already use elsewhere (see AreaEffectCastHelper.Cast()'s own comment) —
+    // at CritHealPower's neutral 1f baseline this reduces to plain HealPower, so an un-augmented character
+    // sees zero effect from the always-on crit-heal roll until something actually grants bonus CritHealPower.
+    [HideInInspector] public float healPowerMultiplier = 1f;
+    [HideInInspector] public float healPowerPenalty = 1f;
+    [HideInInspector] public float critHealPowerMultiplier = 1f;
+    [HideInInspector] public float critHealPowerPenalty = 1f;
 
     // "AoE Effects" tag — modifiers for any augment tagged as an area effect (DashExplosionAugment,
     // DashHealAugment, etc.). Percent+Penalty pair for the two floats, same shape as StackPower
@@ -640,6 +681,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float UnpenalizedOnHitPower => baseOnHitPower * bonusOnHitPowerMultiplier * bonusOnHitPowerPenalty * totalOnHitPowerPercent * totalOnHitPowerPenalty;
     public float StackPower => stackPowerPercent * stackPowerPenalty;
     public float AbilityPower => abilityPowerMultiplier * abilityPowerPenalty;
+    public float HealPower => healPowerMultiplier * healPowerPenalty;
+    public float CritHealPower => critHealPowerMultiplier * critHealPowerPenalty;
     public float XPModifier => xpMultiplier * xpPenalty;
     public float XPRadius => (baseXPRadius + bonusXPRadiusFlat) * bonusXPRadiusPercent;
 
@@ -755,7 +798,15 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // PredictedEvent once its tick verifies, which requires the OWNING identity to still exist to be
     // resimulated — a despawned weapon can never satisfy that. No subscribers yet (currently unused), but
     // any future "on highroll, do X" augment should subscribe here, not to a weapon instance.
-    private PredictedEvent<float> _onHighroll;
+    //
+    // Named Strike specifically (not a generic _onHighroll) — every current caller is a weapon/ability
+    // STRIKE damage source (WeaponMeleePD/WeaponAxePD/WeaponRangedProjectilePD/RogueSpinAbilityPD/
+    // ExeAxeThrowProjectilePD). Heals also highroll (see CharacterStatsPD.Heal's own doc comment) but
+    // deliberately do NOT fire this event — a heal highrolling and a strike highrolling are different enough
+    // occurrences that a future "on highroll" effect should be able to react to just one or the other, not
+    // both lumped under one event. If/when heals get their own notification, it belongs on a separate
+    // _onHealHighroll, not here.
+    private PredictedEvent<float> _onStrikeHighroll;
     private PredictedEvent _onSurgeStarted;
     private PredictedEvent _onSurgeEnded;
     // Fires the tick shield crosses from >0 to <=0 inside TakeDamage — see that method's own 0-crossing
@@ -846,9 +897,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public void AddHealListener(Action<float> listener) => _onHeal.AddListener(listener);
     public void RemoveHealListener(Action<float> listener) => _onHeal.RemoveListener(listener);
-    public void AddHighrollListener(Action<float> listener) => _onHighroll.AddListener(listener);
-    public void RemoveHighrollListener(Action<float> listener) => _onHighroll.RemoveListener(listener);
-    public void NotifyHighroll(float damage) => _onHighroll.Invoke(damage);
+    public void AddStrikeHighrollListener(Action<float> listener) => _onStrikeHighroll.AddListener(listener);
+    public void RemoveStrikeHighrollListener(Action<float> listener) => _onStrikeHighroll.RemoveListener(listener);
+    public void NotifyStrikeHighroll(float damage) => _onStrikeHighroll.Invoke(damage);
     public void AddSurgeStartedListener(Action listener) => _onSurgeStarted.AddListener(listener);
     public void RemoveSurgeStartedListener(Action listener) => _onSurgeStarted.RemoveListener(listener);
     public void AddSurgeEndedListener(Action listener) => _onSurgeEnded.AddListener(listener);
@@ -900,14 +951,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     private void OnHitFeedback(HitFeedbackData data)
     {
         if (data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy))
-            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.isPriority);
+            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.isPriority, data.overrideSfx, data.sfx);
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
     protected override void LateAwake()
     {
         _onHeal          = new PredictedEvent<float>(predictionManager, this);
-        _onHighroll      = new PredictedEvent<float>(predictionManager, this);
+        _onStrikeHighroll = new PredictedEvent<float>(predictionManager, this);
         _onSurgeStarted  = new PredictedEvent(predictionManager, this);
         _onSurgeEnded    = new PredictedEvent(predictionManager, this);
         _onShieldBreak   = new PredictedEvent(predictionManager, this);
@@ -997,16 +1048,21 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         if (state.healthRegenTimer < 0)
             state.healthRegenTimer = Mathf.Max(1, Mathf.RoundToInt(HealthRegenInterval / delta));
 
-        // Health regen
+        // Health regen — scales by HealPower same as any other heal, but deliberately skips luck variance,
+        // Highroll, and CritHealPower (a passive per-tick trickle isn't a "roll" in the way a deliberate heal
+        // is — those are reserved for discrete heal sources) and does NOT go through Heal() or invoke
+        // _onHeal: a passive per-second tick firing the same event a deliberate heal does would spam anything
+        // listening for "the player was just healed" (e.g. a future effect that scales off heal size) far
+        // more often than intended, and for a source that isn't really a discrete "heal" in the way regen's
+        // own per-tick amount usually reads as trivially small besides.
         if (state.health < MaxHealth)
         {
             state.healthRegenTimer--;
             if (state.healthRegenTimer <= 0)
             {
-                float healed = Mathf.Min(HealthRegen, MaxHealth - state.health);
+                float healed = Mathf.Min(HealthRegen * HealPower, MaxHealth - state.health);
                 state.health += healed;
                 state.healthRegenTimer = Mathf.Max(1, Mathf.RoundToInt(HealthRegenInterval / delta));
-                if (healed > 0f) _onHeal.Invoke(healed);
             }
         }
 
@@ -1019,7 +1075,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
                 bool wasBroken = state.shield <= 0f;
                 state.shield = MaxShield;
                 // Safe to invoke directly from Simulate() — PredictedEvent fires exactly once per real
-                // occurrence regardless of resimulation, same reasoning as _onHighroll being invoked
+                // occurrence regardless of resimulation, same reasoning as _onStrikeHighroll being invoked
                 // directly from weapon Hit() methods.
                 if (wasBroken && state.shield > 0f)
                     _onShieldRecharge.Invoke();
@@ -1077,21 +1133,23 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
         // Driven generically off the invisible flag itself, not any specific ability — any current or
         // future invisibility source gets this same visual fade for free. Guarded on an actual change so
-        // this doesn't touch the renderer every single frame. MaterialPropertyBlock, not a material
-        // instance — avoids leaking a new Material per player, and the base material is already Transparent
+        // this doesn't touch the renderer every single frame. A real material INSTANCE, not a
+        // MaterialPropertyBlock — every player's model renderer is wired to the same shared Material asset
+        // (inherited from the BaseCharacter prefab), and a property-block override on a shared material
+        // bled across every player using it (Rogue's Vanish was making all 4 players go invisible at once
+        // in multiplayer). `.material` auto-clones a unique instance for this renderer the first time it's
+        // read, so writes here only ever affect this one player. The base material is already Transparent
         // surface type (see PlayerColorApplicator-adjacent art setup) so alpha actually has a visual effect.
         // RGB comes from PlayerColor, not a hardcoded white — PlayerColorApplicator tints this same
-        // renderer's material directly (not via a property block), so overriding _BaseColor here must keep
-        // that tint's RGB and only change alpha, or invisibility would blank the model back to white.
+        // renderer's material directly, so overriding _BaseColor here must keep that tint's RGB and only
+        // change alpha, or invisibility would blank the model back to white.
         if (_modelRenderer != null && viewState.invisible != _lastAppliedInvisible)
         {
             _lastAppliedInvisible = viewState.invisible;
-            _modelPropertyBlock ??= new MaterialPropertyBlock();
-            _modelRenderer.GetPropertyBlock(_modelPropertyBlock);
+            if (_modelMaterialInstance == null) _modelMaterialInstance = _modelRenderer.material;
             Color c = PlayerColor;
             c.a = viewState.invisible ? invisibleModelAlpha : 1f;
-            _modelPropertyBlock.SetColor(BaseColorId, c);
-            _modelRenderer.SetPropertyBlock(_modelPropertyBlock);
+            _modelMaterialInstance.SetColor(BaseColorId, c);
         }
 
         // Continuous idle spin, always on — see _modelTransform's own doc comment for why the sideways tip
@@ -1109,15 +1167,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     }
 
     private bool _lastAppliedInvisible;
-    // Not constructed inline (a field initializer runs as part of the implicit constructor, and Unity
-    // disallows MaterialPropertyBlock's own constructor there) — lazily created on first use instead.
-    private MaterialPropertyBlock _modelPropertyBlock;
+    // Lazily cached the first time it's read — see the invisibility-fade block above for why this needs to
+    // be a real per-renderer instance rather than a MaterialPropertyBlock.
+    private Material _modelMaterialInstance;
     private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
 
     protected override void Destroyed()
     {
         if (owner.HasValue)
+        {
             All.Remove(owner.Value);
+            RefreshAnyValidTargetExists();
+        }
     }
 
     // ── Init ──────────────────────────────────────────────────────────────
@@ -1229,6 +1290,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Multiplicative compounding, same convention as MultiplyStrengthPenalty/MultiplyOnHitPowerPenalty —
     // multiple penalty sources compound together rather than summing.
     public void MultiplyAbilityPowerPenalty(float factor) => ApplyStatChange(() => abilityPowerPenalty *= factor);
+    // Same "additive against the 1f baseline" convention as AddAbilityPowerPercent — plain +=, not
+    // ApplyStatChange, since HealPower/CritHealPower don't affect Max Health/Energy (no before/after clamp
+    // recompute needed, same reasoning as AddAreaEffectSizePercent).
+    public void AddHealPowerPercent(float amount) => healPowerMultiplier += amount;
+    public void MultiplyHealPowerPenalty(float factor) => healPowerPenalty *= factor;
+    public void AddCritHealPowerPercent(float amount) => critHealPowerMultiplier += amount;
+    public void MultiplyCritHealPowerPenalty(float factor) => critHealPowerPenalty *= factor;
     // Plain +=, not ApplyStatChange — same reasoning as AddPhantomBladeDamageBonusPercent: doesn't affect
     // Max Health/Energy, so the before/after clamp recompute ApplyStatChange does would be pure overhead.
     public void AddAreaEffectSizePercent(float amount) => areaEffectSizePercent += amount;
@@ -1429,16 +1497,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void EnablePhantomBladeOnHit() => phantomBladeOnHitEnabled = true;
     public void AddPhantomBladeOnHitPowerPercent(float amount) => phantomBladeOnHitPowerPercent += amount;
 
-    // Same enable-bool shape as phantomBladeOnHitEnabled above, but generic (no attached magnitude here) —
-    // weapons only pay for the extra ally-hurtbox overlap query when this (or allyStrikeDamageEnabled
-    // below) is true, and ANY "hit ally, do something" augment (OnStrikeHealAllyAugment, future family
-    // members) turns it on the same way via EnableAllyStrikeHit(). Multiple such augments picked at once
-    // just each call it — idempotent, no conflict — and all react independently to the same underlying
-    // _onAllyStrike notifications below. Consolidated from the old system's canContactAllies (same role,
-    // dormant/unused in this project until now).
-    [HideInInspector] public bool allyStrikeHitEnabled = false;
-    public void EnableAllyStrikeHit() => allyStrikeHitEnabled = true;
-
     // Read directly by EnemyBasePD.Die() (Simulate-context, safe pure reads of counts only ever incremented
     // once each, at OnApply()) to reserve exactly enough death-holds up front, atomically — no dependence
     // on OnEnemyDeath listener dispatch order/timing the way a single "did anyone enable this" bool would
@@ -1463,20 +1521,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [HideInInspector] public float energyRegenWhileSurgingPercent = 0f;
     public void AddEnergyRegenWhileSurgingPercent(float amount) => energyRegenWhileSurgingPercent += amount;
 
-    // Separate gate for actually DAMAGING a touched ally (real friendly fire) — a weapon only applies
-    // TakeDamage to an ally it touches if this is true, independent of allyStrikeHitEnabled above (a
-    // weapon can heal-touch without damaging, or vice versa; detection itself runs if EITHER is true).
-    // Consolidated from the old system's canDamageAllies. Nothing sets this yet — no augment/class passive
-    // currently turns it on — but weapons already check it, so it's a real, working gate the moment
-    // something eventually does.
-    [HideInInspector] public bool allyStrikeDamageEnabled = false;
-    public void EnableAllyStrikeDamage() => allyStrikeDamageEnabled = true;
-
-    // Called by a weapon (melee/axe/ranged) once it's confirmed touching an ally's hurtbox — a plain touch,
-    // not a damage hit, so this never goes through TakeDamage/RollDamage's damage path (a weapon's own
-    // friendly-fire branch, gated on allyStrikeDamageEnabled, handles that separately). Self- and
-    // dead-ally exclusion live here (not in each weapon's detection loop) so every current and future
-    // _onAllyStrike listener gets that guard for free rather than each needing to re-check it.
+    // Called by a weapon (melee/axe/ranged) once it's confirmed touching an ally's hurtbox — every weapon
+    // always runs this detection now (no more enable gate; "canContactAllies" is permanently on). A plain
+    // touch, never damage — real friendly fire (the old allyStrikeDamageEnabled/canDamageAllies gate) has
+    // been removed entirely from the project, so this is the ONLY thing an ally hit can ever do: notify
+    // whatever "hit ally, do something" augment (OnStrikeHealAllyAugment, future family members) is
+    // listening. Self- and dead-ally exclusion live here (not in each weapon's detection loop) so every
+    // current and future _onAllyStrike listener gets that guard for free rather than each needing to
+    // re-check it.
     public void NotifyAllyStrike(AllyStrikeData data)
     {
         if (data.ally == null || data.ally == this || data.ally.IsDead) return;
@@ -1913,6 +1965,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     {
         if (currentState.taunting == value) return;
         currentState.taunting = value;
+        RefreshAnyValidTargetExists();
         _onTauntChanged.Invoke(value);
     }
 
@@ -1920,6 +1973,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     {
         if (currentState.invisible == value) return;
         currentState.invisible = value;
+        RefreshAnyValidTargetExists();
         _onInvisibleChanged.Invoke(value);
     }
 
@@ -2003,6 +2057,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         {
             currentState.health = 0f;
             currentState.isDead = true;
+            RefreshAnyValidTargetExists();
         }
 
         // Only fires if this same hit didn't also kill the player — a lethal hit shouldn't trigger a
@@ -2015,25 +2070,57 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             _onDamaged.Invoke(totalDamageTaken);
     }
 
+    // Shared by Heal() and the natural health-regen tick above — every heal, from ANY source, rolls against
+    // CritChance for a "crit heal", always rolled, not gated behind any enable flag, since an un-augmented
+    // CritHealPower sitting at its neutral 1f baseline makes a successful roll indistinguishable from a
+    // normal heal anyway (see HealPower/CritHealPower's own doc comment). Only Heal()-routed heals also fire
+    // _onHeal though — regen deliberately doesn't, see its own comment for why.
+    private float RollHealMultiplier() =>
+        GameRandom.instance.NextFloat() < CritChance ? (HealPower + CritHealPower - 1f) : HealPower;
+
+    // amount rolls luck variance (WeaponDamageMath.RollDamage against THIS character's own Luck stats, same
+    // as any damage source) THEN gets scaled BEFORE being applied/clamped to MaxHealth — a true amplification
+    // of the heal, not a separate top-up event, so anything that reads the resulting healed amount (via
+    // AddHealListener) sees the one true final number, never split across two events or missing either bonus.
+    // Callers should pass the RAW, un-rolled amount — rolling luck is this method's own job now, not the
+    // caller's; every heal reaching here is guaranteed variance-rolled with no opt-in required.
     public void Heal(float amount)
     {
         if (currentState.isDead) return;
-        float healed = Mathf.Min(amount, MaxHealth - currentState.health);
+        float rolled = WeaponDamageMath.RollDamage(amount, LuckChance, LuckFloor, LuckCeiling, Highroll, out bool isHighroll);
+        if (isHighroll) rolled *= 1f + HighrollBonus;
+        float healed = Mathf.Min(rolled * RollHealMultiplier(), MaxHealth - currentState.health);
         if (healed <= 0f) return;
         currentState.health += healed;
         _onHeal.Invoke(healed);
     }
 
-    // Same as Heal(), minus the _onHeal invocation — for effects that react to a heal already in progress
-    // (e.g. CriticalHealingAugment topping up a heal it just observed via AddHealListener) and would
-    // otherwise re-trigger their own listener by calling Heal() again, cascading indefinitely on repeated
-    // crits. Same "must not re-notify its own trigger" shape as OnHitDamageAugment's own crit handling.
-    public void HealSilent(float amount)
+    // Same shape as Heal() minus RollHealMultiplier() — for heals RECEIVED from an ally's own effect (e.g.
+    // OnStrikeHealAllyAugment), deliberately NOT scaled by the RECEIVER's own HealPower/CritHealPower. Heal()
+    // being instance-scoped means a normal Heal() call already only ever applies whichever character it's
+    // invoked on, never the giver's — the risk this avoids is a receiver's OWN stacked HealPower separately
+    // amplifying every ally-sourced heal they happen to receive, on top of it already amplifying their own
+    // self-heals/regen, which could compound well past intended value with 4 players all stacking HealPower
+    // and all running heal-ally effects at once. Still fires _onHeal — this is still a genuine heal as far as
+    // anything reacting to that event is concerned, only the HealPower/CritHealPower scaling is skipped.
+    //
+    // healer rolls the luck variance here, not the receiver — "the healer rolls the heal for the healee" is
+    // the whole point of this method existing separately from Heal(): the receiver's own Luck stats should
+    // have no say in how generous someone ELSE's heal toward them turns out to be, any more than their own
+    // HealPower should (see above). Callers should pass the RAW, un-rolled amount, same as Heal().
+    public void HealFromAlly(float amount, CharacterStatsPD healer)
     {
         if (currentState.isDead) return;
-        float healed = Mathf.Min(amount, MaxHealth - currentState.health);
+        float rolled = amount;
+        if (healer != null)
+        {
+            rolled = WeaponDamageMath.RollDamage(amount, healer.LuckChance, healer.LuckFloor, healer.LuckCeiling, healer.Highroll, out bool isHighroll);
+            if (isHighroll) rolled *= 1f + healer.HighrollBonus;
+        }
+        float healed = Mathf.Min(rolled, MaxHealth - currentState.health);
         if (healed <= 0f) return;
         currentState.health += healed;
+        _onHeal.Invoke(healed);
     }
 
     // ApplyStatChange's own before/after MaxHealth delta (see its own comment) only ever ADDS the same delta
@@ -2066,6 +2153,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         currentState.shield = MaxShield;
         currentState.energy = MaxEnergy;
         currentState.currentReviveTime += ReviveTimePenalty;
+        RefreshAnyValidTargetExists();
         GrantInvincibility(2f);
     }
 }

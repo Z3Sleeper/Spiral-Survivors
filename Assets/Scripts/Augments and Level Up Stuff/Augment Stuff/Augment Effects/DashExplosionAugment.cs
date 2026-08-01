@@ -74,6 +74,6 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
         // deliberately NOT scaled by Stats.AreaEffectPower (per the "AoE Effects" default rules).
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true);
+                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, vfxPerCast: true);
     }
 }

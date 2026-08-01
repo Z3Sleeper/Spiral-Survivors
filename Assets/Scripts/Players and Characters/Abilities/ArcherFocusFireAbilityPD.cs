@@ -120,6 +120,9 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
     public bool AbilityIsActive => currentState.isActive;
+    public bool HasActiveWindow => true;
+    public float ActiveTimeRemaining => Mathf.Max(0f, currentState.activeTimer);
+    public float ActiveTimeDuration => _appliedDuration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;

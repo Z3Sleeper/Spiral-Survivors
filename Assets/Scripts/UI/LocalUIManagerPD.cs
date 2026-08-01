@@ -42,9 +42,18 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI ability1CooldownText;
     private bool _ability1CooldownUIShown;
     private bool _ability1CooldownTextShown;
+    // DurationUI is the parent panel (DurationBG + DurationBar) — hidden by default in the prefab. Shown
+    // only while IAbilityPD.HasActiveWindow AND AbilityIsActive are both true (see UpdateAbility1's own
+    // comment for why HasActiveWindow gates this permanently rather than just "not active right now"), and
+    // DurationBar's fillAmount counts DOWN from 1 to 0 over ActiveTimeRemaining/ActiveTimeDuration — opposite
+    // direction from the CDFill above, which counts UP as a cooldown drains (both still read as "how much is
+    // left" at a glance, just for two different timers).
+    [SerializeField] private GameObject ability1DurationUI;
+    [SerializeField] private Image ability1DurationBar;
+    private bool _ability1DurationUIShown;
 
     // Same shape as Ability1 UI above — both slots are functionally identical now (cooldown-gated
-    // IAbilityPD), so Ability2 gets the same fill/BG/text treatment.
+    // IAbilityPD), so Ability2 gets the same fill/BG/text/duration treatment.
     [Header("Ability2 UI")]
     [SerializeField] private Image ability2CDFill;
     [SerializeField] private GameObject ability2OnCooldownBG;
@@ -52,6 +61,9 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI ability2CooldownText;
     private bool _ability2CooldownUIShown;
     private bool _ability2CooldownTextShown;
+    [SerializeField] private GameObject ability2DurationUI;
+    [SerializeField] private Image ability2DurationBar;
+    private bool _ability2DurationUIShown;
 
     [Header("Boss UI")]
     // Pooled per-boss health bar, one instance per currently-alive boss — supports any number spawned
@@ -612,6 +624,21 @@ public class LocalUIManagerPD : MonoBehaviour
             if (ability1CDFill != null) ability1CDFill.gameObject.SetActive(onCooldown);
         }
         if (onCooldown) SetText(ability1CooldownText, $"{_ability1.CooldownRemaining:F1}s");
+
+        // HasActiveWindow gates this PERMANENTLY (not just "isn't active right now") — an ability that never
+        // has an active window at all (e.g. ExeAxeThrowAbilityPD) should never show this panel even for a
+        // single frame, not just while AbilityIsActive happens to read false. See IAbilityPD.HasActiveWindow's
+        // own doc comment.
+        bool showDuration = _ability1.HasActiveWindow && _ability1.AbilityIsActive;
+        if (showDuration != _ability1DurationUIShown)
+        {
+            _ability1DurationUIShown = showDuration;
+            if (ability1DurationUI != null) ability1DurationUI.SetActive(showDuration);
+        }
+        if (showDuration)
+            SetFill(ability1DurationBar, _ability1.ActiveTimeDuration > 0f
+                ? _ability1.ActiveTimeRemaining / _ability1.ActiveTimeDuration
+                : 0f);
     }
 
     // Identical shape to UpdateAbility1 above — both slots are functionally the same now (cooldown-gated
@@ -640,6 +667,18 @@ public class LocalUIManagerPD : MonoBehaviour
             if (ability2CDFill != null) ability2CDFill.gameObject.SetActive(onCooldown);
         }
         if (onCooldown) SetText(ability2CooldownText, $"{_ability2.CooldownRemaining:F1}s");
+
+        // See UpdateAbility1's own identical comment for why HasActiveWindow gates this permanently.
+        bool showDuration = _ability2.HasActiveWindow && _ability2.AbilityIsActive;
+        if (showDuration != _ability2DurationUIShown)
+        {
+            _ability2DurationUIShown = showDuration;
+            if (ability2DurationUI != null) ability2DurationUI.SetActive(showDuration);
+        }
+        if (showDuration)
+            SetFill(ability2DurationBar, _ability2.ActiveTimeDuration > 0f
+                ? _ability2.ActiveTimeRemaining / _ability2.ActiveTimeDuration
+                : 0f);
     }
 
     private void UpdateEnergy()

@@ -53,13 +53,15 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
     private readonly Collider[] _retargetResults = new Collider[16];
 
-    // Ally-strike detection (OnStrikeHealAllyAugment, real friendly fire, future "hit ally, do something"
-    // augments) — only queried when _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true.
-    // Unlike _hitTargets (one closest enemy per tick, gates further damage to that same enemy), every ally
-    // the sweep touches gets processed the same tick — no "closest only" restriction, since a cluster of
-    // allies this shot happens to cross all reacting isn't a balance concern the way multi-hitting enemies
-    // would be. Still gated per-ally for the whole flight so a slow/wide shot lingering on one ally doesn't
-    // reprocess it every tick while still overlapping.
+    // Ally-strike detection (OnStrikeHealAllyAugment and future "hit ally, do something" augments) — always
+    // runs now as a pure byproduct of the shot's own flight path toward its real (enemy) target; there is
+    // deliberately no way to aim AT an ally anymore (see WeaponRangedPD.FindTarget's own doc comment, and
+    // FindRicochetTarget below, which no longer considers allies either) — an ally only ever gets struck by
+    // "happening to be standing in the way." Unlike _hitTargets (one closest enemy per tick, gates further
+    // damage to that same enemy), every ally the sweep touches gets processed the same tick — no
+    // "closest only" restriction, since a cluster of allies this shot happens to cross all reacting isn't a
+    // balance concern the way multi-hitting enemies would be. Still gated per-ally for the whole flight so
+    // a slow/wide shot lingering on one ally doesn't reprocess it every tick while still overlapping.
     private readonly HashSet<CharacterStatsPD> _struckAllies = new();
 
     // ── Launch ────────────────────────────────────────────────────────────────
@@ -176,18 +178,13 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
             }
             if (hitEnemy != null) ProcessHit(ref state, hitEnemy);
 
-            if (_stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled)
+            int an = Physics.BoxCastNonAlloc(prevPos, halfExtents, step / dist, _sweepResults, transform.rotation, dist, CombatLayerMasks.PlayerHurtboxMask);
+            for (int i = 0; i < an; i++)
             {
-                int an = Physics.BoxCastNonAlloc(prevPos, halfExtents, step / dist, _sweepResults, transform.rotation, dist, CombatLayerMasks.PlayerHurtboxMask);
-                for (int i = 0; i < an; i++)
-                {
-                    var ally = _sweepResults[i].collider.GetComponent<CharacterStatsPD>();
-                    // Self-exclusion here, not just in NotifyAllyStrike — the direct TakeDamage call in
-                    // HitAlly bypasses that guard entirely.
-                    if (ally == null || ally == _stats || _struckAllies.Contains(ally)) continue;
-                    _struckAllies.Add(ally);
-                    HitAlly(ref state, ally);
-                }
+                var ally = _sweepResults[i].collider.GetComponent<CharacterStatsPD>();
+                if (ally == null || ally == _stats || _struckAllies.Contains(ally)) continue;
+                _struckAllies.Add(ally);
+                HitAlly(ref state, ally);
             }
         }
 
@@ -205,7 +202,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = GameRandom.instance.NextFloat() < _critChance;
         if (isCrit) damage *= _critDamage;
-        if (isHighroll) _stats.NotifyHighroll(damage);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
         // state.currentDamage/currentOnHitPower are this shot's already ricochet-decayed values BEFORE this
         // hit's own decay below is applied — downstream on-hit effects see exactly what this specific hit
         // (e.g. the 3rd bounce) actually represented, not the shot's original full-power baseline.
@@ -245,26 +242,14 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         }
     }
 
-    // allyStrikeHitEnabled and allyStrikeDamageEnabled are independent, same as WeaponMeleePD/WeaponAxePD's
-    // own HitAlly. Real friendly fire uses this shot's already ricochet-decayed damage (same baseline
-    // ProcessHit's enemy damage roll uses at this point in the flight) but never crits/knocks back —
-    // CharacterStatsPD.TakeDamage doesn't support either for players. Always applies
-    // ApplyHitDropoffAndRicochet regardless of which (if either) of the two bools is on — a pure heal-only
-    // touch still counts as "a hit" for the shot's own dropoff/ricochet bookkeeping.
+    // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been
+    // removed from the project entirely (see CharacterStatsPD.NotifyAllyStrike's own doc comment). Still
+    // applies ApplyHitDropoffAndRicochet — a touch still counts as "a hit" for the shot's own
+    // dropoff/ricochet bookkeeping, same as it did before.
     private void HitAlly(ref State state, CharacterStatsPD ally)
     {
         if (ally.IsDead) return;
-
-        if (_stats.allyStrikeDamageEnabled)
-        {
-            float damage = WeaponDamageMath.RollDamage(state.currentDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
-            if (isHighroll) damage *= 1f + _stats.HighrollBonus;
-            ally.TakeDamage(damage);
-        }
-
-        if (_stats.allyStrikeHitEnabled)
-            _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = state.currentOnHitPower });
-
+        _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = state.currentOnHitPower });
         ApplyHitDropoffAndRicochet(ref state);
     }
 
@@ -274,41 +259,24 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // WeaponRange * 1.25 the projectile flies) since distanceTravelled resets to 0 on every ricochet leg —
     // each bounce gets the same full flight budget to reach its new target as the initial shot did.
     //
-    // Allies are equally valid retarget candidates whenever allyStrikeHitEnabled/allyStrikeDamageEnabled is
-    // on — the closest not-yet-struck-by-THIS-shot target wins regardless of whether it's an enemy or an
-    // ally, same "closest valid candidate" rule FindTarget/WeaponRangedPD already applies for initial
-    // target acquisition. Returns a plain position (not IEnemyPD) since the caller only ever needs where to
-    // aim next, and the winning candidate could now be either type.
+    // Enemies only — a ricochet is a deliberate re-aim, not a "happy accident" graze, so it follows the
+    // same rule WeaponRangedPD.FindTarget's initial aim does now: no seeking allies out. An ally can still
+    // get struck mid-flight (see LateSimulate's own box-sweep above), just never by the shot actively
+    // redirecting toward one. Returns a plain position (not IEnemyPD) since the caller only ever needs
+    // where to aim next.
     private bool FindRicochetTarget(Vector3 from, out Vector3 targetPosition)
     {
-        bool detectAllies = _stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled;
-        int mask = detectAllies
-            ? CombatLayerMasks.EnemyHurtboxMask | CombatLayerMasks.PlayerHurtboxMask
-            : CombatLayerMasks.EnemyHurtboxMask;
-
-        int n = Physics.OverlapSphereNonAlloc(from, _maxRange, _retargetResults, mask);
+        int n = Physics.OverlapSphereNonAlloc(from, _maxRange, _retargetResults, CombatLayerMasks.EnemyHurtboxMask);
         float bestDist = float.MaxValue;
         targetPosition = default;
         bool found = false;
 
         for (int i = 0; i < n; i++)
         {
-            var collider = _retargetResults[i];
-
-            var enemy = collider.GetComponent<IEnemyPD>();
-            if (enemy != null)
-            {
-                if (enemy._isDead || _hitTargets.Contains(enemy)) continue;
-                float dist = Vector3.Distance(from, enemy.transform.position);
-                if (dist < bestDist) { bestDist = dist; targetPosition = enemy.transform.position; found = true; }
-                continue;
-            }
-
-            if (!detectAllies) continue;
-            var ally = collider.GetComponent<CharacterStatsPD>();
-            if (ally == null || ally == _stats || ally.IsDead || _struckAllies.Contains(ally)) continue;
-            float allyDist = Vector3.Distance(from, ally.transform.position);
-            if (allyDist < bestDist) { bestDist = allyDist; targetPosition = ally.transform.position; found = true; }
+            var enemy = _retargetResults[i].GetComponent<IEnemyPD>();
+            if (enemy == null || enemy._isDead || _hitTargets.Contains(enemy)) continue;
+            float dist = Vector3.Distance(from, enemy.transform.position);
+            if (dist < bestDist) { bestDist = dist; targetPosition = enemy.transform.position; found = true; }
         }
         return found;
     }

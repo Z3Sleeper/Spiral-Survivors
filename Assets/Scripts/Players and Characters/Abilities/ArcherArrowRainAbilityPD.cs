@@ -123,6 +123,10 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
     public bool AbilityIsActive => false;
+    // No active window at all — instantaneous cast, see class doc comment.
+    public bool HasActiveWindow => false;
+    public float ActiveTimeRemaining => 0f;
+    public float ActiveTimeDuration => 0f;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -239,10 +243,14 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         var go = hierarchy.GetGameObject(chainId.Value);
         // notifyOnHit: false — no onhit-triggered effects fire from this ability's own damage ticks. No
         // hasKnockback passed — defaults to false (no knockback at all), matching this ability's own spec.
+        // overrideHitSfx: true, hitSfxOverride left null — silent. Up to 20 ticks * every enemy caught in the
+        // zone would otherwise spam the caster's hitSfx into an unlistenable wall of noise (see
+        // HitFeedbackData's own doc comment for the general mechanism this uses).
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(_stats, position, tickCount, tickInterval, radius, radiusVFXPrefab,
                 dealDamage: true, damagePercent: strengthPercentPerTick, notifyOnHit: false,
                 abilityPower: _stats.AbilityPower,
-                onEnemyHit: enemy => enemy.Slow(scaledSlowMultiplier, slowDuration));
+                onEnemyHit: enemy => enemy.Slow(scaledSlowMultiplier, slowDuration),
+                overrideHitSfx: true);
     }
 }

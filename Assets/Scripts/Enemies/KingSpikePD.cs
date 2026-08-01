@@ -132,10 +132,13 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         if (dashJustEnded)
         {
             state.chargesRemaining--;
+            // IsTargetStillValid (also covers a null target, same as everyone else's explicit != null check)
+            // — a target that went invisible-and-non-taunting since the last charge shouldn't get chained
+            // into another one against them; see that property's own doc comment.
             // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the charge
             // that just ended above, but stops the chain from continuing into another one, falling through
             // to the spike burst phase instead (see IsCrowdControlled's own doc comment).
-            if (state.chargesRemaining > 0 && !IsCrowdControlled) EnterBetweenCharges(ref state);
+            if (state.chargesRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenCharges(ref state);
             else                                                  EnterSpikeBurstWindup(ref state);
         }
 

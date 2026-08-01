@@ -60,6 +60,12 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     // Fired once per cast with the total enemies/allies hit that cast — e.g. KnightAreaStunHealAbilityPD
     // healing itself based on how many enemies got stunned. null (default) for callers that don't need it.
     private Action<int> _onCastComplete;
+    // See AreaEffectCastHelper.Cast's own doc comment — passed straight through to every cast in the chain,
+    // same as every other Launch() parameter above.
+    private bool _overrideHitSfx;
+    private AudioClip _hitSfxOverride;
+    // See Launch()'s own doc comment on the parameter this mirrors.
+    private bool _vfxPerCast;
 
     private PredictedEvent _onRecast;
 
@@ -69,12 +75,23 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     // this cast now, then 2 more retriggers). Pooled — Launch() runs on every reuse, unlike LateAwake()
     // (not guaranteed to re-fire on pooled reuse), so _onRecast's one-time construction lives here instead,
     // guarded by the null check so it only actually happens once per real instance.
+    // vfxPerCast: false (default) spawns the radius VFX exactly once for the whole chain regardless of
+    // totalCasts — correct for a caller whose totalCasts represents rapid inner ticks of one ongoing effect
+    // (ArcherArrowRainAbilityPD's 20-tick DoT: one visible zone, not 20 flashes). true spawns it fresh on
+    // EVERY cast including the first, including retriggers — correct for a caller whose totalCasts instead
+    // represents Stats.AreaEffectCount recasts of a whole discrete burst spaced retriggerRate apart (e.g.
+    // DashHealAugment/DashExplosionAugment/ShieldBreakBurstAugment/KnightAreaStunHealAbilityPD), where each
+    // recast is its own distinct, perceptible event that should visibly flash same as the first one did —
+    // silently losing the VFX on every recast after the first (the actual bug this flag fixes) happened
+    // because those callers share this exact totalCasts/retriggerRate mechanism with ArrowRain's own
+    // once-only need, with nothing to tell the two cases apart before now.
     public void Launch(CharacterStatsPD owner, Vector3 position, int totalCasts, float retriggerRate,
         float radius, GameObject radiusVFXPrefab,
         bool targetAllies = false, bool dealDamage = true, float damagePercent = 0f, float onHitPowerPercent = 0f,
         bool notifyOnHit = true, bool hasKnockback = false, float? knockback = null, bool interrupt = false,
         float abilityPower = 1f,
-        Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null)
+        Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null,
+        bool overrideHitSfx = false, AudioClip hitSfxOverride = null, bool vfxPerCast = false)
     {
         if (_onRecast == null)
         {
@@ -99,14 +116,20 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         _onEnemyHit = onEnemyHit;
         _onAllyHit = onAllyHit;
         _onCastComplete = onCastComplete;
+        _overrideHitSfx = overrideHitSfx;
+        _hitSfxOverride = hitSfxOverride;
+        _vfxPerCast = vfxPerCast;
 
         currentState.remainingCasts = Mathf.Max(1, totalCasts) - 1;
         currentState.retriggerTimer = retriggerRate;
 
-        // Spawned exactly once for the whole chain, here — NOT inside Cast() itself, which re-runs on every
-        // retrigger (see AreaEffectCastHelper.SpawnRadiusVFX's own comment for why that used to double-spawn
-        // it once per retrigger instead).
-        AreaEffectCastHelper.SpawnRadiusVFX(hierarchy, _radiusVFXPrefab, _castPosition, _radius);
+        // vfxPerCast: false — spawned exactly once for the whole chain, here, NOT inside Cast() itself,
+        // which re-runs on every retrigger (see AreaEffectCastHelper.SpawnRadiusVFX's own comment for why
+        // that used to double-spawn it once per retrigger instead). vfxPerCast: true — Cast() spawns it
+        // fresh every time instead (see this method's own doc comment), including this first call, so
+        // skipped here to avoid a double-spawn on cast #1.
+        if (!_vfxPerCast)
+            AreaEffectCastHelper.SpawnRadiusVFX(hierarchy, _radiusVFXPrefab, _castPosition, _radius);
 
         Cast();
     }
@@ -128,12 +151,20 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
             state.retriggerTimer = _retriggerRate;
     }
 
-    private void Cast() =>
+    private void Cast()
+    {
+        // See Launch()'s own doc comment — fires fresh on every cast (this one included) when vfxPerCast is
+        // true, instead of the single Launch()-time-only spawn used otherwise.
+        if (_vfxPerCast)
+            AreaEffectCastHelper.SpawnRadiusVFX(hierarchy, _radiusVFXPrefab, _castPosition, _radius);
+
         AreaEffectCastHelper.Cast(hierarchy, _owner, _castPosition, _radius, _radiusVFXPrefab,
             targetAllies: _targetAllies, dealDamage: _dealDamage, damagePercent: _damagePercent, onHitPowerPercent: _onHitPowerPercent,
             notifyOnHit: _notifyOnHit, hasKnockback: _hasKnockback, knockback: _knockback, interrupt: _interrupt,
             abilityPower: _abilityPower,
-            onEnemyHit: _onEnemyHit, onAllyHit: _onAllyHit, onCastComplete: _onCastComplete);
+            onEnemyHit: _onEnemyHit, onAllyHit: _onAllyHit, onCastComplete: _onCastComplete,
+            overrideHitSfx: _overrideHitSfx, hitSfxOverride: _hitSfxOverride);
+    }
 
     protected override void UpdateView(State viewState, State? verified)
     {

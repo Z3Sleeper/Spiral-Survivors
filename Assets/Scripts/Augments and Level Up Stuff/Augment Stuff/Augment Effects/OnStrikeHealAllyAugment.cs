@@ -1,14 +1,13 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// New tech, not a port — enables allyStrikeHitEnabled on CharacterStatsPD, which each weapon type
-// (WeaponMeleePD/WeaponAxePD/WeaponRangedProjectilePD/WeaponRangedPD) checks to decide whether it's worth
-// running an extra overlap query against the Player hurtbox layer alongside its normal enemy detection. A
-// "hit" here is a plain touch, not damage — allies are never passed through TakeDamage this way (a
-// separate allyStrikeDamageEnabled gate handles real friendly fire, unused by this augment).
-// allyStrikeHitEnabled and the _onAllyStrike event it gates are both generic (own no heal-specific state)
-// so future "hit ally, do something" augments can reuse the exact same detection plumbing by just calling
-// EnableAllyStrikeHit() and subscribing their own listener — this augment is simply the first consumer of it.
+// New tech, not a port — subscribes to CharacterStatsPD's _onAllyStrike, which every weapon type
+// (WeaponMeleePD/WeaponAxePD/WeaponRangedProjectilePD) always fires now when it touches an ally (ally-hit
+// detection is unconditional, "canContactAllies" permanently on — see CharacterStatsPD.NotifyAllyStrike's
+// own doc comment). A "hit" here is a plain touch, not damage — real friendly fire has been removed from
+// the project entirely, allies are never passed through TakeDamage this way. _onAllyStrike is generic (owns
+// no heal-specific state) so future "hit ally, do something" augments can reuse the exact same notification
+// by just subscribing their own listener — this augment is simply the first consumer of it.
 public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
@@ -17,7 +16,6 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
 
     protected override void OnApply()
     {
-        Stats.EnableAllyStrikeHit();
         Stats.AddAllyStrikeListener(OnAllyStrike);
     }
 
@@ -27,14 +25,20 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
         if (Stats != null) Stats.RemoveAllyStrikeListener(OnAllyStrike);
     }
 
-    // Single roll shared by both heals (not rolled twice) — the caster heals for the exact same amount the
-    // ally received, per the augment's own spec.
+    // baseHeal is passed RAW (un-rolled) to both — Heal()/HealFromAlly() each roll their own luck variance
+    // now (see their own doc comments), so this is two independent rolls off the same base amount rather
+    // than one shared roll reused for both. Each side also scales differently from there: the caster's own
+    // portion goes through the normal Heal() (scales with the CASTER's own HealPower/CritHealPower, same as
+    // any other self-heal, and rolls against the CASTER's own Luck), the ally's portion goes through
+    // HealFromAlly() instead (rolls against the CASTER's Luck too — "the healer rolls for the healee" — but
+    // is NOT scaled by the ally's own HealPower — see that method's own doc comment for why: letting a
+    // receiving ally's stacked HealPower also amplify every ally-sourced heal they receive, on top of their
+    // own self-heals, risks compounding well past intended value once multiple players are all stacking
+    // HealPower and running heal-ally effects at once).
     private void OnAllyStrike(AllyStrikeData data)
     {
         float baseHeal = Stats.HealthRegen * healthRegenMultiplier * data.onHitPower;
-        float rolled = WeaponDamageMath.RollDamage(baseHeal, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
-        if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
-        data.ally.Heal(rolled);
-        Stats.Heal(rolled);
+        data.ally.HealFromAlly(baseHeal, Stats);
+        Stats.Heal(baseHeal);
     }
 }

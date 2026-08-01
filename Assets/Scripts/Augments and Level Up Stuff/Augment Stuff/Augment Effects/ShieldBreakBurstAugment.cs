@@ -92,6 +92,6 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
                 damagePercent: damagePercent, notifyOnHit: false, hasKnockback: true, knockback: knockback, interrupt: true,
-                onEnemyHit: enemy => enemy.Stun(stunDuration * Stats.AreaEffectPower));
+                onEnemyHit: enemy => enemy.Stun(stunDuration * Stats.AreaEffectPower), vfxPerCast: true);
     }
 }

@@ -25,11 +25,10 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private readonly Collider[]                  _overlapResults = new Collider[32];
     private readonly HashSet<IEnemyPD>                               _touchedThisTick  = new();
 
-    // Ally-strike detection (OnStrikeHealAllyAugment, real friendly fire) — only ever populated/queried
-    // when _stats.allyStrikeHitEnabled or _stats.allyStrikeDamageEnabled is true, so this costs nothing
-    // for weapons without either. _sweepResults/_overlapResults are reused for the ally queries too (safe
-    // — each call's results are fully consumed into a HashSet before the next Physics call overwrites the
-    // shared buffer).
+    // Ally-strike detection (OnStrikeHealAllyAugment and future "hit ally, do something" augments) — always
+    // runs now, no enable gate (see CharacterStatsPD.NotifyAllyStrike's own doc comment).
+    // _sweepResults/_overlapResults are reused for the ally queries too (safe — each call's results are
+    // fully consumed into a HashSet before the next Physics call overwrites the shared buffer).
     private readonly HashSet<CharacterStatsPD>           _touchedAlliesThisTick = new();
 
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
@@ -138,7 +137,6 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
         _touchedThisTick.Clear();
         _touchedAlliesThisTick.Clear();
-        bool detectAllies = _stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled;
         Vector3    center;
         Quaternion hitboxRot;
 
@@ -186,15 +184,12 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
                         if (enemy != null) _touchedThisTick.Add(enemy);
                     }
 
-                    if (detectAllies)
+                    int an = Physics.BoxCastNonAlloc(segStart, half, sweep / dist,
+                        _sweepResults, segRot, dist, CombatLayerMasks.PlayerHurtboxMask);
+                    for (int i = 0; i < an; i++)
                     {
-                        int an = Physics.BoxCastNonAlloc(segStart, half, sweep / dist,
-                            _sweepResults, segRot, dist, CombatLayerMasks.PlayerHurtboxMask);
-                        for (int i = 0; i < an; i++)
-                        {
-                            var ally = _sweepResults[i].collider.GetComponent<CharacterStatsPD>();
-                            if (ally != null) _touchedAlliesThisTick.Add(ally);
-                        }
+                        var ally = _sweepResults[i].collider.GetComponent<CharacterStatsPD>();
+                        if (ally != null) _touchedAlliesThisTick.Add(ally);
                     }
                 }
 
@@ -219,14 +214,11 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             if (enemy != null) _touchedThisTick.Add(enemy);
         }
 
-        if (detectAllies)
+        int ao = Physics.OverlapBoxNonAlloc(center, half, _overlapResults, hitboxRot, CombatLayerMasks.PlayerHurtboxMask);
+        for (int i = 0; i < ao; i++)
         {
-            int ao = Physics.OverlapBoxNonAlloc(center, half, _overlapResults, hitboxRot, CombatLayerMasks.PlayerHurtboxMask);
-            for (int i = 0; i < ao; i++)
-            {
-                var ally = _overlapResults[i].GetComponent<CharacterStatsPD>();
-                if (ally != null) _touchedAlliesThisTick.Add(ally);
-            }
+            var ally = _overlapResults[i].GetComponent<CharacterStatsPD>();
+            if (ally != null) _touchedAlliesThisTick.Add(ally);
         }
 
         // Pure cooldown gate — an enemy standing continuously inside the hitbox gets rehit as soon as its
@@ -243,13 +235,10 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
                     Hit(enemy);
             }
 
-            if (detectAllies)
+            foreach (var ally in _touchedAlliesThisTick)
             {
-                foreach (var ally in _touchedAlliesThisTick)
-                {
-                    if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
-                        HitAlly(ally);
-                }
+                if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
+                    HitAlly(ally);
             }
         }
 
@@ -271,7 +260,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
-        if (isHighroll) _stats.NotifyHighroll(damage);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.Strength, onHitPower = _stats.OnHitPower, isCrit = isCrit };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
@@ -282,27 +271,12 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
     }
 
-    // allyStrikeHitEnabled and allyStrikeDamageEnabled are independent — a weapon can heal-touch without
-    // damaging, damage without the touch notification, or (once something actually turns damage on) both
-    // off the same detected touch. Real friendly fire rolls luck variance same as every other damage
-    // source, but never crits/knocks back — CharacterStatsPD.TakeDamage doesn't support either for players.
+    // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been
+    // removed from the project entirely (see CharacterStatsPD.NotifyAllyStrike's own doc comment).
     private void HitAlly(CharacterStatsPD ally)
     {
-        // Self-exclusion lives here, not just in NotifyAllyStrike — the direct TakeDamage call below
-        // bypasses that guard entirely, so without this a weapon whose own overlap query happens to catch
-        // its wielder's own collider (plausible for anything spawning/orbiting close to the caster) could
-        // deal real friendly-fire damage to itself.
         if (ally == _stats || ally.IsDead) return;
-
-        if (_stats.allyStrikeDamageEnabled)
-        {
-            float damage = RollDamage(_stats.Strength, out bool isHighroll);
-            if (isHighroll) damage *= 1f + _stats.HighrollBonus;
-            ally.TakeDamage(damage);
-        }
-
-        if (_stats.allyStrikeHitEnabled)
-            _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = _stats.OnHitPower });
+        _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = _stats.OnHitPower });
     }
 
     // ── Gizmos ────────────────────────────────────────────────────────────────

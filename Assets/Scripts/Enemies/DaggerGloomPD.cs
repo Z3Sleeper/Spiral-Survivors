@@ -137,10 +137,12 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
             case DaggerState.Spinning:
                 if (state.stateTimer <= 0f)
                 {
+                    // IsTargetStillValid — a target that went invisible-and-non-taunting since the last spin
+                    // shouldn't get chained into another one against them; see that property's own doc comment.
                     // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the
                     // spin that just finished above, but stops the chain from continuing into another one,
                     // falling through to PostSpin instead (see IsCrowdControlled's own doc comment).
-                    if (state.attacksRemaining > 0 && !IsCrowdControlled) EnterBetweenSpins(ref state);
+                    if (state.attacksRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenSpins(ref state);
                     else                                                  EnterPostSpin(ref state);
                 }
                 break;

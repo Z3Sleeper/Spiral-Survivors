@@ -66,9 +66,10 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     [SerializeField] private float holdDuration = 5f;
 
     [Header("Ability Haste -> Attack Speed")]
-    // AbilityHaste normally only ever shortens THIS ability's own cooldown (EffectiveCooldown below) — moot
-    // at cooldown = 0, where dividing by (1 + haste/100) still always comes out to 0. So instead, for the
-    // whole Outbound->Hold->Return window, AbilityHaste converts directly into bonus Attack Speed instead:
+    // AbilityHaste normally only ever shortens THIS ability's own cooldown (EffectiveCooldown below) — barely
+    // meaningful against this ability's own low cooldown (dividing an already-small value by (1 + haste/100)
+    // still only shaves off a fraction of a second). So instead, for the whole Outbound->Hold->Return window,
+    // AbilityHaste converts directly into bonus Attack Speed instead:
     // 1 point of EffectiveAbilityHaste = attackSpeedPercentPerHaste (1% by default) Total Attack Speed,
     // ADDED via AddAttackSpeedTotalPercent — then that haste-derived amount (not the player's whole Attack
     // Speed, just this bonus slice of it) is further multiplied by AbilityPower on top. Granted once at cast
@@ -79,6 +80,10 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // speed itself (EffectiveWeaponSpeed = AttackSpeed * 360) speeds up too, along with anything else this
     // character's Attack Speed drives (FireRate, etc.) — not scoped to "just the blades," matching the
     // user's own framing of "give Bladeweaver attack speed."
+    //
+    // NotifyAbilityStart/NotifyAbilityEnd (see Activate()/EndDance()) are both gated on cooldown > 0f, same
+    // universal guard every ability in this codebase uses — harmless no-op at cooldown = 0 (the original
+    // spammable-recast design), and fires normally now that cooldown is a real, if small, value.
     [SerializeField] private float attackSpeedPercentPerHaste = 0.01f;
 
     private CharacterStatsPD   _stats;
@@ -123,6 +128,29 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
     public bool AbilityIsActive => GetPhase(ref currentState) != Phase.Idle;
+    // True, but ActiveTimeRemaining/ActiveTimeDuration below don't map onto a single linear countdown the
+    // way every other ability's does — Outbound/Return are travel-distance-driven (no fixed length, depends
+    // on castDistance/the player's live position), only Hold has a real timer (phaseTimer/holdDuration).
+    // Instead each phase reports whatever ratio reads correctly for it: Outbound reports full (the bar
+    // appears immediately at cast but doesn't start draining until Hold actually begins), Hold reports the
+    // real phaseTimer/holdDuration countdown, and Return reports empty (recalling — whether via the natural
+    // Hold-timeout-into-Return or an early recast-to-return-during-Hold — reads as "spent," and the bar
+    // stays visible at 0 rather than disappearing until the blades actually finish arriving and AbilityIsActive
+    // itself goes false at Idle).
+    public bool HasActiveWindow => true;
+    public float ActiveTimeRemaining
+    {
+        get
+        {
+            switch (GetPhase(ref currentState))
+            {
+                case Phase.Outbound: return holdDuration;
+                case Phase.Hold:     return Mathf.Max(0f, currentState.phaseTimer);
+                default:             return 0f; // Return (and Idle, though moot there — see HasActiveWindow).
+            }
+        }
+    }
+    public float ActiveTimeDuration => holdDuration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -193,11 +221,8 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         // ordering between identities.
         _stats.SetOrbitOriginOverride(origin);
 
-        // Skipped entirely at 0 (raw, un-hasted) cooldown — this is exactly the case that matters most for
-        // this ability specifically, since it's the one designed to be recastable with no downtime at all
-        // (see class doc comment's own "recall early" section) — firing "a real ability cast" notification
-        // on every rapid cycle would spam anything listening for one (PhantomBladeOnAbilityStartAugment and
-        // any future listener) far more often than intended.
+        // Only skipped at a literal 0 (raw, un-hasted) cooldown — see class doc comment. Fires normally now
+        // that cooldown is a real, if small, value.
         if (cooldown > 0f) _stats.NotifyAbilityStart(this);
     }
 
@@ -289,14 +314,32 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     }
 
     // Public entry point for BWBlinkAbilityPD (called right after it teleports the caster to the blades'
-    // live position) — ends the dance from WHATEVER phase it's currently in (no travel, same instant-recall
-    // shape as the death-forced end above), snapping every weapon straight back to normal orbit around the
-    // player. Net effect of the two calls together: the player jumps to the blades, then the blades jump
-    // back to the player, so both end up coinciding at the same point instead of the blades trailing behind
-    // on their own Return trip afterward. No-op if the dance isn't running (Idle) — nothing to recall.
-    public void RecallInstantly()
+    // live position) — snaps currentOrigin to atPosition and flips into Phase.Return (instead of calling
+    // EndDance() directly, unlike the death-forced end above) so weapons visually coincide with the player
+    // THIS tick regardless (EffectiveOrbitOrigin reads the override, which now equals atPosition —
+    // numerically identical to the override being cleared outright), while letting Simulate()'s own
+    // Return-phase arrival check (dist <= step, see its own case block above) be what actually finishes the
+    // dance — normally one tick later, since dist starts at (essentially) zero. This reuses the exact same
+    // "distance already closed" trigger a genuine Return trip ends on rather than a separate code path, and
+    // gives the duration-bar UI its normal one-tick "Return phase, 0 fill, still visible" moment instead of
+    // the bar disappearing in the exact same tick the recall was requested — see ActiveTimeRemaining's own
+    // doc comment on this file.
+    //
+    // atPosition is a PARAMETER, not read from _stats.transform.position here, deliberately — the caller
+    // (BWBlinkAbilityPD) already knows the exact position it just placed the caster at (blinkTarget), and
+    // that's the value that must be used. Re-reading _stats.transform.position instead was the original bug:
+    // Rigidbody interpolation can leave the caster's own VISUAL transform still catching up to a
+    // just-assigned Rigidbody.position for a few frames after the teleport, so a read taken immediately
+    // after landing could still return a stale, pre-teleport-ish position — pinning currentOrigin to that
+    // stale point while the caster's own transform kept drifting toward the true target over the next few
+    // frames produced a visible "blades chasing the player" shimmy instead of the intended instant snap.
+    // Passing the already-known target sidesteps the staleness question entirely.
+    public void RecallInstantly(Vector3 atPosition)
     {
         if (GetPhase(ref currentState) == Phase.Idle) return;
-        EndDance(ref currentState);
+
+        currentState.currentOrigin = atPosition;
+        _stats?.SetOrbitOriginOverride(currentState.currentOrigin);
+        SetPhase(ref currentState, Phase.Return);
     }
 }

@@ -87,6 +87,10 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
     public bool AbilityIsActive => false;
+    // No active window at all — see class doc comment.
+    public bool HasActiveWindow => false;
+    public float ActiveTimeRemaining => 0f;
+    public float ActiveTimeDuration => 0f;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -133,7 +137,9 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
             {
                 var go = hierarchy.GetGameObject(id.Value);
                 if (go != null && go.TryGetComponent(out ExeAxeThrowProjectilePD projectile))
-                    projectile.Launch(_stats, throwDir, projectileSpeed, maxRange, strengthPercent);
+                    // spawnOffset doubles as the return-trip's arrival radius — see
+                    // ExeAxeThrowProjectilePD.Launch()'s own doc comment for why.
+                    projectile.Launch(_stats, throwDir, projectileSpeed, maxRange, strengthPercent, spawnOffset);
             }
         }
 

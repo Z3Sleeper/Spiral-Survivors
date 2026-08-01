@@ -64,18 +64,28 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                targetAllies: true, onAllyHit: RollAndHeal);
+                targetAllies: true, onAllyHit: RollAndHeal, vfxPerCast: true);
     }
 
     // Moved out of the old dedicated AreaEffectHealPD (now merged away) — onAllyHit is just "roll this
     // ally's heal and apply it," the same per-target extra shape ShieldBreakBurstAugment's Stun already uses
-    // via onEnemyHit, just for the ally-targeting side of AreaEffectCastHelper.Cast.
+    // via onEnemyHit, just for the ally-targeting side of AreaEffectCastHelper.Cast. CharacterStatsPD.All
+    // (what Cast's own targetAllies loop iterates) includes the caster themselves — no ally == owner
+    // exclusion there — so this fires for Stats too, not just genuinely other players.
     private void RollAndHeal(CharacterStatsPD ally)
     {
+        // baseHeal is passed RAW (un-rolled) — Heal()/HealFromAlly() each roll their own luck variance now
+        // (see their own doc comments on CharacterStatsPD), independently per target rather than one shared
+        // roll reused across everyone hit.
         float baseHeal = Stats.HealthRegen * healthRegenMultiplier * Stats.AreaEffectPower;
-        float rolled = WeaponDamageMath.RollDamage(baseHeal, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
-        if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
 
-        ally.Heal(rolled);
+        // Self heals through the normal, HealPower-scaled Heal() (same as any other self-heal source, rolls
+        // against Stats' own Luck) — a genuinely different ally goes through HealFromAlly() instead (rolls
+        // against the CASTER's Luck too — "the healer rolls for the healee" — but NOT scaled by the ally's
+        // own HealPower), same "don't let a receiving ally's own stacked HealPower also amplify heals they
+        // receive from someone else" reasoning OnStrikeHealAllyAugment's own identical swap uses (see
+        // CharacterStatsPD.HealFromAlly's own doc comment).
+        if (ally == Stats) ally.Heal(baseHeal);
+        else ally.HealFromAlly(baseHeal, Stats);
     }
 }

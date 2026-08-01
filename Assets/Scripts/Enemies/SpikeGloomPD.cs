@@ -2,7 +2,9 @@
 // numbers than other enemy types, and having no attack-routine state machine of its own, it never calls
 // FindClosestTarget() beyond EnemyBasePD's own base cases (spawn, target null/dead). This is exactly the
 // "biggest win" case the acquire-once-then-keep-until-gone model was built for: at swarm scale, this type
-// never re-scans CharacterStatsPD.All at all once it has a living target.
+// never re-scans CharacterStatsPD.All at all once it has a living target. (Declumping, added for exactly
+// this type originally, now lives generically on EnemyBasePD itself — see HandleSeparation's own doc
+// comment — so every enemy type gets it for free, not just this one.)
 public class SpikeGloomPD : EnemyBasePD
 {
 }

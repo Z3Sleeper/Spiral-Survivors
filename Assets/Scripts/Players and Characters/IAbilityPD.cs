@@ -64,6 +64,26 @@ public interface IAbilityPD
     // longer, non-locking buff.
     bool AbilityIsActive { get; }
 
+    // Whether this ability has a real active window AT ALL — false for an instantaneous ability
+    // (ArcherArrowRainAbilityPD/KnightAreaStunHealAbilityPD/ExeAxeThrowAbilityPD — AbilityIsActive is always
+    // false for these), true for anything with a timed buff/locking window (RogueSpinAbilityPD's leap,
+    // RogueVanishAbilityPD's buff, etc.). Constant per concrete type, not state-dependent, same as
+    // ForcesSpecialAction/ActiveSurgeBlock — a plain hardcoded property, NOT a serialized Inspector field
+    // (nothing to tune per-instance here). Exists so generic UI (the ability duration bar) can tell "this
+    // ability will never have an active window to show progress for" apart from "it just isn't active RIGHT
+    // NOW" without needing per-concrete-type special-casing.
+    bool HasActiveWindow { get; }
+
+    // Only meaningful while AbilityIsActive AND HasActiveWindow are both true — how much of the active
+    // window is left, and how long the window was in total (AbilityPower/haste-scaled, matching whatever was
+    // actually granted at cast time, same "Effective/Applied" convention CooldownRemaining/CooldownDuration
+    // already use). ActiveTimeRemaining / ActiveTimeDuration gives a UI fill ratio that counts DOWN from 1 to
+    // 0 over the window, same direction CooldownRemaining/CooldownDuration's own fill already counts. Return
+    // 0 for both when HasActiveWindow is false — nothing should ever read them in that case, but they still
+    // need a defined value.
+    float ActiveTimeRemaining { get; }
+    float ActiveTimeDuration { get; }
+
     // Called by PlayerControllerPD when a press was seen but IsReady was false, so the component itself can
     // report/log its own "still on cooldown" feedback — PlayerControllerPD never invokes Activate() in that
     // case, so this is the only hook the component gets for that outcome.

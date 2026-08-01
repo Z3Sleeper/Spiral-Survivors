@@ -72,10 +72,12 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
             // _target == null guard matters here — without it, a chain that lost its target mid-way would
             // charge again in whatever the PREVIOUS charge's stale direction was (SnapFaceAnchor no-ops
             // on a zero direction, leaving blitzDirection untouched) instead of ending the chain.
+            // IsTargetStillValid — a target that went invisible-and-non-taunting since the last charge
+            // shouldn't get chained into another one against them; see that property's own doc comment.
             // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the dash
             // that just ended above, but stops the chain from continuing into another one, falling through
             // to PostBlitz instead (see IsCrowdControlled's own doc comment).
-            if (state.blitzesRemaining > 0 && _target != null && !IsCrowdControlled)
+            if (state.blitzesRemaining > 0 && _target != null && IsTargetStillValid && !IsCrowdControlled)
             {
                 CaptureAttackAnchor(ref state);
                 EnterWindup(ref state);

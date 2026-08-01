@@ -72,6 +72,15 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     [Header("Effect")]
     [SerializeField] private float duration = 2f;
     [SerializeField] private float moveSpeedTotalPercent = 0.25f;
+    // Invincibility grace granted the instant the teleport lands (see Activate()) — same GrantInvincibility
+    // mechanism RogueSpinAbilityPD's own postActiveInvincibilityGrace uses, just at a different moment (right
+    // after landing, not at the end of some later window) since it's the teleport itself that's disorienting,
+    // not the Move Speed buff wearing off. Deliberately NOT added to duration/currentState.activeTimer —
+    // GrantInvincibility is its own independent floor-based timer (see CharacterStatsPD.GrantInvincibility's
+    // own doc comment: every source just contributes its own duration, longest currently active wins), so
+    // this doesn't extend AbilityIsActive/the cooldown-start point at all — pure QoL so a stray hit doesn't
+    // punish that split second of reorientation right after blinking.
+    [SerializeField] private float postBlinkInvincibility = 0.2f;
 
     private CharacterStatsPD _stats;
     // All fetched via GetComponent in Awake() — PredictedRigidbody, PredictedTransform, and every ability
@@ -88,6 +97,9 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     // RogueVanishAbilityPD's own _appliedMoveSpeedTotalPercent — reversed with the identical value at
     // buff-end regardless of whether AbilityPower changed mid-buff.
     private float _appliedMoveSpeedTotalPercent;
+    // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
+    // this fixed rather than recomputing duration * AbilityPower live off a since-changed AbilityPower.
+    private float _appliedDuration;
 
     protected override State GetInitialState() => default;
 
@@ -117,6 +129,9 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
     public bool AbilityIsActive => currentState.isActive;
+    public bool HasActiveWindow => true;
+    public float ActiveTimeRemaining => Mathf.Max(0f, currentState.activeTimer);
+    public float ActiveTimeDuration => _appliedDuration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -139,8 +154,9 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         // own duration, same as RogueVanishAbilityPD — see class doc comment.
         float abilityPower = _stats.AbilityPower;
         _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent * abilityPower;
+        _appliedDuration              = duration * abilityPower;
 
-        currentState.activeTimer   = duration * abilityPower;
+        currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;
         currentState.cooldownTimer = EffectiveCooldown;
 
@@ -155,10 +171,17 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         if (_rigidbody != null) _rigidbody.position = blinkTarget;
         _predictedTransform?.ResetInterpolation();
 
+        // See postBlinkInvincibility's own doc comment — granted the instant we land, not at buff-end.
+        _stats.GrantInvincibility(postBlinkInvincibility);
+
         // Recall the blades home the instant we land — see BWBladeDanceAbilityPD.RecallInstantly()'s own
         // doc comment: without this the blades would keep chasing the player's (now-teleported) position
-        // over their normal Return travel time instead of coinciding with them immediately.
-        _bladeDance.RecallInstantly();
+        // over their normal Return travel time instead of coinciding with them immediately. Passed
+        // blinkTarget explicitly (not left for RecallInstantly() to re-read _stats.transform.position
+        // itself) — that read could still be stale for a few frames after the teleport (Rigidbody
+        // interpolation catching the visual transform up to the just-assigned position), which was
+        // previously causing a visible "blades chasing the player" shimmy instead of an instant snap.
+        _bladeDance.RecallInstantly(blinkTarget);
 
         // Fired at the NEW (blinked-to) position — see class doc comment.
         _controller?.NotifyDashEnded();

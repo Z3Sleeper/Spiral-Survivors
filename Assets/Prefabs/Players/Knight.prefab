@@ -86,7 +86,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::KnightBigBuffAbilityPD
   icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}
   abilityName: <color=#00FF00>Ability:\nJuggernaut</color>
-  description: 'For <color=#FFA000>5 seconds</color>, gain <color=#FFA000>+50% Size</color>,
+  description: 'For <color=#FFA000>8 seconds</color>, gain <color=#FFA000>+50% Size</color>,
     <color=#00FF00>Total Max Health</color>, <color=#3278FF>Total Range</color>,
     <color=#FF5000>Total Strength</color>, <color=#8C8C8C>Damage Reduction</color>
     and <color=#FFA000>Taunt</color> all enemies.
@@ -95,13 +95,13 @@ MonoBehaviour:
     and Buffs scale with Ability Power</i></color>
 
     <color=#FFBE50>Cooldown:
-    15 seconds</color>'
-  cooldown: 15
+    20 seconds</color>'
+  cooldown: 20
   cooldownStartsOnCast: 0
-  slot: 0
+  slot: 1
   tags: []
   activeSurgeBlock: 0
-  duration: 5
+  duration: 8
   sizePercent: 0.5
   maxHealthPercent: 0.5
   rangePercent: 0.5
@@ -122,19 +122,17 @@ MonoBehaviour:
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   abilityName: <color=#FFFF00>Ability:\nShockwave</color>
   description: '<color=#FFA000>(AoE Effect) Interrupt, Stun and Knockback</color>
-    all nearby enemies for <color=#FFA000>2 seconds</color> and <color=#7DFF00>heal
-    3%</color> <color=#00FF00>Max Health</color> per enemy hit.
+    all nearby enemies in a <color=#3278FF>2x Range radius</color> for <color=#FFA000>2
+    seconds</color> and <color=#7DFF00>Heal 3%</color> <color=#00FF00>Max Health</color>
+    per enemy hit.
 
-    <color=#FFBE50><i>Stun
-    & Heal scale with AoE Power & Ability Power</i></color>
-
-    <color=#FFBE50><i>Effect
-    range scales with Range</i></color>
+    <color=#FFBE50><i>Stun & Heal scale with AoE Power & Ability
+    Power</i></color>
 
     <color=#FFBE50>Cooldown: 10 seconds</color>'
   cooldown: 10
   cooldownStartsOnCast: 0
-  slot: 1
+  slot: 0
   tags:
   - AoE Effect
   activeSurgeBlock: 0

@@ -11,8 +11,19 @@ using UnityEngine;
 // - ALWAYS pierces (keeps flying straight until it runs out of range, never stops on a hit) — originally
 //   only pierced on a crit, but that felt bad in testing: an abrupt stop reads as a bug, and crit chance
 //   alone wasn't a rewarding-enough payoff until it was pushed to literal 100%. Ricochet-retargeting
-//   (WeaponRangedProjectilePD's own thing) still doesn't apply here at all — this always keeps its original
-//   heading regardless.
+//   (WeaponRangedProjectilePD's own thing) still doesn't apply here — the OUTBOUND leg always keeps its
+//   original throw heading, no retargeting at all (the return leg is a deliberate exception — see next point).
+// - On reaching the end of its outward flight (distanceTravelled >= _maxRange), instead of expiring it flips
+//   into a return leg that continuously re-aims at the caster's LIVE position every tick (see LateSimulate's
+//   own top-of-tick re-aim) — real homing, not a one-time snap, specifically so it can't miss a caster who
+//   keeps moving after the turnaround. _hitTargets is cleared at the moment it flips into the return leg, so
+//   anything hit on the way out can be hit again on the way back. Expires once it comes within _returnRadius
+//   of the caster's LIVE position — a plain radius check around wherever the caster currently is, not
+//   "reached this exact point." _returnRadius reuses the exact same spawnOffset distance
+//   ExeAxeThrowAbilityPD.Activate() originally spawned this at (see Launch()'s own doc comment) — the axe
+//   settles back at the same orbit-ish distance it left from, not by touching the caster's exact center. No
+//   distance/range cap on the return leg — with continuous homing it's guaranteed to eventually close the
+//   gap rather than needing a fallback cutoff the outbound-leg-turned-fixed-direction version once needed.
 // - Crits instead deal critDamageMultiplier-times (2x by default) the normal crit damage, on top of the
 //   already-always-piercing behavior above — the payoff moved from "keep going" to "hit harder", tuned via
 //   Strength/strengthPercent being set lower in the Inspector to compensate for the raised crit ceiling.
@@ -22,6 +33,9 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     {
         public Vector3 direction;
         public float   distanceTravelled;
+        // False for the outbound leg, true once the one-time return snap has happened — see class doc
+        // comment.
+        public bool    returning;
         // Accumulated tumble angle in degrees, deterministic (spinSpeed * delta per tick, see LateSimulate) —
         // drives the root transform's own rotation every tick (see LateSimulate), same "lives in State so
         // resimulation replays it identically" reasoning as distanceTravelled.
@@ -41,14 +55,7 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     // this by transform.lossyScale.x (see LateSimulate()), which only ever carries the caster's own
     // bonusSizePercent (see Launch()) uniformly on every axis, so any single axis works as the scale factor.
     [SerializeField] private float sphereRadius = 0.5f;
-    // Own crit-chance formula (see ProcessHit) rather than a straight _stats.CritChance read — piercing (the
-    // whole point of a crit here, see class doc comment) is meant to be somewhat likely from the very start
-    // of a run, not gated behind crit-chance upgrades first. baseCritChance is a flat floor regardless of
-    // the player's own crit investment; critChanceFromPlayer scales how much of _stats.CritChance still adds
-    // on top (0.5 = only half as effective here as it is on the player's actual weapon strikes).
     [Header("Crit")]
-    [SerializeField] private float baseCritChance = 0.5f;
-    [SerializeField] private float critChanceFromPlayer = 0.5f;
     // Multiplies CritDamage itself (not additive) — see class doc comment for why this replaced the old
     // "pierce only on crit" payoff once piercing became unconditional.
     [SerializeField] private float critDamageMultiplier = 2f;
@@ -90,6 +97,9 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     private float _speed;
     private float _maxRange;
     private float _strengthPercent;
+    // Arrival radius for the return trip — see class doc comment/Launch()'s own doc comment for why this is
+    // the same value as the original spawnOffset, not a fixed constant.
+    private float _returnRadius;
     // Plain view-layer bookkeeping, not predicted state — same instant-predicted-hide pattern as
     // WeaponRangedProjectilePD/EnemyProjectilePD.
     private bool _hiddenOnExpire;
@@ -135,16 +145,21 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
 
     // Called by ExeAxeThrowAbilityPD.Activate() immediately after hierarchy.Create() returns — synchronous
     // and deterministic, same "mutate currentState right after Create()" pattern as every other spawned
-    // one-shot effect in this codebase.
-    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, float maxRange, float strengthPercent)
+    // one-shot effect in this codebase. returnRadius is ExeAxeThrowAbilityPD's own spawnOffset value (the
+    // distance this projectile was thrown from in front of the caster) — reused here as the return trip's
+    // arrival radius, so the axe settles back at roughly the same distance from the caster it left from
+    // rather than needing to touch their exact center (see class doc comment).
+    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, float maxRange, float strengthPercent, float returnRadius)
     {
         _stats = stats;
         _speed = speed;
         _maxRange = maxRange;
         _strengthPercent = strengthPercent;
+        _returnRadius = returnRadius;
 
         currentState.direction = direction;
         currentState.distanceTravelled = 0f;
+        currentState.returning = false;
         currentState.spinAngle = 0f;
         currentState.expired = false;
 
@@ -197,6 +212,16 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         if (_stats == null) { state.expired = true; return; } // shouldn't happen — Launch() always sets it
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
+        // Continuous homing for the return leg only — re-aims at the caster's LIVE position every tick
+        // before this tick's own movement below, so it can't miss a caster who keeps moving after the
+        // turnaround (see class doc comment). The outbound leg never hits this — direction there stays
+        // exactly whatever it was thrown at.
+        if (state.returning)
+        {
+            Vector3 toPlayer = _stats.transform.position - transform.position;
+            if (toPlayer != Vector3.zero) state.direction = toPlayer.normalized;
+        }
+
         Vector3 prevPos = transform.position;
         Vector3 step    = state.direction * (_speed * delta);
         transform.position = prevPos + step;
@@ -227,13 +252,29 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
             }
 
             // Always pierces — see class doc comment — so a hit never expires the projectile here; only
-            // running out of range (below) does.
+            // the return-trip logic below does.
             if (hitEnemy != null)
                 ProcessHit(hitEnemy);
         }
 
-        if (!state.expired && state.distanceTravelled >= _maxRange)
-            state.expired = true;
+        if (state.returning)
+        {
+            // Plain radius check around the caster's LIVE position — see _returnRadius/class doc comment for
+            // why this is a radius (matching the original spawnOffset), not a "reached this exact point" or
+            // distance-travelled check. No _maxRange fallback here on purpose (see class doc comment).
+            float distToPlayer = (_stats.transform.position - transform.position).magnitude;
+            if (distToPlayer <= _returnRadius)
+                state.expired = true;
+        }
+        else if (state.distanceTravelled >= _maxRange)
+        {
+            // End of the outbound leg — flips into the return leg; direction itself gets re-aimed at the
+            // top of this method starting next tick (see above), so nothing to set here beyond the flag
+            // itself. _hitTargets clears so anything hit on the way out can be hit again on the way back.
+            state.distanceTravelled = 0f;
+            state.returning = true;
+            _hitTargets.Clear();
+        }
     }
 
     // Mirrors WeaponRangedProjectilePD.ProcessHit, minus ricochet/dropoff (neither apply here) and with
@@ -254,12 +295,9 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
         if (isHighroll) damage *= 1f + _stats.HighrollBonus;
 
-        // Own crit-chance formula, not a straight read of _stats.CritChance — see baseCritChance/
-        // critChanceFromPlayer's own doc comment for why.
-        float effectiveCritChance = baseCritChance + _stats.CritChance * critChanceFromPlayer;
-        bool isCrit = GameRandom.instance.NextFloat() < effectiveCritChance;
+        bool isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage * critDamageMultiplier;
-        if (isHighroll) _stats.NotifyHighroll(damage);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
 
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = damage, onHitPower = _stats.OnHitPower, isCrit = isCrit };
         _stats.NotifyHit(hitData);

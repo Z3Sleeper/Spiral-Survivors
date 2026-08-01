@@ -137,6 +137,12 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // Same underlying window as IsActive for this ability (the whole leap) — see IAbilityPD.AbilityIsActive's
     // own doc comment for why these are separate interface members even though they agree here.
     public bool AbilityIsActive => currentState.isActive;
+    public bool HasActiveWindow => true;
+    public float ActiveTimeRemaining => Mathf.Max(0f, currentState.activeTimer);
+    // No AbilityPower scaling on this ability's own duration (see Activate() — currentState.activeTimer is
+    // set straight from duration, unlike the buff abilities' own AbilityPower-scaled snapshots), so the raw
+    // field is already the correct total, no separate _appliedDuration needed.
+    public float ActiveTimeDuration => duration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -329,19 +335,15 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         foreach (var enemy in _damageTouchedThisTick)
             HitEnemy(enemy);
 
-        bool detectAllies = _stats.allyStrikeHitEnabled || _stats.allyStrikeDamageEnabled;
-        if (detectAllies)
+        _damageTouchedAlliesThisTick.Clear();
+        int an = Physics.OverlapCapsuleNonAlloc(p0, p1, radius, _damageOverlapResults, CombatLayerMasks.PlayerHurtboxMask);
+        for (int i = 0; i < an; i++)
         {
-            _damageTouchedAlliesThisTick.Clear();
-            int an = Physics.OverlapCapsuleNonAlloc(p0, p1, radius, _damageOverlapResults, CombatLayerMasks.PlayerHurtboxMask);
-            for (int i = 0; i < an; i++)
-            {
-                var ally = _damageOverlapResults[i].GetComponent<CharacterStatsPD>();
-                if (ally != null) _damageTouchedAlliesThisTick.Add(ally);
-            }
-            foreach (var ally in _damageTouchedAlliesThisTick)
-                HitAlly(ally);
+            var ally = _damageOverlapResults[i].GetComponent<CharacterStatsPD>();
+            if (ally != null) _damageTouchedAlliesThisTick.Add(ally);
         }
+        foreach (var ally in _damageTouchedAlliesThisTick)
+            HitAlly(ally);
     }
 
     // Base damage per hit, shared by both HitEnemy/HitAlly — plain (penalized) Strength, not
@@ -372,7 +374,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         if (isCrit) damage *= _stats.CritDamage;
-        if (isHighroll) _stats.NotifyHighroll(damage);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = OnHitPowerForEffects(), isCrit = isCrit };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
@@ -383,20 +385,12 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
     }
 
-    // Mirrors WeaponMeleePD.HitAlly() exactly, baseDamage swapped from Strength to BaseDamage().
+    // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been
+    // removed from the project entirely (see CharacterStatsPD.NotifyAllyStrike's own doc comment).
     private void HitAlly(CharacterStatsPD ally)
     {
         if (ally == _stats || ally.IsDead) return;
-
-        if (_stats.allyStrikeDamageEnabled)
-        {
-            float damage = WeaponDamageMath.RollDamage(BaseDamage(), _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
-            if (isHighroll) damage *= 1f + _stats.HighrollBonus;
-            ally.TakeDamage(damage);
-        }
-
-        if (_stats.allyStrikeHitEnabled)
-            _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = OnHitPowerForEffects() });
+        _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = OnHitPowerForEffects() });
     }
 
     protected override void UpdateView(State viewState, State? verified)

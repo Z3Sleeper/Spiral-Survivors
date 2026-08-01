@@ -45,6 +45,9 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     // would add and subtract two different amounts, permanently drifting MoveSpeed. Same "fixed for the
     // whole active window" reasoning as RogueSpinAbilityPD's own cast-time snapshots (_weaponCountAtCast etc).
     private float _appliedMoveSpeedTotalPercent;
+    // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
+    // this fixed rather than recomputing duration * AbilityPower live off a since-changed AbilityPower.
+    private float _appliedDuration;
 
     // The local-only screen tint toggle routes through PredictedEvent, not a raw call directly in
     // Simulate()/Activate() — same reasoning as every other one-shot side effect in this codebase: a
@@ -87,6 +90,9 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     // IAbilityPD.AbilityIsActive's own doc comment for why these are separate interface members even
     // though they agree here.
     public bool AbilityIsActive => currentState.isActive;
+    public bool HasActiveWindow => true;
+    public float ActiveTimeRemaining => Mathf.Max(0f, currentState.activeTimer);
+    public float ActiveTimeDuration => _appliedDuration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -110,8 +116,9 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         // duration — see CharacterStatsPD.AbilityPower's own doc comment.
         float abilityPower = _stats.AbilityPower;
         _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent * abilityPower;
+        _appliedDuration              = duration * abilityPower;
 
-        currentState.activeTimer   = duration * abilityPower;
+        currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;
         currentState.cooldownTimer = EffectiveCooldown;
         // Direct cross-identity mutation, same pattern as PausePD.SetPlayerReady()/CharacterStatsPD.

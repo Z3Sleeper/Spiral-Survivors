@@ -140,10 +140,12 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
             case SpearState.Stabbing:
                 if (state.spearStateTimer <= 0f)
                 {
+                    // IsTargetStillValid — a target that went invisible-and-non-taunting since the last stab
+                    // shouldn't get chained into another one against them; see that property's own doc comment.
                     // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the
                     // stab that just finished above, but stops the chain from continuing into another one,
                     // falling through to PostStab instead (see IsCrowdControlled's own doc comment).
-                    if (state.spearAttacksRemaining > 0 && !IsCrowdControlled) EnterBetweenStabs(ref state);
+                    if (state.spearAttacksRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenStabs(ref state);
                     else                                                      EnterPostStab(ref state);
                 }
                 break;

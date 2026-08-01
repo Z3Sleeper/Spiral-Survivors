@@ -154,6 +154,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
             if (!_registeredInAll && owner.HasValue && _appliedColorIndex >= 0 && (!isOwner || _bonusesApplied))
             {
                 CharacterStatsPD.All[owner.Value] = stats;
+                CharacterStatsPD.RefreshAnyValidTargetExists();
                 _registeredInAll = true;
             }
 
@@ -216,6 +217,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
             // domain reload means this never resets, and unlike a plain counter, a stale entry here is a
             // dangling Component reference other code might dereference mid-Simulate().
             CharacterStatsPD.All.Remove(owner.Value);
+            CharacterStatsPD.RefreshAnyValidTargetExists();
         }
     }
 }

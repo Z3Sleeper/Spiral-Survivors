@@ -73,6 +73,9 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     private float _appliedRangePercent;
     private float _appliedStrengthPercent;
     private float _appliedDamageReductionPercent;
+    // Snapshotted alongside the others — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI
+    // needs this fixed rather than recomputing duration * AbilityPower live off a since-changed AbilityPower.
+    private float _appliedDuration;
 
     protected override State GetInitialState() => default;
 
@@ -91,6 +94,9 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
     public bool AbilityIsActive => currentState.isActive;
+    public bool HasActiveWindow => true;
+    public float ActiveTimeRemaining => Mathf.Max(0f, currentState.activeTimer);
+    public float ActiveTimeDuration => _appliedDuration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -119,8 +125,9 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
         _appliedRangePercent           = rangePercent * abilityPower;
         _appliedStrengthPercent        = strengthPercent * abilityPower;
         _appliedDamageReductionPercent = damageReductionPercent * abilityPower;
+        _appliedDuration                = duration * abilityPower;
 
-        currentState.activeTimer   = duration * abilityPower;
+        currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;
         currentState.cooldownTimer = EffectiveCooldown;
 

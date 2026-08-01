@@ -12,7 +12,7 @@ using UnityEngine;
 //
 // No custom predicted-state counting needed — the crit-progress counter is a plain field, mutated only
 // from inside the PredictedEvent callback (itself guaranteed to fire exactly once per logical crit,
-// deterministically, on every machine — same reasoning that already makes _onHighroll/_onHeal safe
+// deterministically, on every machine — same reasoning that already makes _onStrikeHighroll/_onHeal safe
 // elsewhere in this codebase).
 //
 // Crit-progress divide (2026-07-26): a naive "+1 per crit, need 3" blows up under high WeaponCount/

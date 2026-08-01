@@ -109,10 +109,11 @@ MonoBehaviour:
     <color=#FFBE50>Cooldown: 6 seconds</color>'
   cooldown: 6
   cooldownStartsOnCast: 0
-  slot: 1
+  slot: 0
   tags: []
+  activeSurgeBlock: 1
   duration: 0.75
-  postActiveInvincibilityGrace: 0.1
+  postActiveInvincibilityGrace: 0.2
   dashSpeed: 10
   visuals: {fileID: 2534175426824249865}
   leapHeight: 2
@@ -144,7 +145,8 @@ MonoBehaviour:
     15 seconds</color>'
   cooldown: 15
   cooldownStartsOnCast: 0
-  slot: 0
+  slot: 1
   tags: []
-  duration: 2
+  activeSurgeBlock: 0
+  duration: 3
   moveSpeedTotalPercent: 0.25
