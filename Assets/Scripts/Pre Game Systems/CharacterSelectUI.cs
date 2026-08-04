@@ -157,6 +157,17 @@ public class CharacterSelectUI : MonoBehaviour
         return 0;
     }
 
+    // True iff the two assignment maps hold exactly the same member->color entries — used to double-check
+    // ResolveColorAssignments' own `changed` bookkeeping actually reflects a real difference before writing,
+    // see that method's own doc comment for why this extra check exists.
+    private static bool AssignmentsEqual(Dictionary<string, int> a, Dictionary<string, int> b)
+    {
+        if (a.Count != b.Count) return false;
+        foreach (var kvp in a)
+            if (!b.TryGetValue(kvp.Key, out int value) || value != kvp.Value) return false;
+        return true;
+    }
+
     // HOST-ONLY. Reconciles ColorAssignments against the current member list and everyone's outstanding
     // colorRequest: prunes members who've left (freeing their color back up), auto-assigns anyone missing
     // an assignment (new joiners), and grants a pending request iff the requested color is actually free —
@@ -168,7 +179,12 @@ public class CharacterSelectUI : MonoBehaviour
         if (!ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw)) return;
         var lobbyCSteamID = new CSteamID(lobbyIdRaw);
 
-        var assignments = ParseColorAssignments(SteamMatchmaking.GetLobbyData(lobbyCSteamID, ColorAssignmentsKey));
+        // originalAssignments is an unmutated snapshot of what was actually read — kept alongside the
+        // working `assignments` map (which the reconciliation below mutates freely) so the write at the
+        // bottom can compare against what's ACTUALLY currently stored, not just trust `changed`'s own
+        // field-by-field bookkeeping. See that check's own doc comment for why this distinction matters.
+        var originalAssignments = ParseColorAssignments(SteamMatchmaking.GetLobbyData(lobbyCSteamID, ColorAssignmentsKey));
+        var assignments = new Dictionary<string, int>(originalAssignments);
         var taken = new HashSet<int>(assignments.Values);
         bool changed = false;
 
@@ -207,7 +223,18 @@ public class CharacterSelectUI : MonoBehaviour
             }
         }
 
-        if (changed)
+        // AssignmentsEqual is the actual guard, not `changed` alone — Steam fires a fresh LobbyDataUpdate_t
+        // for every SetLobbyData call regardless of whether the written value actually differs from what's
+        // already stored. If this method's own local read of its own previous write is ever even one tick
+        // stale (a real risk in an async/callback-driven system, since GetLobbyData reads whatever this
+        // machine's local Steam cache currently holds, not necessarily the exact value this SAME function
+        // just wrote moments ago), `changed` can keep computing true for a state that's already actually
+        // resolved — redundantly re-writing the same data, which by itself is enough to fire another
+        // LobbyDataUpdate_t and re-trigger this whole method again (RefreshFromLobby -> resolve -> write ->
+        // LobbyDataUpdate_t -> RefreshFromLobby -> ...), with nothing external ever needing to change to
+        // keep it going. Comparing the actual resulting map against what was actually read, right before the
+        // one real Steam write, closes that loop regardless of why `changed` thought something needed fixing.
+        if (changed && !AssignmentsEqual(assignments, originalAssignments))
             SteamMatchmaking.SetLobbyData(lobbyCSteamID, ColorAssignmentsKey, SerializeColorAssignments(assignments));
     }
 

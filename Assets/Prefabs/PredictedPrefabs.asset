@@ -503,3 +503,7 @@ MonoBehaviour:
     pooling:
       usePooling: 0
       initialSize: 0
+  - prefab: {fileID: 2942187867930129664, guid: 703925ce0460d234d95af3eef295b2e7, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0

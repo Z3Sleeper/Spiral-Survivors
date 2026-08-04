@@ -214,6 +214,13 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // once per spawn/reuse, not derived live, so it stays stable across this instance's whole life rather
     // than changing every time the check happens to fire.
     public float personalPushAngle;
+    // In State, not a plain field — a rollback restores separationCheckTimer/personalPushAngle above
+    // correctly (they're right here), but a plain field caching the LAST computed push vector would sit
+    // stale (whatever the pre-rollback local prediction last computed) for up to SeparationCheckInterval
+    // ticks after any correction, instead of being exactly reproducible from replayed state like every other
+    // physics-affecting value in this struct. See feedback_ability_temp_buff_state_safety memory for the
+    // same class of bug found elsewhere in the v0.3 audit this was raised alongside.
+    public Vector3 separationPush;
 
     // Lets the packer duplicate this struct via a direct field-copy during snapshot/history/rollback
     // operations instead of falling back to a full serialize/deserialize round-trip — see
@@ -297,13 +304,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private const int   SeparationCheckInterval = 8;
     private const float SeparationRadiusPerSize = 1f;
     private const float SeparationForce = 8f;
-    // Cached between checks and re-applied as a small continuous force every tick in between — smoother-
-    // looking than an abrupt kick only on the tick the check itself runs, and self-decays to zero once
-    // neighbors are far enough apart to stop overlapping on the next check. Plain, not predicted State:
-    // deterministically re-derived from other enemies' own (rollback-tracked) positions and this instance's
-    // own EnemyBaseState.personalPushAngle every time it's actually recomputed, so every machine (and every
-    // resimulation replay) reproduces the identical value on the identical tick.
-    private Vector3 _separationPush;
+    // Cached between checks (in EnemyBaseState.separationPush, not a plain field — see that field's own doc
+    // comment) and re-applied as a small continuous force every tick in between — smoother-looking than an
+    // abrupt kick only on the tick the check itself runs, and self-decays to zero once neighbors are far
+    // enough apart to stop overlapping on the next check.
     private readonly Collider[] _separationOverlapResults = new Collider[16];
 
     [Header("Contact Damage")]
@@ -1164,12 +1168,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // ── Declumping ────────────────────────────────────────────────────────────
 
     // Ticks the per-instance stagger timer and, every SeparationCheckInterval ticks, recomputes this
-    // enemy's own push-away-from-neighbors vector — cached in _separationPush and re-applied here as a small
-    // continuous force every tick in between checks (see that field's own doc comment for why). Deliberately
-    // not every enemy re-checking every tick: with up to maxNormalEnemies (plus elites/bosses) potentially
-    // alive and overlapping at once, that would be real, avoidable physics-query cost that scales with total
-    // enemy count instead of staying flat — the random per-instance seed on separationCheckTimer (see
-    // LateAwake()) spreads the population's checks evenly across ticks instead of all landing on the same one.
+    // enemy's own push-away-from-neighbors vector — cached in EnemyBaseState.separationPush and re-applied
+    // here as a small continuous force every tick in between checks (see that field's own doc comment for
+    // why it lives in State). Deliberately not every enemy re-checking every tick: with up to
+    // maxNormalEnemies (plus elites/bosses) potentially alive and overlapping at once, that would be real,
+    // avoidable physics-query cost that scales with total enemy count instead of staying flat — the random
+    // per-instance seed on separationCheckTimer (see LateAwake()) spreads the population's checks evenly
+    // across ticks instead of all landing on the same one.
     private void HandleSeparation(ref EnemyBaseState b, float delta)
     {
         b.separationCheckTimer--;
@@ -1181,8 +1186,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         // isKinematic-guarded — a kinematic window (windup/charge/leap, several subclasses have one) can't
         // take a velocity-change force at all; the next check after that window ends picks the push back up.
-        if (_separationPush != Vector3.zero && _rigidbody != null && !_rigidbody.isKinematic)
-            _rigidbody.AddForce(_separationPush * delta, ForceMode.VelocityChange);
+        if (b.separationPush != Vector3.zero && _rigidbody != null && !_rigidbody.isKinematic)
+            _rigidbody.AddForce(b.separationPush * delta, ForceMode.VelocityChange);
     }
 
     // Any enemy counts as a neighbor to push away from here, not just this enemy's own type — pushing off of
@@ -1190,7 +1195,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // kind" specifically.
     private void RecomputeSeparationPush(ref EnemyBaseState b)
     {
-        _separationPush = Vector3.zero;
+        b.separationPush = Vector3.zero;
 
         float radius = SeparationRadiusPerSize * size;
         if (radius <= 0f) return;
@@ -1239,7 +1244,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // scale the resulting force with however many are found instead of staying a bounded "how hard am I
         // being pushed" value.
         if (combined.sqrMagnitude > 1f) combined.Normalize();
-        _separationPush = combined * SeparationForce;
+        b.separationPush = combined * SeparationForce;
     }
 
     // ── Dash helpers (for subclasses) ──────────────────────────────────────

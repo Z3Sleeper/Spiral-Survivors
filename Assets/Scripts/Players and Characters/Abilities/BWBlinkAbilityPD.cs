@@ -34,9 +34,9 @@ using UnityEngine;
 // point see the OLD position) and Ended AFTER (listeners see the NEW, blinked-to position) — so e.g.
 // DashExplosionAugment's own OnDashEnded explosion lands at the destination, not where the blink began.
 //
-// cooldownStartsOnCast is false by default (same as every other buff ability), so CooldownRemaining only
-// starts ticking once the Move Speed window ends — the 10s cooldown effectively begins AFTER the 2s buff,
-// not at the moment of the blink itself.
+// cooldownStartsOnCast is true here (unlike most other buff abilities' own false default) — the cooldown
+// starts ticking the instant Blink is cast, running concurrently with the Move Speed buff, rather than only
+// starting once that buff ends. See the field's own doc comment for why.
 //
 // CharacterStatsPD.AbilityPower scales both the Move Speed bonus AND the buff's own duration, same
 // snapshotted-at-cast-time convention as RogueVanishAbilityPD's own _appliedMoveSpeedTotalPercent/duration
@@ -60,10 +60,13 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     [SerializeField, TextArea] private string description =
         "Instantly teleport to wherever your blades are currently orbiting, then gain +25% Total Move Speed for 2 seconds. Only usable while Blade Dance is active.";
     [SerializeField] private float cooldown = 10f;
-    // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
-    // throughout the Move Speed window) — see Simulate(). true: cooldown starts ticking immediately at cast,
-    // running concurrently with the buff. Same convention/default as RogueVanishAbilityPD's own.
-    [SerializeField] private bool cooldownStartsOnCast = false;
+    // true — cooldown starts ticking immediately at cast, running concurrently with the Move Speed buff,
+    // rather than only starting once that buff ends. Deliberately NOT RogueVanishAbilityPD's default here —
+    // gating the cooldown behind the buff's own duration felt bad specifically for Blink: the teleport
+    // itself is the actual payoff (repositioning with the blades), the Move Speed buff is a minor bonus on
+    // top, so the 10s cooldown shouldn't effectively become 12s just because a short buff happens to be
+    // riding along with it. See Simulate().
+    [SerializeField] private bool cooldownStartsOnCast = true;
     [SerializeField] private AbilitySlot slot = AbilitySlot.Ability2;
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.

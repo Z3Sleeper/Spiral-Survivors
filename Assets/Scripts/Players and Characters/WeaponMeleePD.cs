@@ -146,14 +146,14 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             // circle, not the arc itself — at high enough rotation speed that chord can cut past an enemy
             // sitting on the arc between the two endpoints entirely. Subdivide into intermediate stops
             // along the true arc when this tick's angle movement is large enough for that gap to matter
-            // (see WeaponBasePD.ComputeSubArcCount()) — at normal speeds this is always exactly 1 segment,
+            // (see SweepMath.ComputeSubArcCount()) — at normal speeds this is always exactly 1 segment,
             // identical to a plain single sweep straight to the final position.
             float angleDelta = _stats.WeaponSpeed * delta;
             // angle before this tick's movement — main track's angle decreases (so previous = current +
             // delta); outer track's mirrored angle increases instead (so previous = current - delta). Same
             // angleSign flip as currentAngle above.
             float startAngle = currentAngle + angleSign * angleDelta;
-            int   subArcs    = ComputeSubArcCount(angleDelta);
+            int   subArcs    = SweepMath.ComputeSubArcCount(angleDelta);
 
             Vector3    segStart  = prevCenter;
             Vector3    segCenter = prevCenter;

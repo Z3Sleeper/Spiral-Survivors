@@ -139,21 +139,23 @@ public class WeaponManagerPD : MonoBehaviour
             if (weapon.rangeScaleTarget != null)
             {
                 // Both terms divided by rootZ uniformly, not just the r term — the character-radius
-                // clearance is a WORLD-space quantity (transform.lossyScale.x already IS the character's
-                // current world scale), but this whole expression is written in the weapon's own LOCAL
-                // space, which Unity implicitly re-multiplies by rootZ (the weapon's own Size-driven scale)
-                // when resolving hitboxTarget's world position from its local one. Previously only r was
-                // divided by rootZ before that implicit multiply, so it came back out as exactly r (correct,
-                // scale-invariant) — but the character-radius term came back out as
-                // transform.lossyScale.x*0.5f*rootZ instead of the intended transform.lossyScale.x*0.5f,
-                // compounding with the weapon's OWN Size-driven scale on top of already including the
-                // character's Size once directly through lossyScale.x. That's what pulled the hitbox's near
+                // clearance is a WORLD-space quantity (_stats.bonusSizePercent already IS the character's
+                // current world scale — see ExeAxeThrowAbilityPD.spawnOffsetBase's own doc comment for why
+                // this reads the stat directly rather than transform.lossyScale.x, numerically identical
+                // here too since this component lives on the same player root CharacterStatsPD does), but
+                // this whole expression is written in the weapon's own LOCAL space, which Unity implicitly
+                // re-multiplies by rootZ (the weapon's own Size-driven scale) when resolving hitboxTarget's
+                // world position from its local one. Previously only r was divided by rootZ before that
+                // implicit multiply, so it came back out as exactly r (correct, scale-invariant) — but the
+                // character-radius term came back out as bonusSizePercent*0.5f*rootZ instead of the intended
+                // bonusSizePercent*0.5f, compounding with the weapon's OWN Size-driven scale on top of
+                // already including the character's Size once directly. That's what pulled the hitbox's near
                 // edge back past the handle at higher Size (confirmed against a screenshot where it visibly
                 // intruded into the hurtbox) while staying correct at Size 1 (rootZ's multiplier was 1, so
                 // the bug was invisible there) — dividing it too keeps the clearance scaling linearly with
                 // just the character's own Size, not the weapon's Size on top of that.
                 var p = weapon.hitboxTarget.localPosition;
-                weapon.hitboxTarget.localPosition = new Vector3(p.x, p.y, (r * 0.5f - transform.lossyScale.x * 0.5f) / rootZ);
+                weapon.hitboxTarget.localPosition = new Vector3(p.x, p.y, (r * 0.5f - _stats.bonusSizePercent * 0.5f) / rootZ);
             }
         }
         else

@@ -5,6 +5,7 @@ using PurrLobby;
 using PurrNet;
 using PurrNet.Modules;
 using PurrNet.Steam;
+using PurrNet.Transports;
 using Steamworks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -47,9 +48,22 @@ public class LobbySceneController : MonoBehaviour
     // so a plain counter could cross _expectedPlayerCount purely from reconnect noise without every distinct
     // player actually being present.
     private readonly HashSet<PlayerID> _joinedPlayerIds = new();
+    // Snapshotted (host-only) the instant OnAllReady fires — the exact set of Steam IDs the host's own
+    // local lobby view actually contained at that moment. This is the host's own visual truth: whoever
+    // ISN'T in this set gets rejected in OnPurrNetPlayerJoined below, even if their own client thinks
+    // they're already part of the match — the host should never have to "guess" who's really in their
+    // lobby, or let a connection through that wasn't part of what it visibly saw when it started.
+    private readonly HashSet<ulong> _expectedSteamIds = new();
     private bool _initializedForLobby;
     private bool _connectingToHost;
     private Coroutine _connectRoutine;
+
+    // Normal match-start (ready confirmed -> actually loaded into the Game scene) takes well under 5s —
+    // 20s is a generous ceiling, not a tuned "typical" wait. A successful transition unloads this whole
+    // scene (killing this coroutine along with it) well before this fires, so reaching the timeout only
+    // ever means the attempt is genuinely stuck, not just slow.
+    [SerializeField] private float matchStartTimeoutSeconds = 20f;
+    private Coroutine _matchStartWatchdog;
 
     private void OnEnable()  => UnlockManager.OnUnlockQueued += OnUnlockQueuedWhileInLobby;
     private void OnDisable() => UnlockManager.OnUnlockQueued -= OnUnlockQueuedWhileInLobby;
@@ -74,6 +88,36 @@ public class LobbySceneController : MonoBehaviour
 
         if (!networkManager)
             networkManager = NetworkManager.main;
+
+        // Emulate a genuinely fresh app launch every single time we're in the Lobby scene — a first-ever
+        // match start (StartServer()/StartClient() on a NetworkManager that's never connected before) is
+        // the ONE case that's been reliable across every live test this session; every failure so far has
+        // involved a connection that survived from a PREVIOUS match cycle into a new one (duplicate
+        // StartClient races, PromoteToServer() edge cases, an unexplained round-2-only connect hang with no
+        // error at all). Rather than continuing to chase every individual way a carried-over connection can
+        // go stale, just don't carry one over — unconditionally tear down client/server the moment we're
+        // back here (covers a fresh launch, ReturnToLobbyManager's networked scene load back from a match,
+        // and a disconnect-triggered kick back to this scene), so every match start begins from the exact
+        // same known-good state regardless of history. No-ops harmlessly if already disconnected.
+        // TEMP diagnostic — confirming Start() actually re-runs on every Lobby scene (re)load and what
+        // state gets read at that exact moment. Remove once the reset is confirmed reliable.
+        Debug.Log($"[LobbySceneController] Start(): pre-reset serverState={networkManager.serverState}, clientState={networkManager.clientState}, GetInstanceID={networkManager.GetInstanceID()}.");
+        // Guarded by serverState/clientState (NOT the plain isServer/isClient booleans, and NOT
+        // unconditional either) — this is the exact same check GenericTransport.StartServer/StartClient use
+        // internally before registering modules. isServer/isClient only reflect ConnectionState.Connected
+        // specifically, so a guard on those could skip Stop*() during a Connecting/Disconnecting window and
+        // leave a connection alive underneath. But calling StopServer()/StopClient() UNCONDITIONALLY is
+        // actively unsafe, not just wasted effort — confirmed live: GenericTransport.StopServer() always
+        // calls networkManager.InternalUnregisterServerModules() with no guard of its own, so calling it on
+        // a NetworkManager that was NEVER started (modules never registered) corrupted that bookkeeping and
+        // broke the very next real StartServer() call ("[SteamServer] Failed to create listen socket.").
+        // serverState/clientState (Disconnected vs Connecting/Connected/Disconnecting) is the correct,
+        // PurrNet-idiomatic "is there actually anything to stop" check.
+        if (networkManager.serverState != ConnectionState.Disconnected) networkManager.StopServer();
+        if (networkManager.clientState != ConnectionState.Disconnected) networkManager.StopClient();
+        // TEMP diagnostic — same-frame readback right after the Stop calls.
+        Debug.Log($"[LobbySceneController] Start(): post-reset (same frame) serverState={networkManager.serverState}, clientState={networkManager.clientState}.");
+        StartCoroutine(LogNetworkStateDelayed("Start()"));
 
         bool shopUnlocked = ProgressionManager.IsShopUnlocked;
         foreach (var btn in upgradeButtons)
@@ -100,6 +144,7 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.OnRoomUpdated.AddListener(OnRoomUpdated);
         lobbyManager.OnAllReady.AddListener(OnAllReady);
         lobbyManager.OnError.AddListener(OnLobbyError);
+        networkManager.onClientConnectionState += OnClientConnectionStateChanged;
 
         if (lobbyManager.CurrentLobby.IsValid)
         {
@@ -127,6 +172,85 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.OnRoomUpdated.RemoveListener(OnRoomUpdated);
         lobbyManager.OnAllReady.RemoveListener(OnAllReady);
         lobbyManager.OnError.RemoveListener(OnLobbyError);
+        if (networkManager != null)
+            networkManager.onClientConnectionState -= OnClientConnectionStateChanged;
+    }
+
+    // Fires for ANY client-side connection state change — we only care about landing back at Disconnected
+    // while we still thought we were part of a match (either mid-connect via ConnectToHostWithRetry, or
+    // already fully joined and then kicked/dropped). Nothing in the project previously listened for this
+    // at all, so a lost connection — for any reason, not just OnPurrNetPlayerJoined's own reject-below —
+    // used to leave the client permanently frozen (e.g. still on the loading screen) with no recovery path.
+    private void OnClientConnectionStateChanged(ConnectionState state)
+    {
+        if (state != ConnectionState.Disconnected) return;
+        // The lobby OWNER's own listen-server client bouncing through Disconnected during normal
+        // StartServer()/StartClientDelayed() setup is expected and not a "lost connection" in the sense
+        // this guards against — only a non-owner losing its connection to someone else's server matters here.
+        if (lobbyManager.CurrentLobby.IsOwner) return;
+        if (!_connectingToHost && !networkManager.isClient) return;
+
+        AbortStuckMatchStart("Lost connection to host (or was rejected)");
+    }
+
+    private void StartMatchStartWatchdog()
+    {
+        if (_matchStartWatchdog != null) StopCoroutine(_matchStartWatchdog);
+        _matchStartWatchdog = StartCoroutine(MatchStartWatchdogRoutine());
+    }
+
+    private IEnumerator MatchStartWatchdogRoutine()
+    {
+        yield return new WaitForSeconds(matchStartTimeoutSeconds);
+        // Still running after the timeout means the match never actually started — a genuinely successful
+        // transition into the Game scene unloads this whole scene (killing this coroutine along with it)
+        // well before this point, since a normal match-start takes well under 5s.
+        AbortStuckMatchStart($"Match start timed out after {matchStartTimeoutSeconds}s");
+    }
+
+    // Shared bail-out for both a detected lost connection and the watchdog timeout — forces a clean return
+    // to the main menu instead of leaving a stuck client (frozen "connected but nothing's happening") or a
+    // stuck host (never satisfies TryLoadGameScene's player-count gate) sitting on the loading screen
+    // indefinitely. Covers both roles: a stuck HOST also gets its own StopServer()/StopClient() here, not
+    // just a stuck client.
+    private void AbortStuckMatchStart(string reason)
+    {
+        Debug.LogWarning($"[LobbySceneController] {reason} — aborting and returning to main menu.");
+
+        if (_matchStartWatchdog != null)
+        {
+            StopCoroutine(_matchStartWatchdog);
+            _matchStartWatchdog = null;
+        }
+        if (_connectRoutine != null)
+        {
+            StopCoroutine(_connectRoutine);
+            _connectRoutine = null;
+        }
+        _connectingToHost = false;
+
+        if (networkManager != null)
+        {
+            networkManager.onPlayerJoined -= OnPurrNetPlayerJoined;
+            networkManager.onPlayerLeft -= OnPurrNetPlayerLeft;
+            if (networkManager.isClient) networkManager.StopClient();
+            if (networkManager.isServer) networkManager.StopServer();
+        }
+
+        if (LoadingScreen.instance != null) LoadingScreen.instance.Hide();
+
+        // Actually leaves the Steam lobby too, not just resets local UI/PurrNet state — without this, the
+        // player stayed a real member of the OLD (broken) Steam lobby underneath the main menu, which
+        // silently collided with a subsequent "Create Lobby" attempt (LobbyManager.CreateRoom() has no
+        // guard against being called while already in a lobby — live-confirmed this exact collision).
+        // Routes through the SAME LeaveLobby() path the real "Leave Lobby" button uses, which fires
+        // OnRoomLeft() — that handler already resets _expectedPlayerCount/_joinedPlayerIds/
+        // _expectedSteamIds and toggles the panels, so none of that is duplicated here.
+        // TODO: replace this bare kick-to-main-menu with a proper "match start failed" popup/message once
+        // the UI for it exists — right now this is silent from the player's perspective beyond suddenly
+        // landing back on the main menu, which is a real UX gap, just no longer an indefinite frozen
+        // loading screen.
+        lobbyManager.LeaveLobby();
     }
 
     // e.g. CreateLobbyAsync timing out or Steam rejecting the request — bail back to the main PurrLobby
@@ -282,6 +406,11 @@ public class LobbySceneController : MonoBehaviour
     private void OnRoomLeft()
     {
         _initializedForLobby = false;
+        if (_matchStartWatchdog != null)
+        {
+            StopCoroutine(_matchStartWatchdog);
+            _matchStartWatchdog = null;
+        }
         // Was previously never reset here — CharacterSelectUI.ResetReadyState() (now ResetLocalLobbyState())
         // existed but nothing called it, so local UI state could carry over stale into a later lobby session
         // (e.g. join lobby A, ready up, leave, join lobby B — InitializeForLobby already resets the
@@ -300,9 +429,21 @@ public class LobbySceneController : MonoBehaviour
         {
             networkManager.onPlayerJoined -= OnPurrNetPlayerJoined;
             networkManager.onPlayerLeft -= OnPurrNetPlayerLeft;
+            // TEMP diagnostic — see Start()'s own matching comment.
+            Debug.Log($"[LobbySceneController] OnRoomLeft(): pre-reset serverState={networkManager.serverState}, clientState={networkManager.clientState}, GetInstanceID={networkManager.GetInstanceID()}.");
+            // Same clean-slate reset as Start()'s own, same serverState/clientState guard (see Start()'s own
+            // comment for why unconditional Stop*() calls are actively unsafe, not just wasted effort) —
+            // covers leaving WITHOUT a scene reload (e.g. Leave Lobby, then Join a different lobby by code,
+            // all still inside this one Lobby scene load) where Start() itself won't run again to catch it.
+            if (networkManager.serverState != ConnectionState.Disconnected) networkManager.StopServer();
+            if (networkManager.clientState != ConnectionState.Disconnected) networkManager.StopClient();
+            // TEMP diagnostic — same-frame readback, see Start()'s own matching comment.
+            Debug.Log($"[LobbySceneController] OnRoomLeft(): post-reset (same frame) serverState={networkManager.serverState}, clientState={networkManager.clientState}.");
+            StartCoroutine(LogNetworkStateDelayed("OnRoomLeft()"));
         }
         _expectedPlayerCount = 0;
         _joinedPlayerIds.Clear();
+        _expectedSteamIds.Clear();
         characterSelectPanel.SetActive(false);
         purrLobbyPanel.SetActive(false);
         mainMenuPanel.SetActive(true);
@@ -325,6 +466,12 @@ public class LobbySceneController : MonoBehaviour
             TryLoadGameScene();
         }
 
+        // Sole trigger for a client to connect — see OnAllReady's own comment for why clients no longer act
+        // on their own independent "everyone's ready" conclusion. This reacts to the real Steam lobby data
+        // the host wrote via SetLobbyStarted(), so every client starts from the SAME single fact regardless
+        // of what each client's own local view happened to look like at any given moment — this is also the
+        // pre-existing reconnect path (a dropped player rejoining an already-started match), now doing
+        // double duty as the normal-case trigger too, not just the reconnect-only case it used to be.
         if (!lobby.IsOwner && !networkManager.isClient && !_connectingToHost)
         {
             if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
@@ -333,7 +480,14 @@ public class LobbySceneController : MonoBehaviour
                 string started = SteamMatchmaking.GetLobbyData(steamLobbyId, "Started");
                 if (started == "True")
                 {
+                    if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
+                    // Defensive — guards against a still-running coroutine from an earlier attempt (e.g. a
+                    // prior lobby session) that somehow wasn't cleared, same "don't let two
+                    // ConnectToHostWithRetry coroutines hammer StartClient at once" reasoning the old
+                    // OnAllReady client branch used to apply here.
+                    if (_connectRoutine != null) StopCoroutine(_connectRoutine);
                     _connectingToHost = true;
+                    StartMatchStartWatchdog();
                     if (networkManager.transport is SteamTransport steamTransport)
                     {
                         var hostSteamId = SteamMatchmaking.GetLobbyOwner(steamLobbyId);
@@ -350,58 +504,85 @@ public class LobbySceneController : MonoBehaviour
         if (!networkManager)
             networkManager = NetworkManager.main;
 
-        if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
         var lobby = lobbyManager.CurrentLobby;
+
+        // Only the HOST acts on its own local "everyone's ready" conclusion. A client's local Steam lobby
+        // view can lag behind reality (e.g. a just-joined member not yet visible on THIS specific machine) —
+        // a client independently reaching "everyone's ready" from its own possibly-stale view and connecting
+        // on its own was a real split-brain race: each machine could act on a DIFFERENT snapshot of "who's
+        // ready", at different, uncoordinated moments (confirmed live: the host started a "solo" 1-player
+        // match while the real second player was still trying to join, because each side's own local check
+        // fired independently and reached different conclusions). Clients now do nothing here at all — they
+        // instead react to OnRoomUpdated's "Started"=="True" check below, which is driven by the single,
+        // real, host-authoritative Steam lobby data flag SetLobbyStarted() writes, not by their own locally-
+        // derived (and possibly wrong) conclusion.
+        if (!lobby.IsOwner) return;
+
+        if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
+        StartMatchStartWatchdog();
         _expectedPlayerCount = lobby.Members.Count;
 
-        if (lobby.IsOwner)
-        {
-            // Gated behind lockLobbyOnMatchStart (default on) rather than removed outright — locking the
-            // lobby the moment a match starts is the right long-term behavior (stops randoms from
-            // Join-by-code'ing into a match already in progress), but it's also the one thing currently
-            // stopping a dropped player from rejoining the SAME match via LobbySceneController.OnRoomUpdated's
-            // existing "lobby says Started == True, I'm not yet a client" reconnect path. Flip this off in
-            // the Inspector to test reconnection without permanently changing the normal-case behavior.
-            if (lockLobbyOnMatchStart && ulong.TryParse(lobby.LobbyId, out ulong lockLobbyId))
-                SteamMatchmaking.SetLobbyJoinable(new CSteamID(lockLobbyId), false);
-            lobbyManager.SetLobbyStarted();
-            if (!networkManager.isServer)
-                networkManager.StartServer();
-            if (!networkManager.isClient)
-                StartCoroutine(StartClientDelayed());
+        // Snapshot exactly who's visually here right now — see _expectedSteamIds' own doc comment. Parsed
+        // straight from the Steam ID strings the lobby already carries; a malformed/unparseable id (should
+        // never happen for a real Steam member) is simply skipped rather than crashing this whole method.
+        _expectedSteamIds.Clear();
+        foreach (var m in lobby.Members)
+            if (ulong.TryParse(m.Id, out ulong steamId))
+                _expectedSteamIds.Add(steamId);
 
-            _joinedPlayerIds.Clear();
-            foreach (var p in networkManager.players) _joinedPlayerIds.Add(p);
-            networkManager.onPlayerJoined += OnPurrNetPlayerJoined;
-            networkManager.onPlayerLeft += OnPurrNetPlayerLeft;
-            TryLoadGameScene();
-        }
-        else if (!networkManager.isClient)
-        {
-            // Readying up is an explicit, unambiguous "connect me now" signal — it overrides any earlier
-            // connection attempt still (or wrongly still marked as) in progress. Without this, an earlier
-            // silent reconnect attempt from OnRoomUpdated (fired the instant we rejoined the Steam lobby,
-            // since it's already marked Started == True) could exhaust all its retries and fail — e.g. from
-            // the server-side "already connected" rejection window — leaving _connectingToHost stuck true
-            // forever with nothing to reset it, permanently blocking this legitimate ready-up-triggered
-            // attempt. Stopping any still-running routine before starting a fresh one avoids two overlapping
-            // ConnectToHostWithRetry coroutines both hammering StartClient at once.
-            if (_connectRoutine != null) StopCoroutine(_connectRoutine);
-            _connectingToHost = true;
-            if (networkManager.transport is SteamTransport steamTransport &&
-                ulong.TryParse(lobby.LobbyId, out var lobbyIdRaw))
-            {
-                var hostSteamId = SteamMatchmaking.GetLobbyOwner(new CSteamID(lobbyIdRaw));
-                steamTransport.address = hostSteamId.m_SteamID.ToString();
-            }
-            _connectRoutine = StartCoroutine(ConnectToHostWithRetry());
-        }
+        // TEMP diagnostic — cross-checking LobbyManager.ConfirmAllReadyStable's own logging: this is the
+        // exact moment _expectedPlayerCount gets captured (host side), which is what TryLoadGameScene's own
+        // gate is checked against. If a future repro shows the game loading with fewer players than actually
+        // present, compare this line's member list/names against who was really in the lobby at that
+        // instant. Remove once the premature-start race is confirmed fixed (or root-caused elsewhere).
+        Debug.Log($"[LobbySceneController] OnAllReady: IsOwner={lobby.IsOwner}, capturing _expectedPlayerCount={_expectedPlayerCount} from members [{string.Join(", ", lobby.Members.ConvertAll(m => $"{m.DisplayName}:{m.Id}"))}].");
+
+        // Gated behind lockLobbyOnMatchStart (default on) rather than removed outright — locking the
+        // lobby the moment a match starts is the right long-term behavior (stops randoms from
+        // Join-by-code'ing into a match already in progress), but it's also the one thing currently
+        // stopping a dropped player from rejoining the SAME match via LobbySceneController.OnRoomUpdated's
+        // existing "lobby says Started == True, I'm not yet a client" reconnect path. Flip this off in
+        // the Inspector to test reconnection without permanently changing the normal-case behavior.
+        if (lockLobbyOnMatchStart && ulong.TryParse(lobby.LobbyId, out ulong lockLobbyId))
+            SteamMatchmaking.SetLobbyJoinable(new CSteamID(lockLobbyId), false);
+        lobbyManager.SetLobbyStarted();
+
+        // Plain, unconditional StartServer() — the ONE path confirmed reliable across every live test this
+        // session. Used to also handle "was this machine already a PurrNet client from a previous match
+        // cycle" via PromoteToServer(), but Start()/OnRoomLeft() now unconditionally tear down client/server
+        // the moment we're anywhere in the Lobby scene (see Start()'s own comment) — networkManager.isClient
+        // and .isServer are therefore guaranteed false by the time OnAllReady can ever fire, so that whole
+        // branch (and its own follow-on bugs: a duplicate-StartClient race, then an unretried self-connect
+        // that could silently never take) can no longer be reached at all. Removed rather than left as dead
+        // code, since a currently-unreachable branch has a way of quietly becoming reachable again the next
+        // time this method gets touched.
+        if (!networkManager.isServer)
+            networkManager.StartServer();
+        if (!networkManager.isClient)
+            StartCoroutine(StartClientDelayed());
+
+        _joinedPlayerIds.Clear();
+        foreach (var p in networkManager.players) _joinedPlayerIds.Add(p);
+        networkManager.onPlayerJoined += OnPurrNetPlayerJoined;
+        networkManager.onPlayerLeft += OnPurrNetPlayerLeft;
+        TryLoadGameScene();
     }
 
     private IEnumerator StartClientDelayed(float delay = 1f)
     {
         yield return new WaitForSeconds(delay);
         networkManager.StartClient();
+    }
+
+    // TEMP diagnostic — logs NetworkManager's state ~1s after a reset attempt, to catch whether something
+    // ELSE reconnects it shortly afterward (as opposed to the reset itself never taking effect at all,
+    // which the same-frame post-reset log right before this call already covers). Remove alongside the
+    // other TEMP diagnostics once the still-connected-after-leaving bug is root-caused.
+    private IEnumerator LogNetworkStateDelayed(string sourceLabel)
+    {
+        yield return new WaitForSeconds(1f);
+        if (networkManager != null)
+            Debug.Log($"[LobbySceneController] {sourceLabel}: +1s readback serverState={networkManager.serverState}, clientState={networkManager.clientState}.");
     }
 
     private IEnumerator ConnectToHostWithRetry()
@@ -445,6 +626,27 @@ public class LobbySceneController : MonoBehaviour
     private void OnPurrNetPlayerJoined(PlayerID player, bool isReconnect, bool asServer)
     {
         if (!asServer) return;
+
+        // Reject anyone the host didn't actually see in its own lobby snapshot at OnAllReady time — see
+        // _expectedSteamIds' own doc comment. Never applies to the host's own local (listen-server) player,
+        // which never goes through a real remote Connection to resolve a Steam ID from in the first place.
+        if (player != networkManager.localPlayer &&
+            networkManager.TryGetModule<PlayersManager>(true, out var playersManager) &&
+            playersManager.TryGetConnection(player, out var conn) &&
+            networkManager.transport is SteamTransport steamTransport)
+        {
+            ulong steamId = steamTransport.GetSteamID(conn);
+            // 0/unresolved fails OPEN (let them through) rather than closed — this should only reject on
+            // POSITIVE evidence the connecting Steam ID wasn't part of what the host actually saw, never on
+            // an inability to look it up at all.
+            if (steamId != 0 && !_expectedSteamIds.Contains(steamId))
+            {
+                Debug.Log($"[LobbySceneController] Rejecting player {player} (SteamID {steamId}) — not present in the host's own lobby snapshot when the match started.");
+                playersManager.KickPlayer(player);
+                return;
+            }
+        }
+
         // HashSet.Add is naturally idempotent — a reconnect storm minting a fresh PlayerID for what's
         // physically the same client would previously inflate a raw counter past the real distinct-player
         // count; a genuinely new distinct id is what actually moves this closer to _expectedPlayerCount.

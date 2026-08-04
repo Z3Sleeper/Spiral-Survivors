@@ -149,12 +149,12 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
             // Same sub-arc reasoning as WeaponMeleePD.LateSimulate() — a straight sweep between this tick's
             // start and end position is a chord across the orbit circle, not the arc itself, and can miss
             // an enemy sitting on the arc between them at high enough rotation speed. Subdivide into
-            // intermediate stops along the true arc when needed (see WeaponBasePD.ComputeSubArcCount()) —
+            // intermediate stops along the true arc when needed (see SweepMath.ComputeSubArcCount()) —
             // at normal speeds this is always exactly 1 segment, identical to a plain single sweep.
             float angleDelta = _stats.WeaponSpeed * delta;
             // angle before this tick's movement — see WeaponMeleePD.LateSimulate's own startAngle comment.
             float startAngle = currentAngle + angleSign * angleDelta;
-            int   subArcs    = ComputeSubArcCount(angleDelta);
+            int   subArcs    = SweepMath.ComputeSubArcCount(angleDelta);
 
             // Last tick's final zone geometry, before any movement this tick — same trick as
             // WeaponMeleePD, hb still reflects last tick's transform here.

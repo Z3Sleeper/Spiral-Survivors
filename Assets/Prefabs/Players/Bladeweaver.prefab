@@ -175,14 +175,14 @@ MonoBehaviour:
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   abilityName: <color=#FFA000>Ability:\nBlade Dance</color>
   description: 'Send your <color=#FFA000>Blades</color> to target location within
-    <color=#3278FF>2x Range</color>. They stay there for <color=#FFA000>3 seconds</color>
-    before recalling. <color=#FFA000>Recast</color> to recall early.
+    <color=#3278FF>2x Range</color> for up to <color=#FFA000>3 seconds</color>. <color=#FFA000>Recast</color>
+    to recall them early.
 
-    <color=#FFBE50><i>Ability
-    Haste & Power grant Attack Speed during this</i>
+    <color=#FFBE50><i>Ability Haste & Power grant Attack
+    Speed during this</i>
 
-    Cooldown: 3 seconds</color>'
-  cooldown: 3
+    Cooldown: 5 seconds</color>'
+  cooldown: 5
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
@@ -209,14 +209,14 @@ MonoBehaviour:
     and gain <color=#FFFFFF>+25% Total Move Speed</color> for <color=#FFA000>2 seconds</color>.
 
     Only
-    usable while <color=#FFA000>Blade Dance</color> is active.
+    usable while <color=#FFB4FF>Blade Dance</color> is active.
 
     <color=#FFBE50><i>Buff
     & Duration scale with Ability Power</i>
 
-    Cooldown: 6 seconds</color>'
-  cooldown: 6
-  cooldownStartsOnCast: 0
+    Cooldown: 5 seconds</color>'
+  cooldown: 5
+  cooldownStartsOnCast: 1
   slot: 1
   tags: []
   activeSurgeBlock: 0

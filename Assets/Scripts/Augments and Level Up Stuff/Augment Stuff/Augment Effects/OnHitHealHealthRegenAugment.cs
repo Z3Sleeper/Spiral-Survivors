@@ -29,6 +29,6 @@ public class OnHitHealHealthRegenAugment : AugmentEffectPD<OnHitHealHealthRegenA
     {
         // Anything that deals/restores an amount rolls luck variance — no exceptions. Heal() itself rolls it
         // now, so this just passes the raw amount through.
-        Stats.Heal(Stats.HealthRegen * onHitHealPercent * data.onHitPower);
+        Stats.Heal(1f + (Stats.HealthRegen * onHitHealPercent * data.onHitPower));
     }
 }

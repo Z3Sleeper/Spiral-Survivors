@@ -287,6 +287,37 @@ public static class WeaponVisualConstants
     public const float BaseMidHeightLift = 0.5f;
 }
 
+// Non-generic, same reasoning as WeaponVisualConstants above — ExeAxeThrowProjectilePD (also deliberately
+// not a WeaponBasePD<TState> subclass, same reasoning as WeaponRangedProjectilePD) needs this for its own
+// return-leg homing sweep, not just WeaponMeleePD/WeaponAxePD's orbit sweep.
+public static class SweepMath
+{
+    // How many sub-segments a swept-hitbox mover should sample this tick instead of sweeping straight from
+    // its start position to its end position. A straight-line sweep between two points is only a good
+    // approximation of the TRUE path when the heading barely changed over that tick — true for
+    // WeaponMeleePD/WeaponAxePD's own orbit at normal rotation speeds (the two sampled points sit close
+    // together on the circle), and for ExeAxeThrowProjectilePD's return leg when the caster isn't moving
+    // sharply relative to the axe. At a big enough single-tick heading change (WeaponSpeed * delta covering
+    // many degrees of orbit; or the return leg's bearing-to-caster swinging fast because the axe is close to
+    // a caster who's still moving), a straight sweep between the two endpoints cuts across the interior
+    // instead of following the true path, and can miss something sitting on the true path between them
+    // entirely. Below SubArcTriggerDegrees a single straight sweep is already close enough to the true path
+    // that subdividing isn't worth it — by far the common case, and costs nothing extra (falls straight
+    // through to the existing single-sweep behavior). Above that, subdivide down to MaxDegreesPerSubArc-sized
+    // segments, capped at MaxSubArcs total no matter how much bigger the heading change gets beyond that —
+    // more than one full turn doesn't need finer coverage, it's the same circle of points either way.
+    private const float SubArcTriggerDegrees = 45f;
+    private const float MaxDegreesPerSubArc  = 30f;
+    private const int   MaxSubArcs           = 12;
+
+    public static int ComputeSubArcCount(float angleDeltaDegrees)
+    {
+        float effective = Mathf.Min(Mathf.Abs(angleDeltaDegrees), 360f);
+        if (effective <= SubArcTriggerDegrees) return 1;
+        return Mathf.Clamp(Mathf.CeilToInt(effective / MaxDegreesPerSubArc), 2, MaxSubArcs);
+    }
+}
+
 public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponPD
     where TState : struct, IPredictedData<TState>
 {
@@ -599,7 +630,12 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         // (WeaponRadius + WeaponRange) instead of straight from the player — dynamically rescales with
         // range automatically since both are live stats, recomputed every frame this runs.
         float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
-        return weaponRadiusOffset + _stats.transform.lossyScale.x * 0.5f + halfRange;
+        // Character-clearance term — reads _stats.bonusSizePercent directly rather than
+        // _stats.transform.lossyScale.x (numerically identical for a player root with no scaled parent,
+        // since CharacterStatsPD.AddSizePercent sets transform.localScale = Vector3.one * bonusSizePercent
+        // uniformly, but the stat is the direct, canonical source rather than reading it back out of the
+        // transform).
+        return weaponRadiusOffset + _stats.bonusSizePercent * 0.5f + halfRange;
     }
 
     protected Vector3 OrbitalPosition(float baseAngle, Vector3 origin)
@@ -717,26 +753,5 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         if (hitboxTipScalesWithY && _hitboxTipBaseScale.y > 0f) { ratio += hitboxTip.lossyScale.y / _hitboxTipBaseScale.y; axisCount++; }
         if (hitboxTipScalesWithZ && _hitboxTipBaseScale.z > 0f) { ratio += hitboxTip.lossyScale.z / _hitboxTipBaseScale.z; axisCount++; }
         return hitboxTipOffset * (axisCount > 0 ? ratio / axisCount : 1f);
-    }
-
-    // How many sub-arcs a swept-hitbox weapon (WeaponMeleePD, WeaponAxePD) should sample this tick instead
-    // of sweeping straight from its start position to its end position. A straight-line sweep between two
-    // points on a circle is a chord, not the arc itself — at high enough rotation speed (WeaponSpeed *
-    // delta covering many degrees in one tick), that chord cuts across the circle's interior and can miss
-    // an enemy sitting on the arc between the two sampled points entirely. Below SubArcTriggerDegrees a
-    // single straight sweep is already close enough to the true arc that subdividing isn't worth it — by
-    // far the common case at any realistic WeaponSpeed, and costs nothing extra (falls straight through to
-    // the existing single-sweep behavior). Above that, subdivide down to MaxDegreesPerSubArc-sized
-    // segments, capped at MaxSubArcs total no matter how much faster the rotation gets beyond that — more
-    // than one full lap doesn't need finer coverage, it's the same circle of points either way.
-    private const float SubArcTriggerDegrees = 45f;
-    private const float MaxDegreesPerSubArc  = 30f;
-    private const int   MaxSubArcs           = 12;
-
-    protected static int ComputeSubArcCount(float angleDeltaDegrees)
-    {
-        float effective = Mathf.Min(Mathf.Abs(angleDeltaDegrees), 360f);
-        if (effective <= SubArcTriggerDegrees) return 1;
-        return Mathf.Clamp(Mathf.CeilToInt(effective / MaxDegreesPerSubArc), 2, MaxSubArcs);
     }
 }

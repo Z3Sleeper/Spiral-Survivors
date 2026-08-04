@@ -18,7 +18,7 @@ public enum StatType
     LevelUpOptions    = 17,
     LevelUpStats      = 18,
     Luck                = 19,
-    StrengthPercent = 20,
+    TotalStrengthPercent = 20,
     StrengthPerLevel    = 21,
     MaxShield           = 22,
     ShieldRechargeTime  = 23,

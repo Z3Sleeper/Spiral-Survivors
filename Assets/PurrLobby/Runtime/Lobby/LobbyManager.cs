@@ -64,6 +64,11 @@ namespace PurrLobby
         [SerializeField] private float readyPollInterval = 1f;
         private float _readyPollTimer;
 
+        // See ConfirmAllReadyStable's own doc comment — tracks the member count of the last "everyone's
+        // ready" snapshot seen, so a fresh streak always needs to reconfirm on a second, independent look
+        // before actually being trusted.
+        private int _stableReadyMemberCount = -1;
+
         // Stored delegate references — SubscribeToProviderEvents/UnsubscribeFromProviderEvents previously
         // used brand-new inline lambdas on each call, which C# delegate removal treats as unrelated
         // instances (not equal-by-reference to whatever was originally added), so the "unsubscribe" calls
@@ -147,7 +152,7 @@ namespace PurrLobby
                 // was in flight (e.g. we left the lobby, or another path already triggered the start).
                 if (IsStarting || !_currentLobby.IsValid) return;
 
-                if (members.TrueForAll(x => x.IsReady))
+                if (ConfirmAllReadyStable(members.TrueForAll(x => x.IsReady), members.Count))
                 {
                     IsStarting = true;
                     // Deferred via InvokeDelayed, not called directly — CallOnAllReady() awaits
@@ -159,6 +164,43 @@ namespace PurrLobby
                     InvokeDelayed(CallOnAllReady);
                 }
             });
+        }
+
+        // Requires TWO CONSECUTIVE independent "everyone's ready" evaluations (the reactive OnLobbyUpdated
+        // check and/or the PollReadyState backstop, in either order/combination) with the SAME member count
+        // before actually trusting it enough to start the match — guards against a real race where a
+        // just-joined member's Steam lobby membership becomes locally visible (this machine's member count
+        // grows to include them) before THEIR OWN SetLobbyMemberData("IsReady","False") write has propagated
+        // back to this machine. Without this, TrueForAll(x => x.IsReady) can vacuously pass over a
+        // member-list snapshot that hasn't caught up to the join yet — the exact repro that motivated this:
+        // a host readied up the instant they saw a new member join, and the match started (server started,
+        // lobby locked, scene load kicked off) one player short, before that member was ever actually
+        // counted in the check. Resets to -1 (no streak) the instant a check ISN'T unanimous, so a fresh
+        // "everyone ready" streak always has to reconfirm from scratch rather than living off a stale streak
+        // from before someone un-readied. Costs at most one extra readyPollInterval (default 1s) of latency
+        // on every legitimate match start, racy or not — the check can't tell a genuinely-stable member list
+        // apart from one that's about to keep changing until it's actually seen not change once.
+        private bool ConfirmAllReadyStable(bool allReady, int memberCount)
+        {
+            if (!allReady)
+            {
+                if (_stableReadyMemberCount != -1)
+                    PurrLogger.Log($"[LobbyManager] Ready check: not everyone ready (was tracking a stable count of {_stableReadyMemberCount}, resetting).");
+                _stableReadyMemberCount = -1;
+                return false;
+            }
+            if (_stableReadyMemberCount != memberCount)
+            {
+                // TEMP diagnostic — confirming/ruling out the premature-match-start race (host readies up
+                // right as a client joins, starting the match before that client is counted). If this line
+                // never appears right before a real match start, the debounce isn't actually the thing
+                // preventing anything and the race lives somewhere else. Remove once confirmed either way.
+                PurrLogger.Log($"[LobbyManager] Ready check: everyone ready at member count {memberCount}, but this is the FIRST time seeing this count — deferring one more check before trusting it (was {_stableReadyMemberCount}).");
+                _stableReadyMemberCount = memberCount;
+                return false;
+            }
+            PurrLogger.Log($"[LobbyManager] Ready check: CONFIRMED stable at member count {memberCount} across two consecutive checks — starting match.");
+            return true;
         }
 
         private void InvokeDelayed(Action action)
@@ -213,6 +255,10 @@ namespace PurrLobby
                 // later lobby joined in the same scene session, permanently blocking the !IsStarting guard
                 // below from ever firing OnAllReady again — the Ready button would silently stop working.
                 IsStarting = false;
+                // Same "stale value from a previous lobby session" risk as IsStarting above — without this,
+                // a fresh lobby that happens to reach the exact same member count a previous lobby last
+                // confirmed ready at would skip ConfirmAllReadyStable's second-look requirement entirely.
+                _stableReadyMemberCount = -1;
                 OnRoomLeft?.Invoke();
             });
             _currentProvider.OnLobbyLeft += _onLobbyLeftHandler;
@@ -225,7 +271,7 @@ namespace PurrLobby
                 _currentLobby = room;
                 OnRoomUpdated?.Invoke(room);
 
-                if (!IsStarting && room.Members.TrueForAll(x => x.IsReady))
+                if (!IsStarting && ConfirmAllReadyStable(room.Members.TrueForAll(x => x.IsReady), room.Members.Count))
                 {
                     IsStarting = true; //Prevent calling ready again if lobby is updated after all ready
                     CallOnAllReady();

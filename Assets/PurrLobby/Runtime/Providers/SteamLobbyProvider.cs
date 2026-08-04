@@ -49,6 +49,27 @@ namespace PurrLobby.Providers
         // with no exception and no way to recover short of restarting.
         [SerializeField] private float createLobbyTimeoutSeconds = 15f;
 
+        // Static, not instance — RunSteamCallbacks()'s loop is a free-floating async operation that outlives
+        // this component's own Unity lifecycle entirely (see that method's own doc comment), so this needs
+        // to be reachable from code that never held a live reference to this instance (e.g. a quit-time
+        // singleton that may run after this component's Lobby scene has long since unloaded). Deliberately
+        // just a flag, not something callers wait on — see RequestSteamShutdown()'s own doc comment for why
+        // a synchronous wait can't work here at all.
+        private static volatile bool _stopSteamCallbackLoop;
+
+        // The correct way for any other code (e.g. CharacterRegistry.OnApplicationQuit()) to trigger a real
+        // SteamAPI.Shutdown() — signals this loop to stop AND calls Shutdown() itself, from inside the loop,
+        // right after it stops. Deliberately NOT "signal the flag and let the caller call Shutdown()
+        // separately": the caller and this loop's own Task.Delay continuation both run on Unity's single
+        // main thread via UnitySynchronizationContext, so a caller trying to synchronously wait/block for
+        // confirmation the loop actually stopped would itself prevent that continuation from ever getting a
+        // chance to run — a real deadlock shape, not just a race. Only the loop itself can safely guarantee
+        // "stopped, then shut down" in the right order. A live crash (native access violation inside
+        // SteamAPI_ManualDispatch_GetNextCallback) is what this replaces — that happened when a separate
+        // codepath called Shutdown() while this loop's own in-flight cycle called RunCallbacks() again
+        // immediately after, with no synchronization between the two at all.
+        public static void RequestSteamShutdown() => _stopSteamCallbackLoop = true;
+
         private Steamworks.CallResult<Steamworks.LobbyCreated_t> _LobbyCreated;
         private Steamworks.CallResult<Steamworks.LobbyEnter_t> _LobbyEnter;
         private Steamworks.CallResult<Steamworks.LobbyMatchList_t> _LobbyMatchList;
@@ -203,10 +224,6 @@ namespace PurrLobby.Providers
 
         public Task InitializeAsync()
         {
-            // TEMP diagnostic (see project_pd_backlog memory) — tracking down a "stuck on Creating Room"
-            // repro possibly tied to this callback getting disposed prematurely relative to lobby creation.
-            PurrLogger.Log($"[SteamLobbyProvider] InitializeAsync: (re)creating Steam callbacks on {GetInstanceID()}.");
-
             _avatarImageLoadedCallback = Steamworks.Callback<Steamworks.AvatarImageLoaded_t>.Create(OnAvatarImageLoaded);
             _lobbyDataUpdateCallback = Steamworks.Callback<Steamworks.LobbyDataUpdate_t>.Create(OnLobbyDataUpdate);
             _lobbyChatUpdateCallback = Steamworks.Callback<Steamworks.LobbyChatUpdate_t>.Create(OnLobbyChatUpdate);
@@ -232,14 +249,35 @@ namespace PurrLobby.Providers
             }
         }
 
+        // Deliberately no stop condition tied to this component's own Lobby-scene-scoped lifecycle
+        // (Shutdown()/OnDestroy() fire on EVERY Lobby scene unload, including the completely normal
+        // transition into a match) — this loop is the ONLY thing in the whole project that pumps Steam's
+        // callback dispatcher at all (confirmed: nothing under Assets/PurrNet calls SteamAPI.RunCallbacks()
+        // itself), so it needs to keep running for the game's entire process lifetime, not just while the
+        // Lobby scene happens to be loaded. Only stops via RequestSteamShutdown() (see its own doc comment
+        // for why that's a fire-and-forget flag rather than something the caller waits on), and this loop is
+        // ALSO the one that calls the real SteamAPI.Shutdown() itself once it sees that flag — guarantees
+        // nothing can call RunCallbacks() again after Shutdown() runs, since this is the only caller.
         private async void RunSteamCallbacks()
         {
-            var runCallbacks = true;
-            while (runCallbacks)
+            while (!_stopSteamCallbackLoop)
             {
-                SteamAPI.RunCallbacks();
+                try
+                {
+                    SteamAPI.RunCallbacks();
+                }
+                catch (InvalidOperationException)
+                {
+                    // Belt and suspenders — shouldn't be reachable now that Shutdown() only ever happens
+                    // below, after this loop has already committed to stopping, but keeping this in case
+                    // something else ever calls SteamAPI.Shutdown() directly again in the future. Same
+                    // "ignore, we're already exiting" reasoning SteamServer.Stop()/SteamClient.Disconnect()
+                    // already use for their own teardown-time Steam calls.
+                    return;
+                }
                 await Task.Delay(16);
             }
+            SteamAPI.Shutdown();
         }
 
         public Task InviteFriendAsync(FriendUser user)
@@ -455,12 +493,6 @@ namespace PurrLobby.Providers
 
         public void Shutdown()
         {
-            // TEMP diagnostic (see project_pd_backlog memory) — tracking down a "stuck on Creating Room"
-            // repro possibly tied to _lobbyDataUpdateCallback getting disposed prematurely relative to
-            // lobby creation, since the "Creating Room" overlay is only dismissed via a chain that starts
-            // with this exact callback firing (OnLobbyDataUpdate -> OnLobbyUpdated -> LobbyManager.OnRoomJoined).
-            PurrLogger.Log($"[SteamLobbyProvider] Shutdown() on {GetInstanceID()} — was _lobbyDataUpdateCallback null already? {_lobbyDataUpdateCallback == null}");
-
             // Steamworks.Callback<T> registers itself into a static, process-wide dispatch table
             // (CallbackDispatcher.m_registeredCallbacks) the moment it's created — that registration is
             // completely independent of this MonoBehaviour's Unity lifecycle, so Destroy()ing this GameObject
@@ -488,10 +520,6 @@ namespace PurrLobby.Providers
         // itself idempotent.
         private void OnDestroy()
         {
-            // TEMP diagnostic (see project_pd_backlog memory) — confirms whether this GameObject is being
-            // destroyed at some unexpected point (e.g. during normal PurrLobby-panel use, not just a real
-            // scene unload), which would explain _lobbyDataUpdateCallback vanishing mid-session.
-            PurrLogger.Log($"[SteamLobbyProvider] OnDestroy() on {GetInstanceID()}.");
             Shutdown();
         }
 
@@ -646,18 +674,12 @@ namespace PurrLobby.Providers
 
         private void OnLobbyDataUpdate(Steamworks.LobbyDataUpdate_t callback)
         {
-            // TEMP diagnostic (see project_pd_backlog memory) — CreateLobbyAsync's own SetLobbyData("Name"/
-            // "Started") calls (made right after CreateLobby succeeds) can plausibly trigger this callback
-            // before CreateLobbyAsync's async continuation has actually resumed and set _currentLobby to the
-            // new lobby ID — if so, this early-return would silently drop the exact notification that
-            // dismisses the "Creating Room" overlay (OnLobbyUpdated -> ... -> LobbyManager.OnRoomJoined),
-            // with no exception anywhere, matching the stuck-on-Creating-Room symptom.
+            // Guards against acting on a data update for a lobby we're not (or no longer) tracking as
+            // _currentLobby — e.g. a stale callback for a lobby we've since left. CreateLobbyAsync sets
+            // _currentLobby synchronously inside its own success callback (see that method's own comment on
+            // why), so a real just-created lobby's first SetLobbyData-triggered update here always matches.
             if (_currentLobby.m_SteamID != callback.m_ulSteamIDLobby)
-            {
-                PurrLogger.Log($"[SteamLobbyProvider] OnLobbyDataUpdate: EARLY RETURN — _currentLobby ({_currentLobby.m_SteamID}) != callback lobby ({callback.m_ulSteamIDLobby}).");
                 return;
-            }
-            PurrLogger.Log($"[SteamLobbyProvider] OnLobbyDataUpdate: firing for lobby {_currentLobby.m_SteamID}.");
 
             var ownerId = Steamworks.SteamMatchmaking.GetLobbyOwner(_currentLobby).m_SteamID.ToString();
             var localId = Steamworks.SteamUser.GetSteamID().m_SteamID.ToString();

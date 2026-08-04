@@ -245,6 +245,7 @@ MonoBehaviour:
   hitboxTipScalesWithX: 1
   hitboxTipScalesWithY: 0
   hitboxTipScalesWithZ: 1
+  _renderers: []
   visualHeightTarget: {fileID: 6538681499716106083}
   meleeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
 --- !u!114 &8198260059138025823

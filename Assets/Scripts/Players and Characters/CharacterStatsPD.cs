@@ -98,7 +98,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float baseMoveSpeed = 10f;
 
     [Header("Weapon")]
-    public float strengthPerLevel = 2.5f;
+    // In State, not a plain field — mutated at runtime via ApplyProgressionBonuses (see that method's own
+    // ApplyStatChange lambda), same as the other 3 progression-only fields (dashCharges/levelUpOptions/
+    // shieldRechargeTime, declared further down) that used to be considered safe purely because their only
+    // writer runs from a verified/non-Simulate() context — migrated anyway for consistency, since nothing
+    // enforces that stays true for a future writer.
+    public float strengthPerLevel => currentState.strengthPerLevel != 0f ? currentState.strengthPerLevel : 5f;
     public float baseStrength = 15f;
     public float baseWeaponRadius = 0f;
     public float baseAttackSpeed = 0.5f;
@@ -106,8 +111,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Extra weapon "tracks" (e.g. the planned OuterWeaponTrackAugment), feeding into Strength's own
     // auto-divide below. Deliberately a single plain int, not a base/flat/multiplier scaffold like
     // baseWeaponCount — this is intentionally-unused-elsewhere bookkeeping, directly += a small integer
-    // whenever tracks are added or removed (see AddWeaponTracks), never multiplied.
-    public int weaponTracks = 1;
+    // whenever tracks are added or removed (see AddWeaponTracks). In State, not a plain field — has a real
+    // runtime mutator (AddWeaponTracks) unlike baseWeaponCount, so same reasoning as every other mutable
+    // field in this class.
+    public int weaponTracks => currentState.weaponTracks != 0 ? currentState.weaponTracks : 1;
     public float baseWeaponRange = 10f;
 
     [Header("Crit")]
@@ -132,7 +139,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     [Header("Shield")]
     public float baseMaxShieldPercent = 0.05f;
-    public float shieldRechargeTime = 5f;
+    // In State, not a plain field — mutated at runtime via ApplyProgressionBonuses, see strengthPerLevel's
+    // own doc comment for why.
+    public float shieldRechargeTime => currentState.shieldRechargeTime != 0f ? currentState.shieldRechargeTime : 5f;
 
     [Header("Energy")]
     public float baseMaxEnergy = 50f;
@@ -141,13 +150,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [Header("Surge")]
     public float baseSurgeCost = 2f;
     public float surgeMoveSpeedMulti = 1f;
-    public float surgeMoveSpeedPenalty = 0.5f;
     public float surgeAttackSpeedMulti = 2f;
 
     [Header("Dash")]
-    public int dashCharges = 1;
+    // In State, not plain fields — mutated at runtime via ApplyProgressionBonuses, see strengthPerLevel's
+    // own doc comment for why.
+    public int dashCharges => currentState.dashCharges != 0 ? currentState.dashCharges : 1;
     public float baseDashCooldown = 5f;
-    public int levelUpOptions = 3;
+    public int levelUpOptions => currentState.levelUpOptions != 0 ? currentState.levelUpOptions : 3;
 
     [Header("Luck")]
     public float baseLuck = 0f;
@@ -196,19 +206,26 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // whole thing 90 degrees on Z turns that spin into a forward-tumbling motion for free, and keeps this
     // the single owner of the transform instead of two systems fighting over it each frame.
     [SerializeField] private Transform _modelTransform;
-    private bool _modelSidewaysTipped;
+    // In State, not a plain field — only ever read from UpdateView() (purely cosmetic model-tip rendering,
+    // never gameplay math), so this was never a resimulation-safety risk on a machine already tracking this
+    // identity. But PurrDiction's replication to OTHER clients piggybacks on the same State-snapshot system
+    // rollback uses — a plain field's value never reaches a client that wasn't already simulating at the
+    // exact tick it changed (a late joiner, a reconnect), so a non-owner catching up after the fact would
+    // never see this player's model tip at all. Migrated for that reason, not rollback safety.
+    private bool modelSidewaysTipped { get => currentState.modelSidewaysTipped; set => currentState.modelSidewaysTipped = value; }
     // Sign must always match WeaponBasePD.OrbitFlipTip/ModelTipRotation's own sign — see the latter's doc
     // comment for why this is negated rather than reversing weaponOrbitAngle's own rotation direction
     // (shared with ordinary idle spin, so flipping that would also reverse normal orbiting).
     private static readonly Quaternion ModelSidewaysTipRotation = Quaternion.Euler(0f, 0f, -90f);
-    public void SetModelSidewaysTipped(bool value) => _modelSidewaysTipped = value;
+    public void SetModelSidewaysTipped(bool value) => modelSidewaysTipped = value;
 
     // World-space yaw (degrees) this class's own model spin/tip is additionally rotated by — lets an effect
     // like the spin ability's leap make the body face a travel direction while it tumbles, instead of always
     // facing a fixed world +Z. 0 = no extra rotation. Weapons don't read this at all (never have) — this only
-    // ever drives the player's own model tip/spin.
-    public float OrbitFacingYaw { get; private set; }
-    public void SetOrbitFacingYaw(float yawDegrees) => OrbitFacingYaw = yawDegrees;
+    // ever drives the player's own model tip/spin. In State — see modelSidewaysTipped's own doc comment for
+    // why (same late-joiner visibility reasoning, not rollback safety).
+    public float OrbitFacingYaw => currentState.orbitFacingYaw;
+    public void SetOrbitFacingYaw(float yawDegrees) => currentState.orbitFacingYaw = yawDegrees;
 
     [Header("Revive")]
     public float reviveTime = 3f;
@@ -221,42 +238,59 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // the NEW "Total" tier — the one in-run stat augments (MoveSpeedAugment and friends) grant, scaling the
     // whole (base + bonus) sum uniformly regardless of how big base itself is. See
     // project_bonus_total_stat_tiers memory for the full reasoning/formula.
-    [HideInInspector] public float bonusMoveSpeedFlat = 0f;
-    [HideInInspector] public float bonusMoveSpeedPercent = 1f;
-    [HideInInspector] public float moveSpeedPenalty = 1f;
-    [HideInInspector] public float totalMoveSpeedPercent = 1f;
-    [HideInInspector] public float totalMoveSpeedPenalty = 1f;
+    // ── All fields in this "Augment/bonus modifiers" section (down to damageReductionPenalty below) live in
+    // State, not as plain fields — see State struct's own doc comment. This used to be a mix (only 10 fields
+    // that a temporary ability buff happened to already touch were migrated), but that meant any field NOT
+    // yet targeted by a temporary add/subtract pair looked safe while actually just being an unexercised
+    // instance of the same bug, waiting for the next ability/augment that reuses its setter temporarily
+    // (exactly how the original 10 were found — reusing a "permanent" setter for a temporary buff). Every
+    // field here is publicly mutable via an Add*/Set*/Multiply* method that nothing stops a future caller
+    // from using temporarily, so every one of them needs to be rollback-safe unconditionally, not just the
+    // ones with a currently-known temporary use. Read access is unchanged (same names, now properties reading
+    // currentState) so no external call site needed touching. 1f-neutral fields fall back to 1f on an exact
+    // 0 read — currentState is a raw zero-filled default(State) for a brief window on a fresh spawn, BEFORE
+    // Setup() applies GetInitialState()'s real defaults (struct field initializers don't run for default(T)
+    // — only a real constructor call triggers them; WeaponManagerPD.Init(), called from
+    // CharacterStatsPD.LateAwake() itself, is a confirmed reader inside that exact window, see
+    // bonusSizePercent's own note for the concrete bug this caused). 0f-neutral fields need no such guard —
+    // 0 already IS their correct neutral value, so the zero-filled window reads correctly by coincidence.
+    public float bonusMoveSpeedFlat => currentState.bonusMoveSpeedFlat;
+    public float bonusMoveSpeedPercent => currentState.bonusMoveSpeedPercent != 0f ? currentState.bonusMoveSpeedPercent : 1f;
+    public float moveSpeedPenalty => currentState.moveSpeedPenalty != 0f ? currentState.moveSpeedPenalty : 1f;
+    public float totalMoveSpeedPercent => currentState.totalMoveSpeedPercent != 0f ? currentState.totalMoveSpeedPercent : 1f;
+    public float totalMoveSpeedPenalty => currentState.totalMoveSpeedPenalty != 0f ? currentState.totalMoveSpeedPenalty : 1f;
 
-    // bonusStrengthPercent/bonusStrengthPenalty are Bonus tier (class passives/meta-progression only).
+    // bonusStrengthPercent/bonusStrengthPenalty are Bonus tier (class passives only).
     // totalStrengthPercent/totalStrengthPenalty are the Total tier — what the weapon-count/multishot/track
     // "compensate with a damage bonus" augments (BladeweaviestBladeweaverAugment, MultiShotAugment,
-    // OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) grant instead, now that they're not
-    // "the 9" but still needed redirecting per the same-stat-being-changed rule.
-    [HideInInspector] public float bonusStrengthFlat = 0f;
-    [HideInInspector] public float bonusStrengthPercent = 1f;
-    [HideInInspector] public float bonusStrengthPenalty = 1f;
-    [HideInInspector] public float totalStrengthPercent = 1f;
-    [HideInInspector] public float totalStrengthPenalty = 1f;
+    // OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) grant, AND what the meta-progression
+    // "Total Strength %" shop stat (StatType.TotalStrengthPercent) feeds via ApplyProgressionBonuses — it's
+    // a flat multiplier meant to apply after those same weapon-count/Multishot penalties, not before.
+    public float bonusStrengthFlat => currentState.bonusStrengthFlat;
+    public float bonusStrengthPercent => currentState.bonusStrengthPercent != 0f ? currentState.bonusStrengthPercent : 1f;
+    public float bonusStrengthPenalty => currentState.bonusStrengthPenalty != 0f ? currentState.bonusStrengthPenalty : 1f;
+    public float totalStrengthPercent => currentState.totalStrengthPercent != 0f ? currentState.totalStrengthPercent : 1f;
+    public float totalStrengthPenalty => currentState.totalStrengthPenalty != 0f ? currentState.totalStrengthPenalty : 1f;
 
-    [HideInInspector] public float bonusWeaponRadiusFlat = 0f;
-    [HideInInspector] public float bonusWeaponRadiusPercent = 1f;
-    [HideInInspector] public float totalWeaponRadiusPercent = 1f;
-    [HideInInspector] public float totalWeaponRadiusPenalty = 1f;
+    public float bonusWeaponRadiusFlat => currentState.bonusWeaponRadiusFlat;
+    public float bonusWeaponRadiusPercent => currentState.bonusWeaponRadiusPercent != 0f ? currentState.bonusWeaponRadiusPercent : 1f;
+    public float totalWeaponRadiusPercent => currentState.totalWeaponRadiusPercent != 0f ? currentState.totalWeaponRadiusPercent : 1f;
+    public float totalWeaponRadiusPenalty => currentState.totalWeaponRadiusPenalty != 0f ? currentState.totalWeaponRadiusPenalty : 1f;
 
     // Despite the old name, this is a flat, in-units addition to baseAttackSpeed, not a genuine percent
     // multiplier — see AddAttackSpeedFlat's own comment. Renamed from attackSpeedPercent.
-    [HideInInspector] public float attackSpeedFlat = 0f;
-    [HideInInspector] public float attackSpeedTotalPercent = 1f;
-    [HideInInspector] public float attackSpeedPenalty = 1f;
+    public float attackSpeedFlat => currentState.attackSpeedFlat;
+    public float attackSpeedTotalPercent => currentState.attackSpeedTotalPercent != 0f ? currentState.attackSpeedTotalPercent : 1f;
+    public float attackSpeedPenalty => currentState.attackSpeedPenalty != 0f ? currentState.attackSpeedPenalty : 1f;
 
-    [HideInInspector] public int bonusWeaponCountFlat = 0;
-    [HideInInspector] public int weaponCountMultiplier = 1;
+    public int bonusWeaponCountFlat => currentState.bonusWeaponCountFlat;
+    public int weaponCountMultiplier => currentState.weaponCountMultiplier != 0 ? currentState.weaponCountMultiplier : 1;
 
-    [HideInInspector] public float bonusWeaponRangeFlat = 0f;
-    [HideInInspector] public float bonusWeaponRangePercent = 1f;
-    [HideInInspector] public float weaponRangePenalty = 1f;
-    [HideInInspector] public float totalWeaponRangePercent = 1f;
-    [HideInInspector] public float totalWeaponRangePenalty = 1f;
+    public float bonusWeaponRangeFlat => currentState.bonusWeaponRangeFlat;
+    public float bonusWeaponRangePercent => currentState.bonusWeaponRangePercent != 0f ? currentState.bonusWeaponRangePercent : 1f;
+    public float weaponRangePenalty => currentState.weaponRangePenalty != 0f ? currentState.weaponRangePenalty : 1f;
+    public float totalWeaponRangePercent => currentState.totalWeaponRangePercent != 0f ? currentState.totalWeaponRangePercent : 1f;
+    public float totalWeaponRangePenalty => currentState.totalWeaponRangePenalty != 0f ? currentState.totalWeaponRangePenalty : 1f;
 
     // Character-size augments (Titan, and any future ones) add their delta here rather than each
     // multiplying transform.localScale directly — additive, so multiple size augments stack (+25% +
@@ -264,49 +298,58 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // root localScale reads this directly too (see WeaponManagerPD's own RegisterWeapon/LateUpdate), so
     // the weapon grows with the character without a separate per-augment multiply call. WeaponRadius
     // (orbit distance) deliberately does not — see its own comment for why.
-    [HideInInspector] public float bonusSizePercent = 1f;
+    // In State, not a plain field — see State struct's own doc comment (KnightBigBuffAbilityPD's Size buff
+    // needs this to roll back correctly). Falls back to 1f (neutral) on an exact 0 — see
+    // totalMoveSpeedPercent's own doc comment for why (this specific field is the one that surfaced the
+    // issue live: WeaponManagerPD.Init(), called from CharacterStatsPD.LateAwake() itself, read this before
+    // GetInitialState() had applied, producing a 0-scale weapon root and NaN/Infinity downstream).
+    public float bonusSizePercent => currentState.bonusSizePercent != 0f ? currentState.bonusSizePercent : 1f;
 
-    [HideInInspector] public float bonusCritChanceFlat = 0f;
-    [HideInInspector] public float bonusCritChancePercent = 1f;
-    [HideInInspector] public float totalCritChancePercent = 1f;
-    [HideInInspector] public float totalCritChancePenalty = 1f;
+    // In State, not a plain field — see State struct's own doc comment (ExeBigAxeAbilityPD's crit buff
+    // needs this to roll back correctly). No zero-guard needed here unlike the 1f-neutral fields (see
+    // totalMoveSpeedPercent's own doc comment) — 0f already IS this field's correct neutral value, so the
+    // raw zero-filled default(State) window before GetInitialState() applies reads correctly by coincidence.
+    public float bonusCritChanceFlat => currentState.bonusCritChanceFlat;
+    public float bonusCritChancePercent => currentState.bonusCritChancePercent != 0f ? currentState.bonusCritChancePercent : 1f;
+    public float totalCritChancePercent => currentState.totalCritChancePercent != 0f ? currentState.totalCritChancePercent : 1f;
+    public float totalCritChancePenalty => currentState.totalCritChancePenalty != 0f ? currentState.totalCritChancePenalty : 1f;
 
-    [HideInInspector] public float bonusCritDamageFlat = 0f;
-    [HideInInspector] public float bonusCritDamagePercent = 1f;
+    public float bonusCritDamageFlat => currentState.bonusCritDamageFlat;
+    public float bonusCritDamagePercent => currentState.bonusCritDamagePercent != 0f ? currentState.bonusCritDamagePercent : 1f;
 
-    [HideInInspector] public float bonusRicochetFlat = 0f;
-    [HideInInspector] public float bonusRicochetPercent = 1f;
-    [HideInInspector] public float totalRicochetPercent = 1f;
-    [HideInInspector] public float totalRicochetPenalty = 1f;
+    public float bonusRicochetFlat => currentState.bonusRicochetFlat;
+    public float bonusRicochetPercent => currentState.bonusRicochetPercent != 0f ? currentState.bonusRicochetPercent : 1f;
+    public float totalRicochetPercent => currentState.totalRicochetPercent != 0f ? currentState.totalRicochetPercent : 1f;
+    public float totalRicochetPenalty => currentState.totalRicochetPenalty != 0f ? currentState.totalRicochetPenalty : 1f;
 
-    [HideInInspector] public float bonusMultishotFlat = 0f;
-    [HideInInspector] public float bonusMultishotPercent = 1f;
-    [HideInInspector] public float bonusMultishotSpreadPercent = 1f;
-    [HideInInspector] public float totalMultishotPercent = 1f;
-    [HideInInspector] public float totalMultishotPenalty = 1f;
+    public float bonusMultishotFlat => currentState.bonusMultishotFlat;
+    public float bonusMultishotPercent => currentState.bonusMultishotPercent != 0f ? currentState.bonusMultishotPercent : 1f;
+    public float bonusMultishotSpreadPercent => currentState.bonusMultishotSpreadPercent != 0f ? currentState.bonusMultishotSpreadPercent : 1f;
+    public float totalMultishotPercent => currentState.totalMultishotPercent != 0f ? currentState.totalMultishotPercent : 1f;
+    public float totalMultishotPenalty => currentState.totalMultishotPenalty != 0f ? currentState.totalMultishotPenalty : 1f;
 
-    [HideInInspector] public float projectileDamageDropoffReduction = 1f;
-    [HideInInspector] public float projectileOnHitDropoffReduction = 1f;
+    public float projectileDamageDropoffReduction => currentState.projectileDamageDropoffReduction != 0f ? currentState.projectileDamageDropoffReduction : 1f;
+    public float projectileOnHitDropoffReduction => currentState.projectileOnHitDropoffReduction != 0f ? currentState.projectileOnHitDropoffReduction : 1f;
 
     // Same (base + flat) * totalPercent * totalPenalty shape as AttackSpeed — moved off WeaponRangedPD's own
     // local fields so any future ranged weapon can share the same class-passive-tunable stats.
-    [HideInInspector] public float fireRateFlat = 0f;
-    [HideInInspector] public float fireRateTotalPercent = 1f;
-    [HideInInspector] public float fireRateTotalPenalty = 1f;
+    public float fireRateFlat => currentState.fireRateFlat;
+    public float fireRateTotalPercent => currentState.fireRateTotalPercent != 0f ? currentState.fireRateTotalPercent : 1f;
+    public float fireRateTotalPenalty => currentState.fireRateTotalPenalty != 0f ? currentState.fireRateTotalPenalty : 1f;
 
-    [HideInInspector] public float projectileSpeedFlat = 0f;
-    [HideInInspector] public float projectileSpeedTotalPercent = 1f;
-    [HideInInspector] public float projectileSpeedTotalPenalty = 1f;
+    public float projectileSpeedFlat => currentState.projectileSpeedFlat;
+    public float projectileSpeedTotalPercent => currentState.projectileSpeedTotalPercent != 0f ? currentState.projectileSpeedTotalPercent : 1f;
+    public float projectileSpeedTotalPenalty => currentState.projectileSpeedTotalPenalty != 0f ? currentState.projectileSpeedTotalPenalty : 1f;
 
-    [HideInInspector] public float bonusMaxHealthFlat = 0f;
-    [HideInInspector] public float bonusMaxHealthPercent = 1f;
-    [HideInInspector] public float totalMaxHealthPercent = 1f;
-    [HideInInspector] public float totalMaxHealthPenalty = 1f;
+    public float bonusMaxHealthFlat => currentState.bonusMaxHealthFlat;
+    public float bonusMaxHealthPercent => currentState.bonusMaxHealthPercent != 0f ? currentState.bonusMaxHealthPercent : 1f;
+    public float totalMaxHealthPercent => currentState.totalMaxHealthPercent != 0f ? currentState.totalMaxHealthPercent : 1f;
+    public float totalMaxHealthPenalty => currentState.totalMaxHealthPenalty != 0f ? currentState.totalMaxHealthPenalty : 1f;
 
-    [HideInInspector] public float bonusHealthRegenFlat = 0f;
-    [HideInInspector] public float bonusHealthRegenPercent = 1f;
-    [HideInInspector] public float totalHealthRegenPercent = 1f;
-    [HideInInspector] public float totalHealthRegenPenalty = 1f;
+    public float bonusHealthRegenFlat => currentState.bonusHealthRegenFlat;
+    public float bonusHealthRegenPercent => currentState.bonusHealthRegenPercent != 0f ? currentState.bonusHealthRegenPercent : 1f;
+    public float totalHealthRegenPercent => currentState.totalHealthRegenPercent != 0f ? currentState.totalHealthRegenPercent : 1f;
+    public float totalHealthRegenPenalty => currentState.totalHealthRegenPenalty != 0f ? currentState.totalHealthRegenPenalty : 1f;
 
     // Additive against baseMaxShieldPercent (both in the same "percent of Max Health" units, e.g. +0.05 =
     // +5% Max Health as shield) — no separate multiplier tier between base and bonus, unlike most other
@@ -316,24 +359,24 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // serialized under the old meaning; reusing the same name would have silently loaded that stale 1 into
     // this new additive-pool field instead of the intended 0 default (exactly the bug that shipped once,
     // inflating shield by a stray +100% of Max Health) — a fresh name sidesteps the collision entirely.
-    [HideInInspector] public float bonusMaxShieldAdditive = 0f;
-    [HideInInspector] public float totalMaxShieldPercent = 1f;
-    [HideInInspector] public float totalMaxShieldPenalty = 1f;
+    public float bonusMaxShieldAdditive => currentState.bonusMaxShieldAdditive;
+    public float totalMaxShieldPercent => currentState.totalMaxShieldPercent != 0f ? currentState.totalMaxShieldPercent : 1f;
+    public float totalMaxShieldPenalty => currentState.totalMaxShieldPenalty != 0f ? currentState.totalMaxShieldPenalty : 1f;
 
-    [HideInInspector] public float bonusMaxEnergyFlat = 0f;
-    [HideInInspector] public float bonusMaxEnergyPercent = 1f;
+    public float bonusMaxEnergyFlat => currentState.bonusMaxEnergyFlat;
+    public float bonusMaxEnergyPercent => currentState.bonusMaxEnergyPercent != 0f ? currentState.bonusMaxEnergyPercent : 1f;
 
-    [HideInInspector] public float bonusEnergyRegenFlat = 0f;
-    [HideInInspector] public float bonusEnergyRegenPercent = 1f;
-    [HideInInspector] public float energyRegenPenalty = 1f;
-    [HideInInspector] public float totalEnergyRegenPercent = 1f;
-    [HideInInspector] public float totalEnergyRegenPenalty = 1f;
+    public float bonusEnergyRegenFlat => currentState.bonusEnergyRegenFlat;
+    public float bonusEnergyRegenPercent => currentState.bonusEnergyRegenPercent != 0f ? currentState.bonusEnergyRegenPercent : 1f;
+    public float energyRegenPenalty => currentState.energyRegenPenalty != 0f ? currentState.energyRegenPenalty : 1f;
+    public float totalEnergyRegenPercent => currentState.totalEnergyRegenPercent != 0f ? currentState.totalEnergyRegenPercent : 1f;
+    public float totalEnergyRegenPenalty => currentState.totalEnergyRegenPenalty != 0f ? currentState.totalEnergyRegenPenalty : 1f;
 
-    [HideInInspector] public float bonusSurgeCostFlat = 0f;
-    [HideInInspector] public float bonusSurgeCostPercent = 1f;
-    [HideInInspector] public float surgeAttackSpeedPenalty = 1f;
+    public float bonusSurgeCostFlat => currentState.bonusSurgeCostFlat;
+    public float bonusSurgeCostPercent => currentState.bonusSurgeCostPercent != 0f ? currentState.bonusSurgeCostPercent : 1f;
+    public float surgeAttackSpeedPenalty => currentState.surgeAttackSpeedPenalty != 0f ? currentState.surgeAttackSpeedPenalty : 1f;
 
-    [HideInInspector] public float dashHaste = 0f;
+    public float dashHaste => currentState.dashHaste;
     // Multiplicative on top of dashHaste (see DashCooldown) — same "additive against a 1f baseline"
     // pattern as bonusWeaponRangePercent/bonusCritChancePercent, added alongside dashHaste's existing flat
     // grant so DashHaste-family augments can have the same flat+percent dual structure Range/CritChance do.
@@ -342,55 +385,57 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // is simply appended as one more multiplier. Nothing but DashHasteAugment ever wrote bonusDashHastePercent
     // anyway (ClassPassiveData/progression only ever add to dashHaste itself), so redirecting it to Total is
     // a clean, zero-risk swap.
-    [HideInInspector] public float bonusDashHastePercent = 1f;
-    [HideInInspector] public float totalDashHastePercent = 1f;
-    [HideInInspector] public float totalDashHastePenalty = 1f;
+    public float bonusDashHastePercent => currentState.bonusDashHastePercent != 0f ? currentState.bonusDashHastePercent : 1f;
+    public float totalDashHastePercent => currentState.totalDashHastePercent != 0f ? currentState.totalDashHastePercent : 1f;
+    public float totalDashHastePenalty => currentState.totalDashHastePenalty != 0f ? currentState.totalDashHastePenalty : 1f;
 
     // Same shape as dashHaste immediately above (see its own comment for the full reasoning) — for a
     // future ability-cooldown-haste formula, not yet consumed by any ability. No separate base field,
     // purely additive, bonusAbilityHastePercent/totalAbilityHastePercent both multiply on top the same way.
-    [HideInInspector] public float abilityHaste = 0f;
-    [HideInInspector] public float bonusAbilityHastePercent = 1f;
-    [HideInInspector] public float totalAbilityHastePercent = 1f;
-    [HideInInspector] public float totalAbilityHastePenalty = 1f;
+    public float abilityHaste => currentState.abilityHaste;
+    public float bonusAbilityHastePercent => currentState.bonusAbilityHastePercent != 0f ? currentState.bonusAbilityHastePercent : 1f;
+    public float totalAbilityHastePercent => currentState.totalAbilityHastePercent != 0f ? currentState.totalAbilityHastePercent : 1f;
+    public float totalAbilityHastePenalty => currentState.totalAbilityHastePenalty != 0f ? currentState.totalAbilityHastePenalty : 1f;
 
-    [HideInInspector] public float bonusLuckFlat = 0f;
-    [HideInInspector] public float bonusLuckPercent = 1f;
-    [HideInInspector] public float luckPenalty = 1f;
-    [HideInInspector] public float totalLuckPercent = 1f;
-    [HideInInspector] public float totalLuckPenalty = 1f;
-    [HideInInspector] public float bonusLuckFloorPercent = 1f;
-    [HideInInspector] public float luckFloorPenalty = 1f;
-    [HideInInspector] public float bonusLuckCeilingFlat = 0f;
-    [HideInInspector] public float bonusLuckCeilingPercent = 1f;
-    [HideInInspector] public float luckCeilingPenalty = 1f;
-    [HideInInspector] public float bonusHighrollPercent = 1f;
-    [HideInInspector] public float highrollPenalty = 1f;
-    [HideInInspector] public float bonusHighrollBonusPercent = 1f;
-    [HideInInspector] public float highrollBonusPenalty = 1f;
+    public float bonusLuckFlat => currentState.bonusLuckFlat;
+    public float bonusLuckPercent => currentState.bonusLuckPercent != 0f ? currentState.bonusLuckPercent : 1f;
+    public float luckPenalty => currentState.luckPenalty != 0f ? currentState.luckPenalty : 1f;
+    public float totalLuckPercent => currentState.totalLuckPercent != 0f ? currentState.totalLuckPercent : 1f;
+    public float totalLuckPenalty => currentState.totalLuckPenalty != 0f ? currentState.totalLuckPenalty : 1f;
+    public float bonusLuckFloorPercent => currentState.bonusLuckFloorPercent != 0f ? currentState.bonusLuckFloorPercent : 1f;
+    public float luckFloorPenalty => currentState.luckFloorPenalty != 0f ? currentState.luckFloorPenalty : 1f;
+    public float bonusLuckCeilingFlat => currentState.bonusLuckCeilingFlat;
+    public float bonusLuckCeilingPercent => currentState.bonusLuckCeilingPercent != 0f ? currentState.bonusLuckCeilingPercent : 1f;
+    public float luckCeilingPenalty => currentState.luckCeilingPenalty != 0f ? currentState.luckCeilingPenalty : 1f;
+    public float bonusHighrollPercent => currentState.bonusHighrollPercent != 0f ? currentState.bonusHighrollPercent : 1f;
+    public float highrollPenalty => currentState.highrollPenalty != 0f ? currentState.highrollPenalty : 1f;
+    public float bonusHighrollBonusPercent => currentState.bonusHighrollBonusPercent != 0f ? currentState.bonusHighrollBonusPercent : 1f;
+    public float highrollBonusPenalty => currentState.highrollBonusPenalty != 0f ? currentState.highrollBonusPenalty : 1f;
 
-    [HideInInspector] public float knockbackMultiplier = 1f;
-    [HideInInspector] public float knockbackPenalty = 1f;
+    public float knockbackMultiplier => currentState.knockbackMultiplier != 0f ? currentState.knockbackMultiplier : 1f;
+    public float knockbackPenalty => currentState.knockbackPenalty != 0f ? currentState.knockbackPenalty : 1f;
 
-    [HideInInspector] public float bonusOnHitPowerMultiplier = 1f;
-    [HideInInspector] public float bonusOnHitPowerPenalty = 1f;
+    public float bonusOnHitPowerMultiplier => currentState.bonusOnHitPowerMultiplier != 0f ? currentState.bonusOnHitPowerMultiplier : 1f;
+    public float bonusOnHitPowerPenalty => currentState.bonusOnHitPowerPenalty != 0f ? currentState.bonusOnHitPowerPenalty : 1f;
     // Total tier — bonusOnHitPowerMultiplier is already a genuine multiplier (no base/flat addition to
     // split here), written only by ClassPassiveData/meta-progression now (Bonus tier, same as every other
     // stat's bonus term). The weapon-count/multishot "compensate" augments (BladeweaviestBladeweaverAugment,
     // MultiShotAugment, OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) all call
     // AddOnHitPowerTotalPercent below instead — same Total-tier treatment as their Strength grant, not the
-    // old MultiplyOnHitPowerMultiplier compounding.
-    [HideInInspector] public float totalOnHitPowerPercent = 1f;
-    [HideInInspector] public float totalOnHitPowerPenalty = 1f;
+    // old MultiplyOnHitPowerMultiplier compounding. totalOnHitPowerPercent is also reversed by
+    // SurgeWeaponCountAugment on Surge-end — the concrete example that proved this whole section needed
+    // migrating, not just the 10 fields the 6 abilities happened to already touch.
+    public float totalOnHitPowerPercent => currentState.totalOnHitPowerPercent != 0f ? currentState.totalOnHitPowerPercent : 1f;
+    public float totalOnHitPowerPenalty => currentState.totalOnHitPowerPenalty != 0f ? currentState.totalOnHitPowerPenalty : 1f;
 
-    [HideInInspector] public float stackPowerPercent = 1f;
-    [HideInInspector] public float stackPowerPenalty = 1f;
+    public float stackPowerPercent => currentState.stackPowerPercent != 0f ? currentState.stackPowerPercent : 1f;
+    public float stackPowerPenalty => currentState.stackPowerPenalty != 0f ? currentState.stackPowerPenalty : 1f;
 
     // Same Percent*Penalty shape as StackPower — interacts with each ability in its own unique way (see
     // each IAbilityPD implementer's own doc comment for how it reads this), but generally scales ability
     // damage/effect strength/buff duration up (or down, via the penalty term).
-    [HideInInspector] public float abilityPowerMultiplier = 1f;
-    [HideInInspector] public float abilityPowerPenalty = 1f;
+    public float abilityPowerMultiplier => currentState.abilityPowerMultiplier != 0f ? currentState.abilityPowerMultiplier : 1f;
+    public float abilityPowerPenalty => currentState.abilityPowerPenalty != 0f ? currentState.abilityPowerPenalty : 1f;
 
     // Same Percent*Penalty shape — HealPower scales every heal this character receives (see Heal()'s own
     // formula), regardless of source (regen, DashHealAugment, KnightAreaStunHealAbilityPD, etc. — anything
@@ -401,22 +446,25 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // AreaEffectPower/AbilityPower already use elsewhere (see AreaEffectCastHelper.Cast()'s own comment) —
     // at CritHealPower's neutral 1f baseline this reduces to plain HealPower, so an un-augmented character
     // sees zero effect from the always-on crit-heal roll until something actually grants bonus CritHealPower.
-    [HideInInspector] public float healPowerMultiplier = 1f;
-    [HideInInspector] public float healPowerPenalty = 1f;
-    [HideInInspector] public float critHealPowerMultiplier = 1f;
-    [HideInInspector] public float critHealPowerPenalty = 1f;
+    // critHealPowerMultiplier is reversed by CriticalHealingAugment — another concrete example (alongside
+    // totalOnHitPowerPercent above) of a field outside the original 10 that already had a temporary-use
+    // pattern nobody had connected to the rollback-safety issue yet.
+    public float healPowerMultiplier => currentState.healPowerMultiplier != 0f ? currentState.healPowerMultiplier : 1f;
+    public float healPowerPenalty => currentState.healPowerPenalty != 0f ? currentState.healPowerPenalty : 1f;
+    public float critHealPowerMultiplier => currentState.critHealPowerMultiplier != 0f ? currentState.critHealPowerMultiplier : 1f;
+    public float critHealPowerPenalty => currentState.critHealPowerPenalty != 0f ? currentState.critHealPowerPenalty : 1f;
 
     // "AoE Effects" tag — modifiers for any augment tagged as an area effect (DashExplosionAugment,
     // DashHealAugment, etc.). Percent+Penalty pair for the two floats, same shape as StackPower
     // (AreaEffectSize/AreaEffectPower below = Percent * Penalty). Count mirrors WeaponCount's own int
     // Flat*Multiplier shape instead of a float Percent/Penalty pair, since it's a discrete repeat count, not
     // a continuous scale.
-    [HideInInspector] public float areaEffectSizePercent  = 1f;
-    [HideInInspector] public float areaEffectSizePenalty  = 1f;
-    [HideInInspector] public float areaEffectPowerPercent = 1f;
-    [HideInInspector] public float areaEffectPowerPenalty = 1f;
-    [HideInInspector] public int   areaEffectCountFlat    = 1;
-    [HideInInspector] public int   areaEffectCountPenalty = 1;
+    public float areaEffectSizePercent => currentState.areaEffectSizePercent != 0f ? currentState.areaEffectSizePercent : 1f;
+    public float areaEffectSizePenalty => currentState.areaEffectSizePenalty != 0f ? currentState.areaEffectSizePenalty : 1f;
+    public float areaEffectPowerPercent => currentState.areaEffectPowerPercent != 0f ? currentState.areaEffectPowerPercent : 1f;
+    public float areaEffectPowerPenalty => currentState.areaEffectPowerPenalty != 0f ? currentState.areaEffectPowerPenalty : 1f;
+    public int   areaEffectCountFlat    => currentState.areaEffectCountFlat != 0 ? currentState.areaEffectCountFlat : 1;
+    public int   areaEffectCountPenalty => currentState.areaEffectCountPenalty != 0 ? currentState.areaEffectCountPenalty : 1;
 
     public float AreaEffectSize  => areaEffectSizePercent * areaEffectSizePenalty;
     // Auto-divided by AreaEffectCount, same reasoning as Strength's auto-divide by WeaponCount — picking up
@@ -436,21 +484,21 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // concretely needs it. Generic here on CharacterStatsPD (not baked into WeaponAxePD itself) so any
     // future weapon type that grows its own "outer zone" concept can read the same stat for free, same
     // reasoning AreaEffectPower/AreaEffectSize already follow.
-    [HideInInspector] public float outerXZMultiplierPercent = 1f;
+    public float outerXZMultiplierPercent => currentState.outerXZMultiplierPercent != 0f ? currentState.outerXZMultiplierPercent : 1f;
     public float OuterXZMultiplier => outerXZMultiplierPercent;
 
-    [HideInInspector] public float xpMultiplier = 1f;
-    [HideInInspector] public float xpPenalty = 1f;
+    public float xpMultiplier => currentState.xpMultiplier != 0f ? currentState.xpMultiplier : 1f;
+    public float xpPenalty => currentState.xpPenalty != 0f ? currentState.xpPenalty : 1f;
 
-    [HideInInspector] public float bonusXPRadiusFlat = 0f;
-    [HideInInspector] public float bonusXPRadiusPercent = 1f;
+    public float bonusXPRadiusFlat => currentState.bonusXPRadiusFlat;
+    public float bonusXPRadiusPercent => currentState.bonusXPRadiusPercent != 0f ? currentState.bonusXPRadiusPercent : 1f;
 
-    [HideInInspector] public float reviveTimePenalty = 1f;
-    [HideInInspector] public float reviveTimePenaltyReduction = 1f;
-    [HideInInspector] public float revivePower = 1f;
+    public float reviveTimePenalty => currentState.reviveTimePenalty != 0f ? currentState.reviveTimePenalty : 1f;
+    public float reviveTimePenaltyReduction => currentState.reviveTimePenaltyReduction != 0f ? currentState.reviveTimePenaltyReduction : 1f;
+    public float revivePower => currentState.revivePower != 0f ? currentState.revivePower : 1f;
 
-    [HideInInspector] public float damageReductionPercent = 1f;
-    [HideInInspector] public float damageReductionPenalty = 1f;
+    public float damageReductionPercent => currentState.damageReductionPercent != 0f ? currentState.damageReductionPercent : 1f;
+    public float damageReductionPenalty => currentState.damageReductionPenalty != 0f ? currentState.damageReductionPenalty : 1f;
 
     // ── Computed properties ────────────────────────────────────────────────
 
@@ -495,13 +543,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Overrides WeaponSpeed for the shared weaponOrbitAngle tick below when set — lets a special action
     // (e.g. the burst) spin weapons at a fixed, snapshotted rate instead of the live AttackSpeed-driven one,
     // without touching AttackSpeed itself (which would also affect FireRate and anything else derived from
-    // it). Same degrees/sec units as WeaponSpeed. Plain fields, not predicted State — set/cleared from
-    // whichever effect's own Simulate() is driving them, same "safe cross-identity currentState mutation
-    // from a deterministic context" reasoning as StartSurge()/GrantInvincibility(), just for a plain field
-    // instead of currentState here since nothing about this needs rollback (it's fully re-derived identically
-    // every resimulation pass from whatever set it, same as _burstFacingYaw's own reasoning).
-    [HideInInspector] public float specialSpinRate;
-    [HideInInspector] public bool  useSpecialSpinRate;
+    // it). Same degrees/sec units as WeaponSpeed. In State, not plain fields — set/cleared from whichever
+    // effect's own Simulate() is driving them; PREVIOUSLY reasoned as safe as plain fields ("fully re-derived
+    // every resimulation pass from whatever set it") since the driving effect re-asserts the value every
+    // tick it's active — but on reflection that assumption is exactly the kind of thing that already broke
+    // once for the original 10 fields, and every one of these is still mutable from Simulate()-reachable
+    // code with no compiler-enforced guarantee it'll always be reasserted every tick by every future caller.
+    // Migrated for full consistency with the rest of this class rather than carrying a second exception
+    // category.
+    public float specialSpinRate  { get => currentState.specialSpinRate;  private set => currentState.specialSpinRate = value; }
+    public bool  useSpecialSpinRate { get => currentState.useSpecialSpinRate; private set => currentState.useSpecialSpinRate = value; }
     public void SetSpecialSpinRate(float degreesPerSecond) => specialSpinRate = degreesPerSecond;
     public void SetUseSpecialSpinRate(bool value) => useSpecialSpinRate = value;
     public float EffectiveWeaponSpeed => useSpecialSpinRate ? specialSpinRate : WeaponSpeed;
@@ -509,19 +560,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // horizontal one — purely a VISUAL orbit-shape switch, deliberately separate from IsWeaponsDisabled
     // (which only ever gates damage application, nothing else — see its own doc comment). Kept as its own
     // flag rather than folded into IsWeaponsDisabled specifically so a future effect can disable weapon
-    // damage without also flipping the orbit, or vice versa. Plain field, not predicted State, same
-    // reasoning as specialSpinRate/useSpecialSpinRate above: fully re-derived identically every resimulation
-    // pass from whichever effect's own Simulate() is driving it, nothing here needs rollback.
-    [HideInInspector] public bool weaponOrbitFlipped;
+    // damage without also flipping the orbit, or vice versa. In State — see specialSpinRate's own doc
+    // comment for why.
+    public bool weaponOrbitFlipped { get => currentState.weaponOrbitFlipped; private set => currentState.weaponOrbitFlipped = value; }
     public bool IsOrbitFlipped => weaponOrbitFlipped;
     public void SetOrbitFlipped(bool value) => weaponOrbitFlipped = value;
     // Set by ArcherFocusFireAbilityPD for its own active window — read by WeaponRangedPD.LateSimulate() to
     // switch its firing behavior: normally a shot requires FindTarget() to first confirm something's
     // actually in the raycast's path before firing; while true, it skips that requirement entirely and just
     // fires straight forward (wherever the weapon is currently aimed) every time its normal fire-rate timer
-    // allows, target or not. Same plain-field, set-from-Simulate() convention as weaponOrbitFlipped above —
-    // fully re-derived identically every resimulation pass from whichever effect is currently driving it.
-    [HideInInspector] public bool continuousFire;
+    // allows, target or not. In State — see specialSpinRate's own doc comment for why.
+    public bool continuousFire { get => currentState.continuousFire; private set => currentState.continuousFire = value; }
     public bool ContinuousFire => continuousFire;
     public void SetContinuousFire(bool value) => continuousFire = value;
     // The shared OrbitalPosition baseAngle every weapon on this character should use INSTEAD of the normal,
@@ -531,8 +580,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Every other weapon still applies its own normal 360/total*SlotIndex offset on top of this shared base
     // exactly as it always does during ordinary orbiting — only the shared base itself changes source, so
     // the whole ring freezes and re-aims as one rigid formation instead of each weapon trying to face the
-    // cursor independently. Same plain-field, set-from-Simulate() convention as weaponOrbitFlipped above.
-    [HideInInspector] public float focusFireAimAngle;
+    // cursor independently. In State — see specialSpinRate's own doc comment for why.
+    public float focusFireAimAngle { get => currentState.focusFireAimAngle; private set => currentState.focusFireAimAngle = value; }
     public float FocusFireAimAngle => focusFireAimAngle;
     public void SetFocusFireAimAngle(float degrees) => focusFireAimAngle = degrees;
     // Overrides the point every weapon orbits (WeaponMeleePD/WeaponAxePD/WeaponRangedPD each read this
@@ -540,11 +589,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // relocate the whole orbit somewhere other than the player (e.g. BWBladeDanceAbilityPD sending its
     // blades out to a target point, still orbiting normally, just around that point instead of the player)
     // without touching WeaponOrbitAngle/EffectiveWeaponSpeed at all — weapons keep spinning at their normal
-    // rate, just around a different center. Same plain-field, set-from-Simulate() convention as
-    // specialSpinRate/weaponOrbitFlipped above: fully re-derived identically every resimulation pass from
-    // whichever effect is currently driving it, nothing here needs rollback.
-    [HideInInspector] public bool    weaponOrbitOriginOverridden;
-    [HideInInspector] public Vector3 weaponOrbitOriginOverride;
+    // rate, just around a different center. In State — see specialSpinRate's own doc comment for why.
+    public bool    weaponOrbitOriginOverridden { get => currentState.weaponOrbitOriginOverridden; private set => currentState.weaponOrbitOriginOverridden = value; }
+    public Vector3 weaponOrbitOriginOverride   { get => currentState.weaponOrbitOriginOverride;   private set => currentState.weaponOrbitOriginOverride = value; }
     public Vector3 EffectiveOrbitOrigin => weaponOrbitOriginOverridden ? weaponOrbitOriginOverride : transform.position;
     // null clears the override (weapons revert to orbiting transform.position directly next tick).
     public void SetOrbitOriginOverride(Vector3? origin)
@@ -555,9 +602,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Extra world Y added to WeaponBasePD.OrbitalPosition's result — lets a special action's own vertical
     // arc (e.g. the spin ability's leap height) carry weapons along with it, since the player's REAL
     // transform never actually moves in Y for that leap (only a cosmetic Visuals-child offset does — see
-    // RogueSpinAbilityPD.UpdateView's own arcY). Same plain-field, set-from-Simulate() convention as
-    // specialSpinRate/weaponOrbitFlipped above.
-    [HideInInspector] public float specialHeightOffset;
+    // RogueSpinAbilityPD.UpdateView's own arcY). In State — see specialSpinRate's own doc comment for why.
+    public float specialHeightOffset { get => currentState.specialHeightOffset; private set => currentState.specialHeightOffset = value; }
     public float SpecialHeightOffset => specialHeightOffset;
     public void SetSpecialHeightOffset(float value) => specialHeightOffset = value;
     // Public read access to the shared orbit angle (see State.weaponOrbitAngle's own doc comment) — every
@@ -617,6 +663,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public float SurgeCost => (baseSurgeCost + bonusSurgeCostFlat) * bonusSurgeCostPercent;
     public float SurgeActivationThreshhold => SurgeCost * 5f;
+    // In State, not a plain field — the only one of the three Surge-header fields with an actual runtime
+    // setter (SetSurgeMoveSpeedPenalty, called by SurgeNoMoveSpeedPenaltyAugment/
+    // SurgeHalfMoveSpeedPenaltyAugment); surgeMoveSpeedMulti/surgeAttackSpeedMulti have no mutator anywhere
+    // and stay plain Inspector-authored constants, same category as baseMoveSpeed/baseStrength.
+    public float surgeMoveSpeedPenalty => currentState.surgeMoveSpeedPenalty != 0f ? currentState.surgeMoveSpeedPenalty : 0.5f;
     public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty;
     public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty;
 
@@ -767,6 +818,183 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // to stop CompressedFloat's internal int accumulator from eventually overflowing over a very long
         // session (int overflows past ~2.1 million accumulated degrees at this precision).
         public CompressedFloat weaponOrbitAngle;
+        // EVERY stat modifier field in the whole "Augment/bonus modifiers" section of this class lives here,
+        // not as a plain field. Started as just 10 fields — the ones RogueVanishAbilityPD/BWBlinkAbilityPD/
+        // BWBladeDanceAbilityPD/ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/ArcherFocusFireAbilityPD happened to
+        // already add a temporary amount to on Activate() and subtract back off later inside Simulate() — a
+        // plain field doesn't roll back on resimulation (only STATE does), so a mispredicted tick that gets
+        // replayed across either half of an add/subtract pair would double-apply it, permanently drifting the
+        // stat every time. Expanded to cover every remaining bonus/total/penalty field once it became clear
+        // the same pattern already existed elsewhere untouched (SurgeWeaponCountAugment reversing
+        // totalOnHitPowerPercent, CriticalHealingAugment reversing critHealPowerMultiplier — neither in the
+        // original 10) and, more importantly, that NOTHING stops any future ability/augment from reusing any
+        // OTHER field here the same way — the field being "only ever written once so far" was never a
+        // property of the field itself, just of what happened to call it to date. Every writer (permanent
+        // augments, ClassPassiveData, meta-progression, temporary ability buffs alike) goes through the same
+        // Add*/Set*/Multiply* methods below either way, so moving the backing storage here is strictly safer
+        // for all of them, never a behavior change. See feedback_ability_temp_buff_state_safety memory for
+        // the full incident history.
+        public float totalMoveSpeedPercent;
+        public float attackSpeedTotalPercent;
+        public float totalWeaponRangePercent;
+        public float executeThreshold;
+        public float bonusCritChanceFlat;
+        public float bonusSizePercent;
+        public float totalMaxHealthPercent;
+        public float totalStrengthPercent;
+        public float damageReductionPercent;
+        public float fireRateTotalPercent;
+        public float bonusMoveSpeedFlat;
+        public float bonusMoveSpeedPercent;
+        public float moveSpeedPenalty;
+        public float totalMoveSpeedPenalty;
+        public float bonusStrengthFlat;
+        public float bonusStrengthPercent;
+        public float bonusStrengthPenalty;
+        public float totalStrengthPenalty;
+        public float bonusWeaponRadiusFlat;
+        public float bonusWeaponRadiusPercent;
+        public float totalWeaponRadiusPercent;
+        public float totalWeaponRadiusPenalty;
+        public float attackSpeedFlat;
+        public float attackSpeedPenalty;
+        public int   bonusWeaponCountFlat;
+        public int   weaponCountMultiplier;
+        public float bonusWeaponRangeFlat;
+        public float bonusWeaponRangePercent;
+        public float weaponRangePenalty;
+        public float totalWeaponRangePenalty;
+        public float bonusCritChancePercent;
+        public float totalCritChancePercent;
+        public float totalCritChancePenalty;
+        public float bonusCritDamageFlat;
+        public float bonusCritDamagePercent;
+        public float bonusRicochetFlat;
+        public float bonusRicochetPercent;
+        public float totalRicochetPercent;
+        public float totalRicochetPenalty;
+        public float bonusMultishotFlat;
+        public float bonusMultishotPercent;
+        public float bonusMultishotSpreadPercent;
+        public float totalMultishotPercent;
+        public float totalMultishotPenalty;
+        public float projectileDamageDropoffReduction;
+        public float projectileOnHitDropoffReduction;
+        public float fireRateFlat;
+        public float fireRateTotalPenalty;
+        public float projectileSpeedFlat;
+        public float projectileSpeedTotalPercent;
+        public float projectileSpeedTotalPenalty;
+        public float bonusMaxHealthFlat;
+        public float bonusMaxHealthPercent;
+        public float totalMaxHealthPenalty;
+        public float bonusHealthRegenFlat;
+        public float bonusHealthRegenPercent;
+        public float totalHealthRegenPercent;
+        public float totalHealthRegenPenalty;
+        public float bonusMaxShieldAdditive;
+        public float totalMaxShieldPercent;
+        public float totalMaxShieldPenalty;
+        public float bonusMaxEnergyFlat;
+        public float bonusMaxEnergyPercent;
+        public float bonusEnergyRegenFlat;
+        public float bonusEnergyRegenPercent;
+        public float energyRegenPenalty;
+        public float totalEnergyRegenPercent;
+        public float totalEnergyRegenPenalty;
+        public float bonusSurgeCostFlat;
+        public float bonusSurgeCostPercent;
+        public float surgeAttackSpeedPenalty;
+        public float dashHaste;
+        public float bonusDashHastePercent;
+        public float totalDashHastePercent;
+        public float totalDashHastePenalty;
+        public float abilityHaste;
+        public float bonusAbilityHastePercent;
+        public float totalAbilityHastePercent;
+        public float totalAbilityHastePenalty;
+        public float bonusLuckFlat;
+        public float bonusLuckPercent;
+        public float luckPenalty;
+        public float totalLuckPercent;
+        public float totalLuckPenalty;
+        public float bonusLuckFloorPercent;
+        public float luckFloorPenalty;
+        public float bonusLuckCeilingFlat;
+        public float bonusLuckCeilingPercent;
+        public float luckCeilingPenalty;
+        public float bonusHighrollPercent;
+        public float highrollPenalty;
+        public float bonusHighrollBonusPercent;
+        public float highrollBonusPenalty;
+        public float knockbackMultiplier;
+        public float knockbackPenalty;
+        public float bonusOnHitPowerMultiplier;
+        public float bonusOnHitPowerPenalty;
+        public float totalOnHitPowerPercent;
+        public float totalOnHitPowerPenalty;
+        public float stackPowerPercent;
+        public float stackPowerPenalty;
+        public float abilityPowerMultiplier;
+        public float abilityPowerPenalty;
+        public float healPowerMultiplier;
+        public float healPowerPenalty;
+        public float critHealPowerMultiplier;
+        public float critHealPowerPenalty;
+        public float areaEffectSizePercent;
+        public float areaEffectSizePenalty;
+        public float areaEffectPowerPercent;
+        public float areaEffectPowerPenalty;
+        public int   areaEffectCountFlat;
+        public int   areaEffectCountPenalty;
+        public float outerXZMultiplierPercent;
+        public float xpMultiplier;
+        public float xpPenalty;
+        public float bonusXPRadiusFlat;
+        public float bonusXPRadiusPercent;
+        public float reviveTimePenalty;
+        public float reviveTimePenaltyReduction;
+        public float revivePower;
+        public float damageReductionPenalty;
+        public float phantomBladeDamageBonus;
+        public float phantomBladeSizeBonus;
+        public float phantomBladeDamageBonusPercent;
+        public float phantomBladeSizeBonusPercent;
+        public float phantomBladeDamagePenalty;
+        public float phantomBladeSizePenalty;
+        public float phantomBladeOnHitPowerPercent;
+        public int   deathEventCount;
+        public int   killEventCount;
+        public float energyRegenWhileSurgingPercent;
+        public float critExecuteThreshold;
+        // "Special action" overrides (specialSpinRate through specialHeightOffset) — set/cleared from
+        // whichever effect's own Simulate() is currently driving them (RogueSpinAbilityPD,
+        // ArcherFocusFireAbilityPD, BWBladeDanceAbilityPD). Previously plain fields on the theory that the
+        // driving effect reasserts the correct value every tick it's active, so a rollback not resetting
+        // them in between couldn't cause drift — migrated anyway for consistency, since that reasoning
+        // depends on every future caller actually reasserting every tick, which nothing enforces.
+        public float   specialSpinRate;
+        public bool    useSpecialSpinRate;
+        public bool    weaponOrbitFlipped;
+        public bool    continuousFire;
+        public float   focusFireAimAngle;
+        public bool    weaponOrbitOriginOverridden;
+        public Vector3 weaponOrbitOriginOverride;
+        public float   specialHeightOffset;
+        // Neutral default 0.5f, not 1f or 0f — see this field's own doc comment further down for why it's
+        // the one Surge-header field that needed migrating.
+        public float   surgeMoveSpeedPenalty;
+        // Progression-only fields, mutated once by ApplyProgressionBonuses — see strengthPerLevel's own doc
+        // comment for why these are here despite that.
+        public float strengthPerLevel;
+        public int   weaponTracks;
+        public float shieldRechargeTime;
+        public int   dashCharges;
+        public int   levelUpOptions;
+        public bool  phantomBladeOnHitEnabled;
+        public bool  modelSidewaysTipped;
+        public float orbitFacingYaw;
+        public bool  lethalDamagePrevented;
         public void Dispose() { }
     }
 
@@ -782,7 +1010,119 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // legitimately-running countdown can never be negative when read back.
         healthRegenTimer = -1,
         shieldRechargeTimer = 0,
-        currentReviveTime = reviveTime
+        currentReviveTime = reviveTime,
+        // 1f (neutral multiplier) baseline — see the State struct's own doc comment on this whole block of
+        // fields. Every "Flat"-suffixed field (and a handful of others whose neutral is genuinely 0, like
+        // dashHaste/abilityHaste/executeThreshold/critExecuteThreshold/phantomBladeDamageBonus) is
+        // deliberately absent here — their neutral value IS 0f, already the struct's own zero-init default.
+        totalMoveSpeedPercent = 1f,
+        attackSpeedTotalPercent = 1f,
+        totalWeaponRangePercent = 1f,
+        bonusSizePercent = 1f,
+        totalMaxHealthPercent = 1f,
+        totalStrengthPercent = 1f,
+        damageReductionPercent = 1f,
+        fireRateTotalPercent = 1f,
+        bonusMoveSpeedPercent = 1f,
+        moveSpeedPenalty = 1f,
+        totalMoveSpeedPenalty = 1f,
+        bonusStrengthPercent = 1f,
+        bonusStrengthPenalty = 1f,
+        totalStrengthPenalty = 1f,
+        bonusWeaponRadiusPercent = 1f,
+        totalWeaponRadiusPercent = 1f,
+        totalWeaponRadiusPenalty = 1f,
+        attackSpeedPenalty = 1f,
+        weaponCountMultiplier = 1,
+        bonusWeaponRangePercent = 1f,
+        weaponRangePenalty = 1f,
+        totalWeaponRangePenalty = 1f,
+        bonusCritChancePercent = 1f,
+        totalCritChancePercent = 1f,
+        totalCritChancePenalty = 1f,
+        bonusCritDamagePercent = 1f,
+        bonusRicochetPercent = 1f,
+        totalRicochetPercent = 1f,
+        totalRicochetPenalty = 1f,
+        bonusMultishotPercent = 1f,
+        bonusMultishotSpreadPercent = 1f,
+        totalMultishotPercent = 1f,
+        totalMultishotPenalty = 1f,
+        projectileDamageDropoffReduction = 1f,
+        projectileOnHitDropoffReduction = 1f,
+        fireRateTotalPenalty = 1f,
+        projectileSpeedTotalPercent = 1f,
+        projectileSpeedTotalPenalty = 1f,
+        bonusMaxHealthPercent = 1f,
+        totalMaxHealthPenalty = 1f,
+        bonusHealthRegenPercent = 1f,
+        totalHealthRegenPercent = 1f,
+        totalHealthRegenPenalty = 1f,
+        totalMaxShieldPercent = 1f,
+        totalMaxShieldPenalty = 1f,
+        bonusMaxEnergyPercent = 1f,
+        bonusEnergyRegenPercent = 1f,
+        energyRegenPenalty = 1f,
+        totalEnergyRegenPercent = 1f,
+        totalEnergyRegenPenalty = 1f,
+        bonusSurgeCostPercent = 1f,
+        surgeAttackSpeedPenalty = 1f,
+        bonusDashHastePercent = 1f,
+        totalDashHastePercent = 1f,
+        totalDashHastePenalty = 1f,
+        bonusAbilityHastePercent = 1f,
+        totalAbilityHastePercent = 1f,
+        totalAbilityHastePenalty = 1f,
+        bonusLuckPercent = 1f,
+        luckPenalty = 1f,
+        totalLuckPercent = 1f,
+        totalLuckPenalty = 1f,
+        bonusLuckFloorPercent = 1f,
+        luckFloorPenalty = 1f,
+        bonusLuckCeilingPercent = 1f,
+        luckCeilingPenalty = 1f,
+        bonusHighrollPercent = 1f,
+        highrollPenalty = 1f,
+        bonusHighrollBonusPercent = 1f,
+        highrollBonusPenalty = 1f,
+        knockbackMultiplier = 1f,
+        knockbackPenalty = 1f,
+        bonusOnHitPowerMultiplier = 1f,
+        bonusOnHitPowerPenalty = 1f,
+        totalOnHitPowerPercent = 1f,
+        totalOnHitPowerPenalty = 1f,
+        stackPowerPercent = 1f,
+        stackPowerPenalty = 1f,
+        abilityPowerMultiplier = 1f,
+        abilityPowerPenalty = 1f,
+        healPowerMultiplier = 1f,
+        healPowerPenalty = 1f,
+        critHealPowerMultiplier = 1f,
+        critHealPowerPenalty = 1f,
+        areaEffectSizePercent = 1f,
+        areaEffectSizePenalty = 1f,
+        areaEffectPowerPercent = 1f,
+        areaEffectPowerPenalty = 1f,
+        areaEffectCountFlat = 1,
+        areaEffectCountPenalty = 1,
+        outerXZMultiplierPercent = 1f,
+        xpMultiplier = 1f,
+        xpPenalty = 1f,
+        bonusXPRadiusPercent = 1f,
+        reviveTimePenalty = 1f,
+        reviveTimePenaltyReduction = 1f,
+        revivePower = 1f,
+        damageReductionPenalty = 1f,
+        phantomBladeDamageBonusPercent = 1f,
+        phantomBladeSizeBonusPercent = 1f,
+        phantomBladeDamagePenalty = 1f,
+        phantomBladeSizePenalty = 1f,
+        surgeMoveSpeedPenalty = 0.5f,
+        strengthPerLevel = 5f,
+        weaponTracks = 1,
+        shieldRechargeTime = 5f,
+        dashCharges = 1,
+        levelUpOptions = 3
     };
 
     // ── Events ─────────────────────────────────────────────────────────────
@@ -1028,7 +1368,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // Cos/Sin (exactly periodic every 360°), and WeaponMeleePD/WeaponAxePD's own sub-arc sweep
         // reconstruction (startAngle = currentAngle + angleDelta) is recomputed fresh every tick from
         // whatever this wrapped value currently is, so a wrap boundary crossed mid-tick can't corrupt it —
-        // confirmed by WeaponBasePD.ComputeSubArcCount() already explicitly capping its effective sweep
+        // confirmed by SweepMath.ComputeSubArcCount() already explicitly capping its effective sweep
         // coverage at 360° for exactly this "more than a full lap in one tick" case.
         float wrappedAngle = state.weaponOrbitAngle % 360f;
         if (wrappedAngle < 0f) wrappedAngle += 360f;
@@ -1158,7 +1498,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         if (_modelTransform != null)
         {
             Quaternion spin   = Quaternion.Euler(0f, -viewState.weaponOrbitAngle, 0f);
-            Quaternion tip    = _modelSidewaysTipped ? ModelSidewaysTipRotation : Quaternion.identity;
+            Quaternion tip    = modelSidewaysTipped ? ModelSidewaysTipRotation : Quaternion.identity;
             // Outermost — the body faces OrbitFacingYaw (e.g. the burst's travel direction) while the
             // tip/spin tumble happens relative to that facing, not a fixed world orientation.
             Quaternion facing = Quaternion.Euler(0f, OrbitFacingYaw, 0f);
@@ -1188,7 +1528,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         public float dashHaste, critChanceFlat, xpRadiusFlat, weaponRangeFlat, maxEnergyFlat;
         public int   dashChargesBonus, levelUpOptionsBonus;
         public float revivePower, reviveTimePenaltyMult, xpMultiplier;
-        public float maxHealthFlat, healthRegenFlat, strengthPct;
+        public float maxHealthFlat, healthRegenFlat, strengthTotalPercent;
         public float luckFlat, strengthPerLevel, maxShieldFlat, shieldRechargeTime;
     }
 
@@ -1210,7 +1550,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         xpMultiplier            = ProgressionManager.GetBaseStatBonus(StatType.XPMultiplier) * 0.01f,
         maxHealthFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxHealth),
         healthRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.HealthRegen),
-        strengthPct             = ProgressionManager.GetBaseStatBonus(StatType.StrengthPercent),
+        strengthTotalPercent    = ProgressionManager.GetBaseStatBonus(StatType.TotalStrengthPercent),
         luckFlat                = ProgressionManager.GetBaseStatBonus(StatType.Luck),
         strengthPerLevel        = ProgressionManager.GetBaseStatBonus(StatType.StrengthPerLevel),
         maxShieldFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxShield),
@@ -1247,189 +1587,189 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // bonus — routes through ApplyStatChange so current health rises with the new ceiling instead of
     // staying pinned below it. Augment effects apply identically on every machine (unlike the old
     // owner-only model), so this needs no isOwner gating here.
-    public void AddMaxHealthFlat(float amount) => ApplyStatChange(() => bonusMaxHealthFlat += amount);
+    public void AddMaxHealthFlat(float amount) => ApplyStatChange(() => currentState.bonusMaxHealthFlat += amount);
 
     // Same pattern as AddMaxHealthFlat, for augments that grant a percentage bonus instead (additive
     // against the 1f baseline, e.g. +0.2 = +20% total). Bonus tier — now only scales bonusMaxHealthFlat
     // (see MaxHealth), not the whole stat; kept for ClassPassiveData/meta-progression and any future
     // "outlier" augment, but HealthAugment itself now calls AddMaxHealthTotalPercent below instead.
-    public void AddMaxHealthPercent(float amount) => ApplyStatChange(() => bonusMaxHealthPercent += amount);
+    public void AddMaxHealthPercent(float amount) => ApplyStatChange(() => currentState.bonusMaxHealthPercent += amount);
     // NEW Total tier — scales the whole (base + bonus) MaxHealth sum. What HealthAugment (and TitanAugment,
     // redirected alongside it since both grant MaxHealth) actually calls now.
-    public void AddMaxHealthTotalPercent(float amount) => ApplyStatChange(() => totalMaxHealthPercent += amount);
-    public void AddWeaponRangeFlat(float amount) => ApplyStatChange(() => bonusWeaponRangeFlat += amount);
+    public void AddMaxHealthTotalPercent(float amount) => ApplyStatChange(() => currentState.totalMaxHealthPercent += amount);
+    public void AddWeaponRangeFlat(float amount) => ApplyStatChange(() => currentState.bonusWeaponRangeFlat += amount);
     // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
-    public void AddWeaponRangePercent(float amount) => ApplyStatChange(() => bonusWeaponRangePercent += amount);
+    public void AddWeaponRangePercent(float amount) => ApplyStatChange(() => currentState.bonusWeaponRangePercent += amount);
     // NEW Total tier — what RangeAugment/OuterTrackAugment/TitanAugment all call now (every existing
     // WeaponRange-percent-granting augment, redirected together since they all target the same stat).
-    public void AddWeaponRangeTotalPercent(float amount) => ApplyStatChange(() => totalWeaponRangePercent += amount);
-    public void AddAttackSpeedTotalPercent(float amount) => ApplyStatChange(() => attackSpeedTotalPercent += amount);
+    public void AddWeaponRangeTotalPercent(float amount) => ApplyStatChange(() => currentState.totalWeaponRangePercent += amount);
+    public void AddAttackSpeedTotalPercent(float amount) => ApplyStatChange(() => currentState.attackSpeedTotalPercent += amount);
     // attackSpeedFlat (renamed from attackSpeedPercent) is added directly in the same units as
     // baseAttackSpeed, not a raw fraction — matches the progression system's own conversion
     // (entry.value * 0.01f * baseAttackSpeed) so a caller here can pass an intuitive fraction (e.g. 0.25 for
     // +25%) same as every other percent Add, even though what it grants under the hood is flat.
-    public void AddAttackSpeedFlat(float amount) => ApplyStatChange(() => attackSpeedFlat += amount * baseAttackSpeed);
-    public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => bonusMoveSpeedFlat += amount);
+    public void AddAttackSpeedFlat(float amount) => ApplyStatChange(() => currentState.attackSpeedFlat += amount * baseAttackSpeed);
+    public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedFlat += amount);
     // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
-    public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => bonusMoveSpeedPercent += amount);
+    public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedPercent += amount);
     // NEW Total tier — what MoveSpeedAugment/GremlinAugment/ShieldBreakFrenzyAugment/SurgeEndMoveSpeedAugment
     // all call now (every existing MoveSpeed-percent-granting augment, redirected together).
-    public void AddMoveSpeedTotalPercent(float amount) => ApplyStatChange(() => totalMoveSpeedPercent += amount);
+    public void AddMoveSpeedTotalPercent(float amount) => ApplyStatChange(() => currentState.totalMoveSpeedPercent += amount);
     // Direct override, not additive — surgeMoveSpeedPenalty (default 0.5f) is the actual reduction
     // multiplier itself (SurgeMoveSpeedMulti = surgeMoveSpeedMulti * surgeMoveSpeedPenalty * ...), not a
     // bonus-stacking pool, so "half the penalty"/"no penalty" augments each set it to their own fixed
     // absolute target (0.75f/1f) rather than accumulating a delta off the current value. This also makes
     // picking both of a mutually-exclusive pair harmless (whichever applies last simply wins) rather than
     // compounding into a nonsensical value.
-    public void SetSurgeMoveSpeedPenalty(float value) => ApplyStatChange(() => surgeMoveSpeedPenalty = value);
+    public void SetSurgeMoveSpeedPenalty(float value) => ApplyStatChange(() => currentState.surgeMoveSpeedPenalty = value);
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — stackPowerPercent starts at
     // 1f (StackPower = stackPowerPercent * stackPowerPenalty), just had no augment-facing wrapper until now.
-    public void AddStackPowerPercent(float amount) => ApplyStatChange(() => stackPowerPercent += amount);
+    public void AddStackPowerPercent(float amount) => ApplyStatChange(() => currentState.stackPowerPercent += amount);
     // Same "additive against the 1f baseline" convention as AddStackPowerPercent.
-    public void AddAbilityPowerPercent(float amount) => ApplyStatChange(() => abilityPowerMultiplier += amount);
+    public void AddAbilityPowerPercent(float amount) => ApplyStatChange(() => currentState.abilityPowerMultiplier += amount);
     // Multiplicative compounding, same convention as MultiplyStrengthPenalty/MultiplyOnHitPowerPenalty —
     // multiple penalty sources compound together rather than summing.
-    public void MultiplyAbilityPowerPenalty(float factor) => ApplyStatChange(() => abilityPowerPenalty *= factor);
+    public void MultiplyAbilityPowerPenalty(float factor) => ApplyStatChange(() => currentState.abilityPowerPenalty *= factor);
     // Same "additive against the 1f baseline" convention as AddAbilityPowerPercent — plain +=, not
     // ApplyStatChange, since HealPower/CritHealPower don't affect Max Health/Energy (no before/after clamp
     // recompute needed, same reasoning as AddAreaEffectSizePercent).
-    public void AddHealPowerPercent(float amount) => healPowerMultiplier += amount;
-    public void MultiplyHealPowerPenalty(float factor) => healPowerPenalty *= factor;
-    public void AddCritHealPowerPercent(float amount) => critHealPowerMultiplier += amount;
-    public void MultiplyCritHealPowerPenalty(float factor) => critHealPowerPenalty *= factor;
+    public void AddHealPowerPercent(float amount) => currentState.healPowerMultiplier += amount;
+    public void MultiplyHealPowerPenalty(float factor) => currentState.healPowerPenalty *= factor;
+    public void AddCritHealPowerPercent(float amount) => currentState.critHealPowerMultiplier += amount;
+    public void MultiplyCritHealPowerPenalty(float factor) => currentState.critHealPowerPenalty *= factor;
     // Plain +=, not ApplyStatChange — same reasoning as AddPhantomBladeDamageBonusPercent: doesn't affect
     // Max Health/Energy, so the before/after clamp recompute ApplyStatChange does would be pure overhead.
-    public void AddAreaEffectSizePercent(float amount) => areaEffectSizePercent += amount;
-    public void AddAreaEffectPowerPercent(float amount) => areaEffectPowerPercent += amount;
+    public void AddAreaEffectSizePercent(float amount) => currentState.areaEffectSizePercent += amount;
+    public void AddAreaEffectPowerPercent(float amount) => currentState.areaEffectPowerPercent += amount;
     // Additive-into-1f, same best-guess convention ClassPassiveData's own doc comment uses for every other
     // Penalty field (none have an established combination rule yet — this is consistent with that, not a
     // confirmed pattern).
-    public void AddAreaEffectSizePenalty(float amount) => areaEffectSizePenalty += amount;
-    public void AddAreaEffectPowerPenalty(float amount) => areaEffectPowerPenalty += amount;
-    public void AddAreaEffectCount(int amount) => areaEffectCountFlat += amount;
+    public void AddAreaEffectSizePenalty(float amount) => currentState.areaEffectSizePenalty += amount;
+    public void AddAreaEffectPowerPenalty(float amount) => currentState.areaEffectPowerPenalty += amount;
+    public void AddAreaEffectCount(int amount) => currentState.areaEffectCountFlat += amount;
     // Multiply/Divide pair, not additive — matches bonusWeaponCountMultiplier's own int-multiplier shape
     // (WeaponCount => (base + flat) * multiplier), the closest existing precedent for a discrete-count
     // penalty rather than a continuous float one.
-    public void MultiplyAreaEffectCountPenalty(int factor) => areaEffectCountPenalty *= factor;
-    public void DivideAreaEffectCountPenalty(int factor) => areaEffectCountPenalty /= factor;
+    public void MultiplyAreaEffectCountPenalty(int factor) => currentState.areaEffectCountPenalty *= factor;
+    public void DivideAreaEffectCountPenalty(int factor) => currentState.areaEffectCountPenalty /= factor;
     // Plain +=, not ApplyStatChange — same reasoning as AddAreaEffectSizePercent: doesn't affect Max
     // Health/Energy, so the before/after clamp recompute ApplyStatChange does would be pure overhead.
-    public void AddOuterXZMultiplierPercent(float amount) => outerXZMultiplierPercent += amount;
-    public void AddHealthRegenFlat(float amount) => ApplyStatChange(() => bonusHealthRegenFlat += amount);
+    public void AddOuterXZMultiplierPercent(float amount) => currentState.outerXZMultiplierPercent += amount;
+    public void AddHealthRegenFlat(float amount) => ApplyStatChange(() => currentState.bonusHealthRegenFlat += amount);
     // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
-    public void AddHealthRegenPercent(float amount) => ApplyStatChange(() => bonusHealthRegenPercent += amount);
+    public void AddHealthRegenPercent(float amount) => ApplyStatChange(() => currentState.bonusHealthRegenPercent += amount);
     // NEW Total tier — what HealthRegenAugment calls now.
-    public void AddHealthRegenTotalPercent(float amount) => ApplyStatChange(() => totalHealthRegenPercent += amount);
-    public void AddEnergyRegenFlat(float amount) => ApplyStatChange(() => bonusEnergyRegenFlat += amount);
+    public void AddHealthRegenTotalPercent(float amount) => ApplyStatChange(() => currentState.totalHealthRegenPercent += amount);
+    public void AddEnergyRegenFlat(float amount) => ApplyStatChange(() => currentState.bonusEnergyRegenFlat += amount);
     // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
-    public void AddEnergyRegenPercent(float amount) => ApplyStatChange(() => bonusEnergyRegenPercent += amount);
+    public void AddEnergyRegenPercent(float amount) => ApplyStatChange(() => currentState.bonusEnergyRegenPercent += amount);
     // NEW Total tier — what EnergyRegenAugment calls now.
-    public void AddEnergyRegenTotalPercent(float amount) => ApplyStatChange(() => totalEnergyRegenPercent += amount);
-    public void AddLuckFlat(float amount) => ApplyStatChange(() => bonusLuckFlat += amount);
+    public void AddEnergyRegenTotalPercent(float amount) => ApplyStatChange(() => currentState.totalEnergyRegenPercent += amount);
+    public void AddLuckFlat(float amount) => ApplyStatChange(() => currentState.bonusLuckFlat += amount);
     // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
-    public void AddLuckPercent(float amount) => ApplyStatChange(() => bonusLuckPercent += amount);
+    public void AddLuckPercent(float amount) => ApplyStatChange(() => currentState.bonusLuckPercent += amount);
     // NEW Total tier — what LuckAugment calls now.
-    public void AddLuckTotalPercent(float amount) => ApplyStatChange(() => totalLuckPercent += amount);
+    public void AddLuckTotalPercent(float amount) => ApplyStatChange(() => currentState.totalLuckPercent += amount);
     // Directly additive against the LuckCeiling number itself (base 1.5 + 0.25 = 1.75), same
     // (base + Flat) * Percent * Penalty shape as Strength — NOT AddLuckCeilingPercent below, which
     // instead scales bonusLuckCeilingPercent's own 1f-baseline multiplier and would compound against
     // baseLuckCeiling (1.5 * 1.25 = 1.875) rather than adding to it directly.
-    public void AddLuckCeilingFlat(float amount) => ApplyStatChange(() => bonusLuckCeilingFlat += amount);
+    public void AddLuckCeilingFlat(float amount) => ApplyStatChange(() => currentState.bonusLuckCeilingFlat += amount);
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — bonusLuckCeilingPercent
     // starts at 1f (LuckCeiling = (baseLuckCeiling + bonusLuckCeilingFlat) * bonusLuckCeilingPercent *
     // luckCeilingPenalty), just had no augment-facing wrapper until now.
-    public void AddLuckCeilingPercent(float amount) => ApplyStatChange(() => bonusLuckCeilingPercent += amount);
+    public void AddLuckCeilingPercent(float amount) => ApplyStatChange(() => currentState.bonusLuckCeilingPercent += amount);
     // Inverted, same reasoning as AddDamageReductionPercent: Highroll = baseHighroll * bonusHighrollPercent
     // * highrollPenalty, and a LOWER Highroll threshold means MORE of a roll's window counts as a highroll
     // (see WeaponDamageMath.RollDamage's own doc comment) — so a lower highrollPenalty is better for the
     // player here. The parameter keeps this class's usual "positive = better for the player" convention
     // (e.g. 0.05 for a 5% easier highroll threshold); it's SUBTRACTED under the hood.
-    public void AddHighrollPenalty(float amount) => ApplyStatChange(() => highrollPenalty -= amount);
-    public void AddCritChanceFlat(float amount) => ApplyStatChange(() => bonusCritChanceFlat += amount);
+    public void AddHighrollPenalty(float amount) => ApplyStatChange(() => currentState.highrollPenalty -= amount);
+    public void AddCritChanceFlat(float amount) => ApplyStatChange(() => currentState.bonusCritChanceFlat += amount);
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent, for CritChance's own percent
     // multiplier. Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment
     // calls this anymore (CritChanceAugment, née CritAugment, now calls AddCritChanceTotalPercent below).
-    public void AddCritChancePercent(float amount) => ApplyStatChange(() => bonusCritChancePercent += amount);
+    public void AddCritChancePercent(float amount) => ApplyStatChange(() => currentState.bonusCritChancePercent += amount);
     // NEW Total tier — what CritChanceAugment calls now.
-    public void AddCritChanceTotalPercent(float amount) => ApplyStatChange(() => totalCritChancePercent += amount);
+    public void AddCritChanceTotalPercent(float amount) => ApplyStatChange(() => currentState.totalCritChancePercent += amount);
     // Flat addition to CritDamage's own baseCritDamage term (CritDamage = (baseCritDamage +
     // bonusCritDamageFlat) * bonusCritDamagePercent + ...), e.g. +0.1 for +10% crit damage.
-    public void AddCritDamageFlat(float amount) => ApplyStatChange(() => bonusCritDamageFlat += amount);
+    public void AddCritDamageFlat(float amount) => ApplyStatChange(() => currentState.bonusCritDamageFlat += amount);
     // Inverted from every other "...Percent" wrapper above: damageReductionPercent starts at 1f and
     // multiplies DIRECTLY into incoming damage (TakeDamage's own `damage *= DamageReduction`), so a LOWER
     // value is better for the player here. The parameter still follows this class's usual "positive =
     // better for the player" convention (e.g. 0.4 for -40% damage taken) — it's SUBTRACTED under the hood so
     // the caller-facing sign stays consistent with every other Add*Percent method; pass a negative amount to
     // revert a previously-granted reduction.
-    public void AddDamageReductionPercent(float amount) => ApplyStatChange(() => damageReductionPercent -= amount);
-    public void AddDashHaste(float amount) => ApplyStatChange(() => dashHaste += amount);
+    public void AddDamageReductionPercent(float amount) => ApplyStatChange(() => currentState.damageReductionPercent -= amount);
+    public void AddDashHaste(float amount) => ApplyStatChange(() => currentState.dashHaste += amount);
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent/AddCritChancePercent, for
     // DashHaste's own percent multiplier (bonusDashHastePercent starts at 1f, e.g. +0.15 = +15% total).
     // No other writer ever touched this field (see its own declaration comment) — DashHasteAugment now
     // calls AddDashHasteTotalPercent below instead; kept here only in case something else wants the
     // (functionally identical, since dashHaste has no separate base) Bonus-tier slot later.
-    public void AddDashHastePercent(float amount) => ApplyStatChange(() => bonusDashHastePercent += amount);
+    public void AddDashHastePercent(float amount) => ApplyStatChange(() => currentState.bonusDashHastePercent += amount);
     // NEW Total tier — what DashHasteAugment calls now.
-    public void AddDashHasteTotalPercent(float amount) => ApplyStatChange(() => totalDashHastePercent += amount);
+    public void AddDashHasteTotalPercent(float amount) => ApplyStatChange(() => currentState.totalDashHastePercent += amount);
     // Same shape as the three DashHaste wrappers immediately above.
-    public void AddAbilityHaste(float amount) => ApplyStatChange(() => abilityHaste += amount);
-    public void AddAbilityHastePercent(float amount) => ApplyStatChange(() => bonusAbilityHastePercent += amount);
-    public void AddAbilityHasteTotalPercent(float amount) => ApplyStatChange(() => totalAbilityHastePercent += amount);
-    public void AddWeaponCountFlat(int amount) => ApplyStatChange(() => bonusWeaponCountFlat += amount);
+    public void AddAbilityHaste(float amount) => ApplyStatChange(() => currentState.abilityHaste += amount);
+    public void AddAbilityHastePercent(float amount) => ApplyStatChange(() => currentState.bonusAbilityHastePercent += amount);
+    public void AddAbilityHasteTotalPercent(float amount) => ApplyStatChange(() => currentState.totalAbilityHastePercent += amount);
+    public void AddWeaponCountFlat(int amount) => ApplyStatChange(() => currentState.bonusWeaponCountFlat += amount);
     // Multiplicative compounding, same convention as MultiplyStrengthPenalty/MultiplyOnHitPowerMultiplier
     // — bonusWeaponCountMultiplier already sits in the WeaponCount formula (previously only ever touched by
     // ClassPassiveData aggregation), just had no augment-facing wrapper until now. factor is an exact
     // integer multiplier (e.g. 2 for SurgeWeaponCountAugment's x2), inverted with the same factor to revert
     // (integer *=/ /= pairs cleanly as long as they're applied/removed in matched pairs).
-    public void MultiplyWeaponCountMultiplier(int factor) => ApplyStatChange(() => weaponCountMultiplier *= factor);
+    public void MultiplyWeaponCountMultiplier(int factor) => ApplyStatChange(() => currentState.weaponCountMultiplier *= factor);
     // Paired revert for the above — an int can't be un-multiplied via 1f/factor the way the float
     // Multiply___ methods revert, so this divides back by the same exact factor instead. Only safe when
     // applied/removed in matched pairs with no other multiplicative change interleaved in between.
-    public void DivideWeaponCountMultiplier(int factor) => ApplyStatChange(() => weaponCountMultiplier /= factor);
+    public void DivideWeaponCountMultiplier(int factor) => ApplyStatChange(() => currentState.weaponCountMultiplier /= factor);
     // Unused for now — the planned OuterWeaponTrackAugment will call this. amount can be negative to
     // remove tracks (nothing currently does, but the direct += supports it symmetrically for free).
-    public void AddWeaponTracks(int amount) => ApplyStatChange(() => weaponTracks += amount);
+    public void AddWeaponTracks(int amount) => ApplyStatChange(() => currentState.weaponTracks += amount);
     // Multiplicative, not additive — bonusStrengthPenalty/bonusOnHitPowerPenalty both start at 1f and
     // apply as straight multipliers (Strength/OnHitPower), so stacking two -40% penalties correctly
     // compounds to 0.6 * 0.6 = 0.36 rather than clamping at 1 - 0.8 = 0.2. factor is what the penalty gets
     // multiplied by (e.g. 1f - 0.4f for a -40% penalty), matching the old system's identical
     // `bonusStrengthPenalty *= 1f - damagePenalty` call.
-    public void MultiplyStrengthPenalty(float factor) => ApplyStatChange(() => bonusStrengthPenalty *= factor);
-    public void MultiplyOnHitPowerPenalty(float factor) => ApplyStatChange(() => bonusOnHitPowerPenalty *= factor);
+    public void MultiplyStrengthPenalty(float factor) => ApplyStatChange(() => currentState.bonusStrengthPenalty *= factor);
+    public void MultiplyOnHitPowerPenalty(float factor) => ApplyStatChange(() => currentState.bonusOnHitPowerPenalty *= factor);
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — bonusStrengthPercent
     // already sits in the Strength formula. Bonus tier — now only scales bonusStrengthFlat (see
     // Strength), not the whole stat; kept for ClassPassiveData/meta-progression. The weapon-count/
     // multishot/track "compensate with a damage bonus" augments below now call AddStrengthTotalPercent
     // instead (redirected together since they all target the same stat being restructured here).
-    public void AddStrengthPercent(float amount) => ApplyStatChange(() => bonusStrengthPercent += amount);
+    public void AddStrengthPercent(float amount) => ApplyStatChange(() => currentState.bonusStrengthPercent += amount);
     // NEW Total tier — what BladeweaviestBladeweaverAugment/MultiShotAugment/OuterTrackAugment/
     // SurgeWeaponCountAugment/WeaponCountAugment all call now, so their "extra copies, compensate with a
     // damage bonus" grant keeps scaling the whole stat instead of only the (usually-zero) Bonus sub-term.
-    public void AddStrengthTotalPercent(float amount) => ApplyStatChange(() => totalStrengthPercent += amount);
+    public void AddStrengthTotalPercent(float amount) => ApplyStatChange(() => currentState.totalStrengthPercent += amount);
     // Multiplicative compounding, same convention as MultiplyStrengthPenalty/MultiplyOnHitPowerPenalty
     // — bonusOnHitPowerMultiplier already sits in the OnHitPower formula (previously only ever touched by
     // ClassPassiveData aggregation), just had no augment-facing wrapper until now. Same
     // penalty-to-bonus swap as AddStrengthPercent above, for the same reason.
-    public void MultiplyOnHitPowerMultiplier(float factor) => ApplyStatChange(() => bonusOnHitPowerMultiplier *= factor);
-    public void AddRicochetFlat(float amount) => ApplyStatChange(() => bonusRicochetFlat += amount);
+    public void MultiplyOnHitPowerMultiplier(float factor) => ApplyStatChange(() => currentState.bonusOnHitPowerMultiplier *= factor);
+    public void AddRicochetFlat(float amount) => ApplyStatChange(() => currentState.bonusRicochetFlat += amount);
     // NEW Total tier — no augment grants this yet (RicochetAugment only ever grants Flat), reserved for a
     // future in-run Ricochet augment.
-    public void AddRicochetTotalPercent(float amount) => ApplyStatChange(() => totalRicochetPercent += amount);
-    public void AddMultishotFlat(float amount) => ApplyStatChange(() => bonusMultishotFlat += amount);
+    public void AddRicochetTotalPercent(float amount) => ApplyStatChange(() => currentState.totalRicochetPercent += amount);
+    public void AddMultishotFlat(float amount) => ApplyStatChange(() => currentState.bonusMultishotFlat += amount);
     // NEW Total tier — no augment grants this yet (MultiShotAugment only ever grants Flat), reserved for a
     // future in-run Multishot augment.
-    public void AddMultishotTotalPercent(float amount) => ApplyStatChange(() => totalMultishotPercent += amount);
-    public void AddFireRateFlat(float amount) => ApplyStatChange(() => fireRateFlat += amount);
-    public void AddFireRateTotalPercent(float amount) => ApplyStatChange(() => fireRateTotalPercent += amount);
-    public void AddProjectileSpeedFlat(float amount) => ApplyStatChange(() => projectileSpeedFlat += amount);
-    public void AddProjectileSpeedTotalPercent(float amount) => ApplyStatChange(() => projectileSpeedTotalPercent += amount);
-    public void AddWeaponRadiusFlat(float amount) => ApplyStatChange(() => bonusWeaponRadiusFlat += amount);
+    public void AddMultishotTotalPercent(float amount) => ApplyStatChange(() => currentState.totalMultishotPercent += amount);
+    public void AddFireRateFlat(float amount) => ApplyStatChange(() => currentState.fireRateFlat += amount);
+    public void AddFireRateTotalPercent(float amount) => ApplyStatChange(() => currentState.fireRateTotalPercent += amount);
+    public void AddProjectileSpeedFlat(float amount) => ApplyStatChange(() => currentState.projectileSpeedFlat += amount);
+    public void AddProjectileSpeedTotalPercent(float amount) => ApplyStatChange(() => currentState.projectileSpeedTotalPercent += amount);
+    public void AddWeaponRadiusFlat(float amount) => ApplyStatChange(() => currentState.bonusWeaponRadiusFlat += amount);
     // NEW Total tier — no augment grants WeaponRadius percent yet (only ClassPassiveData touches
     // bonusWeaponRadiusPercent) — reserved for a future in-run augment on this stat.
-    public void AddWeaponRadiusTotalPercent(float amount) => ApplyStatChange(() => totalWeaponRadiusPercent += amount);
+    public void AddWeaponRadiusTotalPercent(float amount) => ApplyStatChange(() => currentState.totalWeaponRadiusPercent += amount);
     // Total tier — no in-run augment grants this yet (ShieldAugment grants the Bonus tier below instead),
     // reserved for a future outlier effect.
-    public void AddMaxShieldTotalPercent(float amount) => ApplyStatChange(() => totalMaxShieldPercent += amount);
+    public void AddMaxShieldTotalPercent(float amount) => ApplyStatChange(() => currentState.totalMaxShieldPercent += amount);
     // Bonus tier — first augment-facing entry point for MaxShield (ShieldAugment). Adds directly against
     // baseMaxShieldPercent, both in the same "percent of Max Health" units, e.g. +0.2 = +20% Max Health as
     // shield — see MaxShield's own comment for why there's no separate bonusFlat*bonusPercent multiplier
@@ -1438,19 +1778,19 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // health/energy catch-up logic it performs (see ApplyStatChange's own comment) — the ceiling still rises
     // immediately, current shield just naturally catches up via its own regen/no-damage-timer snap instead
     // of being bumped here.
-    public void AddMaxShieldPercent(float amount) => ApplyStatChange(() => bonusMaxShieldAdditive += amount);
+    public void AddMaxShieldPercent(float amount) => ApplyStatChange(() => currentState.bonusMaxShieldAdditive += amount);
     // Total tier — what the weapon-count/multishot/track "compensate" augments (BladeweaviestBladeweaverAugment,
     // MultiShotAugment, OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) all call now, same
     // Total-tier treatment as their Strength grant.
-    public void AddOnHitPowerTotalPercent(float amount) => ApplyStatChange(() => totalOnHitPowerPercent += amount);
+    public void AddOnHitPowerTotalPercent(float amount) => ApplyStatChange(() => currentState.totalOnHitPowerPercent += amount);
     // Same MultiplyStrengthPenalty-style compounding convention — multiple spread-reducing sources
     // multiply together rather than summing (two -80% reductions compound to 0.2 * 0.2 = 0.04, not clamp
     // at 1 - 1.6). factor is what bonusMultishotSpreadPercent gets multiplied by (e.g. 1f - 0.8f for
     // MultiShotSpreadAugment's -80% reduction).
-    public void MultiplyMultishotSpreadPercent(float factor) => ApplyStatChange(() => bonusMultishotSpreadPercent *= factor);
+    public void MultiplyMultishotSpreadPercent(float factor) => ApplyStatChange(() => currentState.bonusMultishotSpreadPercent *= factor);
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — knockbackMultiplier starts
     // at 1f (also aggregated multiplicatively by ClassPassiveData separately), e.g. +0.5 = +50% knockback.
-    public void AddKnockbackPercent(float amount) => ApplyStatChange(() => knockbackMultiplier += amount);
+    public void AddKnockbackPercent(float amount) => ApplyStatChange(() => currentState.knockbackMultiplier += amount);
 
     // Shared "stacking bonus" scaffold for the whole Phantom Blade augment family — each Phantom Blade
     // augment the player has picked contributes its own delta here (matching old system's per-augment
@@ -1459,8 +1799,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // once at spawn time rather than each blade needing to know which augments exist. Plain += (not
     // ApplyStatChange) — doesn't affect Max Health/Energy, and nothing else reads these live the way
     // Strength/MoveSpeed etc. do.
-    [HideInInspector] public float phantomBladeDamageBonus = 0f;
-    [HideInInspector] public float phantomBladeSizeBonus = 0f;
+    // In State, not plain fields, same as every other bonus/total/penalty field in this class now — see
+    // that section's own doc comment for why (any Add*/Multiply* exposed here could be reused temporarily
+    // by a future Phantom Blade ability/augment, same as the original 10 discovered this the hard way).
+    public float phantomBladeDamageBonus => currentState.phantomBladeDamageBonus;
+    public float phantomBladeSizeBonus => currentState.phantomBladeSizeBonus;
     // Second, separate multiplicative layer for each of the two above — PhantomBladeSizeAugment's own
     // damage/size bonuses are meant to scale the blade's ALREADY-combined additive total (every other
     // Phantom Blade augment's own +damage%/+size% summed together), not just join those same additive
@@ -1469,16 +1812,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // total). PhantomBladeSummonHelper applies each pair as
     // `(1 + phantomBladeDamageBonus) * phantomBladeDamageBonusPercent` and
     // `(1 + phantomBladeSizeBonus) * phantomBladeSizeBonusPercent`.
-    [HideInInspector] public float phantomBladeDamageBonusPercent = 1f;
-    [HideInInspector] public float phantomBladeSizeBonusPercent = 1f;
+    public float phantomBladeDamageBonusPercent => currentState.phantomBladeDamageBonusPercent != 0f ? currentState.phantomBladeDamageBonusPercent : 1f;
+    public float phantomBladeSizeBonusPercent => currentState.phantomBladeSizeBonusPercent != 0f ? currentState.phantomBladeSizeBonusPercent : 1f;
     // Third layer, multiplicative like the "Percent" pair above but for PENALTIES rather than bonuses —
     // e.g. PhantomBladeCarnivalAugment's own -35% total damage/size tradeoff for its extra-blade-per-summon
     // effect. Same MultiplyStrengthPenalty-style compounding convention as bonusStrengthPenalty
     // (multiple penalty sources compound multiplicatively rather than summing, so two -35% penalties would
     // compound to 0.65 * 0.65 = 0.4225, not clamp at 1 - 0.7 = 0.3). Plain *= (not ApplyStatChange), same
     // reasoning as the rest of this scaffold.
-    [HideInInspector] public float phantomBladeDamagePenalty = 1f;
-    [HideInInspector] public float phantomBladeSizePenalty = 1f;
+    public float phantomBladeDamagePenalty => currentState.phantomBladeDamagePenalty != 0f ? currentState.phantomBladeDamagePenalty : 1f;
+    public float phantomBladeSizePenalty => currentState.phantomBladeSizePenalty != 0f ? currentState.phantomBladeSizePenalty : 1f;
     // False by default — Phantom Blades don't trigger OnHit at all unless PhantomBladeOnHitAugment (or a
     // future family member) turns it on. Kept as its own bool rather than gating off
     // phantomBladeOnHitPowerPercent > 0 — that would conflate "how strong is the onhit trigger" (a
@@ -1486,16 +1829,19 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // would silently break if anything ever reduced the percent without meaning to disable the feature.
     // Both are read once at Summon() time like the other two, baked into that blade's lifetime rather
     // than reacting live to later picks.
-    [HideInInspector] public bool  phantomBladeOnHitEnabled = false;
-    [HideInInspector] public float phantomBladeOnHitPowerPercent = 0f;
-    public void AddPhantomBladeDamageBonus(float amount) => phantomBladeDamageBonus += amount;
-    public void AddPhantomBladeSizeBonus(float amount) => phantomBladeSizeBonus += amount;
-    public void AddPhantomBladeDamageBonusPercent(float amount) => phantomBladeDamageBonusPercent += amount;
-    public void AddPhantomBladeSizeBonusPercent(float amount) => phantomBladeSizeBonusPercent += amount;
-    public void MultiplyPhantomBladeDamagePenalty(float factor) => phantomBladeDamagePenalty *= factor;
-    public void MultiplyPhantomBladeSizePenalty(float factor) => phantomBladeSizePenalty *= factor;
-    public void EnablePhantomBladeOnHit() => phantomBladeOnHitEnabled = true;
-    public void AddPhantomBladeOnHitPowerPercent(float amount) => phantomBladeOnHitPowerPercent += amount;
+    // In State, not a plain field — see the "Augment/bonus modifiers" section's own doc comment for why
+    // every mutable field here lives in State now, even a one-directional enable flag with no exposed
+    // "disable" path today.
+    public bool phantomBladeOnHitEnabled => currentState.phantomBladeOnHitEnabled;
+    public float phantomBladeOnHitPowerPercent => currentState.phantomBladeOnHitPowerPercent;
+    public void AddPhantomBladeDamageBonus(float amount) => currentState.phantomBladeDamageBonus += amount;
+    public void AddPhantomBladeSizeBonus(float amount) => currentState.phantomBladeSizeBonus += amount;
+    public void AddPhantomBladeDamageBonusPercent(float amount) => currentState.phantomBladeDamageBonusPercent += amount;
+    public void AddPhantomBladeSizeBonusPercent(float amount) => currentState.phantomBladeSizeBonusPercent += amount;
+    public void MultiplyPhantomBladeDamagePenalty(float factor) => currentState.phantomBladeDamagePenalty *= factor;
+    public void MultiplyPhantomBladeSizePenalty(float factor) => currentState.phantomBladeSizePenalty *= factor;
+    public void EnablePhantomBladeOnHit() => currentState.phantomBladeOnHitEnabled = true;
+    public void AddPhantomBladeOnHitPowerPercent(float amount) => currentState.phantomBladeOnHitPowerPercent += amount;
 
     // Read directly by EnemyBasePD.Die() (Simulate-context, safe pure reads of counts only ever incremented
     // once each, at OnApply()) to reserve exactly enough death-holds up front, atomically — no dependence
@@ -1508,18 +1854,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // augment that needs a hold increments the matching count once in OnApply() — multiple such augments on
     // the same player just add up, same idempotent shape as every other augment count in this file — and
     // releases its own hold via the enemy's ReleaseDeathHold() once its individual effect concludes.
-    [HideInInspector] public int deathEventCount = 0;
-    [HideInInspector] public int killEventCount = 0;
-    public void AddDeathEventCount(int amount = 1) => deathEventCount += amount;
-    public void AddKillEventCount(int amount = 1) => killEventCount += amount;
+    public int deathEventCount => currentState.deathEventCount;
+    public int killEventCount => currentState.killEventCount;
+    public void AddDeathEventCount(int amount = 1) => currentState.deathEventCount += amount;
+    public void AddKillEventCount(int amount = 1) => currentState.killEventCount += amount;
 
     // Punches a partial-rate hole in Simulate()'s own !state.isSurging gate on the passive EnergyRegen tick
     // (see EnergyRegenWhileSurgingAugment) — 0 (default) means fully suppressed while Surging, same as
     // before this existed. Plain += (not ApplyStatChange) since it doesn't touch Max Health/Energy, same
     // shape as phantomBladeDamageBonusPercent; multiple copies of the augment (or future family members)
     // just stack additively.
-    [HideInInspector] public float energyRegenWhileSurgingPercent = 0f;
-    public void AddEnergyRegenWhileSurgingPercent(float amount) => energyRegenWhileSurgingPercent += amount;
+    public float energyRegenWhileSurgingPercent => currentState.energyRegenWhileSurgingPercent;
+    public void AddEnergyRegenWhileSurgingPercent(float amount) => currentState.energyRegenWhileSurgingPercent += amount;
 
     // Called by a weapon (melee/axe/ranged) once it's confirmed touching an ally's hurtbox — every weapon
     // always runs this detection now (no more enable gate; "canContactAllies" is permanently on). A plain
@@ -1542,8 +1888,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // non-crit execute augment down the line) and a crit-gated one (critExecuteThreshold, what
     // CritExecuteAugment actually turns on by adding to it). Execute is just a cheap "does this attacker
     // have EITHER threshold above 0 at all" gate, checked before either specific comparison runs.
-    [HideInInspector] public float executeThreshold = 0f;
-    [HideInInspector] public float critExecuteThreshold = 0f;
+    // In State, not plain fields — see the "Augment/bonus modifiers" section's own doc comment. No
+    // zero-guard needed on either — 0f already IS both fields' correct neutral/"off" value.
+    public float executeThreshold => currentState.executeThreshold;
+    public float critExecuteThreshold => currentState.critExecuteThreshold;
     public bool Execute => executeThreshold > 0f || critExecuteThreshold > 0f;
 
     // Bosses resist execute effects by 80% — a threshold tuned for normal/elite enemies would otherwise
@@ -1554,8 +1902,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float BossExecuteThreshold => executeThreshold * 0.2f;
     public float BossCritExecuteThreshold => critExecuteThreshold * 0.2f;
 
-    public void AddExecuteThresholdPercent(float amount) => executeThreshold += amount;
-    public void AddCritExecuteThresholdPercent(float amount) => critExecuteThreshold += amount;
+    public void AddExecuteThresholdPercent(float amount) => currentState.executeThreshold += amount;
+    public void AddCritExecuteThresholdPercent(float amount) => currentState.critExecuteThreshold += amount;
 
     // These children stay visually the same size regardless of the character's own scale — a revive
     // trigger volume and worldspace/minimap UI markers shouldn't grow along with the player. Height/position
@@ -1579,12 +1927,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // call is needed here to scale the weapon.
     public void AddSizePercent(float amount)
     {
-        bonusSizePercent += amount;
-        transform.localScale = Vector3.one * bonusSizePercent;
+        currentState.bonusSizePercent += amount;
+        transform.localScale = Vector3.one * currentState.bonusSizePercent;
 
         foreach (var child in unscaledSizeChildren)
             if (child != null)
-                child.localScale = Vector3.one / bonusSizePercent;
+                child.localScale = Vector3.one / currentState.bonusSizePercent;
     }
 
     private bool _bonusesApplied;
@@ -1595,33 +1943,33 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
         ApplyStatChange(() =>
         {
-            bonusStrengthFlat          += b.strengthFlat;
-            bonusMoveSpeedFlat         += b.moveSpeedFlat;
-            attackSpeedFlat            += b.attackSpeedPct * baseAttackSpeed;
-            bonusEnergyRegenFlat       += b.energyRegenFlat;
-            dashHaste                  += b.dashHaste;
-            bonusCritChanceFlat        += b.critChanceFlat;
-            bonusXPRadiusFlat          += b.xpRadiusFlat;
-            bonusWeaponRangeFlat       += b.weaponRangeFlat;
-            bonusMaxEnergyFlat         += b.maxEnergyFlat;
-            dashCharges                += b.dashChargesBonus;
-            levelUpOptions             += b.levelUpOptionsBonus;
-            revivePower                += b.revivePower;
-            reviveTimePenaltyReduction *= b.reviveTimePenaltyMult;
-            xpMultiplier               += b.xpMultiplier;
-            bonusMaxHealthFlat         += b.maxHealthFlat;
-            bonusHealthRegenFlat       += b.healthRegenFlat;
-            bonusStrengthPercent       += b.strengthPct;
-            bonusLuckFlat              += b.luckFlat;
-            strengthPerLevel           += b.strengthPerLevel;
-            bonusMaxShieldAdditive     += b.maxShieldFlat;
-            shieldRechargeTime         += b.shieldRechargeTime;
+            currentState.bonusStrengthFlat          += b.strengthFlat;
+            currentState.bonusMoveSpeedFlat         += b.moveSpeedFlat;
+            currentState.attackSpeedFlat            += b.attackSpeedPct * baseAttackSpeed;
+            currentState.bonusEnergyRegenFlat       += b.energyRegenFlat;
+            currentState.dashHaste                  += b.dashHaste;
+            currentState.bonusCritChanceFlat += b.critChanceFlat;
+            currentState.bonusXPRadiusFlat          += b.xpRadiusFlat;
+            currentState.bonusWeaponRangeFlat       += b.weaponRangeFlat;
+            currentState.bonusMaxEnergyFlat         += b.maxEnergyFlat;
+            currentState.dashCharges                += b.dashChargesBonus;
+            currentState.levelUpOptions             += b.levelUpOptionsBonus;
+            currentState.revivePower                += b.revivePower;
+            currentState.reviveTimePenaltyReduction *= b.reviveTimePenaltyMult;
+            currentState.xpMultiplier               += b.xpMultiplier;
+            currentState.bonusMaxHealthFlat         += b.maxHealthFlat;
+            currentState.bonusHealthRegenFlat       += b.healthRegenFlat;
+            currentState.totalStrengthPercent       += b.strengthTotalPercent;
+            currentState.bonusLuckFlat              += b.luckFlat;
+            currentState.strengthPerLevel           += b.strengthPerLevel;
+            currentState.bonusMaxShieldAdditive     += b.maxShieldFlat;
+            currentState.shieldRechargeTime         += b.shieldRechargeTime;
         });
     }
 
     // Called from GameManagerPD.UpdateView() once per level gained, off verified state only — never
     // from Simulate(), since bonus fields aren't part of predicted State and can't roll back on replay.
-    public void OnLevelUp() => ApplyStatChange(() => bonusStrengthFlat += strengthPerLevel);
+    public void OnLevelUp() => ApplyStatChange(() => currentState.bonusStrengthFlat += strengthPerLevel);
 
     // Whole-run bookkeeping only, one field per StatType ApplySingleStatEntry below actually handles — the
     // literal amount ever added to that field via a stat-augment pick, nothing more (not the individual
@@ -1693,141 +2041,141 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         var p = classPassive;
         ApplyStatChange(() =>
         {
-            bonusMoveSpeedFlat              += p.bonusMoveSpeedFlat;
-            bonusMoveSpeedPercent           += p.bonusMoveSpeedPercent;
-            moveSpeedPenalty                += p.moveSpeedPenalty;
-            totalMoveSpeedPercent           += p.totalMoveSpeedPercent;
-            totalMoveSpeedPenalty           += p.totalMoveSpeedPenalty;
+            currentState.bonusMoveSpeedFlat              += p.bonusMoveSpeedFlat;
+            currentState.bonusMoveSpeedPercent           += p.bonusMoveSpeedPercent;
+            currentState.moveSpeedPenalty                += p.moveSpeedPenalty;
+            currentState.totalMoveSpeedPercent += p.totalMoveSpeedPercent;
+            currentState.totalMoveSpeedPenalty           += p.totalMoveSpeedPenalty;
 
-            bonusStrengthFlat           += p.bonusStrengthFlat;
-            bonusStrengthPercent        += p.bonusStrengthPercent;
-            bonusStrengthPenalty        += p.bonusStrengthPenalty;
-            totalStrengthPercent        += p.totalStrengthPercent;
-            totalStrengthPenalty        += p.totalStrengthPenalty;
+            currentState.bonusStrengthFlat           += p.bonusStrengthFlat;
+            currentState.bonusStrengthPercent        += p.bonusStrengthPercent;
+            currentState.bonusStrengthPenalty        += p.bonusStrengthPenalty;
+            currentState.totalStrengthPercent += p.totalStrengthPercent;
+            currentState.totalStrengthPenalty        += p.totalStrengthPenalty;
 
-            bonusWeaponRadiusFlat           += p.bonusWeaponRadiusFlat;
-            bonusWeaponRadiusPercent        += p.bonusWeaponRadiusPercent;
-            totalWeaponRadiusPercent        += p.totalWeaponRadiusPercent;
-            totalWeaponRadiusPenalty        += p.totalWeaponRadiusPenalty;
+            currentState.bonusWeaponRadiusFlat           += p.bonusWeaponRadiusFlat;
+            currentState.bonusWeaponRadiusPercent        += p.bonusWeaponRadiusPercent;
+            currentState.totalWeaponRadiusPercent        += p.totalWeaponRadiusPercent;
+            currentState.totalWeaponRadiusPenalty        += p.totalWeaponRadiusPenalty;
 
-            attackSpeedFlat                 += p.attackSpeedFlat;
-            attackSpeedTotalPercent         += p.attackSpeedTotalPercent;
-            attackSpeedPenalty              += p.attackSpeedPenalty;
+            currentState.attackSpeedFlat                 += p.attackSpeedFlat;
+            currentState.attackSpeedTotalPercent += p.attackSpeedTotalPercent;
+            currentState.attackSpeedPenalty              += p.attackSpeedPenalty;
 
-            bonusWeaponCountFlat            += p.bonusWeaponCountFlat;
-            weaponCountMultiplier      *= p.bonusWeaponCountMultiplier;
+            currentState.bonusWeaponCountFlat            += p.bonusWeaponCountFlat;
+            currentState.weaponCountMultiplier      *= p.bonusWeaponCountMultiplier;
 
-            bonusWeaponRangeFlat            += p.bonusWeaponRangeFlat;
-            bonusWeaponRangePercent         += p.bonusWeaponRangePercent;
-            weaponRangePenalty              += p.weaponRangePenalty;
-            totalWeaponRangePercent         += p.totalWeaponRangePercent;
-            totalWeaponRangePenalty         += p.totalWeaponRangePenalty;
+            currentState.bonusWeaponRangeFlat            += p.bonusWeaponRangeFlat;
+            currentState.bonusWeaponRangePercent         += p.bonusWeaponRangePercent;
+            currentState.weaponRangePenalty              += p.weaponRangePenalty;
+            currentState.totalWeaponRangePercent += p.totalWeaponRangePercent;
+            currentState.totalWeaponRangePenalty         += p.totalWeaponRangePenalty;
 
             if (p.bonusSizePercent != 0f) AddSizePercent(p.bonusSizePercent);
 
-            bonusCritChanceFlat             += p.bonusCritChanceFlat;
-            bonusCritChancePercent          += p.bonusCritChancePercent;
-            totalCritChancePercent          += p.totalCritChancePercent;
-            totalCritChancePenalty          += p.totalCritChancePenalty;
+            currentState.bonusCritChanceFlat += p.bonusCritChanceFlat;
+            currentState.bonusCritChancePercent          += p.bonusCritChancePercent;
+            currentState.totalCritChancePercent          += p.totalCritChancePercent;
+            currentState.totalCritChancePenalty          += p.totalCritChancePenalty;
 
-            bonusCritDamageFlat             += p.bonusCritDamageFlat;
-            bonusCritDamagePercent          += p.bonusCritDamagePercent;
+            currentState.bonusCritDamageFlat             += p.bonusCritDamageFlat;
+            currentState.bonusCritDamagePercent          += p.bonusCritDamagePercent;
 
-            bonusRicochetFlat               += p.bonusRicochetFlat;
-            bonusRicochetPercent            += p.bonusRicochetPercent;
-            totalRicochetPercent            += p.totalRicochetPercent;
-            totalRicochetPenalty            += p.totalRicochetPenalty;
+            currentState.bonusRicochetFlat               += p.bonusRicochetFlat;
+            currentState.bonusRicochetPercent            += p.bonusRicochetPercent;
+            currentState.totalRicochetPercent            += p.totalRicochetPercent;
+            currentState.totalRicochetPenalty            += p.totalRicochetPenalty;
 
-            bonusMultishotFlat              += p.bonusMultishotFlat;
-            bonusMultishotPercent           += p.bonusMultishotPercent;
-            totalMultishotPercent           += p.totalMultishotPercent;
-            totalMultishotPenalty           += p.totalMultishotPenalty;
+            currentState.bonusMultishotFlat              += p.bonusMultishotFlat;
+            currentState.bonusMultishotPercent           += p.bonusMultishotPercent;
+            currentState.totalMultishotPercent           += p.totalMultishotPercent;
+            currentState.totalMultishotPenalty           += p.totalMultishotPenalty;
 
-            projectileDamageDropoffReduction += p.projectileDamageDropoffReduction;
-            projectileOnHitDropoffReduction  += p.projectileOnHitDropoffReduction;
+            currentState.projectileDamageDropoffReduction += p.projectileDamageDropoffReduction;
+            currentState.projectileOnHitDropoffReduction  += p.projectileOnHitDropoffReduction;
 
-            fireRateFlat                    += p.fireRateFlat;
-            fireRateTotalPercent            += p.fireRateTotalPercent;
-            fireRateTotalPenalty            += p.fireRateTotalPenalty;
+            currentState.fireRateFlat                    += p.fireRateFlat;
+            currentState.fireRateTotalPercent += p.fireRateTotalPercent;
+            currentState.fireRateTotalPenalty            += p.fireRateTotalPenalty;
 
-            projectileSpeedFlat             += p.projectileSpeedFlat;
-            projectileSpeedTotalPercent     += p.projectileSpeedTotalPercent;
-            projectileSpeedTotalPenalty     += p.projectileSpeedTotalPenalty;
+            currentState.projectileSpeedFlat             += p.projectileSpeedFlat;
+            currentState.projectileSpeedTotalPercent     += p.projectileSpeedTotalPercent;
+            currentState.projectileSpeedTotalPenalty     += p.projectileSpeedTotalPenalty;
 
-            bonusMaxHealthFlat              += p.bonusMaxHealthFlat;
-            bonusMaxHealthPercent           += p.bonusMaxHealthPercent;
-            totalMaxHealthPercent           += p.totalMaxHealthPercent;
-            totalMaxHealthPenalty           += p.totalMaxHealthPenalty;
+            currentState.bonusMaxHealthFlat              += p.bonusMaxHealthFlat;
+            currentState.bonusMaxHealthPercent           += p.bonusMaxHealthPercent;
+            currentState.totalMaxHealthPercent += p.totalMaxHealthPercent;
+            currentState.totalMaxHealthPenalty           += p.totalMaxHealthPenalty;
 
-            bonusHealthRegenFlat            += p.bonusHealthRegenFlat;
-            bonusHealthRegenPercent         += p.bonusHealthRegenPercent;
-            totalHealthRegenPercent         += p.totalHealthRegenPercent;
-            totalHealthRegenPenalty         += p.totalHealthRegenPenalty;
+            currentState.bonusHealthRegenFlat            += p.bonusHealthRegenFlat;
+            currentState.bonusHealthRegenPercent         += p.bonusHealthRegenPercent;
+            currentState.totalHealthRegenPercent         += p.totalHealthRegenPercent;
+            currentState.totalHealthRegenPenalty         += p.totalHealthRegenPenalty;
 
-            bonusMaxShieldAdditive          += p.bonusMaxShieldAdditive;
-            totalMaxShieldPercent           += p.totalMaxShieldPercent;
-            totalMaxShieldPenalty           += p.totalMaxShieldPenalty;
+            currentState.bonusMaxShieldAdditive          += p.bonusMaxShieldAdditive;
+            currentState.totalMaxShieldPercent           += p.totalMaxShieldPercent;
+            currentState.totalMaxShieldPenalty           += p.totalMaxShieldPenalty;
 
-            bonusMaxEnergyFlat              += p.bonusMaxEnergyFlat;
-            bonusMaxEnergyPercent           += p.bonusMaxEnergyPercent;
+            currentState.bonusMaxEnergyFlat              += p.bonusMaxEnergyFlat;
+            currentState.bonusMaxEnergyPercent           += p.bonusMaxEnergyPercent;
 
-            bonusEnergyRegenFlat            += p.bonusEnergyRegenFlat;
-            bonusEnergyRegenPercent         += p.bonusEnergyRegenPercent;
-            energyRegenPenalty              += p.energyRegenPenalty;
-            totalEnergyRegenPercent         += p.totalEnergyRegenPercent;
-            totalEnergyRegenPenalty         += p.totalEnergyRegenPenalty;
+            currentState.bonusEnergyRegenFlat            += p.bonusEnergyRegenFlat;
+            currentState.bonusEnergyRegenPercent         += p.bonusEnergyRegenPercent;
+            currentState.energyRegenPenalty              += p.energyRegenPenalty;
+            currentState.totalEnergyRegenPercent         += p.totalEnergyRegenPercent;
+            currentState.totalEnergyRegenPenalty         += p.totalEnergyRegenPenalty;
 
-            bonusSurgeCostFlat              += p.bonusSurgeCostFlat;
-            bonusSurgeCostPercent           += p.bonusSurgeCostPercent;
-            surgeAttackSpeedPenalty         += p.surgeAttackSpeedPenalty;
+            currentState.bonusSurgeCostFlat              += p.bonusSurgeCostFlat;
+            currentState.bonusSurgeCostPercent           += p.bonusSurgeCostPercent;
+            currentState.surgeAttackSpeedPenalty         += p.surgeAttackSpeedPenalty;
 
-            dashHaste                       += p.dashHaste;
-            bonusDashHastePercent           += p.bonusDashHastePercent;
-            totalDashHastePercent           += p.totalDashHastePercent;
-            totalDashHastePenalty           += p.totalDashHastePenalty;
+            currentState.dashHaste                       += p.dashHaste;
+            currentState.bonusDashHastePercent           += p.bonusDashHastePercent;
+            currentState.totalDashHastePercent           += p.totalDashHastePercent;
+            currentState.totalDashHastePenalty           += p.totalDashHastePenalty;
 
-            abilityHaste                    += p.abilityHaste;
-            bonusAbilityHastePercent        += p.bonusAbilityHastePercent;
-            totalAbilityHastePercent        += p.totalAbilityHastePercent;
-            totalAbilityHastePenalty        += p.totalAbilityHastePenalty;
+            currentState.abilityHaste                    += p.abilityHaste;
+            currentState.bonusAbilityHastePercent        += p.bonusAbilityHastePercent;
+            currentState.totalAbilityHastePercent        += p.totalAbilityHastePercent;
+            currentState.totalAbilityHastePenalty        += p.totalAbilityHastePenalty;
 
-            bonusLuckFlat                   += p.bonusLuckFlat;
-            bonusLuckPercent                += p.bonusLuckPercent;
-            luckPenalty                     += p.luckPenalty;
-            totalLuckPercent                += p.totalLuckPercent;
-            totalLuckPenalty                += p.totalLuckPenalty;
-            bonusLuckFloorPercent           += p.bonusLuckFloorPercent;
-            luckFloorPenalty                += p.luckFloorPenalty;
-            bonusLuckCeilingPercent         += p.bonusLuckCeilingPercent;
-            luckCeilingPenalty              += p.luckCeilingPenalty;
-            bonusHighrollPercent            += p.bonusHighrollPercent;
-            highrollPenalty                 += p.highrollPenalty;
-            bonusHighrollBonusPercent       += p.bonusHighrollBonusPercent;
-            highrollBonusPenalty            += p.highrollBonusPenalty;
+            currentState.bonusLuckFlat                   += p.bonusLuckFlat;
+            currentState.bonusLuckPercent                += p.bonusLuckPercent;
+            currentState.luckPenalty                     += p.luckPenalty;
+            currentState.totalLuckPercent                += p.totalLuckPercent;
+            currentState.totalLuckPenalty                += p.totalLuckPenalty;
+            currentState.bonusLuckFloorPercent           += p.bonusLuckFloorPercent;
+            currentState.luckFloorPenalty                += p.luckFloorPenalty;
+            currentState.bonusLuckCeilingPercent         += p.bonusLuckCeilingPercent;
+            currentState.luckCeilingPenalty              += p.luckCeilingPenalty;
+            currentState.bonusHighrollPercent            += p.bonusHighrollPercent;
+            currentState.highrollPenalty                 += p.highrollPenalty;
+            currentState.bonusHighrollBonusPercent       += p.bonusHighrollBonusPercent;
+            currentState.highrollBonusPenalty            += p.highrollBonusPenalty;
 
-            knockbackMultiplier             *= p.knockbackMultiplier;
-            knockbackPenalty                += p.knockbackPenalty;
+            currentState.knockbackMultiplier             *= p.knockbackMultiplier;
+            currentState.knockbackPenalty                += p.knockbackPenalty;
 
-            bonusOnHitPowerMultiplier       *= p.bonusOnHitPowerMultiplier;
-            bonusOnHitPowerPenalty          += p.bonusOnHitPowerPenalty;
-            totalOnHitPowerPercent          += p.totalOnHitPowerPercent;
-            totalOnHitPowerPenalty          += p.totalOnHitPowerPenalty;
+            currentState.bonusOnHitPowerMultiplier       *= p.bonusOnHitPowerMultiplier;
+            currentState.bonusOnHitPowerPenalty          += p.bonusOnHitPowerPenalty;
+            currentState.totalOnHitPowerPercent          += p.totalOnHitPowerPercent;
+            currentState.totalOnHitPowerPenalty          += p.totalOnHitPowerPenalty;
 
-            stackPowerPercent               += p.stackPowerPercent;
-            stackPowerPenalty               += p.stackPowerPenalty;
+            currentState.stackPowerPercent               += p.stackPowerPercent;
+            currentState.stackPowerPenalty               += p.stackPowerPenalty;
 
-            xpMultiplier                    += p.xpMultiplier;
-            xpPenalty                       += p.xpPenalty;
+            currentState.xpMultiplier                    += p.xpMultiplier;
+            currentState.xpPenalty                       += p.xpPenalty;
 
-            bonusXPRadiusFlat               += p.bonusXPRadiusFlat;
-            bonusXPRadiusPercent            += p.bonusXPRadiusPercent;
+            currentState.bonusXPRadiusFlat               += p.bonusXPRadiusFlat;
+            currentState.bonusXPRadiusPercent            += p.bonusXPRadiusPercent;
 
-            reviveTimePenalty               += p.reviveTimePenalty;
-            reviveTimePenaltyReduction      *= p.reviveTimePenaltyReduction;
-            revivePower                     += p.revivePower;
+            currentState.reviveTimePenalty               += p.reviveTimePenalty;
+            currentState.reviveTimePenaltyReduction      *= p.reviveTimePenaltyReduction;
+            currentState.revivePower                     += p.revivePower;
 
-            damageReductionPercent          += p.damageReductionPercent;
-            damageReductionPenalty          += p.damageReductionPenalty;
+            currentState.damageReductionPercent += p.damageReductionPercent;
+            currentState.damageReductionPenalty          += p.damageReductionPenalty;
         });
 
         // classPassive.passiveAugments is no longer spawned here — AugmentManagerPD.Simulate() registers
@@ -1850,17 +2198,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     {
         ApplyStatChange(() =>
         {
-            bonusMaxHealthFlat    += totals.maxHealth;
-            bonusStrengthFlat     += totals.strength;
-            bonusMoveSpeedFlat    += totals.moveSpeed;
-            bonusWeaponRangeFlat  += totals.weaponRange;
-            attackSpeedFlat       += totals.attackSpeed;
-            bonusHealthRegenFlat  += totals.healthRegen;
-            bonusEnergyRegenFlat  += totals.energyRegen;
-            dashHaste             += totals.dashHaste;
-            bonusCritChanceFlat   += totals.critChance;
-            bonusLuckFlat         += totals.luck;
-            abilityHaste          += totals.abilityHaste;
+            currentState.bonusMaxHealthFlat    += totals.maxHealth;
+            currentState.bonusStrengthFlat     += totals.strength;
+            currentState.bonusMoveSpeedFlat    += totals.moveSpeed;
+            currentState.bonusWeaponRangeFlat  += totals.weaponRange;
+            currentState.attackSpeedFlat       += totals.attackSpeed;
+            currentState.bonusHealthRegenFlat  += totals.healthRegen;
+            currentState.bonusEnergyRegenFlat  += totals.energyRegen;
+            currentState.dashHaste             += totals.dashHaste;
+            currentState.bonusCritChanceFlat += totals.critChance;
+            currentState.bonusLuckFlat         += totals.luck;
+            currentState.abilityHaste          += totals.abilityHaste;
         });
     }
 
@@ -1869,27 +2217,27 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         switch (entry.statType)
         {
             case StatType.MaxHealth:
-                { float d = entry.value * multiplier; bonusMaxHealthFlat += d; delta.maxHealth += d; break; }
+                { float d = entry.value * multiplier; currentState.bonusMaxHealthFlat += d; delta.maxHealth += d; break; }
             case StatType.Strength:
-                { float d = entry.value * multiplier; bonusStrengthFlat += d; delta.strength += d; break; }
+                { float d = entry.value * multiplier; currentState.bonusStrengthFlat += d; delta.strength += d; break; }
             case StatType.MoveSpeed:
-                { float d = entry.value * multiplier; bonusMoveSpeedFlat += d; delta.moveSpeed += d; break; }
+                { float d = entry.value * multiplier; currentState.bonusMoveSpeedFlat += d; delta.moveSpeed += d; break; }
             case StatType.WeaponRange:
-                { float d = entry.value; bonusWeaponRangeFlat += d; delta.weaponRange += d; break; }
+                { float d = entry.value; currentState.bonusWeaponRangeFlat += d; delta.weaponRange += d; break; }
             case StatType.AttackSpeed:
-                { float d = entry.value * 0.01f * baseAttackSpeed * multiplier; attackSpeedFlat += d; delta.attackSpeed += d; break; }
+                { float d = entry.value * 0.01f * baseAttackSpeed * multiplier; currentState.attackSpeedFlat += d; delta.attackSpeed += d; break; }
             case StatType.HealthRegen:
-                { float d = entry.value * multiplier; bonusHealthRegenFlat += d; delta.healthRegen += d; break; }
+                { float d = entry.value * multiplier; currentState.bonusHealthRegenFlat += d; delta.healthRegen += d; break; }
             case StatType.EnergyRegen:
-                { float d = entry.value * multiplier; bonusEnergyRegenFlat += d; delta.energyRegen += d; break; }
+                { float d = entry.value * multiplier; currentState.bonusEnergyRegenFlat += d; delta.energyRegen += d; break; }
             case StatType.DashHaste:
-                { float d = entry.value * multiplier; dashHaste += d; delta.dashHaste += d; break; }
+                { float d = entry.value * multiplier; currentState.dashHaste += d; delta.dashHaste += d; break; }
             case StatType.CritChance:
-                { float d = entry.value * 0.01f * multiplier; bonusCritChanceFlat += d; delta.critChance += d; break; }
+                { float d = entry.value * 0.01f * multiplier; currentState.bonusCritChanceFlat += d; delta.critChance += d; break; }
             case StatType.Luck:
-                { float d = entry.value * multiplier; bonusLuckFlat += d; delta.luck += d; break; }
+                { float d = entry.value * multiplier; currentState.bonusLuckFlat += d; delta.luck += d; break; }
             case StatType.AbilityHaste:
-                { float d = entry.value * multiplier; abilityHaste += d; delta.abilityHaste += d; break; }
+                { float d = entry.value * multiplier; currentState.abilityHaste += d; delta.abilityHaste += d; break; }
         }
     }
 
@@ -1981,18 +2329,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // every weapon just reads the current value fresh each tick.
     public void SetWeaponsDisabled(bool value) => currentState.weaponsDisabled = value;
 
-    // Plain, not State — reset to false right before every _onLethalDamageTaken.Invoke() call and read
-    // immediately after, all within the same synchronous TakeDamage() call. Never persists across separate
-    // calls, so this is a same-call communication channel, not an accumulating flag — safe regardless of
-    // resimulation.
-    private bool _lethalDamagePrevented;
+    // In State, not a plain field — reset to false right before every _onLethalDamageTaken.Invoke() call and
+    // read immediately after, all within the same synchronous TakeDamage() call, so it was never a
+    // resimulation-safety risk on its own (same-call communication channel, not a cross-tick accumulator).
+    // Migrated anyway for consistency with the rest of this class.
+    private bool lethalDamagePrevented { get => currentState.lethalDamagePrevented; set => currentState.lethalDamagePrevented = value; }
 
     // Called by a death-prevention listener (e.g. ShieldDamageReductionAugment), synchronously from inside
     // its own _onLethalDamageTaken callback, to flag that the lethal hit currently being processed by
     // TakeDamage should instead leave the player at 1 health. Calling this outside that callback (i.e. any
     // time TakeDamage isn't mid-resolution of a lethal hit) has no effect — the flag is only ever read once,
     // immediately after the event that gives it meaning.
-    public void PreventLethalDamage() => _lethalDamagePrevented = true;
+    public void PreventLethalDamage() => lethalDamagePrevented = true;
 
     // Instantly refills shield to full and fires the same recharge-edge event the natural Simulate()-driven
     // regen does (only if it was actually broken) — used by effects like ShieldDamageReductionAugment's
@@ -2043,11 +2391,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
                 // Gives any listener (e.g. a death-prevention augment) a chance to call
                 // PreventLethalDamage() synchronously, right here, before this damage is actually applied —
                 // see that method's own doc comment.
-                _lethalDamagePrevented = false;
+                lethalDamagePrevented = false;
                 _onLethalDamageTaken.Invoke();
             }
 
-            if (wouldBeLethal && _lethalDamagePrevented)
+            if (wouldBeLethal && lethalDamagePrevented)
                 currentState.health = 1f;
             else
                 currentState.health -= damage;

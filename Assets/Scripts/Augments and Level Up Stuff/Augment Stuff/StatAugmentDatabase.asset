@@ -16,60 +16,60 @@ MonoBehaviour:
   - statType: 0
     displayName: Max Health
     color: {r: 0, g: 1, b: 0, a: 1}
-    value: 5
+    value: 10
     prependText: +
     appendText: 
   - statType: 5
     displayName: Health Regen
     color: {r: 0.49019608, g: 1, b: 0, a: 1}
-    value: 0.25
+    value: 0.5
     prependText: +
     appendText: 
   - statType: 2
     displayName: Move Speed
     color: {r: 1, g: 1, b: 1, a: 1}
-    value: 0.25
+    value: 0.5
     prependText: +
     appendText: 
   - statType: 4
     displayName: Attack Speed
     color: {r: 1, g: 0, b: 0.3137255, a: 1}
-    value: 5
+    value: 10
     prependText: +
     appendText: '%'
   - statType: 9
     displayName: Crit Chance
     color: {r: 1, g: 0, b: 0, a: 1}
-    value: 5
+    value: 10
     prependText: +
     appendText: '%'
   - statType: 7
     displayName: Energy Regen
     color: {r: 1, g: 1, b: 0, a: 1}
-    value: 1
+    value: 2
     prependText: +
     appendText: 
   - statType: 8
     displayName: Dash Haste
     color: {r: 0, g: 1, b: 1, a: 1}
-    value: 5
+    value: 10
     prependText: +
     appendText: 
   - statType: 3
     displayName: Range
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 0.5
+    value: 1
     prependText: +
     appendText: 
   - statType: 19
     displayName: Luck
     color: {r: 0, g: 1, b: 0.5294118, a: 1}
-    value: 5
+    value: 10
     prependText: +
     appendText: 
   - statType: 24
     displayName: Ability Haste
     color: {r: 1, g: 0.7058824, b: 1, a: 1}
-    value: 5
+    value: 10
     prependText: +
     appendText: 

@@ -95,7 +95,7 @@ MonoBehaviour:
   icon: {fileID: 21300000, guid: f2c8a7fb8497a4746b04f47c4f7d2a9a, type: 3}
   abilityName: <color=#3278FF>Ability:\nFocus Fire</color>
   description: 'Fire continuously at your cursor for <color=#FFA000>3 seconds</color>
-    with <color=#FFA000>75% reduced Fire Rate</color>.
+    with <color=#FFA000>50% reduced Fire Rate</color>.
 
     <color=#FFBE50><i>Ability
     Power reduces the Fire Rate Penalty and increases the Duration</i></color>
@@ -108,7 +108,7 @@ MonoBehaviour:
   tags: []
   activeSurgeBlock: 0
   duration: 3
-  fireRatePenaltyPercent: 0.75
+  fireRatePenaltyPercent: 0.5
   recastBlockDuration: 0.25
 --- !u!114 &-8620584594776125514
 MonoBehaviour:

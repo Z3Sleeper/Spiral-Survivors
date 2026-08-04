@@ -212,6 +212,9 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         if (_stats == null) { state.expired = true; return; } // shouldn't happen — Launch() always sets it
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
+        Vector3 prevPos = transform.position;
+        Vector3 startDirection = state.direction;
+
         // Continuous homing for the return leg only — re-aims at the caster's LIVE position every tick
         // before this tick's own movement below, so it can't miss a caster who keeps moving after the
         // turnaround (see class doc comment). The outbound leg never hits this — direction there stays
@@ -222,40 +225,75 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
             if (toPlayer != Vector3.zero) state.direction = toPlayer.normalized;
         }
 
-        Vector3 prevPos = transform.position;
-        Vector3 step    = state.direction * (_speed * delta);
-        transform.position = prevPos + step;
-        state.distanceTravelled += step.magnitude;
-        state.spinAngle = Mathf.Repeat(state.spinAngle + spinSpeed * delta, 360f);
-        // Base facing (still tracks the original throw direction, never retargeted) with the tumble layered
-        // on top around the local up axis — applied to the actual root transform, so the boxcast below sweeps
-        // with the spun orientation too (see spinSpeed's own doc comment).
-        transform.rotation = Quaternion.LookRotation(state.direction) * Quaternion.AngleAxis(state.spinAngle, Vector3.up);
+        float totalDist = _speed * delta;
 
-        float dist = step.magnitude;
-        if (dist > 0.0001f)
+        // A single straight sweep for the whole tick assumes the heading barely changed since last tick —
+        // always true for the outbound leg (direction there never changes at all, so angleDelta is always 0
+        // below) but not for the return leg's continuous re-aim: the CLOSER the axe gets to a moving caster,
+        // the more the bearing to them can swing in one tick (the same lateral caster movement produces a
+        // much bigger angular swing at short range than at long range) — exactly the situation near the end
+        // of the return leg, right where enemies are most likely to be clustered around the caster. A big
+        // enough swing means this tick's straight segment simply never travels through the space the OLD
+        // heading was aimed at, silently skipping anything sitting near that pivot — this was the actual
+        // cause of "the return trip passes through enemies without dealing damage." Subdividing into
+        // sub-steps that gradually slerp from the old heading to the new one closes that gap — same
+        // mitigation SweepMath.ComputeSubArcCount already provides for WeaponMeleePD/WeaponAxePD's own orbit
+        // sweep, reused here since the underlying problem (a straight chord skipping part of the true path)
+        // is the same shape even though the path itself isn't a circular arc.
+        float angleDelta = state.returning ? Vector3.Angle(startDirection, state.direction) : 0f;
+        int   subSteps   = SweepMath.ComputeSubArcCount(angleDelta);
+
+        Vector3  segStart = prevPos;
+        IEnemyPD hitEnemy = null;
+        float    radius   = sphereRadius * transform.lossyScale.x;
+
+        for (int i = 1; i <= subSteps; i++)
         {
-            float radius = sphereRadius * transform.lossyScale.x;
-            int n = Physics.SphereCastNonAlloc(prevPos, radius, step / dist, _sweepResults, dist, CombatLayerMasks.EnemyHurtboxMask);
+            Vector3 stepDir = subSteps == 1
+                ? state.direction
+                : Vector3.Slerp(startDirection, state.direction, i / (float)subSteps);
+            Vector3 segEnd = segStart + stepDir * (totalDist / subSteps);
 
-            IEnemyPD hitEnemy = null;
-            float bestHitDist = float.MaxValue;
-            for (int i = 0; i < n; i++)
+            // Skips the query once a hit's already been found this tick (still finishes advancing segStart
+            // through the remaining sub-steps below, unconditionally — always pierces, so movement itself
+            // never depends on whether/where a hit landed, see class doc comment) — no reason to keep
+            // spending physics queries once this tick's one hit is already locked in.
+            if (hitEnemy == null)
             {
-                var enemy = _sweepResults[i].collider.GetComponent<IEnemyPD>();
-                if (enemy == null || enemy._isDead || _hitTargets.Contains(enemy)) continue;
-                if (_sweepResults[i].distance < bestHitDist)
+                Vector3 sweep    = segEnd - segStart;
+                float   segDist  = sweep.magnitude;
+                if (segDist > 0.0001f)
                 {
-                    bestHitDist = _sweepResults[i].distance;
-                    hitEnemy = enemy;
+                    int n = Physics.SphereCastNonAlloc(segStart, radius, sweep / segDist, _sweepResults, segDist, CombatLayerMasks.EnemyHurtboxMask);
+                    float bestHitDist = float.MaxValue;
+                    for (int k = 0; k < n; k++)
+                    {
+                        var enemy = _sweepResults[k].collider.GetComponent<IEnemyPD>();
+                        if (enemy == null || enemy._isDead || _hitTargets.Contains(enemy)) continue;
+                        if (_sweepResults[k].distance < bestHitDist)
+                        {
+                            bestHitDist = _sweepResults[k].distance;
+                            hitEnemy = enemy;
+                        }
+                    }
                 }
             }
 
-            // Always pierces — see class doc comment — so a hit never expires the projectile here; only
-            // the return-trip logic below does.
-            if (hitEnemy != null)
-                ProcessHit(hitEnemy);
+            segStart = segEnd;
         }
+
+        transform.position = segStart;
+        state.distanceTravelled += totalDist;
+        state.spinAngle = Mathf.Repeat(state.spinAngle + spinSpeed * delta, 360f);
+        // Base facing (still tracks the original throw direction, never retargeted) with the tumble layered
+        // on top around the local up axis — applied to the actual root transform, so the sweep above sweeps
+        // with the spun orientation too (see spinSpeed's own doc comment).
+        transform.rotation = Quaternion.LookRotation(state.direction) * Quaternion.AngleAxis(state.spinAngle, Vector3.up);
+
+        // Always pierces — see class doc comment — so a hit never expires the projectile here; only
+        // the return-trip logic below does.
+        if (hitEnemy != null)
+            ProcessHit(hitEnemy);
 
         if (state.returning)
         {

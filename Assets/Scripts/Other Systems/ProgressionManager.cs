@@ -5,7 +5,7 @@ using UnityEngine;
 
 public static class ProgressionManager
 {
-    private const int    CurrentSaveVersion = 4;
+    private const int    CurrentSaveVersion = 5;
     private const string SaveFileName       = "progression.json";
 
     private const int   BaseFee       = 50;
@@ -13,49 +13,49 @@ public static class ProgressionManager
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
     private static readonly int[] StrengthCosts =
-        { 0, 500, 1000 };
+        { 0, 250, 500 };
     private static readonly int[] DashChargesCosts =
         { 0, 250, 500, 750 };
     private static readonly int[] LuckCosts =
-        { 0, 500, 1000, 2000, 2500 };
+        { 0, 250, 500, 750 };
     private static readonly int[] EnergyRegenCosts =
-        { 0, 500, 1000 };
+        { 0, 250, 500 };
     private static readonly int[] DashHasteCosts =
         { 0, 250, 500, 750 };
     private static readonly int[] CritChanceCosts =
         { 0, 250, 500, 750 };
-    private static readonly int[] MaxShieldCosts =
-        { 0, 1000, 2000 };
     private static readonly int[] HealthRegenCosts =
         { 0, 500, 1000, 1500 };
+    private static readonly int[] MaxShieldCosts =
+        { 0, 1000, 2000 };
+    private static readonly int[] WeaponRangeCosts =
+        { 500, 750, 1000, 1250 };
     private static readonly int[] MaxHealthCosts =
-        { 500, 1000, 1500, 2000, 2500 };
+        { 500, 750, 1000, 1250, 1500 };
     private static readonly int[] RevivePowerCosts =
         { 500, 750, 1000, 1250, 1500 };
-    private static readonly int[] CollectionRadiusCosts =
-        { 500, 1000, 1500, 2000, 2500 };
     private static readonly int[] MaxEnergyCosts =
-        { 500, 1000, 1500, 2000, 2500 };
-    private static readonly int[] WeaponRangeCosts =
-        { 500, 1000 };
+        { 500, 750, 1000, 1250, 1500 };
+    private static readonly int[] CollectionRadiusCosts =
+        { 500, 750, 1000, 1250, 1500 };
     private static readonly int[] ReviveTimePenaltyCosts =
-        { 1000, 2000 };
+        { 1000, 1500 };
     private static readonly int[] AttackSpeedCosts =
-        { 1500, 3000 };
+        { 1000, 1500, 2000, 2500 };
     private static readonly int[] ShieldRechargeTimeCosts =
-        { 1500, 3000, 4500, 6000 };
+        { 1500, 2000, 2500, 3000 };
     private static readonly int[] MoveSpeedCosts =
-        { 2000, 4000 };
+        { 2000, 3000 };
     private static readonly int[] LevelUpStatsCosts =
-        { 4000, 8000, 12000, 16000, 20000, 24000, 28000, 32000, 36000, 40000 };
+        { 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000, 22000 };
     private static readonly int[] XPMultiplierCosts =
-        { 8000, 16000, 24000, 32000, 40000, 48000, 56000, 64000, 72000, 80000 };
+        { 8000, 12000, 16000, 20000, 24000, 28000, 32000, 36000, 40000, 44000 };
     private static readonly int[] LevelUpOptionsCosts =
-        { 10000, 20000 };
+        { 10000, 15000 };
     private static readonly int[] StrengthPerLevelCosts =
         { 100000, 150000, 200000, 250000, 300000 };
-    private static readonly int[] StrengthPercentCosts =
-        { 250000, 500000, 750000, 1000000, 1250000 };
+    private static readonly int[] TotalStrengthPercentCosts =
+        { 250000, 375000, 500000, 625000, 750000 };
 
     private static string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
 
@@ -176,7 +176,7 @@ public static class ProgressionManager
         StatType.XPMultiplier      => XPMultiplierCosts,
         StatType.LevelUpOptions    => LevelUpOptionsCosts,
         StatType.LevelUpStats       => LevelUpStatsCosts,
-        StatType.StrengthPercent     => StrengthPercentCosts,
+        StatType.TotalStrengthPercent => TotalStrengthPercentCosts,
         StatType.Luck                => LuckCosts,
         StatType.StrengthPerLevel    => StrengthPerLevelCosts,
         StatType.MaxShield           => MaxShieldCosts,
@@ -208,11 +208,11 @@ public static class ProgressionManager
         StatType.Strength          => 5f,
         StatType.MaxHealth         => 10f,
         StatType.MoveSpeed         => 1f,
-        StatType.AttackSpeed       => 15f,
+        StatType.AttackSpeed       => 10f,
         StatType.HealthRegen       => 0.5f,
         StatType.EnergyRegen       => 2f,
         StatType.DashHaste         => 10f,
-        StatType.CritChance        => 5f,
+        StatType.CritChance        => 10f,
         StatType.WeaponRange       => 1f,
         StatType.CollectionRadius  => 1f,
         StatType.MaxEnergy         => 10f,
@@ -222,9 +222,9 @@ public static class ProgressionManager
         StatType.XPMultiplier      => 10f,
         StatType.LevelUpOptions    => 1f,
         StatType.LevelUpStats       => 10f,
-        StatType.StrengthPercent     => 0.1f,
+        StatType.TotalStrengthPercent => 0.1f,
         StatType.Luck                => 10f,
-        StatType.StrengthPerLevel    => 0.5f,
+        StatType.StrengthPerLevel    => 1f,
         StatType.MaxShield           => 0.05f,
         StatType.ShieldRechargeTime  => -0.5f,
         _                           => 0f
@@ -357,7 +357,7 @@ public static class ProgressionManager
         StatType.XPMultiplier      => "XP Multiplier",
         StatType.LevelUpOptions    => "Level Up Options",
         StatType.LevelUpStats       => "Level Up Stats",
-        StatType.StrengthPercent     => "% Strength",
+        StatType.TotalStrengthPercent => "Total Strength %",
         StatType.Luck                => "Luck",
         StatType.StrengthPerLevel    => "Strength Per Level",
         StatType.MaxShield           => "Max Shield",

@@ -76,6 +76,9 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     [Header("XP")]
     [SerializeField] private float baseXPToNextLevel = 20f;
     [SerializeField] private float xpLevelStep = 5f;
+    // How many levels the xpLevelStep multiplier stays flat for before increasing by 1 (see AwardXP() —
+    // e.g. 5 means levels 0-4 use step*1, 5-9 use step*2, 10-14 use step*3, etc.).
+    [SerializeField] private int xpLevelStepInterval = 5;
 
     [Header("Co-op Difficulty")]
     // The single shared "how much harder is co-op" knob: divides earned XP per extra player here, AND
@@ -313,7 +316,7 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         while (currentState.currentXP >= currentState.xpToNextLevel)
         {
             currentState.currentXP -= currentState.xpToNextLevel;
-            currentState.xpToNextLevel += xpLevelStep * ((currentState.level / 5) + 1);
+            currentState.xpToNextLevel += xpLevelStep * ((currentState.level / xpLevelStepInterval) + 1);
             currentState.level++;
         }
     }

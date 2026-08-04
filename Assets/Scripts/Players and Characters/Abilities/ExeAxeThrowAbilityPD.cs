@@ -51,15 +51,25 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // spawnOffset, but not a flat constant: the projectile's own visual model grows with WeaponRange too
     // (see ExeAxeThrowProjectilePD's own rangeScaleTarget), so a fixed offset either buries it back inside
     // the caster at high range or sits oddly close at low range. spawnOffsetBase is the flat starting
-    // clearance; spawnOffsetRangeMultiplier scales on top of that with WeaponRange, same "base + range *
-    // multiplier" shape WeaponBasePD.OrbitalPosition's own radius formula already uses for the equipped
-    // weapon's own clearance (WeaponRadius + character clearance + halfRange). Character Size is also
-    // folded in at Activate() (see its own comment) — same _stats.transform.lossyScale.x * 0.5f clearance
-    // term OrbitalPosition's own radius formula uses, so a bigger caster (via Size augments) doesn't spawn
-    // the throw back inside their own now-bigger body. Both consts below are confirmed-good, tuned-in-play
-    // values (0 base, 0.5x range) — not Inspector fields anymore since there's nothing left to tune.
-    private const float spawnOffsetBase            = 0f;
-    private const float spawnOffsetRangeMultiplier = 0.5f;
+    // clearance, scaled by the caster's own bonusSizePercent directly (a bigger caster via Size augments
+    // needs proportionally more clearance so the throw doesn't spawn back inside their now-bigger body) —
+    // reads the stat itself, not _stats.transform.lossyScale.x (numerically identical for a player root with
+    // no scaled parent, since CharacterStatsPD.AddSizePercent sets transform.localScale = Vector3.one *
+    // bonusSizePercent uniformly, but the stat is the direct, canonical source rather than reading it back
+    // out of the transform). spawnOffsetRangeMultiplier scales separately, additively, with WeaponRange —
+    // same "base + range * multiplier" shape WeaponBasePD.OrbitalPosition's own radius formula uses for the
+    // equipped weapon's own clearance (WeaponRadius + character clearance + halfRange).
+    //
+    // spawnOffsetRangeMultiplier pulled in from 0.5 to 0.375 (25% less) — at high WeaponRange the old 0.5x
+    // pushed the spawn point (and therefore the projectile's own sphere hit-check, which only ever starts
+    // sweeping FROM that point onward — see ExeAxeThrowProjectilePD.LateSimulate()) far enough out in front
+    // of the caster that anything standing close to the caster but slightly off the exact throw-direction
+    // line sat in the gap between them and never got swept at all. Not pulled all the way back to 0 — some
+    // forward clearance is still needed so the projectile doesn't spawn overlapping the caster's own
+    // hurtbox; this just shrinks the blind gap rather than eliminating the clearance's whole purpose. Not
+    // Inspector fields — these are tuned-in-play values, not meant to vary per prefab.
+    private const float spawnOffsetBase            = 0.5f;
+    private const float spawnOffsetRangeMultiplier = 0.375f;
 
     [Header("Projectile")]
     [SerializeField] private GameObject projectilePrefab;
@@ -126,10 +136,10 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
                 : _stats.WeaponRange;
             float maxRange = trueReach * maxRangeMultiplier;
 
-            // Character-clearance term (same as WeaponBasePD.OrbitalPosition's own radius formula) so a
-            // bigger caster (Size augments) doesn't spawn the throw back inside their own now-bigger body.
-            float spawnOffset = spawnOffsetBase + _stats.WeaponRange * spawnOffsetRangeMultiplier
-                + _stats.transform.lossyScale.x * 0.5f;
+            // spawnOffsetBase scales with the caster's own Size (bonusSizePercent) — see that field's own
+            // doc comment — so a bigger caster (Size augments) doesn't spawn the throw back inside their
+            // own now-bigger body.
+            float spawnOffset = spawnOffsetBase * _stats.bonusSizePercent + _stats.WeaponRange * spawnOffsetRangeMultiplier;
             Vector3 spawnPos = origin + throwDir * spawnOffset;
 
             var id = hierarchy.Create(projectilePrefab, spawnPos, Quaternion.LookRotation(throwDir));

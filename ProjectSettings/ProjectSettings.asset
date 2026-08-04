@@ -936,10 +936,10 @@ PlayerSettings:
   captureStartupLogs: {}
   activeInputHandler: 2
   windowsGamepadBackendHint: 0
-  cloudProjectId: 396c28dd-cb53-493f-90a1-2581cdd577ae
+  cloudProjectId: 65244dfe-56bc-4ec8-9402-9ca4eadffc7c
   framebufferDepthMemorylessMode: 0
   qualitySettingsNames: []
-  projectName: Spiral Survivors 2026-05-11_18-08-35
+  projectName: Spiral Survivors
   organizationId: z3sleeper
   cloudEnabled: 0
   legacyClampBlendShapeWeights: 0

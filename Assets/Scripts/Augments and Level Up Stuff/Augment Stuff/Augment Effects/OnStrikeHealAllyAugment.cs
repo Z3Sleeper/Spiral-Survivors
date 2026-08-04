@@ -37,7 +37,7 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
     // HealPower and running heal-ally effects at once).
     private void OnAllyStrike(AllyStrikeData data)
     {
-        float baseHeal = Stats.HealthRegen * healthRegenMultiplier * data.onHitPower;
+        float baseHeal = 8f + (Stats.HealthRegen * healthRegenMultiplier * data.onHitPower);
         data.ally.HealFromAlly(baseHeal, Stats);
         Stats.Heal(baseHeal);
     }

@@ -26,7 +26,7 @@ public class UpgradePanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI reviveTimePenaltyButtonText;
     [SerializeField] private TextMeshProUGUI xpMultiplierButtonText;
     [SerializeField] private TextMeshProUGUI levelUpOptionsButtonText;
-    [SerializeField] private TextMeshProUGUI strengthPercentButtonText;
+    [SerializeField] private TextMeshProUGUI totalStrengthPercentButtonText;
     [SerializeField] private TextMeshProUGUI luckButtonText;
     [SerializeField] private TextMeshProUGUI strengthPerLevelButtonText;
     [SerializeField] private TextMeshProUGUI maxShieldButtonText;
@@ -90,7 +90,7 @@ public class UpgradePanel : MonoBehaviour
         RefreshButtonText(StatType.ReviveTimePenalty,  "Revive Time Penalty", reviveTimePenaltyButtonText);
         RefreshButtonText(StatType.XPMultiplier,       "XP",                  xpMultiplierButtonText);
         RefreshButtonText(StatType.LevelUpOptions,      "Level Up Options",    levelUpOptionsButtonText);
-        RefreshButtonText(StatType.StrengthPercent,     "% Strength",            strengthPercentButtonText);
+        RefreshButtonText(StatType.TotalStrengthPercent, "Total Strength %",     totalStrengthPercentButtonText);
         RefreshButtonText(StatType.Luck,                "Luck",                luckButtonText);
         RefreshButtonText(StatType.StrengthPerLevel,    "Strength Per Level",       strengthPerLevelButtonText);
         RefreshButtonText(StatType.MaxShield,            "Max Shield",             maxShieldButtonText);
@@ -125,7 +125,7 @@ public class UpgradePanel : MonoBehaviour
         StatType.ShieldRechargeTime => "s",
         StatType.XPMultiplier      => "%",
         StatType.LevelUpStats        => "%",
-        StatType.StrengthPercent     => "%",
+        StatType.TotalStrengthPercent => "%",
         StatType.RevivePower       => "%",
         _                          => ""
     };
@@ -135,7 +135,7 @@ public class UpgradePanel : MonoBehaviour
         int tier      = ProgressionManager.GetBaseStatTier(stat);
         int maxTier   = ProgressionManager.GetMaxBaseTier(stat);
         float perTier = ProgressionManager.GetBaseStatValuePerTier(stat);
-        float displayScale = (stat == StatType.RevivePower || stat == StatType.StrengthPercent || stat == StatType.MaxShield) ? 100f : 1f;
+        float displayScale = (stat == StatType.RevivePower || stat == StatType.TotalStrengthPercent || stat == StatType.MaxShield) ? 100f : 1f;
         float current = Mathf.Abs(perTier * tier)   * displayScale;
         float max     = Mathf.Abs(perTier * maxTier) * displayScale;
         float absPer  = Mathf.Abs(perTier)           * displayScale;
@@ -146,7 +146,7 @@ public class UpgradePanel : MonoBehaviour
         return stat switch
         {
             StatType.LevelUpStats      => $"Increases stat gains from level up rewards by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.Strength          => $"Increases your Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nWeapon Strikes randomly deal between 80% to 120% of your Strength, influenced by Luck.",
+            StatType.Strength          => $"Increases your Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nWeapon Strikes randomly deal between 50% to 150% of your Strength, influenced by Luck.",
             StatType.MaxHealth         => $"Increases your Max Health by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.MoveSpeed         => $"Increases your Move Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.AttackSpeed       => $"Increases your Weapon Attack Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nAttack Speed is equivalent to revolutions per second.",
@@ -162,7 +162,7 @@ public class UpgradePanel : MonoBehaviour
             StatType.ReviveTimePenalty => $"(Multiplayer Only) Reduces your Revive Time Penalty per death by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.XPMultiplier      => $"Increases your XP Multiplier by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nTeam XP multiplier is the additively combined XP multiplier of your party divided by the number of players.",
             StatType.LevelUpOptions      => $"Increases your level up reward options by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.StrengthPercent     => $"Increases your Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
+            StatType.TotalStrengthPercent => $"Increases your Total Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.Luck                => $"Increases your Luck by {absPer} per tier ({current}/{max}).\nEach 1 Luck tightens variance towards the maximum roll by 1%.",
             StatType.StrengthPerLevel    => $"Increases your Strength per Level by {absPer} per tier ({current}/{max}).",
             StatType.MaxShield           => $"Increases your Max Shield by {absPer}{unit} of your Max Health ({sign}{current}{unit}/{sign}{max}{unit}).\nShield takes 5 seconds to fully recharge, reduced by Shield Recharge Time Reductions.",
@@ -226,7 +226,7 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeReviveTimePenaltyClicked()    { Select(StatType.ReviveTimePenalty); }
     public void OnUpgradeXPMultiplierClicked()         { Select(StatType.XPMultiplier); }
     public void OnUpgradeLevelUpOptionsClicked()        { Select(StatType.LevelUpOptions); }
-    public void OnUpgradeStrengthPercentClicked()      { Select(StatType.StrengthPercent); }
+    public void OnUpgradeTotalStrengthPercentClicked() { Select(StatType.TotalStrengthPercent); }
     public void OnUpgradeLuckClicked()                 { Select(StatType.Luck); }
     public void OnUpgradeStrengthPerLevelClicked()     { Select(StatType.StrengthPerLevel); }
     public void OnUpgradeMaxShieldClicked()            { Select(StatType.MaxShield); }

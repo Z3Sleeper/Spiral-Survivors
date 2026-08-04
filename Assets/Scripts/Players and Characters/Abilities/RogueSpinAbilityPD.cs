@@ -42,13 +42,16 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // ticking, all of it. Also the distance-vs-speed pairing for the leap-dash itself (see
     // PlayerControllerPD.StartSpecialMovement's own comment): distance = dashSpeed * duration.
     [SerializeField] private float duration = 0.5f;
-    // Small extra invincibility window tacked on AFTER the active window itself ends (see Simulate()'s own
-    // end-of-active block) — landing in the middle of a mob is the whole point of this ability, so this
-    // gives a beat to react (e.g. dash away, which is already unlocked the instant the active window ends)
-    // without being punished by a stray hit landing on the exact same tick invincibility would otherwise
-    // drop. Deliberately NOT added to `duration` itself/currentState.activeTimer — AbilityIsActive/IsActive
-    // (and therefore the lockout, cooldown-start, etc.) all still flip the instant the real active window
-    // ends, same as before this existed; only CharacterStatsPD's own invincibility timer gets extended.
+    // Small extra invincibility window tacked on AFTER the active window itself ends — landing in the middle
+    // of a mob is the whole point of this ability, so this gives a beat to react (e.g. dash away, which is
+    // already unlocked the instant the active window ends) without being punished by a stray hit landing
+    // right as the leap itself ends. Folded into the SAME GrantInvincibility(duration + grace) call at cast
+    // time (see Activate()) rather than a second call at end-of-active — two separate calls each round their
+    // own `duration / _currentDelta` tick count independently, and the first one's rounding could hit 0 a
+    // tick before activeTimer itself did, leaving a one-tick gap in the invincibility shell before the second
+    // call re-armed it. One combined grant has no seam to gap at. Deliberately NOT added to `duration` itself/
+    // currentState.activeTimer — AbilityIsActive/IsActive (and therefore the lockout, cooldown-start, etc.)
+    // still flip the instant the real active window ends; only the invincibility timer covers the extra beat.
     [SerializeField] private float postActiveInvincibilityGrace = 0.1f;
     // Flat units/sec speed for the leap-dash itself — NOT derived from the player's own MoveSpeed (same
     // "flat, not scaling with MoveSpeed buffs" reasoning as PlayerControllerPD.DashSpeed), owned/tunable
@@ -227,7 +230,9 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         _stats.SetSpecialSpinRate(spinRate);
         _stats.SetUseSpecialSpinRate(true);
 
-        _stats.GrantInvincibility(duration);
+        // Combined grant — covers the active window AND the post-active grace in one call, see
+        // postActiveInvincibilityGrace's own doc comment for why this isn't split into two calls.
+        _stats.GrantInvincibility(duration + postActiveInvincibilityGrace);
         _stats.SetWeaponsDisabled(true);
         // Separate from SetWeaponsDisabled — this one only ever affects WeaponBasePD.OrbitalPosition's
         // orbit-plane shape (see its own doc comment), never damage. Kept distinct so a future effect can
@@ -293,12 +298,8 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
             _stats?.SetOrbitFacingYaw(0f);
             _stats?.SetSpecialHeightOffset(0f);
             _controller?.NotifyDashEnded();
-            // GrantInvincibility takes the longer of its current remaining timer and this new request (see
-            // its own doc comment), so this only ever extends — never shortens — whatever's left of the
-            // original GrantInvincibility(duration) call from Activate(), which should already be at/near
-            // zero by this exact tick. See postActiveInvincibilityGrace's own doc comment for why this is
-            // deliberately separate from the active window itself.
-            _stats?.GrantInvincibility(postActiveInvincibilityGrace);
+            // No separate GrantInvincibility call here — the combined duration + postActiveInvincibilityGrace
+            // grant already made at cast time (see Activate()) covers this tail on its own.
             // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
             // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.
             if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
