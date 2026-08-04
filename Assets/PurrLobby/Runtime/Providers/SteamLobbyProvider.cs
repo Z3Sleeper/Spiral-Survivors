@@ -169,8 +169,14 @@ namespace PurrLobby.Providers
 
         public Task<List<FriendUser>> GetFriendsAsync(LobbyManager.FriendFilter filter)
         {
+            // Was `return default;` — for a Task<T> that's a genuinely null Task object, not just an empty
+            // result, unlike every other IsSteamClientAvailable-guarded method in this file (which all
+            // correctly return Task.FromResult(new List<...>())). FriendsList.Update() polls this every
+            // frame and awaits the result directly, so hitting this path threw a live
+            // NullReferenceException ("Object reference not set to an instance of an object") the moment
+            // Steam wasn't available for even one frame (e.g. mid re-init after a real SteamAPI.Shutdown()).
             if (!IsSteamClientAvailable)
-                return default;
+                return Task.FromResult(new List<FriendUser>());
 
             var friends = new List<FriendUser>();
             int friendCount = Steamworks.SteamFriends.GetFriendCount(Steamworks.EFriendFlags.k_EFriendFlagImmediate);
