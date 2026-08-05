@@ -325,6 +325,8 @@ public class CharacterSelectUI : MonoBehaviour
 
     public void OnRandomClicked()
     {
+        if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
+
         _isRandom = true;
         GameStartData.LocalCharacterIndex = UnityEngine.Random.Range(0, CharacterRegistry.instance.PrefabCount());
         _charSelections[GameStartData.LocalUserId] = -1;
@@ -431,6 +433,7 @@ public class CharacterSelectUI : MonoBehaviour
     public void OnReadyClicked()
     {
         if (lobbyManager == null) return;
+        if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
         _localIsReady = !_localIsReady;
         // Explicit value, not ToggleLocalReady() — that toggles based on the lobby provider's own mirrored
         // localLobbyUser.IsReady, a separate state source from _localIsReady above that can drift out of
@@ -487,6 +490,8 @@ public class CharacterSelectUI : MonoBehaviour
     // propagates back, same latency as everyone else's data in this screen.
     private void SelectColor(int index)
     {
+        if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
+
         if (lobbyManager != null)
         {
             var lobby = lobbyManager.CurrentLobby;
@@ -505,6 +510,14 @@ public class CharacterSelectUI : MonoBehaviour
 
     private void SelectCharacter(int index)
     {
+        // Locked out while LoadingScreen is up — covers both an ordinary match-start attempt (shown from
+        // LobbySceneController.OnAllReady/OnRoomUpdated through TryLoadGameScene) and the lobby-rebuild
+        // "kick" migration (RebuildLobbyExcludingFailed keeps it up for its whole sequence). A real logical
+        // guard, not just relying on the loading screen visually covering this panel, in case that ever
+        // fails to render for some reason — see LoadingScreen.IsShowing's own doc comment. Every other
+        // character-select button below guards the same way.
+        if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
+
         _isRandom = false;
         GameStartData.LocalCharacterIndex = index;
         _charSelections[GameStartData.LocalUserId] = index;

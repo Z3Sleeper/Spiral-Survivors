@@ -23537,9 +23537,9 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1097043115}
-        m_TargetAssemblyTypeName: PurrLobby.LobbyManager, PurrNetLobbySetup
-        m_MethodName: LeaveLobby
+      - m_Target: {fileID: 1797801074}
+        m_TargetAssemblyTypeName: LobbySceneController, Assembly-CSharp
+        m_MethodName: OnLeaveLobbyClicked
         m_Mode: 1
         m_Arguments:
           m_ObjectArgument: {fileID: 0}

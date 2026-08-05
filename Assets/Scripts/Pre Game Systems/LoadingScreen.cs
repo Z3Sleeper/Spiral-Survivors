@@ -11,6 +11,13 @@ public class LoadingScreen : MonoBehaviour
 
     public static LoadingScreen instance;
 
+    // Backed directly by the canvas's own active state (not a separate tracked bool) — a logical "are we
+    // currently blocking the player" signal that button-click guards check, independent of whatever
+    // rendering layer actually makes the canvas visible. If Show()/Hide() are ever called correctly but the
+    // canvas somehow fails to visually render for some other reason, this still correctly reflects the
+    // logical state and still blocks input — see CharacterSelectUI/LobbySceneController's button handlers.
+    public bool IsShowing => canvasGameObject != null && canvasGameObject.activeSelf;
+
     // Cycles 0..maxDots, wrapping back to 0 (bare "Loading") rather than resetting straight to maxDots —
     // just a plain incrementing counter, not predicted/networked state, since this is purely cosmetic and
     // every machine's own loading screen is local anyway.
