@@ -7,7 +7,9 @@ using UnityEngine;
 // PhantomBladePassiveAugment/PhantomBladeOnDashAugment) for 100%* unpenalized damage, plus the same +10%
 // Phantom Blade damage bonus every other family member grants. Subscribes to CharacterStatsPD._onDamaged
 // (fires from TakeDamage on any positive damage taken, excluding a killing blow) — per-owner-instance, same
-// cross-player-safety reasoning as every other Phantom Blade trigger in this family.
+// cross-player-safety reasoning as every other Phantom Blade trigger in this family. Scales off
+// DamageTakenData.preMitigationDamage deliberately, not postMitigationDamage — the retaliation should
+// reflect how hard the player was actually hit, not get diluted by their own shield/DamageReduction.
 public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamagedAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -37,11 +39,11 @@ public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamage
         if (Stats != null) Stats.RemoveDamagedListener(OnDamaged);
     }
 
-    private void OnDamaged(float amount)
+    private void OnDamaged(DamageTakenData data)
     {
         if (Stats == null || Stats.IsDead) return;
 
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, (damageMultiplier * amount));
+            Stats.transform.position, bladeCount, (damageMultiplier * data.preMitigationDamage));
     }
 }

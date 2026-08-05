@@ -444,6 +444,7 @@ public class LobbySceneController : MonoBehaviour
         _expectedPlayerCount = 0;
         _joinedPlayerIds.Clear();
         _expectedSteamIds.Clear();
+        GameStartData.HostColorAssignments.Clear();
         characterSelectPanel.SetActive(false);
         purrLobbyPanel.SetActive(false);
         mainMenuPanel.SetActive(true);
@@ -530,6 +531,18 @@ public class LobbySceneController : MonoBehaviour
             if (ulong.TryParse(m.Id, out ulong steamId))
                 _expectedSteamIds.Add(steamId);
 
+        // Server-authoritative color assignment (see GameStartData.HostColorAssignments' own doc comment):
+        // capture the host's own just-resolved Steam-ID-to-color map atomically, right here at match
+        // lock-in, so PlayerDataPD.SanitizeInput can assign each player's real color server-side instead of
+        // trusting whatever GameStartData.LocalColorIndex a client happened to have locally at this exact
+        // moment (which could still be stale/wrong for a slow-connecting client — the actual bug this
+        // replaces a whole confirm/kick handshake with).
+        var resolvedColors = CharacterSelectUI.instance?.ResolveColorAssignments(lobby);
+        GameStartData.HostColorAssignments.Clear();
+        if (resolvedColors != null)
+            foreach (var kvp in resolvedColors)
+                GameStartData.HostColorAssignments[kvp.Key] = kvp.Value;
+
         // TEMP diagnostic — cross-checking LobbyManager.ConfirmAllReadyStable's own logging: this is the
         // exact moment _expectedPlayerCount gets captured (host side), which is what TryLoadGameScene's own
         // gate is checked against. If a future repro shows the game loading with fewer players than actually
@@ -568,10 +581,42 @@ public class LobbySceneController : MonoBehaviour
         TryLoadGameScene();
     }
 
+    // Was a single, unretried StartClient() call — the host's own listen-server self-connect had none of
+    // the resilience ConnectToHostWithRetry() below already gives a REMOTE client's connection attempt.
+    // Live-observed cause: a transient native Steam networking stall (e.g. the
+    // "SteamnetworkingSockets service thread waited Nms for lock" assertions seen in real test logs) could
+    // make this one StartClient() call fail, permanently stranding the host at "server started, client
+    // none" — which is exactly broken, since a host is supposed to be BOTH its own server and its own
+    // client. Same 20-attempt/4s-timeout/1s-gap shape as ConnectToHostWithRetry(), just without that
+    // method's _connectingToHost bookkeeping (that field only matters for the remote-client reconnect-guard
+    // logic in OnRoomUpdated, not for the host's own self-connect). MatchStartWatchdog (20s) still catches
+    // a genuinely stuck case well before all 20 attempts would exhaust — this just gives a real transient
+    // hiccup a chance to recover instead of guaranteeing a stall.
     private IEnumerator StartClientDelayed(float delay = 1f)
     {
+        const int maxAttempts = 20;
+        const float attemptTimeout = 4f;
+
         yield return new WaitForSeconds(delay);
-        networkManager.StartClient();
+
+        for (int attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            networkManager.StartClient();
+
+            float elapsed = 0f;
+            while (elapsed < attemptTimeout && !networkManager.isClient)
+            {
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            if (networkManager.isClient)
+                yield break;
+
+            yield return new WaitForSeconds(1f);
+        }
+
+        Debug.LogError("[LobbySceneController] Host's own self-connect (StartClientDelayed) failed after all attempts.");
     }
 
     // TEMP diagnostic — logs NetworkManager's state ~1s after a reset attempt, to catch whether something

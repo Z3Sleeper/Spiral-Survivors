@@ -172,11 +172,14 @@ public class CharacterSelectUI : MonoBehaviour
     // colorRequest: prunes members who've left (freeing their color back up), auto-assigns anyone missing
     // an assignment (new joiners), and grants a pending request iff the requested color is actually free —
     // otherwise the requester silently keeps their current color until they request a different, free one.
-    private void ResolveColorAssignments(Lobby lobby)
+    // Returns the resolved map (whether or not it needed writing) so callers like
+    // LobbySceneController.OnAllReady can capture the exact just-resolved result atomically, with no
+    // re-fetch/staleness window. Returns null for a non-host call or if colorPalette isn't set up.
+    public Dictionary<string, int> ResolveColorAssignments(Lobby lobby)
     {
-        if (!lobby.IsOwner) return;
-        if (colorPalette == null || colorPalette.Count == 0) return;
-        if (!ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw)) return;
+        if (!lobby.IsOwner) return null;
+        if (colorPalette == null || colorPalette.Count == 0) return null;
+        if (!ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw)) return null;
         var lobbyCSteamID = new CSteamID(lobbyIdRaw);
 
         // originalAssignments is an unmutated snapshot of what was actually read — kept alongside the
@@ -236,6 +239,8 @@ public class CharacterSelectUI : MonoBehaviour
         // one real Steam write, closes that loop regardless of why `changed` thought something needed fixing.
         if (changed && !AssignmentsEqual(assignments, originalAssignments))
             SteamMatchmaking.SetLobbyData(lobbyCSteamID, ColorAssignmentsKey, SerializeColorAssignments(assignments));
+
+        return assignments;
     }
 
     public void RefreshFromLobby(Lobby lobby)

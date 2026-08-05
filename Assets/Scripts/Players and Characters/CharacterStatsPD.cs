@@ -1,9 +1,26 @@
 using System;
 using System.Collections.Generic;
 using PurrNet;
+using PurrNet.Modules;
 using PurrNet.Packing;
 using PurrNet.Prediction;
+using PurrNet.Steam;
 using UnityEngine;
+
+// Payload for CharacterStatsPD._onDamaged. Two distinct mitigation stages, not one blended number, since
+// different listeners legitimately want different ones — e.g. PhantomBladeOnDamagedAugment scales off
+// preMitigationDamage (the retaliation should reflect how hard the player was actually hit, not how well
+// their own defenses happened to blunt it), whereas a future "gain X per point of damage actually taken"
+// effect would want postMitigationDamage instead.
+public struct DamageTakenData
+{
+    // Raw incoming damage, before DamageReduction or shield absorption touch it at all.
+    public float preMitigationDamage;
+    // What's left after BOTH DamageReduction and shield absorption had their chance — the actual amount
+    // that goes on to affect health (modulo the separate death-save/PreventLethalDamage clamp, which isn't
+    // reflected here; this is "damage after DR+shield", not "exact health lost").
+    public float postMitigationDamage;
+}
 
 public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 {
@@ -1166,10 +1183,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // itself; the incoming damage amount isn't needed to decide whether to intervene.
     private PredictedEvent _onLethalDamageTaken;
     // Fires from inside TakeDamage whenever incoming damage actually reduces shield and/or health by a
-    // positive amount (post-DamageReduction, before it's split between shield/health) — e.g.
-    // PhantomBladeOnDamagedAugment. Excludes a killing blow, same reasoning as _onShieldBreak: a "reacted to
-    // taking damage" effect firing on a player who's already dead doesn't make sense.
-    private PredictedEvent<float> _onDamaged;
+    // positive amount (gate itself unchanged from before DamageTakenData existed — post-DamageReduction,
+    // before the shield/health split) — e.g. PhantomBladeOnDamagedAugment. Excludes a killing blow, same
+    // reasoning as _onShieldBreak: a "reacted to taking damage" effect firing on a player who's already dead
+    // doesn't make sense.
+    private PredictedEvent<DamageTakenData> _onDamaged;
     // Called directly by whichever weapon/projectile actually landed the crit (WeaponMeleePD.Hit(),
     // WeaponAxePD.Hit(), WeaponRangedProjectilePD.ProcessHit()) via NotifyCritStrike — not relayed through
     // WeaponManagerPD or any per-weapon event (see feedback_predictedevent_anchor_persistent_identity memory
@@ -1223,6 +1241,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     private PredictedEvent<IAbilityPD> _onAbilityStart;
     private PredictedEvent<IAbilityPD> _onAbilityEnd;
 
+    // Fires exactly once, server-side only, the moment the host resolves this player's authoritative color
+    // (see GameStartData.HostColorAssignments' own doc comment) — colorIndex is only ever written here,
+    // never by client input, so unlike most other events in this file there's no owner-side "predict it
+    // early" branch to reconcile: a client's own pre-match color guess used to be the actual bug (see
+    // PlayerDataPD's git history), so nothing but the server's own resolution is ever trusted or applied.
+    // Self-subscribed to ApplyColor below rather than something PlayerDataPD (or anything else) polls every
+    // frame — PredictedEvent already guarantees the listener fires once per real occurrence regardless of
+    // resimulation, same as _onShieldRecharge/_onSurgeEnded above.
+    private PredictedEvent<int> _onColorChanged;
+
     // Owned here rather than by whichever weapon/projectile/blade/augment-effect actually landed the hit —
     // every one of those emitters (WeaponBasePD, WeaponRangedProjectilePD, PhantomBladePD, AugmentEffectPD)
     // is transient (despawns/gets deleted on its own schedule, independent of the hit it just landed),
@@ -1250,8 +1278,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void RemoveShieldRechargeListener(Action listener) => _onShieldRecharge.RemoveListener(listener);
     public void AddLethalDamageTakenListener(Action listener) => _onLethalDamageTaken.AddListener(listener);
     public void RemoveLethalDamageTakenListener(Action listener) => _onLethalDamageTaken.RemoveListener(listener);
-    public void AddDamagedListener(Action<float> listener) => _onDamaged.AddListener(listener);
-    public void RemoveDamagedListener(Action<float> listener) => _onDamaged.RemoveListener(listener);
+    public void AddDamagedListener(Action<DamageTakenData> listener) => _onDamaged.AddListener(listener);
+    public void RemoveDamagedListener(Action<DamageTakenData> listener) => _onDamaged.RemoveListener(listener);
     public void AddCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.AddListener(listener);
     public void RemoveCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.RemoveListener(listener);
     public void AddTauntChangedListener(Action<bool> listener) => _onTauntChanged.AddListener(listener);
@@ -1264,6 +1292,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void AddAbilityEndListener(Action<IAbilityPD> listener) => _onAbilityEnd.AddListener(listener);
     public void RemoveAbilityEndListener(Action<IAbilityPD> listener) => _onAbilityEnd.RemoveListener(listener);
     public void NotifyAbilityEnd(IAbilityPD ability) => _onAbilityEnd.Invoke(ability);
+    public void AddColorChangedListener(Action<int> listener) => _onColorChanged.AddListener(listener);
+    public void RemoveColorChangedListener(Action<int> listener) => _onColorChanged.RemoveListener(listener);
     public void NotifyCritStrike(WeaponHitData data) => _onCritStrike.Invoke(data);
     public void AddHitListener(Action<WeaponHitData> listener) => _onHit.AddListener(listener);
     public void RemoveHitListener(Action<WeaponHitData> listener) => _onHit.RemoveListener(listener);
@@ -1304,7 +1334,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onShieldBreak   = new PredictedEvent(predictionManager, this);
         _onShieldRecharge = new PredictedEvent(predictionManager, this);
         _onLethalDamageTaken = new PredictedEvent(predictionManager, this);
-        _onDamaged       = new PredictedEvent<float>(predictionManager, this);
+        _onDamaged       = new PredictedEvent<DamageTakenData>(predictionManager, this);
         _onCritStrike    = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onHit           = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onStrike        = new PredictedEvent<WeaponHitData>(predictionManager, this);
@@ -1316,6 +1346,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onInvisibleChanged = new PredictedEvent<bool>(predictionManager, this);
         _onAbilityStart     = new PredictedEvent<IAbilityPD>(predictionManager, this);
         _onAbilityEnd       = new PredictedEvent<IAbilityPD>(predictionManager, this);
+        _onColorChanged     = new PredictedEvent<int>(predictionManager, this);
+        _onColorChanged.AddListener(ApplyColor);
 
         // bonuses applied by PlayerDataPD.Simulate after spawn
         GetComponent<WeaponManagerPD>()?.Init(this);
@@ -1343,6 +1375,21 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     protected override void Simulate(ref State state, float delta)
     {
         _currentDelta = delta;
+
+        // Server-authoritative color assignment — see GameStartData.HostColorAssignments' own doc comment.
+        // Resolved exactly once (colors never change mid-match, so once _serverColorResolved latches there's
+        // nothing left to do here) and completely unguarded by isOwner/isLocal — the server's own resolution
+        // is the only thing ever trusted or applied, full stop. Placed ahead of the pause check below since
+        // there's no reason color resolution should ever wait on the game happening to be paused.
+        if (isServer && !_serverColorResolved && owner.HasValue)
+        {
+            _serverColorResolved = TryResolveServerColor(owner.Value, out int resolvedColor);
+            if (_serverColorResolved)
+            {
+                state.colorIndex = resolvedColor;
+                _onColorChanged.Invoke(resolvedColor);
+            }
+        }
 
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
@@ -2242,7 +2289,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     }
 
     public Color PlayerColor { get; private set; } = Color.white;
-    public void ApplyColor(int colorIndex)
+
+    // No longer called from outside this class — _onColorChanged (self-subscribed to this in LateAwake) is
+    // the sole caller now, firing exactly once per real color resolution. See Simulate()'s own
+    // server-authoritative resolution block.
+    private void ApplyColor(int colorIndex)
     {
         Color c = _colorPalette != null ? _colorPalette.Get(colorIndex) : Color.white;
         PlayerColor = c;
@@ -2250,6 +2301,36 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             a.Apply(c);
         if (TryGetComponent(out WeaponManagerPD wm))
             wm.ApplyColor(c);
+    }
+
+    // Server-only, resolved exactly once — see Simulate()'s own doc comment on this whole mechanism.
+    private bool _serverColorResolved;
+
+    // PlayerID -> Steam ID -> GameStartData.HostColorAssignments lookup, same resolution chain proven in
+    // LobbySceneController.OnPurrNetPlayerJoined's Steam-ID-snapshot rejection check. Fails (returns false)
+    // rather than throwing if any step can't resolve yet — e.g. a connection that hasn't fully registered
+    // with PlayersManager on the very first tick or two; Simulate() just tries again next tick since
+    // _serverColorResolved stays false until this succeeds.
+    private static bool TryResolveServerColor(PlayerID player, out int colorIndex)
+    {
+        colorIndex = 0;
+        var nm = NetworkManager.main;
+        if (nm == null) return false;
+
+        // The host's own local (listen-server) player never resolves a real Connection/Steam ID the way a
+        // remote player does — same carve-out as LobbySceneController.OnPurrNetPlayerJoined's rejection
+        // check. Its own Steam ID is simply whatever this machine's own GameStartData.LocalUserId already is.
+        if (player == nm.localPlayer)
+            return GameStartData.HostColorAssignments.TryGetValue(GameStartData.LocalUserId, out colorIndex);
+
+        if (!nm.TryGetModule<PlayersManager>(true, out var playersManager)) return false;
+        if (!playersManager.TryGetConnection(player, out var conn)) return false;
+        if (!(nm.transport is SteamTransport steamTransport)) return false;
+
+        ulong steamId = steamTransport.GetSteamID(conn);
+        if (steamId == 0) return false;
+
+        return GameStartData.HostColorAssignments.TryGetValue(steamId.ToString(), out colorIndex);
     }
 
     // ── Public API ─────────────────────────────────────────────────────────
@@ -2362,9 +2443,15 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
         currentState.damageEventId++;
         currentState.shieldRechargeTimer = Mathf.Max(1, Mathf.RoundToInt(shieldRechargeTime / _currentDelta));
+
+        // Raw incoming damage, before DR or shield touch it at all — see DamageTakenData's own doc comment.
+        float preMitigationDamage = damage;
+
         damage *= DamageReduction;
         // Captured here, before the shield/health split below — "how much damage this hit represented" as
-        // a whole, for _onDamaged's payload.
+        // a whole, for _onDamaged's firing GATE specifically (kept exactly as it always was, post-DR,
+        // pre-shield, so adding DamageTakenData's two new values below doesn't change WHEN this event
+        // fires, only what it now carries).
         float totalDamageTaken = damage;
 
         // Break edge, not "shield is currently 0" — only true the tick it actually crosses down from >0,
@@ -2382,6 +2469,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             if (currentState.shield <= 0f)
                 shieldJustBroke = true;
         }
+
+        // What's actually left to affect health after BOTH DR and shield had their chance — see
+        // DamageTakenData's own doc comment.
+        float postMitigationDamage = damage;
 
         if (damage > 0f)
         {
@@ -2415,7 +2506,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
         // Same "not on the killing blow" exclusion as _onShieldBreak above.
         if (totalDamageTaken > 0f && !currentState.isDead)
-            _onDamaged.Invoke(totalDamageTaken);
+            _onDamaged.Invoke(new DamageTakenData
+            {
+                preMitigationDamage = preMitigationDamage,
+                postMitigationDamage = postMitigationDamage
+            });
     }
 
     // Shared by Heal() and the natural health-regen tick above — every heal, from ANY source, rolls against
