@@ -1377,19 +1377,25 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _currentDelta = delta;
 
         // Server-authoritative color assignment — see GameStartData.HostColorAssignments' own doc comment.
-        // Resolved exactly once (colors never change mid-match, so once _serverColorResolved latches there's
-        // nothing left to do here) and completely unguarded by isOwner/isLocal — the server's own resolution
-        // is the only thing ever trusted or applied, full stop. Placed ahead of the pause check below since
-        // there's no reason color resolution should ever wait on the game happening to be paused.
+        // RESOLUTION (deciding + writing the actual value into state) is server-only and happens exactly
+        // once, same as before. But the _onColorChanged.Invoke() call below is UNCONDITIONAL, every tick, on
+        // every machine — PredictedEvent<T>.Invoke() (see its own source, Library/PackageCache/
+        // dev.purrnet.purrdiction/Runtime/Core/PredictedEvent.cs) only ever actually notifies listeners if
+        // Invoke() is CALLED on that machine at all: server always delivers immediately, the owner delivers
+        // immediately unless mid-replay, and a third-party observer delivers ONLY once _world.isVerified is
+        // true for that tick. Gating the call itself behind isServer (the original version of this block)
+        // meant Invoke() was NEVER called on any non-server machine — including the owner's own client for
+        // its OWN color — so the listener never fired there at all, no matter how long you waited. That's
+        // what caused every character to render as default/white on a client build: not a timing race, a
+        // genuinely uncalled event. ApplyColor's own change-guard (see its doc comment) is what keeps this
+        // cheap despite firing every tick.
         if (isServer && !_serverColorResolved && owner.HasValue)
         {
             _serverColorResolved = TryResolveServerColor(owner.Value, out int resolvedColor);
             if (_serverColorResolved)
-            {
                 state.colorIndex = resolvedColor;
-                _onColorChanged.Invoke(resolvedColor);
-            }
         }
+        _onColorChanged.Invoke(state.colorIndex);
 
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
@@ -2291,10 +2297,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public Color PlayerColor { get; private set; } = Color.white;
 
     // No longer called from outside this class — _onColorChanged (self-subscribed to this in LateAwake) is
-    // the sole caller now, firing exactly once per real color resolution. See Simulate()'s own
-    // server-authoritative resolution block.
+    // the sole caller now. Invoke() fires every tick (see Simulate()'s own doc comment on why), so the
+    // change-guard here — not a one-shot latch — is what keeps the actual renderer/material work cheap;
+    // colorIndex itself only ever meaningfully changes once in practice (default 0 -> real resolved value),
+    // but this stays correct even if that assumption ever changes.
+    private int _lastAppliedColorIndex = -1;
     private void ApplyColor(int colorIndex)
     {
+        if (colorIndex == _lastAppliedColorIndex) return;
+        _lastAppliedColorIndex = colorIndex;
+
         Color c = _colorPalette != null ? _colorPalette.Get(colorIndex) : Color.white;
         PlayerColor = c;
         foreach (var a in GetComponentsInChildren<PlayerColorApplicator>(true))

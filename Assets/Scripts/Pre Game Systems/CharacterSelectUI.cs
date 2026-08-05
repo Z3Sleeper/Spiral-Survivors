@@ -471,6 +471,14 @@ public class CharacterSelectUI : MonoBehaviour
         _powerLevels.Clear();
     }
 
+    // Narrower than ResetLocalLobbyState() — only the ready flag, none of the character/color/power-cache
+    // resets that method also does. Used by LobbySceneController.AbortStuckMatchStart's "stay in the lobby
+    // and retry" path: a failed match-start attempt shouldn't wipe anyone's character/color picks, just
+    // their readiness (since the whole point is forcing everyone to re-confirm ready before another attempt
+    // auto-fires, not making them redo their selections). Caller is still responsible for the matching
+    // lobbyManager.SetIsReady(..., false) write and a RefreshFromLobby call to actually show it.
+    public void ResetReadyOnly() => _localIsReady = false;
+
     // Just files a REQUEST — never claims the color directly. The host (see ResolveColorAssignments) is the
     // only thing that ever actually grants it, via ColorAssignmentsKey; GameStartData.LocalColorIndex only
     // updates once RefreshFromLobby reads that confirmation back, not optimistically here. For the host's
