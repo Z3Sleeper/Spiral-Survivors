@@ -1,6 +1,8 @@
 using System.Collections.Generic;
+using PurrLobby;
 using PurrNet;
 using PurrNet.Modules;
+using Steamworks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -33,6 +35,24 @@ public class ReturnToLobbyManager : NetworkIdentity
     public void ReturnToLobby()
     {
         if (!isServer || _waitingForFlushConfirmation) return;
+
+        // Reset the Steam lobby's "Started" flag back to False as the very first thing this method does —
+        // nothing else in the whole return-to-lobby flow ever touches it, so without this it stays stuck at
+        // "True" from the original match-start forever. LobbySceneController.Start() also resets it
+        // (host-only, kept as a harmless backstop), but that only runs AFTER the host's own Lobby scene has
+        // already reloaded — far too late to help a CLIENT whose own fresh Lobby scene can finish loading
+        // (via PurrNet's own networked scene sync, a completely separate system from this Steam data write)
+        // and check OnRoomUpdated before this write has had any chance to propagate through Steam's own,
+        // independent callback system. Doing it here instead, before the flush RPC / scene load even begin,
+        // gives it the whole multi-second confirm window as a head start — a client reading stale "True"
+        // left over from the original match was skipping straight into ConnectToHostWithRetry() the instant
+        // its own scene reloaded, colliding with objects that hadn't finished settling yet.
+        var lobbyDataHolder = FindFirstObjectByType<LobbyDataHolder>();
+        if (lobbyDataHolder != null && lobbyDataHolder.CurrentLobby.IsValid &&
+            ulong.TryParse(lobbyDataHolder.CurrentLobby.LobbyId, out ulong lobbyId))
+        {
+            SteamMatchmaking.SetLobbyData(new CSteamID(lobbyId), "Started", "False");
+        }
 
         _waitingForFlushConfirmation = true;
         _waitTimer = 0f;
