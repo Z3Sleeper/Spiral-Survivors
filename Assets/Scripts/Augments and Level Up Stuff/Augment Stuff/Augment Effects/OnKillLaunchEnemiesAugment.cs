@@ -21,7 +21,14 @@ public class OnKillLaunchEnemiesAugment : AugmentEffectPD<OnKillLaunchEnemiesAug
 
     [SerializeField] private float launchSpeed    = 10f;
     [SerializeField] private float launchDistance = 10f;
-    [SerializeField] private float damagePercent   = 1f;
+    public float damagePercent   = 1f;
+
+    // Baseline (unrolled) damage for AugmentDescriptionFormatter's {LiveStrengthRatio} token — see
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention.
+    public string LiveStrengthRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(damagePercent * stats.UnpenalizedStrength)} "
+            : "";
 
     protected override void OnApply()
     {

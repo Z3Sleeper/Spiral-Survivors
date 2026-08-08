@@ -24,7 +24,7 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Vanish";
     [SerializeField, TextArea] private string description = "Become invisible and gain +50% Total Move Speed for 3 seconds.";
-    [SerializeField] private float cooldown = 20f;
+    public float cooldown = 20f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full
     // value throughout the invisibility window) — see Simulate(). true: cooldown starts ticking
     // immediately at cast, running concurrently with the active window.
@@ -37,15 +37,25 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     [SerializeField] private bool activeSurgeBlock = false;
 
     [Header("Effect")]
-    [SerializeField] private float duration = 3f;
-    [SerializeField] private float moveSpeedTotalPercent = 0.5f;
+    public float duration = 3f;
+    public float moveSpeedTotalPercent = 0.5f;
+
+    // Mirrors Activate()'s own _appliedDuration formula exactly. Outside a live match, falls back to the
+    // base field itself — exact at neutral AbilityPower (see ArcherFocusFireAbilityPD.LiveDurationRatio's
+    // own doc comment for why), so one token covers both.
+    public string LiveDurationRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? duration * stats.AbilityPower
+            : duration;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
 
     private CharacterStatsPD _stats;
-    // Snapshotted at cast time (moveSpeedTotalPercent * AbilityPower at that instant) rather than recomputed
-    // live at both Activate() and the end-of-active reversal — if CharacterStatsPD.AbilityPower changed
-    // mid-buff (a future augment picked up during the window), reading it live a second time at the end
-    // would add and subtract two different amounts, permanently drifting MoveSpeed. Same "fixed for the
-    // whole active window" reasoning as RogueSpinAbilityPD's own cast-time snapshots (_weaponCountAtCast etc).
+    // Flat — moveSpeedTotalPercent is not AbilityPower-scaled (see Activate()'s own comment), so this is
+    // just a plain snapshot of the field at cast time rather than recomputed live at both Activate() and the
+    // end-of-active reversal — same "fixed for the whole active window" reasoning as RogueSpinAbilityPD's own
+    // cast-time snapshots (_weaponCountAtCast etc), just without any AbilityPower math involved here.
     private float _appliedMoveSpeedTotalPercent;
     // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
     // this fixed rather than recomputing duration * AbilityPower live off a since-changed AbilityPower.
@@ -110,6 +120,17 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
+
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
@@ -122,10 +143,13 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     {
         if (!IsReady || _stats == null) return;
 
-        // AbilityPower's interpretation for this ability: scales both the buff strength and the buff
-        // duration — see CharacterStatsPD.AbilityPower's own doc comment.
+        // AbilityPower's interpretation for this ability: grows only the buff's own duration, same uniform
+        // convention every buff ability in this codebase now follows (ExeBigAxeAbilityPD/
+        // KnightBigBuffAbilityPD/BWBlinkAbilityPD). moveSpeedTotalPercent itself is flat, not AbilityPower-
+        // scaled — a buff's own strength and its duration both scaling off the same stat on the same cast
+        // would double-dip.
         float abilityPower = _stats.AbilityPower;
-        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent * abilityPower;
+        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent;
         _appliedDuration              = duration * abilityPower;
 
         currentState.activeTimer   = _appliedDuration;

@@ -36,7 +36,7 @@ public class AugmentListUIPD : MonoBehaviour
         for (int i = 0; i < _picked.Count; i++)
         {
             var entry = GetEntry(i);
-            entry.Setup(_picked[i]);
+            entry.Setup(_picked[i], localStats);
             entry.gameObject.SetActive(true);
         }
     }

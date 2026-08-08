@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 009657d7a5a7e3844b9ada055b0289d0, type: 3}
   m_Name: RoguePassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
-  classDescription: 
+  classDescription: <color=red>25% Weapon Range Penalty</color>
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0
@@ -36,8 +36,7 @@ MonoBehaviour:
   bonusWeaponRangePercent: 0
   weaponRangePenalty: 0
   totalWeaponRangePercent: 0
-  totalWeaponRangePenalty: 0
-  bonusWeaponSizePercent: 0
+  totalWeaponRangePenalty: -0.25
   bonusSizePercent: 0
   bonusCritChanceFlat: 0
   bonusCritChancePercent: 0
@@ -121,4 +120,4 @@ MonoBehaviour:
   damageReductionPercent: 0
   damageReductionPenalty: 0
   passiveAugments:
-  - {fileID: 11400000, guid: 020766a25056f084d9eb876cf5038a28, type: 2}
+  - {fileID: 11400000, guid: 7d52f377515680643b6248b900d29c56, type: 2}

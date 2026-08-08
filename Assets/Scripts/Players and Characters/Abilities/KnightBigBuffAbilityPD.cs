@@ -12,10 +12,12 @@ using UnityEngine;
 // AddWeaponRangeTotalPercent/AddStrengthTotalPercent/AddDamageReductionPercent) rather than the plain Bonus
 // tier the 8 generic stat-pick augments use — same "outlier/special effect, not a per-point-buy pick"
 // reasoning as RogueVanishAbilityPD's own AddMoveSpeedTotalPercent (see project_bonus_total_stat_tiers
-// memory). CharacterStatsPD.AbilityPower scales BOTH the potency of all five buffs AND the buff's own
-// duration, same as RogueVanishAbilityPD's own _appliedMoveSpeedTotalPercent/duration pairing — each
-// snapshotted at cast time, since a live AbilityPower change mid-buff must not desync the add/subtract
-// pair or leave the active timer running against a duration that no longer matches what was granted.
+// memory). CharacterStatsPD.AbilityPower scales only the buff's own duration, same uniform convention every
+// buff ability in this codebase now follows (RogueVanishAbilityPD/ExeBigAxeAbilityPD/BWBlinkAbilityPD) —
+// snapshotted at cast time, since a live AbilityPower change mid-buff must not leave the active timer
+// running against a duration that no longer matches what was granted. The five stat grants themselves are
+// flat, fixed values — deliberately NOT also AbilityPower-scaled, since a buff's own strength and its
+// duration both scaling off the same stat on the same cast would double-dip.
 //
 // The Max Health buff acts as a pseudo-heal for free: CharacterStatsPD.ApplyStatChange (which
 // AddMaxHealthTotalPercent routes through) already bumps current health by the exact same delta the ceiling
@@ -39,7 +41,7 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     [SerializeField] private string abilityName = "Rally";
     [SerializeField, TextArea] private string description =
         "Gain +50% Size, Max Health, Range, Damage and Damage Reduction, and taunt all enemies, for 10 seconds.";
-    [SerializeField] private float cooldown = 30f;
+    public float cooldown = 30f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
     // throughout the buff window) — see Simulate(). true: cooldown starts ticking immediately at cast,
     // running concurrently with the active window. Same convention/default as RogueVanishAbilityPD's own.
@@ -52,22 +54,32 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     [SerializeField] private bool activeSurgeBlock = false;
 
     [Header("Effect")]
-    [SerializeField] private float duration = 10f;
-    [SerializeField] private float sizePercent            = 0.5f;
-    [SerializeField] private float maxHealthPercent       = 0.5f;
-    [SerializeField] private float rangePercent           = 0.5f;
-    [SerializeField] private float strengthPercent        = 0.5f;
+    public float duration = 10f;
+    public float sizePercent            = 0.5f;
+    public float maxHealthPercent       = 0.5f;
+    public float rangePercent           = 0.5f;
+    public float strengthPercent        = 0.5f;
     // Passed straight to AddDamageReductionPercent, which itself subtracts this from damageReductionPercent
     // (1f = no reduction) — 0.5 here means incoming damage multiplies by 0.5, i.e. half damage taken. Not a
     // "true total" increase stacking convention, just a flat multiplicative half same as the ability's own
     // stated design (see class doc comment).
-    [SerializeField] private float damageReductionPercent = 0.5f;
+    public float damageReductionPercent = 0.5f;
+
+    // Mirrors Activate()'s own _appliedDuration formula exactly (see class doc comment). Outside a live
+    // match, falls back to the base field itself — exact at neutral AbilityPower (see
+    // ArcherFocusFireAbilityPD.LiveDurationRatio's own doc comment for why), so one token covers both.
+    public string LiveDurationRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? duration * stats.AbilityPower
+            : duration;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
 
     private CharacterStatsPD _stats;
 
-    // Snapshotted at cast time (base * AbilityPower at that instant), same reasoning as
-    // RogueVanishAbilityPD's own _appliedMoveSpeedTotalPercent — reversed with the identical values at
-    // buff-end regardless of whether AbilityPower changed mid-buff.
+    // Flat — not AbilityPower-scaled (see class doc comment), so these are just plain snapshots of the
+    // fields at cast time, reversed with the identical values at buff-end.
     private float _appliedSizePercent;
     private float _appliedMaxHealthPercent;
     private float _appliedRangePercent;
@@ -112,6 +124,17 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
+
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
@@ -124,15 +147,14 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     {
         if (!IsReady || _stats == null) return;
 
-        // AbilityPower's interpretation for this ability: scales both the potency of all five stat buffs
-        // AND the buff's own duration, same as RogueVanishAbilityPD — see CharacterStatsPD.AbilityPower's
-        // own doc comment.
+        // AbilityPower's interpretation for this ability: grows only the buff's own duration — see class doc
+        // comment. The five stat grants below are flat, not AbilityPower-scaled.
         float abilityPower = _stats.AbilityPower;
-        _appliedSizePercent            = sizePercent * abilityPower;
-        _appliedMaxHealthPercent       = maxHealthPercent * abilityPower;
-        _appliedRangePercent           = rangePercent * abilityPower;
-        _appliedStrengthPercent        = strengthPercent * abilityPower;
-        _appliedDamageReductionPercent = damageReductionPercent * abilityPower;
+        _appliedSizePercent            = sizePercent;
+        _appliedMaxHealthPercent       = maxHealthPercent;
+        _appliedRangePercent           = rangePercent;
+        _appliedStrengthPercent        = strengthPercent;
+        _appliedDamageReductionPercent = damageReductionPercent;
         _appliedDuration                = duration * abilityPower;
 
         currentState.activeTimer   = _appliedDuration;

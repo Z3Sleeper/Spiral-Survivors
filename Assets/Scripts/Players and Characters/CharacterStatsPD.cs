@@ -163,18 +163,27 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     [Header("Death Prevention")]
     // Only ever a single banked save at a time (see HasDeathPrevention) — how long it takes to (re-)earn
     // one is baseDeathPreventionTime seconds, scaled by deathPreventionTimeMultiplier (neutral 1f, a lower
-    // value grants faster) via the DeathPreventionTime property below. See Simulate()'s own comment for the
-    // full grant-timer logic.
+    // value grants faster), PLUS an unreducible flat floor equal to deathPreventionInvincibilityDuration —
+    // see the DeathPreventionTime property below for why. See Simulate()'s own comment for the full
+    // grant-timer logic.
     public float baseDeathPreventionTime = 20f;
     // In State, not a plain field — ActivateDeathPreventions() mutates this at runtime (a second augment
     // that grants the mechanic compounds it down instead of no-oping), so it needs the same rollback safety
     // as every other runtime-mutable stat modifier in this class. Neutral-1f-fallback convention, same
     // shape as totalStrengthPercent/etc.
     public float deathPreventionTimeMultiplier => currentState.deathPreventionTimeMultiplier != 0f ? currentState.deathPreventionTimeMultiplier : 1f;
-    public float DeathPreventionTime => baseDeathPreventionTime * deathPreventionTimeMultiplier;
+    // deathPreventionInvincibilityDuration is added AFTER the multiplier, not multiplied by it — a flat,
+    // unreducible floor so stacking deathPreventionTimeMultiplier down toward 0 (repeat picks of the
+    // mechanic, or any future haste-style augment) can never shrink the total below the invincibility window
+    // itself. Without this, a low enough multiplier could re-arm the grant timer WHILE the previous save's
+    // own invincibility was still running, letting a second save land before the first one's protection even
+    // ended.
+    public float DeathPreventionTime => baseDeathPreventionTime * deathPreventionTimeMultiplier + deathPreventionInvincibilityDuration;
     // How long the post-save invincibility window lasts — same GrantInvincibility mechanism (and "longest
     // active window wins" stacking) as dash/DeathPreventionShieldDRAugment's own death save/Revive(), so this
-    // stacks harmlessly with any of those rather than fighting over which invincibility "wins".
+    // stacks harmlessly with any of those rather than fighting over which invincibility "wins". Also the
+    // unreducible flat floor DeathPreventionTime's own formula adds on top of the scaled portion — see that
+    // property's own doc comment.
     public float deathPreventionInvincibilityDuration = 1f;
     // Tuning knob for ActivateDeathPreventions()'s own "already active, shrink the timer instead" rule — see
     // that method's own doc comment. Centralized here specifically so every augment that grants the
@@ -1415,7 +1424,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     private void OnHitFeedback(HitFeedbackData data)
     {
         if (data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy))
-            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.isPriority, data.overrideSfx, data.sfx);
+            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.source, data.isPriority, data.overrideSfx, data.sfx);
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────

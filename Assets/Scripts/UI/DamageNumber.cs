@@ -31,37 +31,94 @@ public class DamageNumber : MonoBehaviour
     private DamageNumberManager _manager;
     private Camera _cam;
     private IEnemyPD _target;
-    // Captured at Init() time — a raw IEnemyPD reference alone can't tell a still-alive enemy apart from
-    // this same pooled GameObject having since been recycled for a completely different spawn, so tracking
-    // is only trusted while _target.SpawnGeneration still matches this. See DamageNumberManager's own
-    // IsStillTheSameEnemy for the queued-number equivalent of this same check.
+    // Captured at InitLocked() time — a raw IEnemyPD reference alone can't tell a still-alive enemy apart
+    // from this same pooled GameObject having since been recycled for a completely different spawn, so
+    // tracking is only trusted while _target.SpawnGeneration still matches this. See DamageNumberManager's
+    // own IsStillTheSameEnemy for the manager-side equivalent of this same check.
     private int _targetGeneration;
     // World-space offset between where this number actually spawned (worldPos, already including
-    // sizeYOffset/sizeZOffset/etc.) and the target's position at that moment — re-added to the target's
-    // LIVE position every frame in Animate(), so the number keeps the same relative spawn offset while
-    // tracking a moving enemy instead of drifting behind it.
+    // sizeYOffset/sizeZOffset/_spawnYOffset/etc., but NOT the stack height — see _lockedHeight) and the
+    // target's position at that moment — re-added to the target's LIVE position every frame (both while
+    // locked and while animating) so the number keeps the same relative spawn offset while tracking a
+    // moving enemy instead of drifting behind it. Release() bakes the current _lockedHeight into this once,
+    // permanently, so Animate()'s own basePos formula doesn't need to know about stacking at all.
     private Vector3 _followOffset;
+    // Current stack slot height (world +Y, on top of _followOffset) — live-adjustable via SetHeight() while
+    // still locked (e.g. a later Weapon hit bumping this group up the stack), frozen the moment Release()
+    // bakes it into _followOffset.
+    private float _lockedHeight;
+    // Rolled once by DamageNumberManager when this group was first created — the total X distance Animate()
+    // arcs toward once released.
+    private float _xOffset;
+    private bool _isPriority;
 
     private void Awake() => _cam = Camera.main;
 
-    // xOffset is the total X distance this number arcs toward over its lifetime (rolled by
-    // DamageNumberManager as its spawn-time jitter roll) — not applied to worldPos directly, since the
-    // arc itself is what moves it there over _duration rather than an instant spawn-position offset.
-    public void Init(float amount, Vector3 worldPos, float xOffset, IEnemyPD target, DamageNumberManager manager, bool isCrit, bool isHighroll, bool isPriority)
+    // Spawns immediately, frozen at its stack position — no arc, no fade, no lifetime countdown yet — and
+    // keeps tracking the target's live position (spawn offset + current stack height) every frame until
+    // Release() is called. This is the "print instantly, lock position, wait for the stacking window"
+    // phase of DamageNumberManager's stacking rework — see that class's own doc comment for the full rule.
+    public void InitLocked(float amount, Vector3 worldPos, float height, float xOffset, IEnemyPD target, DamageNumberManager manager, bool isCrit, bool isHighroll, bool isPriority)
     {
         _manager = manager;
         _target = target;
         bool targetAlive = !DamageNumberManager.IsDestroyed(target);
         _targetGeneration = targetAlive ? target.SpawnGeneration : 0;
-        transform.position = worldPos;
         _followOffset = targetAlive ? worldPos - target.Visuals.position : Vector3.zero;
+        _lockedHeight = height;
+        _xOffset = xOffset;
+        _isPriority = isPriority;
+        transform.position = worldPos + Vector3.up * height;
+        SetAmount(amount, isCrit, isHighroll);
+        _text.alpha = 1f;
+        gameObject.SetActive(true);
+        StopAllCoroutines();
+        StartCoroutine(FollowLocked());
+    }
+
+    // Called by DamageNumberManager whenever another same-source hit lands while this number is still
+    // locked/accumulating — updates the displayed total and crit/highroll styling in place, no new number
+    // spawned. isCrit/isHighroll are OR-combined by the caller across every hit folded into this group
+    // (showing crit/highroll styling if ANY hit in the accumulated total qualified, not just the latest one).
+    public void SetAmount(float amount, bool isCrit, bool isHighroll)
+    {
         _text.text = Mathf.RoundToInt(amount).ToString() + ResolveSuffix(isCrit, isHighroll);
         _text.color = ResolveColor(isCrit, isHighroll);
         _text.fontStyle = ResolveStyle(isCrit, isHighroll);
-        _text.fontSize = isPriority ? _fontSize : _nonPrioritySize;
-        _text.alpha = 1f;
-        gameObject.SetActive(true);
-        StartCoroutine(Animate(xOffset));
+        _text.fontSize = _isPriority ? _fontSize : _nonPrioritySize;
+    }
+
+    // Called by DamageNumberManager when a fresh Weapon-source group needs to bump every other currently-
+    // locked group on the same stack up by one slot — repositions on the next FollowLocked frame, no
+    // animation needed (this number hasn't started its real arc yet, so a hard reposition here is
+    // unnoticeable, same as any other locked-phase update).
+    public void SetHeight(float height) => _lockedHeight = height;
+
+    private IEnumerator FollowLocked()
+    {
+        while (true)
+        {
+            if (!DamageNumberManager.IsDestroyed(_target) && _target.SpawnGeneration == _targetGeneration)
+                transform.position = _target.Visuals.position + _followOffset + Vector3.up * _lockedHeight;
+            if (_cam != null) transform.forward = _cam.transform.forward;
+            yield return null;
+        }
+    }
+
+    // Called by DamageNumberManager once the stacking window elapses with no further same-source hits (or
+    // the target enemy is gone) — starts the real arc/fade/lifetime animation from wherever this number is
+    // currently sitting, exactly like the old system's Init() used to do immediately; the only thing that
+    // changed is WHEN this fires relative to the first hit.
+    public void Release()
+    {
+        // Bakes the current stack height into _followOffset permanently, so Animate()'s own basePos formula
+        // (which knows nothing about stacking) keeps this number at the height it was sitting at when the
+        // window closed, instead of snapping back down to the base spawn height the instant the real
+        // animation starts. No further SetHeight() calls affect this number after Release() — matches
+        // DamageNumberManager's own "only the pre-animation stack reorders" rule.
+        _followOffset += Vector3.up * _lockedHeight;
+        StopAllCoroutines();
+        StartCoroutine(Animate(_xOffset));
     }
 
     private Color ResolveColor(bool isCrit, bool isHighroll)

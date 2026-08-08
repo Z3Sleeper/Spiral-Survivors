@@ -12,7 +12,15 @@ public class OnHitHealHealthRegenAugment : AugmentEffectPD<OnHitHealHealthRegenA
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // 0.1f = 10% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
-    [SerializeField] private float onHitHealPercent = 0.1f;
+    public float onHitHealPercent = 0.1f;
+
+    // Baseline heal at 100% OnHitPower (the per-hit multiplier itself isn't included since it varies
+    // hit-to-hit) for AugmentDescriptionFormatter's {LiveHealthRegenRatio} token — see
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention.
+    public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.HealthRegen * onHitHealPercent)} "
+            : "";
 
     protected override void OnApply()
     {

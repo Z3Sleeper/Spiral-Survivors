@@ -94,11 +94,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ExeBigAxeAbilityPD
   icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
   abilityName: <color=#FF0000>Ability:\nExecution Time</color>
-  description: 'For <color=#FFA000>8 seconds</color>, gain <color=#3278FF>+100% Total
-    Range</color>, <color=#FFA000>+25% Execute Threshold</color> and <color=#FF0000>+25%
-    Crit Chance</color>.
+  description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    <color=#FFBE50>Cooldown: 20 seconds</color>'
+    For
+    <color=#FFA000>{LiveDurationRatio}seconds</color>, gain <color=#3278FF>+{weaponRangeTotalPercent}%
+    Total Range</color>, <color=#FFA000>+{executeThresholdPercent}% Execute Threshold</color>
+    and <color=#FF0000>+{critChancePercent}% Crit Chance</color>.
+
+    <color=#FFBE50><i>Ability
+    Power increases Duration</i></color>'
   cooldown: 20
   cooldownStartsOnCast: 0
   slot: 1
@@ -107,7 +111,7 @@ MonoBehaviour:
   duration: 8
   weaponRangeTotalPercent: 1
   executeThresholdPercent: 0.25
-  critChancePercent: 0.25
+  critChancePercent: 0.3
 --- !u!114 &-5547753293085439714
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -122,14 +126,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ExeAxeThrowAbilityPD
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   abilityName: <color=#FF5000>Ability:\nAxe Toss</color>
-  description: 'Throw a returning axe <color=#3278FF>5x Range</color> ahead, dealing
-    <color=#FF5000>100% unpenalized Strength</color>. Has <color=#FF0000>+100% Crit
-    Damage</color>.
+  description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    <color=#FFBE50><i>Size scales with Range</i></color>
+    Throw
+    a returning axe <color=#3278FF>5x Range</color> ahead, dealing <color=#FF5000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{strengthPercent}%
+    unpenalized Strength</color>) damage</color>. Has <color=#FF0000>+100% Crit Damage</color>.
 
-    <color=#FFBE50>Cooldown:
-    8 seconds</color>'
+    <color=#FFBE50><i>Size
+    scales with Range</i></color>
+
+    <color=#FFBE50><i>Triggers Weapon Strike effects</i></color>'
   cooldown: 8
   cooldownStartsOnCast: 0
   slot: 0

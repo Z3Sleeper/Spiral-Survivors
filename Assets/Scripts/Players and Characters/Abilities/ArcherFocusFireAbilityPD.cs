@@ -30,17 +30,14 @@ using UnityEngine;
 //
 // Also applies a -fireRatePenaltyPercent hit to CharacterStatsPD.FireRate for the whole window (the tradeoff
 // for never-miss continuous fire) via AddFireRateTotalPercent, reversed by the identical amount at end.
-// CharacterStatsPD.AbilityPower scales TWO things for this ability, in opposite directions:
-// - The Fire Rate penalty SHRINKS rather than a bonus growing (higher AbilityPower = a lighter Fire Rate hit
-//   while Focus Fire is up) — appliedPenalty = fireRatePenaltyPercent / AbilityPower, so the neutral
-//   AbilityPower == 1 baseline reproduces the flat fireRatePenaltyPercent unchanged, shrinking toward 0 as
-//   AbilityPower climbs.
-// - The window's own duration GROWS, same ordinary "AbilityPower extends a buff's length" convention as
-//   every other duration-scaling buff this session (ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/
-//   RogueVanishAbilityPD) — appliedDuration = duration * AbilityPower.
-// Both snapshotted at cast time (_appliedFireRatePenaltyPercent/_appliedDuration) — a live AbilityPower
-// change mid-window must not desync either add/subtract pair, or leave the active timer running against a
-// duration that no longer matches what was granted.
+// CharacterStatsPD.AbilityPower scales only the window's own DURATION here (appliedDuration = duration *
+// AbilityPower), same uniform "AbilityPower extends a buff's length" convention every buff ability in this
+// codebase now follows (ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/RogueVanishAbilityPD/BWBlinkAbilityPD).
+// The Fire Rate penalty itself is deliberately NOT also AbilityPower-scaled — a buff's own strength and its
+// duration double-dipping the same stat on the same cast reads as a much bigger AP payoff than intended, so
+// only one of the two ever scales; fireRatePenaltyPercent is a flat, fixed value.
+// Duration snapshotted at cast time (_appliedDuration) — a live AbilityPower change mid-window must not
+// leave the active timer running against a duration that no longer matches what was granted.
 //
 // Recastable while already active — a second press ends the window immediately instead of being blocked by
 // IsReady (see its own doc comment) or queuing a fresh cast; EndFocusFire() is the single shared reversal
@@ -62,7 +59,7 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     [SerializeField] private string abilityName = "Focus Fire";
     [SerializeField, TextArea] private string description =
         "Stop orbiting and fire continuously at the closest enemy for 3 seconds, ignoring the need for a target in your weapons' path, at -50% Fire Rate. Recast to end early.";
-    [SerializeField] private float cooldown = 10f;
+    public float cooldown = 10f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
     // throughout the active window) — see Simulate(). true: cooldown starts ticking immediately at cast,
     // running concurrently with the window. Same convention/default as RogueVanishAbilityPD's own.
@@ -73,8 +70,21 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     [SerializeField] private bool activeSurgeBlock = false;
 
     [Header("Effect")]
-    [SerializeField] private float duration = 3f;
-    [SerializeField] private float fireRatePenaltyPercent = 0.5f;
+    public float duration = 3f;
+    public float fireRatePenaltyPercent = 0.5f;
+
+    // Mirrors _appliedDuration's own formula exactly (see class doc comment for AbilityPower's one
+    // interpretation here). Outside a live match (no stats to read AbilityPower off), falls back to the base
+    // field itself — mathematically identical to "what this would show at a neutral 1.0x Ability Power," not
+    // an approximation, since AbilityPower's own neutral value is 1 — so a single token can cleanly cover
+    // both contexts instead of needing a separate static fallback shown alongside it.
+    public string LiveDurationRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? duration * stats.AbilityPower
+            : duration;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
     // Recast-to-cancel (see IsReady's own doc comment) is blocked for this long after a fresh cast — purely
     // a misclick guard, so a double-press/held-down button can't immediately end the window and burn the
     // whole cooldown for essentially nothing. Elapsed-since-cast is _appliedDuration - currentState.
@@ -85,13 +95,12 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     private CharacterStatsPD   _stats;
     private PlayerControllerPD _controller;
 
-    // Snapshotted at cast time (fireRatePenaltyPercent / AbilityPower at that instant) — see class doc
-    // comment. Reversed with this identical value at end regardless of whether AbilityPower changed mid-
-    // window.
+    // Flat — fireRatePenaltyPercent itself is not AbilityPower-scaled (see class doc comment), so this is
+    // just a plain snapshot of the field at cast time, reversed with the identical value at end.
     private float _appliedFireRatePenaltyPercent;
-    // Snapshotted at cast time (duration * AbilityPower at that instant) — AbilityPower's OTHER
-    // interpretation for this ability: grows the window's own length, same convention as every duration-
-    // scaling buff this session (ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/RogueVanishAbilityPD). Also what
+    // Snapshotted at cast time (duration * AbilityPower at that instant) — AbilityPower's one interpretation
+    // for this ability: grows the window's own length, same convention as every buff ability in this codebase
+    // now follows (ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/RogueVanishAbilityPD/BWBlinkAbilityPD). Also what
     // IsReady's own recast-block elapsed-time math is measured against (see recastBlockDuration's own doc
     // comment) rather than the raw, un-hasted duration field, so that math stays correct regardless of
     // whatever AbilityPower actually was at the moment of cast.
@@ -145,6 +154,17 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
+
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
@@ -182,9 +202,8 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
         }
 
         _stats.SetContinuousFire(true);
-        // AbilityPower's interpretation for this ability: shrinks the penalty rather than growing a bonus —
-        // see class doc comment.
-        _appliedFireRatePenaltyPercent = fireRatePenaltyPercent / _stats.AbilityPower;
+        // Flat — not AbilityPower-scaled (see class doc comment).
+        _appliedFireRatePenaltyPercent = fireRatePenaltyPercent;
         _stats.AddFireRateTotalPercent(-_appliedFireRatePenaltyPercent);
         UpdateAutoAimAngle();
 

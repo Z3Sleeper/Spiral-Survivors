@@ -75,11 +75,17 @@ public static class AreaEffectCastHelper
     // existed. A caller expecting many simultaneous/rapid hits per cast (ArcherArrowRainAbilityPD: up to 20
     // ticks * every enemy in radius) should pass overrideHitSfx: true and leave hitSfxOverride null for
     // silence, rather than letting owner.hitSfx spam on every single tick.
+    // source: only meaningful when dealDamage is true — identifies which "AoE Effects" caller this cast
+    // belongs to for DamageNumberManager's stacking system (see DamageSource's own doc comment), so e.g.
+    // ShieldBreakBurstAugment and DashExplosionAugment damage numbers never merge together just because they
+    // both happen to route through this same shared helper. Defaults to Weapon purely as an inert
+    // placeholder for callers that never reach the dealDamage-gated block below (targetAllies: true, or
+    // dealDamage: false) — never actually read in those cases.
     public static void Cast(PredictedHierarchy hierarchy, CharacterStatsPD owner, Vector3 position, float radius,
         GameObject radiusVFXPrefab, bool targetAllies = false,
         bool dealDamage = false, float damagePercent = 0f, float onHitPowerPercent = 0f, bool notifyOnHit = true,
         bool hasKnockback = false, float? knockback = null,
-        bool interrupt = false, float abilityPower = 1f,
+        bool interrupt = false, float abilityPower = 1f, DamageSource source = DamageSource.Weapon,
         Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null,
         bool overrideHitSfx = false, AudioClip hitSfxOverride = null)
     {
@@ -123,7 +129,7 @@ public static class AreaEffectCastHelper
                     if (isCrit) rolledDamage *= owner.CritDamage;
 
                     enemy.TakeDamage(rolledDamage, isCrit, owner.owner ?? default);
-                    owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolledDamage, isCrit = isCrit, isHighroll = dmgHighroll, attacker = owner, isPriority = true, overrideSfx = overrideHitSfx, sfx = hitSfxOverride });
+                    owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolledDamage, isCrit = isCrit, isHighroll = dmgHighroll, attacker = owner, isPriority = true, source = source, overrideSfx = overrideHitSfx, sfx = hitSfxOverride });
 
                     if (notifyOnHit)
                     {

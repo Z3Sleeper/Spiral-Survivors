@@ -15,8 +15,16 @@ public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRe
     }
 
     // 20f = 2000% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%, so 2000% = 20f).
-    [SerializeField] private float onHitHealthRegenPercent = 20f;
+    public float onHitHealthRegenPercent = 20f;
     [SerializeField] private float healthRegenBonusFlat    = 0.5f;
+
+    // Baseline damage at 100% OnHitPower (the per-hit multiplier itself isn't included since it varies
+    // hit-to-hit) for AugmentDescriptionFormatter's {LiveHealthRegenRatio} token — see
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention.
+    public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.HealthRegen * onHitHealthRegenPercent)} "
+            : "";
 
     protected override void OnApply()
     {
@@ -42,6 +50,6 @@ public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRe
         if (data.isCrit) rolled *= Stats.CritDamage;
 
         enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
-        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false });
+        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false, source = DamageSource.OnHitDamageHealthRegenAugment });
     }
 }

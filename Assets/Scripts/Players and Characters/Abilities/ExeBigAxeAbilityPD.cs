@@ -13,10 +13,12 @@ using UnityEngine;
 // itself (CharacterStatsPD.OuterXZMultiplier, WeaponAxePD's own read sites) is untouched and still fully
 // functional — just unused by this ability now — in case it's useful again later.
 //
-// CharacterStatsPD.AbilityPower scales the potency of all three grants AND the buff's own duration, same
-// convention as RogueVanishAbilityPD/KnightBigBuffAbilityPD — each snapshotted at cast time so a live
-// AbilityPower change mid-buff can't desync the add/subtract pair or leave the active timer running against
-// a duration that no longer matches what was granted.
+// CharacterStatsPD.AbilityPower scales only the buff's own duration, same uniform convention every buff
+// ability in this codebase now follows (RogueVanishAbilityPD/KnightBigBuffAbilityPD/BWBlinkAbilityPD) —
+// snapshotted at cast time so a live AbilityPower change mid-buff can't leave the active timer running
+// against a duration that no longer matches what was granted. The three grants themselves (Weapon Range/
+// Execute Threshold/Crit Chance) are flat, fixed values — deliberately NOT also AbilityPower-scaled, since a
+// buff's own strength and its duration both scaling off the same stat on the same cast would double-dip.
 public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, IAbilityPD
 {
     public struct State : IPredictedData<State>
@@ -31,7 +33,7 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     [SerializeField] private string abilityName = "Big Axe";
     [SerializeField, TextArea] private string description =
         "Wield a massive axe for 10 seconds, gaining +50% Total Weapon Range, +25% Execute Threshold and +25% Crit Chance.";
-    [SerializeField] private float cooldown = 30f;
+    public float cooldown = 30f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
     // throughout the buff window) — see Simulate(). true: cooldown starts ticking immediately at cast,
     // running concurrently with the active window. Same convention/default as KnightBigBuffAbilityPD's own.
@@ -44,16 +46,26 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     [SerializeField] private bool activeSurgeBlock = false;
 
     [Header("Effect")]
-    [SerializeField] private float duration = 10f;
-    [SerializeField] private float weaponRangeTotalPercent = 0.5f;
-    [SerializeField] private float executeThresholdPercent = 0.25f;
-    [SerializeField] private float critChancePercent       = 0.25f;
+    public float duration = 10f;
+    public float weaponRangeTotalPercent = 0.5f;
+    public float executeThresholdPercent = 0.25f;
+    public float critChancePercent       = 0.25f;
+
+    // Mirrors Activate()'s own _appliedDuration formula exactly (see class doc comment). Outside a live
+    // match, falls back to the base field itself — exact at neutral AbilityPower (see
+    // ArcherFocusFireAbilityPD.LiveDurationRatio's own doc comment for why), so one token covers both.
+    public string LiveDurationRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? duration * stats.AbilityPower
+            : duration;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
 
     private CharacterStatsPD _stats;
 
-    // Snapshotted at cast time (base * AbilityPower at that instant), same reasoning as
-    // KnightBigBuffAbilityPD's own applied-percent fields — reversed with the identical values at buff-end
-    // regardless of whether AbilityPower changed mid-buff.
+    // Flat — not AbilityPower-scaled (see class doc comment), so these are just plain snapshots of the
+    // fields at cast time, reversed with the identical values at buff-end.
     private float _appliedWeaponRangeTotalPercent;
     private float _appliedExecuteThreshold;
     private float _appliedCritChance;
@@ -96,6 +108,17 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
+
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
@@ -108,12 +131,12 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     {
         if (!IsReady || _stats == null) return;
 
-        // AbilityPower's interpretation for this ability: scales both the potency of all three grants AND
-        // the buff's own duration, same as KnightBigBuffAbilityPD — see class doc comment.
+        // AbilityPower's interpretation for this ability: grows only the buff's own duration — see class doc
+        // comment. The three grants below are flat, not AbilityPower-scaled.
         float abilityPower = _stats.AbilityPower;
-        _appliedWeaponRangeTotalPercent = weaponRangeTotalPercent * abilityPower;
-        _appliedExecuteThreshold        = executeThresholdPercent * abilityPower;
-        _appliedCritChance              = critChancePercent * abilityPower;
+        _appliedWeaponRangeTotalPercent = weaponRangeTotalPercent;
+        _appliedExecuteThreshold        = executeThresholdPercent;
+        _appliedCritChance              = critChancePercent;
         _appliedDuration                = duration * abilityPower;
 
         currentState.activeTimer   = _appliedDuration;

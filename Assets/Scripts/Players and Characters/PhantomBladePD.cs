@@ -162,7 +162,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         // into _damage already — every enemy this blade hits sees the same crit status for its whole
         // flight, not a fresh per-hit roll.
         enemy.TakeDamage(_damage, _isCrit, _owner.owner ?? default);
-        _owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = _damage, isCrit = _isCrit, isHighroll = false, attacker = _owner, isPriority = true });
+        _owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = _damage, isCrit = _isCrit, isHighroll = false, attacker = _owner, isPriority = true, source = DamageSource.PhantomBlade });
 
         // Only fires if some Phantom Blade augment actually enabled it — most blades never touch the OnHit
         // chain at all. weaponDamage uses this blade's own already-rolled damage (the closest available

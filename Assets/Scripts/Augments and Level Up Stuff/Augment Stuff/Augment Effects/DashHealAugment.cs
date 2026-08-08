@@ -21,8 +21,22 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float healthRegenMultiplier = 5f;
+    public float healthRegenMultiplier = 5f;
     [SerializeField] private float healRadius   = 10f;
+
+    // healthRegenMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
+    // convention wouldn't apply to it directly — this alias exists so a description can reference
+    // {HealthRegenMultiplierPercent} for a static fallback (shown outside a live match, when
+    // {LiveHealthRegenRatio} itself is blank) alongside the live number.
+    public float HealthRegenMultiplierPercent => healthRegenMultiplier;
+
+    // Fully accurate live preview — unlike the OnHit/OnStrike family, AreaEffectPower is itself a stat (not
+    // a per-event roll), so nothing needs to be excluded here — for AugmentDescriptionFormatter's
+    // {LiveHealthRegenRatio} token.
+    public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.HealthRegen * healthRegenMultiplier * stats.AreaEffectPower)} "
+            : "";
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate = 0.5f;
 

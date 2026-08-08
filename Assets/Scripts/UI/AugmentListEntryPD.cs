@@ -9,10 +9,13 @@ public class AugmentListEntryPD : MonoBehaviour, IPointerEnterHandler, IPointerE
 
     private string _description;
 
-    public void Setup(AugmentData data)
+    // stats optional — see AugmentCardUI.AugmentSetup's own doc comment for the same contract. This entry
+    // is the in-match "current build" (Tab-held) overlay, so its caller (AugmentListUIPD) always has the
+    // local player's own live stats on hand to pass.
+    public void Setup(AugmentData data, CharacterStatsPD stats = null)
     {
         nameText.text = data.displayName;
-        _description = data.description;
+        _description = AugmentDescriptionFormatter.Format(data, stats);
     }
 
     public void OnPointerEnter(PointerEventData eventData) => AugmentTooltipPD.instance?.Show(_description);

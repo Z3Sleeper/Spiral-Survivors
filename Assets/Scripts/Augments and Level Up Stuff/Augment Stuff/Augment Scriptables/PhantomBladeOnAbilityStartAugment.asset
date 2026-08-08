@@ -14,8 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#FFB4FF>Cast</color>
   description: '<color=#FFA000>On <color=#FFB4FF>Ability Cast</color>:</color> <color=#FFA000>Summon</color>
-    3 <color=#8C8C8C>Phantom Blades</color> piercing the nearest enemies for <color=#FF5000>12%
-    unpenalized Strength</color> <color=#FFA000>x that <color=#FFB4FF>Ability''s</color>
+    <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
+    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{DamageMultiplierPercent}%
+    unpenalized Strength</color>) damage x that <color=#FFB4FF>Ability''s</color>
     base cooldown</color>.
 
     <color=#8C8C8C>+10% Phantom Blade Damage and Size</color>'

@@ -15,7 +15,20 @@ public class HealthRegenOnEnemyDeathAugment : AugmentEffectPD<HealthRegenOnEnemy
         public void Dispose() { }
     }
 
-    [SerializeField] private float healthRegenMultiplier = 0.2f;
+    public float healthRegenMultiplier = 0.2f;
+
+    // healthRegenMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
+    // convention wouldn't apply to it directly — this alias exists so a description can reference
+    // {HealthRegenMultiplierPercent} for a static fallback (shown outside a live match, when
+    // {LiveHealthRegenRatio} itself is blank) alongside the live number.
+    public float HealthRegenMultiplierPercent => healthRegenMultiplier;
+
+    // Fully accurate live preview (no per-event input to exclude — every enemy death heals the same
+    // amount) for AugmentDescriptionFormatter's {LiveHealthRegenRatio} token.
+    public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(healthRegenMultiplier * stats.HealthRegen)} "
+            : "";
 
     protected override void OnApply()
     {

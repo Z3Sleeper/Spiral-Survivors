@@ -1,8 +1,27 @@
-using System.Collections;
+using System;
 using System.Collections.Generic;
 using PurrNet;
 using UnityEngine;
 
+// Stacking rework (see feedback thread this was designed from): the moment a hit lands, its damage number
+// prints IMMEDIATELY and locks to a fixed position relative to the enemy — no arc animation, no lifetime
+// countdown yet. Any further hit from the SAME "source" (see DamageSource) landing within _stackWindow of
+// the last one ADDS onto that same number (sliding window: each addition also resets the countdown) instead
+// of printing its own. Once the window elapses with no further same-source hit, the number is "released"
+// into its normal arc/fade/despawn animation from wherever it's currently sitting.
+//
+// Grouping is two-tiered:
+// - "Stack" = (enemy, attacking player) — the vertical arrangement multiple different concurrent sources
+//   land in on the same enemy from the same attacker.
+// - "Group" = (stack, DamageSource) — the actual accumulator every same-source hit within the window feeds
+//   into. Two different sources (e.g. ShieldBreakBurst and OnHitDamageHealthAugment) landing on the same
+//   enemy at the same time never merge into one number, even though they share a stack.
+// Every additional group's number stacks ON TOP of the previous ones within its stack, at _stackHeightStep
+// world-Y per slot (5th slot = +5 * _stackHeightStep). Weapon-source groups always claim the bottom slot
+// (height 0): if a fresh Weapon group is created while other groups are still locked on the same stack,
+// every one of those other groups is bumped up by one slot to make room. A released group's own slot is
+// simply freed (not renumbered/backfilled) — see DamageNumber.Release's own doc comment for why only the
+// still-locked, pre-animation stack ever reorders.
 public class DamageNumberManager : MonoBehaviour
 {
     public static DamageNumberManager instance;
@@ -10,55 +29,49 @@ public class DamageNumberManager : MonoBehaviour
     [SerializeField] private DamageNumber _prefab;
     [SerializeField] private int _poolSize = 30;
     [SerializeField] private float _spawnYOffset = 1.5f;
-    // Not applied at spawn — handed to DamageNumber.Init() as the X distance to arc toward over its
-    // lifetime (see DamageNumber.Animate()), rather than an instant spawn-position offset. Magnitude is
-    // randomized each spawn (Random.Range(min, max)), but the SIGN isn't random — it alternates
-    // left/right per pop (see DrainQueue), so consecutive numbers from the same queue always visibly
-    // separate instead of two randomly landing on the same side.
+    // Not applied at spawn — handed to DamageNumber.InitLocked()/Release() as the X distance to arc toward
+    // once released (see DamageNumber.Animate()). Magnitude is randomized per NEW group (Random.Range(min,
+    // max)); the SIGN alternates per stack (see _goRight) so consecutive groups on the same stack visibly
+    // separate instead of risking landing on the same side twice in a row.
     [SerializeField] private float _minSpawnXJitter = 1f;
     [SerializeField] private float _maxSpawnXJitter = 1.5f;
-    // Every number stays separate (never summed into one) — this just spaces out same-groupKey hits
-    // landing in the same instant so they don't render as a single unreadable overlapping stack.
-    [SerializeField] private float _staggerDelay = 0.05f;
+    // The tight same-source stacking window — see class doc comment. Sliding: every additional same-source
+    // hit resets this back to the full value, so a same-source burst only starts animating once hits
+    // actually stop arriving.
+    [SerializeField] private float _stackWindow = 0.05f;
+    // World-Y spacing between simultaneously-locked groups on the same stack — see class doc comment.
+    [SerializeField] private float _stackHeightStep = 1f;
 
     private readonly Queue<DamageNumber> _pool = new();
 
-    private struct QueuedNumber
+    private class LockedGroup
     {
-        // IEnemyPD, not a baked Vector3 — resolved live at actual spawn time (see ResolvePosition()), not
-        // at enqueue time. A deep queue backlog (hits queuing faster than _staggerDelay drains them) means
-        // a late entry can pop a full second or more after it was queued; a source that's still moving (a
-        // boss walking/charging) would otherwise show every one of those late numbers frozen at wherever
-        // it was back when each hit was originally registered, clustering far from its current position
-        // instead of tracking it.
-        public IEnemyPD source;
-        // Captured at enqueue time (source is always alive then) — SpawnGeneration lets IsStillTheSameEnemy
-        // detect pooled reuse (source itself stays a valid non-null reference even after its GameObject is
-        // recycled for a different spawn), and fallbackPos is used if source is no longer the same enemy by
-        // the time this entry's turn to drain comes up, instead of silently dropping the number entirely
-        // (the earlier "numbers disappear when enemies die" bug) or snapping to wherever the recycled
-        // GameObject now is (the later, actually-reported version of that same bug).
-        public int sourceGeneration;
-        public Vector3 fallbackPos;
+        public DamageNumber number;
+        public IEnemyPD enemy;
+        public int enemyGeneration;
         public float sizeYOffset;
         public float sizeZOffset;
-        public float damage;
+        public float amount;
         public bool isCrit;
         public bool isHighroll;
-        public bool isPriority;
+        public float windowRemaining;
+        public int stackKey;
+        public int height;
     }
-    // One queue per groupKey — DrainQueue() below pops and spawns one entry at a time, `_staggerDelay`
-    // apart, picking up any new entries queued mid-drain rather than needing its own restart. LinkedList,
-    // not Queue<T> — priority entries (real weapon hits) need to jump to the front ahead of whatever's
-    // already queued (onhit effects, Phantom Blades, etc.), which a plain FIFO queue can't do.
-    private readonly Dictionary<int, LinkedList<QueuedNumber>> _queues = new();
-    // Tracks which groupKeys currently have a DrainQueue() coroutine actively running — queue.Count alone
-    // can't tell you this: once a coroutine dequeues its first entry (synchronously, before its first
-    // yield) the queue is back to Count == 0 while the coroutine is still alive and paused between spawns,
-    // so the next Spawn() call would also see Count == 1 after enqueueing and wrongly start a second,
-    // concurrent coroutine for the same key — this is what caused several onhit effects on the same hit to
-    // all pop up simultaneously instead of staggering.
-    private readonly HashSet<int> _draining = new();
+
+    // Keyed by CombineGroupKey(stackKey, source) — the accumulator every same-source hit within _stackWindow
+    // feeds into. See class doc comment.
+    private readonly Dictionary<int, LockedGroup> _lockedGroups = new();
+    // Keyed by stackKey (enemy + attacking player) — the ordered set of groupKeys currently locked on that
+    // stack, bottom to top, used purely to assign each new group's height. A released group is removed from
+    // here but the remaining entries are NOT renumbered/compacted — only inserting a fresh Weapon group
+    // forces a reflow (see class doc comment).
+    private readonly Dictionary<int, List<int>> _stackOrder = new();
+    // One alternating left/right toggle per stack, flipped every time a NEW group is created on it.
+    private readonly Dictionary<int, bool> _goRight = new();
+    // Reused every Update() to snapshot which groupKeys expired this frame — can't remove from _lockedGroups
+    // while enumerating it directly.
+    private readonly List<int> _expiredScratch = new();
 
     private void Awake()
     {
@@ -71,15 +84,37 @@ public class DamageNumberManager : MonoBehaviour
         }
     }
 
-    // source is the damage source (e.g. an enemy) — its position is read live off source.Visuals wherever
-    // actually needed (immediately here, or later inside DrainQueue()), never baked in ahead of time.
-    // sizeYOffset/sizeZOffset nudge the spawn point along world-space +Y/+Z by that many units (not
-    // source's own facing direction), so the number spawns off the model along fixed world axes instead
-    // of centered inside it. sizeYOffset stacks on top of _spawnYOffset (the manager-wide default lift).
-    // isPriority jumps this entry to the front of the queue (ahead of anything already waiting) instead of
-    // the back — real weapon hits use this so they always show up before onhit-effect/Phantom Blade
-    // numbers from the same burst, regardless of invocation order.
-    public void Spawn(float amount, IEnemyPD source, float sizeYOffset, float sizeZOffset, int groupKey = 0, bool isCrit = false, bool isHighroll = false, PlayerID attackerOwner = default, bool isPriority = false)
+    private void Update()
+    {
+        if (_lockedGroups.Count == 0) return;
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        _expiredScratch.Clear();
+        foreach (var kvp in _lockedGroups)
+        {
+            var group = kvp.Value;
+            // Target gone (destroyed or pooled/reused for a different enemy) — force-release immediately
+            // rather than waiting out the rest of the window on an enemy that no longer exists.
+            if (!IsStillTheSameEnemy(group.enemy, group.enemyGeneration))
+            {
+                _expiredScratch.Add(kvp.Key);
+                continue;
+            }
+            group.windowRemaining -= Time.deltaTime;
+            if (group.windowRemaining <= 0f) _expiredScratch.Add(kvp.Key);
+        }
+        for (int i = 0; i < _expiredScratch.Count; i++)
+            ReleaseGroup(_expiredScratch[i]);
+    }
+
+    // stackKey identifies the (enemy, attacking player) vertical arrangement this hit belongs to — computed
+    // by the caller (EnemyBasePD.ShowDamageNumber, same HashCode.Combine(GetInstanceID(), attackerOwner)
+    // formula as before) since it's the one that already has direct access to GetInstanceID(). damageSource
+    // is the actual accumulation bucket within that stack — see class doc comment for the full rule.
+    // sizeYOffset/sizeZOffset nudge the spawn point along world-space +Y/+Z (not source's own facing), so
+    // the number spawns off the model along fixed world axes instead of centered inside it; sizeYOffset
+    // stacks on top of _spawnYOffset (the manager-wide default lift), both BELOW the per-group stack height.
+    public void Spawn(float amount, IEnemyPD source, float sizeYOffset, float sizeZOffset, int stackKey, DamageSource damageSource, bool isCrit = false, bool isHighroll = false, PlayerID attackerOwner = default, bool isPriority = false)
     {
         if (amount <= 0f || IsDestroyed(source)) return;
 
@@ -89,38 +124,89 @@ public class DamageNumberManager : MonoBehaviour
             if (!isOwn && !Settings.SeeOtherPlayerDamage) return;
         }
 
-        if (groupKey == 0)
+        int groupKey = CombineGroupKey(stackKey, damageSource);
+
+        // Same-source hit within the window — fold into the existing locked number instead of printing a
+        // new one, and slide the window back out to the full value.
+        if (_lockedGroups.TryGetValue(groupKey, out var existing))
         {
-            // No queue to alternate within — always defaults right.
-            SpawnImmediate(amount, source, ResolvePosition(source, sizeYOffset, sizeZOffset), isCrit, isHighroll, isPriority, goRight: true);
+            existing.amount += amount;
+            existing.isCrit |= isCrit;
+            existing.isHighroll |= isHighroll;
+            existing.windowRemaining = _stackWindow;
+            existing.number.SetAmount(existing.amount, existing.isCrit, existing.isHighroll);
             return;
         }
 
-        if (!_queues.TryGetValue(groupKey, out var queue))
+        if (!_stackOrder.TryGetValue(stackKey, out var order))
         {
-            queue = new LinkedList<QueuedNumber>();
-            _queues[groupKey] = queue;
+            order = new List<int>();
+            _stackOrder[stackKey] = order;
         }
-        var entry = new QueuedNumber
+
+        int height;
+        if (damageSource == DamageSource.Weapon)
         {
-            source = source,
-            sourceGeneration = source.SpawnGeneration,
-            fallbackPos = ResolvePosition(source, sizeYOffset, sizeZOffset),
+            // Weapon always claims the bottom slot — every other currently-locked group on this stack bumps
+            // up by one to make room (see class doc comment).
+            for (int i = 0; i < order.Count; i++)
+                if (_lockedGroups.TryGetValue(order[i], out var other))
+                    other.number.SetHeight(++other.height * _stackHeightStep);
+            height = 0;
+            order.Insert(0, groupKey);
+        }
+        else
+        {
+            height = order.Count;
+            order.Add(groupKey);
+        }
+
+        bool goRight = !_goRight.TryGetValue(stackKey, out bool last) || !last;
+        _goRight[stackKey] = goRight;
+        float magnitude = UnityEngine.Random.Range(_minSpawnXJitter, _maxSpawnXJitter);
+        float xOffset = goRight ? magnitude : -magnitude;
+
+        var num = _pool.Count > 0 ? _pool.Dequeue() : Instantiate(_prefab, transform);
+        Vector3 pos = ResolvePosition(source, sizeYOffset, sizeZOffset) + new Vector3(0f, _spawnYOffset, 0f);
+        num.InitLocked(amount, pos, height * _stackHeightStep, xOffset, source, this, isCrit, isHighroll, isPriority);
+
+        _lockedGroups[groupKey] = new LockedGroup
+        {
+            number = num,
+            enemy = source,
+            enemyGeneration = source.SpawnGeneration,
             sizeYOffset = sizeYOffset,
             sizeZOffset = sizeZOffset,
-            damage = amount,
+            amount = amount,
             isCrit = isCrit,
             isHighroll = isHighroll,
-            isPriority = isPriority
+            windowRemaining = _stackWindow,
+            stackKey = stackKey,
+            height = height,
         };
-        if (isPriority) queue.AddFirst(entry);
-        else queue.AddLast(entry);
-
-        // HashSet.Add returns true only if groupKey wasn't already present — the one atomic "claim this
-        // key" check, unlike inferring it from queue.Count (see _draining's doc comment).
-        if (_draining.Add(groupKey))
-            StartCoroutine(DrainQueue(groupKey));
     }
+
+    private void ReleaseGroup(int groupKey)
+    {
+        if (!_lockedGroups.TryGetValue(groupKey, out var group)) return;
+        _lockedGroups.Remove(groupKey);
+
+        if (_stackOrder.TryGetValue(group.stackKey, out var order))
+        {
+            order.Remove(groupKey);
+            // Prune fully-emptied stacks so a very long session with many distinct enemies doesn't leave
+            // behind an ever-growing pile of empty entries.
+            if (order.Count == 0)
+            {
+                _stackOrder.Remove(group.stackKey);
+                _goRight.Remove(group.stackKey);
+            }
+        }
+
+        group.number.Release();
+    }
+
+    private static int CombineGroupKey(int stackKey, DamageSource source) => HashCode.Combine(stackKey, (int)source);
 
     // Plain `source == null` on an IEnemyPD-typed reference does NOT detect a truly-destroyed Unity object
     // — Unity's overloaded "fake null" equality operator only applies when the compile-time type is
@@ -128,55 +214,18 @@ public class DamageNumberManager : MonoBehaviour
     // reference equality, which stays "non-null" even after the underlying enemy is destroyed. Casting to
     // Object first routes the check through Unity's real destroyed-check instead. Public/static so
     // DamageNumber can use the exact same check for its own _target.
-    public static bool IsDestroyed(IEnemyPD enemy) => enemy == null || (Object)enemy == null;
+    public static bool IsDestroyed(IEnemyPD enemy) => enemy == null || (UnityEngine.Object)enemy == null;
 
     // source stays a valid, non-null reference even after its GameObject gets pooled/recycled for a
     // completely different enemy spawn — SpawnGeneration is the only reliable signal that it's still the
-    // SAME logical enemy this entry was originally queued against.
+    // SAME logical enemy this entry was originally locked against.
     private static bool IsStillTheSameEnemy(IEnemyPD source, int capturedGeneration) =>
         !IsDestroyed(source) && source.SpawnGeneration == capturedGeneration;
-
-    private IEnumerator DrainQueue(int groupKey)
-    {
-        var wait = new WaitForSeconds(_staggerDelay);
-        // Local to this coroutine invocation, so it always starts back at right (true) on a fresh drain
-        // cycle — once the queue empties and this coroutine ends, the next Spawn() for this groupKey starts
-        // a brand new DrainQueue() call with its own fresh `goRight`, per the "default to the right again"
-        // reset requirement.
-        bool goRight = true;
-        // Re-checks queue.Count every loop, so hits that arrive mid-drain (still within the same burst)
-        // get picked up and staggered too, instead of only draining what existed at coroutine start.
-        while (_queues.TryGetValue(groupKey, out var queue) && queue.Count > 0)
-        {
-            var entry = queue.First.Value;
-            queue.RemoveFirst();
-            bool alive = IsStillTheSameEnemy(entry.source, entry.sourceGeneration);
-            Vector3 pos = alive ? ResolvePosition(entry.source, entry.sizeYOffset, entry.sizeZOffset) : entry.fallbackPos;
-            SpawnImmediate(entry.damage, alive ? entry.source : null, pos, entry.isCrit, entry.isHighroll, entry.isPriority, goRight);
-            goRight = !goRight;
-            yield return wait;
-        }
-        _queues.Remove(groupKey);
-        _draining.Remove(groupKey);
-    }
 
     // World-space +Y/-Z, not source's own up/forward — a fixed nudge along world axes regardless of which
     // way the enemy happens to be facing or oriented. sizeZOffset is negated since -Z is "forward" here.
     private Vector3 ResolvePosition(IEnemyPD source, float sizeYOffset, float sizeZOffset) =>
         source.Visuals.position + new Vector3(0f, sizeYOffset, -sizeZOffset);
-
-    // pos is the already-resolved spawn position (live off source, or the queued fallback if source is no
-    // longer the same enemy by drain time) — source is still passed through separately so DamageNumber can
-    // keep tracking it live for the rest of its own animation if it's still the same enemy. goRight is
-    // resolved by the caller (always true for an ungrouped/immediate spawn, alternating per-pop for a
-    // drained queue — see DrainQueue); the magnitude itself is still randomized here every spawn.
-    private void SpawnImmediate(float amount, IEnemyPD source, Vector3 pos, bool isCrit, bool isHighroll, bool isPriority, bool goRight)
-    {
-        var num = _pool.Count > 0 ? _pool.Dequeue() : Instantiate(_prefab, transform);
-        float magnitude = Random.Range(_minSpawnXJitter, _maxSpawnXJitter);
-        float xOffset = goRight ? magnitude : -magnitude;
-        num.Init(amount, pos + new Vector3(0f, _spawnYOffset, 0f), xOffset, source, this, isCrit, isHighroll, isPriority);
-    }
 
     public void Return(DamageNumber num) => _pool.Enqueue(num);
 }

@@ -38,10 +38,12 @@ using UnityEngine;
 // starts ticking the instant Blink is cast, running concurrently with the Move Speed buff, rather than only
 // starting once that buff ends. See the field's own doc comment for why.
 //
-// CharacterStatsPD.AbilityPower scales both the Move Speed bonus AND the buff's own duration, same
-// snapshotted-at-cast-time convention as RogueVanishAbilityPD's own _appliedMoveSpeedTotalPercent/duration
-// pairing — a live AbilityPower change mid-buff can't desync the add/subtract pair or leave the active timer
-// running against a duration that no longer matches what was granted.
+// CharacterStatsPD.AbilityPower scales only the buff's own duration, same uniform convention every buff
+// ability in this codebase now follows (ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/RogueVanishAbilityPD) —
+// snapshotted at cast time so a live AbilityPower change mid-buff can't leave the active timer running
+// against a duration that no longer matches what was granted. moveSpeedTotalPercent itself is flat, not
+// AbilityPower-scaled — a buff's own strength and its duration both scaling off the same stat on the same
+// cast would double-dip.
 //
 // Death force-ends the buff early, same convention as every other buff this session (ExeBigAxeAbilityPD/
 // KnightBigBuffAbilityPD/RogueVanishAbilityPD) — see Simulate()'s own comment.
@@ -59,7 +61,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     [SerializeField] private string abilityName = "Blink";
     [SerializeField, TextArea] private string description =
         "Instantly teleport to wherever your blades are currently orbiting, then gain +25% Total Move Speed for 2 seconds. Only usable while Blade Dance is active.";
-    [SerializeField] private float cooldown = 10f;
+    public float cooldown = 10f;
     // true — cooldown starts ticking immediately at cast, running concurrently with the Move Speed buff,
     // rather than only starting once that buff ends. Deliberately NOT RogueVanishAbilityPD's default here —
     // gating the cooldown behind the buff's own duration felt bad specifically for Blink: the teleport
@@ -73,8 +75,19 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     [SerializeField] private bool activeSurgeBlock = false;
 
     [Header("Effect")]
-    [SerializeField] private float duration = 2f;
-    [SerializeField] private float moveSpeedTotalPercent = 0.25f;
+    public float duration = 2f;
+    public float moveSpeedTotalPercent = 0.25f;
+
+    // Mirrors ApplyBuffAndCooldown's own _appliedDuration formula exactly. Outside a live match, falls back
+    // to the base field itself — exact at neutral AbilityPower (see ArcherFocusFireAbilityPD.
+    // LiveDurationRatio's own doc comment for why), so one token covers both.
+    public string LiveDurationRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? duration * stats.AbilityPower
+            : duration;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
     // Invincibility grace granted the instant the teleport lands (see Activate()) — same GrantInvincibility
     // mechanism RogueSpinAbilityPD's own postActiveInvincibilityGrace uses, just at a different moment (right
     // after landing, not at the end of some later window) since it's the teleport itself that's disorienting,
@@ -96,9 +109,8 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     private PredictedTransform _predictedTransform;
     private PlayerControllerPD _controller;
 
-    // Snapshotted at cast time (moveSpeedTotalPercent * AbilityPower at that instant), same reasoning as
-    // RogueVanishAbilityPD's own _appliedMoveSpeedTotalPercent — reversed with the identical value at
-    // buff-end regardless of whether AbilityPower changed mid-buff.
+    // Flat — moveSpeedTotalPercent is not AbilityPower-scaled (see class doc comment), so this is just a
+    // plain snapshot of the field at cast time, reversed with the identical value at buff-end.
     private float _appliedMoveSpeedTotalPercent;
     // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
     // this fixed rather than recomputing duration * AbilityPower live off a since-changed AbilityPower.
@@ -149,6 +161,17 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
+
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
@@ -170,6 +193,15 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         Vector3 blinkTarget = _bladeDance.currentState.currentOrigin;
 
         if (_rigidbody != null) _rigidbody.position = blinkTarget;
+        // Redundant-looking on top of the Rigidbody write above, but not actually redundant: a
+        // Rigidbody.position write made from PurrDiction's own custom simulation tick (not Unity's native
+        // FixedUpdate) isn't guaranteed to be reflected in transform.position within this same synchronous
+        // continuation, so anything reading Stats.transform.position later in THIS same call (e.g.
+        // NotifyDashEnded's own listeners just below — DashExplosionAugment, DashHealAugment,
+        // PhantomBladeOnDashAugment) could still see the OLD, pre-teleport position. Same staleness risk
+        // RecallInstantly's own explicit blinkTarget parameter (below) was already written to avoid — this
+        // is the same fix applied to the Transform itself.
+        _stats.transform.position = blinkTarget;
         _predictedTransform?.ResetInterpolation();
 
         // See postBlinkInvincibility's own doc comment — granted the instant we land, not at buff-end.
@@ -192,16 +224,17 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
 
     // Shared by a real cast (Activate(), above) and the auto-cast that fires when the Blade Dance finishes
     // on its own (AutoCastOnDanceReturn(), below) — everything about Blink EXCEPT the teleport itself: the
-    // AbilityPower-scaled Move Speed buff (same cast-time-snapshot convention as RogueVanishAbilityPD), its
-    // duration, the cooldown, the surge-block pairing, and the Ability Started notification. Kept as one
-    // shared method rather than duplicated across both call sites so the two can never drift out of sync —
-    // e.g. a future surge-block or AbilityPower-scaling change would otherwise need to be made twice.
+    // Move Speed buff, its AbilityPower-scaled duration (same cast-time-snapshot convention as
+    // RogueVanishAbilityPD), the cooldown, the surge-block pairing, and the Ability Started notification.
+    // Kept as one shared method rather than duplicated across both call sites so the two can never drift out
+    // of sync — e.g. a future surge-block or AbilityPower-scaling change would otherwise need to be made
+    // twice.
     private void ApplyBuffAndCooldown()
     {
-        // AbilityPower's interpretation for this ability: scales both the Move Speed bonus AND the buff's
-        // own duration, same as RogueVanishAbilityPD — see class doc comment.
+        // AbilityPower's interpretation for this ability: grows only the buff's own duration — see class doc
+        // comment. moveSpeedTotalPercent itself is flat, not AbilityPower-scaled.
         float abilityPower = _stats.AbilityPower;
-        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent * abilityPower;
+        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent;
         _appliedDuration              = duration * abilityPower;
 
         currentState.activeTimer   = _appliedDuration;
@@ -225,18 +258,23 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     // under their own power (natural Return-phase completion ONLY — that call site deliberately never
     // reaches here from the death-forced end, since there's no point buffing a caster who's already dead).
     // Grants Blink's usual Move Speed buff/duration/cooldown/Ability Started notification exactly as if it
-    // had really been cast, but skips every teleport-specific side effect (position snap, invincibility
-    // grace, RecallInstantly, dash-start/end notifications) — there's nowhere left to teleport TO, the
-    // blades already got there on their own. Only gated on cooldown + not already active, deliberately NOT
-    // the full IsReady (which also requires _bladeDance.IsActive) — that gate exists so a MANUAL cast can't
-    // teleport into a dance that isn't running; this only ever fires the instant the dance STOPS running, so
-    // that same check would incorrectly fail every single time here. A manual Blink cast mid-dance already
-    // puts this on cooldown itself, so when RecallInstantly's own follow-up Return-arrival tick reaches this
-    // same call site one tick later, the cooldown check here naturally no-ops it — no separate guard needed
-    // against double-triggering off a player-initiated Blink.
+    // had really been cast, and still fires DashStarted/DashEnded (so DashExplosionAugment/DashHealAugment
+    // etc. still trigger off an auto-cast Blink same as a manual one) — but back to back, with no teleport
+    // straddled in between, since there's nowhere left to teleport TO (the blades already got there on
+    // their own) and so nothing for Started/Ended to meaningfully bracket. Every OTHER teleport-specific
+    // side effect (position snap, invincibility grace, RecallInstantly) is still skipped for the same
+    // reason. Only gated on cooldown + not already active, deliberately NOT the full IsReady (which also
+    // requires _bladeDance.IsActive) — that gate exists so a MANUAL cast can't teleport into a dance that
+    // isn't running; this only ever fires the instant the dance STOPS running, so that same check would
+    // incorrectly fail every single time here. A manual Blink cast mid-dance already puts this on cooldown
+    // itself, so when RecallInstantly's own follow-up Return-arrival tick reaches this same call site one
+    // tick later, the cooldown check here naturally no-ops it — no separate guard needed against
+    // double-triggering off a player-initiated Blink.
     public void AutoCastOnDanceReturn()
     {
         if (_stats == null || _stats.IsDead || currentState.isActive || currentState.cooldownTimer > 0f) return;
+        _controller?.NotifyDashStarted();
+        _controller?.NotifyDashEnded();
         ApplyBuffAndCooldown();
     }
 

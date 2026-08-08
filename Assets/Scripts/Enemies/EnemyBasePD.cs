@@ -98,7 +98,7 @@ public interface IEnemyPD
     // on the same hit (e.g. AreaEffectCastHelper's own interrupt param), never after — see Interrupt()'s
     // own doc comment for why the ordering matters.
     void Interrupt();
-    void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false, bool overrideSfx = false, AudioClip sfxOverride = null);
+    void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, DamageSource source, bool isPriority = false, bool overrideSfx = false, AudioClip sfxOverride = null);
 
     // Lets a spawner mark a freshly hierarchy.Create()'d enemy with which category spawned it (deciding
     // which Active*Count bucket it counts against) and apply co-op/elite stat scaling, generically,
@@ -593,7 +593,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private void OnHitFeedback(HitFeedbackData data)
     {
         if (data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy))
-            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.isPriority, data.overrideSfx, data.sfx);
+            enemy.TriggerHitFeedback(data.damage, data.isCrit, data.isHighroll, data.attacker, data.source, data.isPriority, data.overrideSfx, data.sfx);
     }
 
     private void OnContactTrigger(GameObject other)
@@ -1423,7 +1423,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // jumps this hit's damage number to the front of DamageNumberManager's queue for this enemy+attacker
     // ahead of whatever's already waiting, so real weapon damage always reads first regardless of how many
     // onhit effects also fired off the same hit.
-    public void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false, bool overrideSfx = false, AudioClip sfxOverride = null)
+    public void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, DamageSource source, bool isPriority = false, bool overrideSfx = false, AudioClip sfxOverride = null)
     {
         // PD weapons (WeaponMeleePD, WeaponRangedProjectilePD) queue hit feedback in Simulate()/
         // LateSimulate() but only drain and fire it here in UpdateView(), at render rate — by the time it
@@ -1445,7 +1445,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // this method processes that same hit's feedback), so a separate normal flash here would just be
         // redundant color-painting fighting the same value.
         if (!_hiddenOnDeath && !B.isDead && gameObject.activeInHierarchy) TriggerFlash();
-        if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, isCrit, isHighroll, isPriority);
+        if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, source, isCrit, isHighroll, isPriority);
         if (attacker.isOwner && SFXManager.instance != null)
         {
             AudioClip clip = overrideSfx ? sfxOverride : attacker.hitSfx;
@@ -1570,7 +1570,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 // IEnemyPD) — fired through _onHitFeedback rather than a queue (see HitFeedbackData's own
                 // doc comment for why a plain queue here was resimulation-unsafe).
                 if (CharacterStatsPD.All.TryGetValue(b.killerOwner, out var killLaunchAttacker))
-                    _onHitFeedback.Invoke(new HitFeedbackData { target = enemy.ObjectId, damage = b.killLaunchDamage, isCrit = b.killLaunchIsCrit, isHighroll = b.killLaunchIsHighroll, attacker = killLaunchAttacker, isPriority = false });
+                    _onHitFeedback.Invoke(new HitFeedbackData { target = enemy.ObjectId, damage = b.killLaunchDamage, isCrit = b.killLaunchIsCrit, isHighroll = b.killLaunchIsHighroll, attacker = killLaunchAttacker, isPriority = false, source = DamageSource.KillLaunch });
             }
         }
 
@@ -1794,7 +1794,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // should reset it here instead of OnRemovedFromPool(), which never fires for pooled reuse.
     protected virtual void OnRespawnReset() { }
 
-    private void ShowDamageNumber(float amount, PlayerID attackerOwner, bool isCrit = false, bool isHighroll = false, bool isPriority = false)
+    private void ShowDamageNumber(float amount, PlayerID attackerOwner, DamageSource source, bool isCrit = false, bool isHighroll = false, bool isPriority = false)
     {
         // Passes this (IEnemyPD), not a bare Transform — DamageNumberManager/DamageNumber read .Visuals off
         // it for position (smoothly interpolated PredictedTransform graphics child, not the raw tick-
@@ -1802,8 +1802,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // alone can't tell a still-alive enemy apart from this same pooled GameObject having since been
         // reused for a completely different spawn, which was causing already-tracking numbers to snap
         // away/disappear when their original enemy died and got recycled before their animation finished.
+        // The passed stackKey (enemy + attacking player) is the STACK this hit's damage number belongs to —
+        // DamageNumberManager itself combines it with `source` to get the actual accumulation group; see its
+        // own class doc comment for the full rule.
         if (DamageNumberManager.instance != null)
-            DamageNumberManager.instance.Spawn(amount, this, sizeYOffset, sizeZOffset, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), isCrit, isHighroll, attackerOwner, isPriority);
+            DamageNumberManager.instance.Spawn(amount, this, sizeYOffset, sizeZOffset, HashCode.Combine(GetInstanceID(), attackerOwner.GetHashCode()), source, isCrit, isHighroll, attackerOwner, isPriority);
     }
 
     private const float FlashDuration = 0.08f;

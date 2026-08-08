@@ -392,7 +392,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * onHitPower);
-        NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
+        NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
     }
 
     // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been

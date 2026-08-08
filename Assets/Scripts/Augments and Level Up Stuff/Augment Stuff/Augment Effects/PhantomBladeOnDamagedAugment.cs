@@ -18,9 +18,23 @@ public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamage
     }
 
     [SerializeField] private GameObject phantomBladePrefab;
-    [SerializeField] private int   bladeCount = 1;
-    [SerializeField] private float damageMultiplier = 0.1f;
+    public int bladeCount = 1;
+    public float damageMultiplier = 0.1f;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
+
+    // damageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100 convention
+    // wouldn't apply to it directly — this alias exists purely so a description can reference
+    // {DamageMultiplierPercent} and get the correctly-scaled static number, as a fallback for whenever
+    // {LiveBladeDamageRatio} itself is blank (out of a live match — see ShowLiveValues's own doc comment).
+    public float DamageMultiplierPercent => damageMultiplier;
+
+    // Damage per 1 point of pre-mitigation damage taken (the trigger's own per-event input varies hit-to-
+    // hit, so isn't baked in — same "baseline coefficient" convention as OnHitDamageHealthAugment.
+    // LiveBonusHealthRatio's own doc comment) for AugmentDescriptionFormatter's {LiveBladeDamageRatio} token.
+    public string LiveBladeDamageRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, damageMultiplier))} "
+            : "";
 
     protected override void OnApply()
     {

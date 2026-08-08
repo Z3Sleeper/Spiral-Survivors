@@ -9,6 +9,14 @@ public class EnemyUIPD : MonoBehaviour
 
     private IEnemyPD _enemy;
     private Camera _camera;
+    // Last values actually displayed — with up to ~500 concurrent enemies (see EnemySpawnerPD's own caps),
+    // rebuilding healthText's string every frame regardless of whether health actually moved was a real,
+    // chronic per-frame GC source (confirmed via Profiler: EnemyUIPD showing up as a top GC-allocation
+    // contributor across several consecutive frames). Skipping the Slider/text write entirely when nothing
+    // changed since last frame removes both the allocation and the redundant TMP rebuild for every enemy
+    // that isn't currently taking damage, which is the overwhelming majority on any given frame.
+    private float _lastCurrentHealth = -1f;
+    private float _lastMaxHealth = -1f;
 
     private void Awake()
     {
@@ -24,8 +32,15 @@ public class EnemyUIPD : MonoBehaviour
         // at whatever it last displayed the instant before the killing blow landed.
         if (_enemy == null) return;
         if (_enemy.MaxHealth <= 0f) return;
-        healthBar.value = _enemy.CurrentHealth / _enemy.MaxHealth;
-        healthText.text = $"<b>{FormatStat(_enemy.CurrentHealth)}/{FormatStat(_enemy.MaxHealth)}</b>";
+
+        float current = _enemy.CurrentHealth;
+        float max = _enemy.MaxHealth;
+        if (current == _lastCurrentHealth && max == _lastMaxHealth) return;
+        _lastCurrentHealth = current;
+        _lastMaxHealth = max;
+
+        healthBar.value = current / max;
+        healthText.text = $"<b>{FormatStat(current)}/{FormatStat(max)}</b>";
     }
 
     private void LateUpdate()

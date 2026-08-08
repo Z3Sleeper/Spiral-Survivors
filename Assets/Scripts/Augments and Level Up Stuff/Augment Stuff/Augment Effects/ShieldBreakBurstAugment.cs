@@ -41,12 +41,22 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     [SerializeField] private float invincibilityDuration = 1f;
-    [SerializeField] private float damagePercent        = 2f;
+    public float damagePercent        = 2f;
     [SerializeField] private float burstRadius          = 5f;
     [SerializeField] private float knockbackMultiplier  = 2f;
     [SerializeField] private float stunDuration         = 1f;
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate        = 0.5f;
+
+    // Mirrors AreaEffectCastHelper.Cast's own damage formula (abilityPower left at its neutral default here,
+    // so areaAndAbilityPower reduces to exactly Stats.AreaEffectPower — see that method's own doc comment),
+    // minus the luck/crit roll (baseline preview, not a randomly-sampled one — see
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention), for
+    // AugmentDescriptionFormatter's {LiveStrengthRatio} token.
+    public string LiveStrengthRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.UnpenalizedStrength * damagePercent * stats.AreaEffectPower)} "
+            : "";
 
     [Header("VFX")]
     // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
@@ -92,6 +102,7 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
                 damagePercent: damagePercent, notifyOnHit: false, hasKnockback: true, knockback: knockback, interrupt: true,
+                source: DamageSource.ShieldBreakBurst,
                 onEnemyHit: enemy => enemy.Stun(stunDuration * Stats.AreaEffectPower), vfxPerCast: true);
     }
 }

@@ -23,8 +23,20 @@ public class HealthToHealthRegenAugment : AugmentEffectPD<HealthToHealthRegenAug
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusHealthToHealthRegenPercent = 0.05f;
+    public float bonusHealthToHealthRegenPercent = 0.05f;
     [SerializeField] private float belowHalfHealthMultiplier       = 2f;
+
+    // For AugmentDescriptionFormatter's {LiveBonusHealthRegenRatio} token — mirrors Simulate()'s own
+    // state.desiredAmount computation exactly, just recomputed directly off live Stats rather than reading
+    // predicted state (this only ever runs off-simulation, from the description formatter, so there's no
+    // rollback/determinism concern reading Stats directly here the way Simulate() itself has to be careful
+    // about).
+    public string LiveBonusHealthRegenRatio(CharacterStatsPD stats)
+    {
+        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "";
+        bool belowHalfHealth = stats.CurrentHealth < stats.MaxHealth * 0.5f;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.BonusHealth * bonusHealthToHealthRegenPercent * (belowHalfHealth ? belowHalfHealthMultiplier : 1f))} ";
+    }
 
     // Tracks how much has actually been granted via Stats.AddHealthRegenFlat so far — mutated only from
     // UpdateView() off verified state, so the delta applied each time is always correct regardless of how

@@ -30,7 +30,7 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Shockwave";
     [SerializeField, TextArea] private string description = "Stun all nearby enemies for 2 seconds and heal 3% Max Health per enemy hit.";
-    [SerializeField] private float cooldown = 10f;
+    public float cooldown = 10f;
     // Exposed for interface uniformity (see IAbilityPD.CooldownStartsOnCast's own doc comment) but currently
     // inert either way — this ability has no active window at all (AbilityIsActive is always false, see
     // class doc comment), so "wait for the active window to end" and "start immediately at cast" collapse to
@@ -57,12 +57,33 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // own comment for why), so a 2s base still stuns for exactly 2s at the 100%/100% neutral baseline for
     // both stats, and e.g. +30% AreaEffectPower with +30% AbilityPower stuns for 2s * 1.6 = 3.2s (the two
     // +30% bonuses just add to +60% total).
-    [SerializeField] private float stunDuration = 2f;
+    public float stunDuration = 2f;
     // Flat percent of the caster's own MaxHealth healed per enemy actually hit, BEFORE AreaEffectPower/
     // AbilityPower scale the total (see Activate()) — passed to Stats.Heal() as a raw amount, same as every
     // other heal source now; Heal() itself rolls luck variance and HealPower/CritHealPower internally, no
     // separate roll needed here.
-    [SerializeField] private float healPercentPerEnemy = 0.03f;
+    public float healPercentPerEnemy = 0.03f;
+
+    // Mirrors this ability's own Activate() lambda formulas exactly (both stats' own bonus-over-neutral
+    // portions summed additively, see class doc comment). Outside a live match, falls back to the base
+    // field itself — exact at neutral (AreaEffectPower + AbilityPower - 1f == 1 when both stats sit at
+    // their own 1.0 baseline, see ArcherFocusFireAbilityPD.LiveDurationRatio's own doc comment for why this
+    // is precise, not approximate), so one token covers both contexts.
+    public string LiveStunDurationRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? stunDuration * (stats.AreaEffectPower + stats.AbilityPower - 1f)
+            : stunDuration;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
+
+    public string LiveHealPercentRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? healPercentPerEnemy * (stats.AreaEffectPower + stats.AbilityPower - 1f)
+            : healPercentPerEnemy;
+        return $"{AugmentDescriptionFormatter.FormatLivePercent(value)}";
+    }
     // Flat knockback override, NOT derived from Stats.Knockback (unlike ShieldBreakBurstAugment's own
     // Stats.Knockback * multiplier) — this ability's oomph is a fixed push regardless of the caster's own
     // Knockback stat. Passed straight through to AreaEffectCastHelper.Cast's knockback param, which applies
@@ -126,6 +147,17 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
+
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
 
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>

@@ -14,8 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#00FF00>Pain</color>
   description: '<color=#FFA000>On Damage Taken:</color> <color=#FFA000>Summon</color>
-    3 <color=#8C8C8C>Phantom Blades</color> piercing the nearest enemies for <color=#FF5000>6%
-    unpenalized Strength</color> <color=#FFA000>x Damage Taken</color>.
+    <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
+    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{DamageMultiplierPercent}%
+    unpenalized Strength</color>) damage x Damage Taken</color>.
 
     <color=#8C8C8C>+10%
     Phantom Blade Damage and Size</color>'

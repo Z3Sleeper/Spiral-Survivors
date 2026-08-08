@@ -48,12 +48,13 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
 
     // Sphere, not box — since this projectile now spins (see spinSpeed), a box's own hit-shape rotates right
     // along with it, so an oriented box no longer means anything consistent; a sphere reads as "the swept
-    // radius the spin covers" and has no orientation to drift in the first place. Fixed, prefab-authored
-    // radius at scale 1 (was boxHalfExtents' own x/z, tuned in Inspector to 0.5/0.5 before this conversion),
-    // no WeaponRange-driven sizing (same reasoning boxHalfExtents' own doc comment used to cover — see
-    // rangeScaleTarget instead for the purely cosmetic version of that). The sphere-cast query multiplies
-    // this by transform.lossyScale.x (see LateSimulate()), which only ever carries the caster's own
-    // bonusSizePercent (see Launch()) uniformly on every axis, so any single axis works as the scale factor.
+    // radius the spin covers" and has no orientation to drift in the first place. Base, prefab-authored
+    // radius at scale 1 (was boxHalfExtents' own x/z, tuned in Inspector to 0.5/0.5 before this conversion).
+    // The sphere-cast query (see LateSimulate()) multiplies this by transform.lossyScale.x — the whole root
+    // scales uniformly by WeaponRange * rangeScaleMultiplier at Launch() (this was ALWAYS meant to be a
+    // Range-driven grow, never a Size-driven one — an earlier version mistakenly scaled the root by the
+    // caster's own bonusSizePercent instead, which meant the hitbox never actually grew with Range at all,
+    // only a separate cosmetic-only child did — see rangeScaleMultiplier's own doc comment).
     [SerializeField] private float sphereRadius = 0.5f;
     [Header("Crit")]
     // Multiplies CritDamage itself (not additive) — see class doc comment for why this replaced the old
@@ -66,24 +67,21 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     // and this projectile simply never lifts, no error. Same field/reasoning as WeaponRangedProjectilePD's
     // own visualHeightTarget.
     [SerializeField] private Transform visualHeightTarget;
-    // Optional — a dedicated child (e.g. this prefab's "Model") whose own X/Z scale is set to
-    // WeaponRange * rangeScaleMultiplier at Launch(), same "the visible model grows with WeaponRange"
-    // effect the equipped weapon gets for free from WeaponManagerPD.ScaleModel(), which a standalone thrown
-    // projectile has no equivalent of otherwise. Y is deliberately left at whatever it's authored to
-    // (cached once in Awake(), never touched here) — same "stretching Y makes it thicker, not bigger"
-    // reasoning boxHalfExtents/GetOuterReach's own doc comments already cover elsewhere; only X/Z (spread
-    // and forward reach) are meant to visually grow. Leave unassigned and this projectile's model simply
-    // never grows with WeaponRange, no error — purely cosmetic, entirely decoupled from boxHalfExtents
-    // (the actual hitbox), which stays fixed regardless (see its own doc comment for why that was
-    // deliberately scrapped).
-    [SerializeField] private Transform rangeScaleTarget;
+    // Drives the WHOLE projectile's uniform scale (root transform.localScale, at Launch()) — WeaponRange *
+    // this multiplier, so both the hit-detection sphere (sphereRadius * transform.lossyScale.x) and the
+    // visible model grow together, in lockstep, with no separate cosmetic-only layer to drift out of sync.
+    // Tune this if the default 1:1 growth rate feels too aggressive/subtle in practice.
     [SerializeField] private float rangeScaleMultiplier = 1f;
-    // Optional — same convention as WeaponBasePD's own yScaleFollowers: pieces whose LENGTH happens to run
-    // along their own local Y axis (e.g. a handle/pole modeled standing "upright" before being assembled
-    // into the weapon), so growing rangeScaleTarget's X/Z alone doesn't stretch them — they need their own
-    // Y scaled instead. Only these listed transforms' own Y moves; everything else under rangeScaleTarget
-    // (e.g. the axehead) is untouched by this, so a piece that shouldn't stretch at all just stays off the
-    // list. Each follower's X/Z stays exactly as authored — only Y changes.
+    // Optional — pieces whose LENGTH happens to run along their own local Y axis (e.g. a handle/pole modeled
+    // standing "upright" before being assembled into the axe), so the root's own uniform Range-driven growth
+    // (see rangeScaleMultiplier's own doc comment) would stretch them taller/shorter along their length
+    // instead of just scaling their footprint like everything else. Each listed transform's own local Y is
+    // counter-scaled at Launch() — divided by the same ratio the root just grew by — so it renders at its
+    // originally-authored length regardless of WeaponRange, same "unscaledSizeChildren" counter-scale shape
+    // CharacterStatsPD.AddSizePercent already uses for Size (see project_unscaled_size_children_mechanic
+    // memory), just isolated to Y instead of all three axes. X/Z are left untouched — those still inherit the
+    // root's growth normally via ordinary Unity parent-child scale inheritance. A piece that should stretch
+    // along with everything else (e.g. the axehead) just stays off this list.
     [SerializeField] private Transform[] yScaleFollowers;
     // Tumbles the ROOT transform itself around its own up axis while traveling (see LateSimulate) — purely
     // visual now that hit detection is a SphereCastNonAlloc (see sphereRadius), which has no orientation to
@@ -93,7 +91,6 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     private CharacterStatsPD _stats;
     private Vector3 _baseScale;
     private float[] _baseYScales;
-    private float _baseRangeScaleTargetY;
     private float _speed;
     private float _maxRange;
     private float _strengthPercent;
@@ -115,7 +112,6 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     private void Awake()
     {
         _baseScale = transform.localScale;
-        if (rangeScaleTarget != null) _baseRangeScaleTargetY = rangeScaleTarget.localScale.y;
 
         if (yScaleFollowers != null)
         {
@@ -130,12 +126,12 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // by — this projectile's own root spawns at the caster's un-lifted, ground-level position
         // (ExeAxeThrowAbilityPD.Activate() reads _stats.transform.position, not a visually-lifted model), so
         // the visual mesh needs the same compensating offset to render at the same mid-body height every
-        // other weapon model appears to fire from. No explicit * bonusSizePercent here (deliberately — this
-        // is a LOCAL offset, and Launch() below already scales this projectile's own root by
-        // stats.bonusSizePercent, so Unity's ordinary parent-child scale inheritance applies that multiply
-        // for free). Set once here, not in Launch() — this value never changes per-throw, and Awake() is
-        // guaranteed to fire exactly once per real GameObject instance even under this projectile's own
-        // SetActive-based pooling, so a pooled reuse can never re-run this and drift.
+        // other weapon model appears to fire from. No explicit multiply by the root's own Range-driven scale
+        // here (deliberately — this is a LOCAL offset, and Launch() below already scales this projectile's
+        // own root, so Unity's ordinary parent-child scale inheritance applies that multiply for free). Set
+        // once here, not in Launch() — this value never changes per-throw, and Awake() is guaranteed to fire
+        // exactly once per real GameObject instance even under this projectile's own SetActive-based
+        // pooling, so a pooled reuse can never re-run this and drift.
         if (visualHeightTarget != null)
         {
             var p = visualHeightTarget.localPosition;
@@ -164,30 +160,25 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         currentState.expired = false;
 
         transform.rotation = Quaternion.LookRotation(direction);
-        // Uniform — scales with the caster's own Size (bonusSizePercent) on every axis alike, same
-        // convention as WeaponRangedProjectilePD's own Launch().
-        transform.localScale = _baseScale * stats.bonusSizePercent;
+        // Uniform — scales with WeaponRange (not the caster's Size/bonusSizePercent — this was always meant
+        // to be a Range-driven grow, see sphereRadius's own doc comment) on every axis alike, so the hitbox
+        // (sphereRadius * transform.lossyScale.x, see LateSimulate()) and the visible model grow together in
+        // lockstep automatically via ordinary Unity parent-child scale inheritance — no separate cosmetic
+        // scaling layer needed.
+        float rangeScale = stats.WeaponRange * rangeScaleMultiplier;
+        transform.localScale = _baseScale * rangeScale;
 
-        // See rangeScaleTarget's own doc comment — purely cosmetic, X/Z only, Y left at its cached authored
-        // value. LOCAL scale, not multiplied by bonusSizePercent again here — rangeScaleTarget is a
-        // descendant of this root, so it already inherits that multiply for free via ordinary Unity
-        // parent-child scale inheritance; multiplying it in again here would double-count it.
-        if (rangeScaleTarget != null)
+        // Counter-scale — see yScaleFollowers' own doc comment. Divides back OUT the same rangeScale the
+        // root just grew by, on Y only, so these specific pieces render at their originally-authored length
+        // regardless of WeaponRange while everything else (their own X/Z, and every other piece) still
+        // inherits the root's growth normally.
+        if (_baseYScales != null)
         {
-            float rangeScale = stats.WeaponRange * rangeScaleMultiplier;
-            rangeScaleTarget.localScale = new Vector3(rangeScale, _baseRangeScaleTargetY, rangeScale);
-
-            // Same ratio drives yScaleFollowers — rangeScaleTarget's own baseline X/Z is 1 (an unscaled
-            // "design" prefab), so rangeScale doubles as the growth ratio relative to that baseline, same
-            // shape as WeaponBasePD.ScaleModel's own _baseYScales[i] * xRatio.
-            if (_baseYScales != null)
+            for (int i = 0; i < yScaleFollowers.Length; i++)
             {
-                for (int i = 0; i < yScaleFollowers.Length; i++)
-                {
-                    if (yScaleFollowers[i] == null) continue;
-                    var s = yScaleFollowers[i].localScale;
-                    yScaleFollowers[i].localScale = new Vector3(s.x, _baseYScales[i] * rangeScale, s.z);
-                }
+                if (yScaleFollowers[i] == null) continue;
+                var s = yScaleFollowers[i].localScale;
+                yScaleFollowers[i].localScale = new Vector3(s.x, _baseYScales[i] / rangeScale, s.z);
             }
         }
 
@@ -349,7 +340,7 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback);
 
-        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
+        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
     }
 
     private void SetRenderersEnabled(bool value)

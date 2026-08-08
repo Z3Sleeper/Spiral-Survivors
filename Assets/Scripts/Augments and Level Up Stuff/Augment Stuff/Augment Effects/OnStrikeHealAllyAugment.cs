@@ -12,7 +12,22 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float healthRegenMultiplier       = 2f; // 200%
+    public float healthRegenMultiplier       = 2f; // 200%
+
+    // healthRegenMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
+    // convention wouldn't apply to it directly — this alias exists so a description can reference
+    // {HealthRegenMultiplierPercent} for a static fallback (shown outside a live match, when
+    // {LiveHealthRegenRatio} itself is blank — see ShowLiveValues's own doc comment) alongside the live
+    // number.
+    public float HealthRegenMultiplierPercent => healthRegenMultiplier;
+
+    // Baseline heal at 100% OnHitPower (varies hit-to-hit, so not baked into the preview — see
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention) for
+    // AugmentDescriptionFormatter's {LiveHealthRegenRatio} token.
+    public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.HealthRegen * healthRegenMultiplier)} "
+            : "";
 
     protected override void OnApply()
     {

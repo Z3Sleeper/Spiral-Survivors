@@ -13,7 +13,23 @@ public class OnAbilityStartHealPercentHPAugment : AugmentEffectPD<OnAbilityStart
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // 0.01f = 1% Max Health per second of BaseCooldownDuration.
-    [SerializeField] private float healPercentMaxHealthPerCooldownSecond = 0.01f;
+    public float healPercentMaxHealthPerCooldownSecond = 0.01f;
+
+    // No single number to preview (the actual heal depends on which of this character's two abilities was
+    // cast) — shows both class abilities' own actual values instead, "Ability1/Ability2", for
+    // AugmentDescriptionFormatter's {LiveHealthRatio} token.
+    public string LiveHealthRatio(CharacterStatsPD stats)
+    {
+        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "";
+        float ability1Value = 0f, ability2Value = 0f;
+        foreach (var ability in stats.GetComponents<IAbilityPD>())
+        {
+            float value = stats.MaxHealth * healPercentMaxHealthPerCooldownSecond * ability.BaseCooldownDuration;
+            if (ability.Slot == AbilitySlot.Ability1) ability1Value = value;
+            else if (ability.Slot == AbilitySlot.Ability2) ability2Value = value;
+        }
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}/{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
+    }
 
     protected override void OnApply() => Stats.AddAbilityStartListener(OnAbilityStart);
 

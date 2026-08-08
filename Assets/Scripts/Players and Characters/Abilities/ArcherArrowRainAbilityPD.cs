@@ -51,7 +51,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     [SerializeField] private string abilityName = "Arrow Rain";
     [SerializeField, TextArea] private string description =
         "Fire a rain of arrows at the target location, dealing 500% Unpenalized Strength over the duration and slowing enemies.";
-    [SerializeField] private float cooldown = 10f;
+    public float cooldown = 10f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false — moot here (see class
     // doc comment, AbilityIsActive is always false), kept only for interface/Inspector consistency with
     // every other ability.
@@ -76,14 +76,40 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // this is a fixed pair rather than derived from Stats.AreaEffectCount.
     [SerializeField] private int tickCount = 20;
     [SerializeField] private float tickInterval = 0.25f;
-    [SerializeField] private float strengthPercentPerTick = 0.25f;
+    public float strengthPercentPerTick = 0.25f;
+
+    // Static total (tickCount * strengthPercentPerTick, e.g. 20*0.25=5=500%) — Percent-suffixed so
+    // AugmentDescriptionFormatter auto-*100s it, for a description's static "(500%)"-style fallback
+    // alongside the live number below.
+    public float TotalDamagePercent => tickCount * strengthPercentPerTick;
+
+    // Mirrors AreaEffectCastHelper.Cast's own damage formula exactly (areaAndAbilityPower = AreaEffectPower
+    // + AbilityPower - 1f, both stats' own bonus-over-neutral portions summed additively — see that method's
+    // own doc comment), summed across the whole rain, minus the luck/crit roll each tick independently rolls
+    // — baseline preview, not a randomly-sampled one, same convention as every augment's own Live*Ratio.
+    public string LiveDamageRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(tickCount * strengthPercentPerTick * stats.UnpenalizedStrength * (stats.AreaEffectPower + stats.AbilityPower - 1f))} "
+            : "";
+
+    // Mirrors SpawnChain's own scaledSlowAmount formula exactly (see its own doc comment). Outside a live
+    // match, falls back to slowPercent itself — exact at neutral (both AreaEffectPower and AbilityPower at
+    // their own 1.0 baseline, see ArcherFocusFireAbilityPD.LiveDurationRatio's own doc comment for why this
+    // is precise, not approximate), so one token covers both contexts.
+    public string LiveSlowRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? slowPercent * (stats.AreaEffectPower + stats.AbilityPower - 1f)
+            : slowPercent;
+        return $"{AugmentDescriptionFormatter.FormatLivePercent(value)}";
+    }
     // How much slow this applies, as a straight percent (0.8 = 80% slower, i.e. 20% speed remains) — not
     // the "how much speed remains" multiplier EnemyBasePD.Slow() itself takes, converted at the call site
     // in SpawnChain instead so this field reads the way you'd actually want to type a value into it.
     // Reapplied on every tick an enemy is still standing in the zone, so it effectively stays refreshed the
     // whole time they remain inside, not just once on first contact. Scaled by AreaEffectPower/AbilityPower
     // at cast time — see SpawnChain's own comment.
-    [SerializeField] private float slowPercent = 0.35f;
+    public float slowPercent = 0.35f;
     [SerializeField] private float slowDuration = 0.5f;
     // How long between each outer recast (a full repeat of the entire rain, at the same cast location) when
     // Stats.AreaEffectCount > 1 — see class doc comment for why this is a separate tier from tickInterval.
@@ -140,6 +166,17 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
+
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
 
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>
@@ -257,7 +294,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(_stats, position, tickCount, tickInterval, radius, radiusVFXPrefab,
                 dealDamage: true, damagePercent: strengthPercentPerTick, notifyOnHit: false,
-                abilityPower: _stats.AbilityPower,
+                abilityPower: _stats.AbilityPower, source: DamageSource.ArcherArrowRain,
                 onEnemyHit: enemy => enemy.Slow(scaledSlowMultiplier, slowDuration),
                 overrideHitSfx: true);
     }

@@ -390,7 +390,7 @@ public class CharacterSelectUI : MonoBehaviour
                 if (ability == null || ability.Slot != AbilitySlot.Ability1) continue;
                 var ability1Card = GetDetailCard(count);
                 ability1Card.gameObject.SetActive(true);
-                ability1Card.AbilitySetup(ability.Name, ability.Description, ability.Icon);
+                ability1Card.AbilitySetup(ability.Name, ability, ability.Icon);
                 ability1Card.SetInteractive(false);
                 count++;
             }
@@ -399,7 +399,7 @@ public class CharacterSelectUI : MonoBehaviour
                 if (ability == null || ability.Slot != AbilitySlot.Ability2) continue;
                 var ability2Card = GetDetailCard(count);
                 ability2Card.gameObject.SetActive(true);
-                ability2Card.AbilitySetup(ability.Name, ability.Description, ability.Icon);
+                ability2Card.AbilitySetup(ability.Name, ability, ability.Icon);
                 ability2Card.SetInteractive(false);
                 count++;
             }

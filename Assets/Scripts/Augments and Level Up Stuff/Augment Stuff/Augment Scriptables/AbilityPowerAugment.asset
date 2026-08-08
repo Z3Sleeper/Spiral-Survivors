@@ -16,7 +16,7 @@ MonoBehaviour:
   description: '<color=#FFB4FF>+30% Ability Power</color>
 
     <color=#FFBE50><i>Ability
-    Power amplifies Ability damage, healing and other effects.</i></color>'
+    Power amplifies Ability damage, effects and buff durations</i></color>'
   icon: {fileID: 21300000, guid: 23366daf0e8cd88499305548a92eb295, type: 3}
   effectPrefab: {fileID: 8434011410375493055, guid: 1d05ac4cca37b754fac9f2ef777dffd2, type: 3}
   multiplayerOnly: 0

@@ -99,13 +99,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TestBurstPD
   icon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}
   abilityName: <color=#FF0050>Ability:\nEviscerate</color>
-  description: '<color=#00FFFF>Somersault forward</color>, <color=#FFA000>Striking</color>
-    with your <color=#FFA000>Weapons</color> <color=#FFA000>5 times</color> with
-    damage multiplied by <color=#FF0050>Attack Speed</color>.
+  description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    <color=#FFBE50>Cooldown:
-    6 seconds</color>'
-  cooldown: 6
+    <color=#00FFFF>Somersault
+    forward</color>, <color=#FFA000>Striking</color> with your <color=#FFA000>Weapons</color>
+    <color=#FFA000>5 times each</color> with <color=#FFA000>damage</color> multiplied
+    by <color=#FF0050>Attack Speed</color>.'
+  cooldown: 12
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
@@ -133,11 +133,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::InvisibilityAbilityPD
   icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}
   abilityName: <color=#FFFFFF>Ability:\nVanish</color>
-  description: 'Become <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>25%
-    total Move Speed</color> for <color=#FFA000>3 seconds</color>.
+  description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    <color=#FFBE50>Cooldown:
-    15 seconds</color>'
+    Become
+    <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>{moveSpeedTotalPercent}%
+    total Move Speed</color> for <color=#FFA000>{LiveDurationRatio}seconds</color>.
+
+    <color=#FFBE50><i>Ability
+    Power increases Duration</i></color>'
   cooldown: 15
   cooldownStartsOnCast: 0
   slot: 1

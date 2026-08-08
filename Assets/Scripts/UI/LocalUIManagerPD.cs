@@ -51,6 +51,11 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private GameObject ability1DurationUI;
     [SerializeField] private Image ability1DurationBar;
     private bool _ability1DurationUIShown;
+    // Hover tooltip — AbilityTooltipTriggerPD (on this icon's own hover-catcher Image) relays
+    // OnPointerEnter/Exit into SetAbilityTooltipVisible below, which owns showing/hiding the panel and
+    // formatting the description text; the trigger itself holds no tooltip state.
+    [SerializeField] private GameObject ability1TooltipPanel;
+    [SerializeField] private TextMeshProUGUI ability1DescriptionText;
 
     // Same shape as Ability1 UI above — both slots are functionally identical now (cooldown-gated
     // IAbilityPD), so Ability2 gets the same fill/BG/text/duration treatment.
@@ -64,6 +69,9 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private GameObject ability2DurationUI;
     [SerializeField] private Image ability2DurationBar;
     private bool _ability2DurationUIShown;
+    // See ability1TooltipPanel/ability1DescriptionText's own doc comment — identical shape for slot 2.
+    [SerializeField] private GameObject ability2TooltipPanel;
+    [SerializeField] private TextMeshProUGUI ability2DescriptionText;
 
     // Parent panel hidden entirely while Stats.GainsDeathPreventions is false (the character has no way to
     // ever earn one, e.g. DeathPreventionShieldDRAugment not picked) — CDOverlay/Timer are a nested pair,
@@ -233,6 +241,24 @@ public class LocalUIManagerPD : MonoBehaviour
             invisibleTintOverlay.SetActive(visible);
     }
 
+    // Called by AbilityTooltipTriggerPD's OnPointerEnter/OnPointerExit (see its own doc comment) — the
+    // small per-icon hover trigger just relays here rather than owning any tooltip state itself, same
+    // "small trigger calls into the central HUD manager" convention SetInvisibleTintVisible above already
+    // uses. Description text is only (re)formatted on show, not every frame — a hovered tooltip doesn't
+    // need to track live-changing values tick-by-tick the way the rest of this HUD does.
+    public void SetAbilityTooltipVisible(bool isAbility1, bool visible)
+    {
+        GameObject panel = isAbility1 ? ability1TooltipPanel : ability2TooltipPanel;
+        if (panel == null) return;
+        panel.SetActive(visible);
+        if (!visible) return;
+
+        TextMeshProUGUI text = isAbility1 ? ability1DescriptionText : ability2DescriptionText;
+        IAbilityPD ability = isAbility1 ? _ability1 : _ability2;
+        if (text != null && ability != null)
+            text.text = AugmentDescriptionFormatter.Format(ability.Description, ability, _stats);
+    }
+
     public void SetPlayer(CharacterStatsPD stats)
     {
         _stats = stats;
@@ -285,7 +311,7 @@ public class LocalUIManagerPD : MonoBehaviour
         {
             var card = GetCard(i);
             if (options[i].isAugment)
-                card.AugmentSetup(options[i].augmentData, i);
+                card.AugmentSetup(options[i].augmentData, i, _stats);
             else
                 card.StatAugmentSetup(options[i].statPair, i);
         }
@@ -524,7 +550,10 @@ public class LocalUIManagerPD : MonoBehaviour
             _multiplayerTimerShown = visible;
             multiplayerTimerText.gameObject.SetActive(visible);
         }
-        if (visible) multiplayerTimerText.text = text;
+        // Was a raw assignment with no redundancy guard at all (unlike every other text field in this
+        // class, which goes through SetText) — rebuilt and rewrote every single frame this panel was
+        // visible, even though the seconds count underneath only actually changes once per second.
+        if (visible) SetText(multiplayerTimerText, text);
     }
 
     // Only writes when the value actually changed, so tiny prediction/rollback jitter doesn't
@@ -562,21 +591,68 @@ public class LocalUIManagerPD : MonoBehaviour
         return decimals == 0 ? $"{Mathf.RoundToInt(value)}" : value.ToString($"F{decimals}");
     }
 
+    // Last raw stat values actually behind a displayed string, one group per Update*() method below — the
+    // SetText/SetSlider/SetFill/SetColor helpers above already skip the actual UI WRITE when the formatted
+    // result is unchanged, but they can't stop the string/StringBuilder work that runs to PRODUCE that
+    // result in the first place, since that has to happen before the comparison can even occur. With up to
+    // several of these running unconditionally every frame regardless of whether the underlying stat moved
+    // at all, that's a steady stream of avoidable GC allocation (confirmed via Profiler — LocalUIManagerPD
+    // showing up as a GC-allocation contributor across multiple consecutive frames, same investigation that
+    // found EnemyUIPD's equivalent per-enemy issue). Caching the SOURCE values and skipping the whole
+    // formatting block when nothing changed removes the allocation, not just the write.
+    private float _lastUIHealthForText = float.NaN;
+    private float _lastMaxHealthForText = float.NaN;
+    private float _lastUIShieldForText = float.NaN;
+    private float _lastMaxShieldForText = float.NaN;
+    private float _lastHealthRegenForText = float.NaN;
+    private float _lastDamageReductionForText = float.NaN;
+    private int   _lastDashChargesForText = -1;
+    private int   _lastEnergyIntForText = -1;
+    private int   _lastDeathPreventionSecondsForText = -1;
+    private int   _lastXPLevelForText = -1;
+    private float _lastXPCurrentForText = float.NaN;
+    private float _lastXPToNextForText = float.NaN;
+    private float _lastUpgradePointsForText = float.NaN;
+    private int   _lastRunClockMinutes = -1;
+    private int   _lastRunClockSeconds = -1;
+    private int   _lastBossMinutes = -1;
+    private int   _lastBossSeconds = -1;
+    // Cooldown countdown text genuinely changes almost every frame while active, so this can't eliminate
+    // most rebuilds the way the others above do — but the display only shows 1 decimal (":F1"), so caching
+    // the ROUNDED value still catches the frames where two different raw floats format to the identical
+    // string (still a real, if smaller, win).
+    private float _lastAbility1CooldownDisplay = float.NaN;
+    private float _lastAbility2CooldownDisplay = float.NaN;
+
     private void UpdateHealthAndShields()
     {
         SetSlider(healthBar, _stats.UIHealth / _stats.MaxHealth);
         SetSlider(shieldBar, _stats.MaxShield > 0f ? _stats.UIShield / _stats.MaxShield : 0f);
         SetSlider(shieldRegenBar, (_stats.shieldRechargeTime - _stats.UIShieldRechargeTimer) / _stats.shieldRechargeTime);
-        SetText(healthText, $"<b><color=#FF00FF>{FormatStat(_stats.UIShield)}/{FormatStat(_stats.MaxShield)}</color> {FormatStat(_stats.UIHealth)}/{FormatStat(_stats.MaxHealth)}</b>");
+
+        if (_stats.UIHealth != _lastUIHealthForText || _stats.MaxHealth != _lastMaxHealthForText ||
+            _stats.UIShield != _lastUIShieldForText || _stats.MaxShield != _lastMaxShieldForText)
+        {
+            _lastUIHealthForText = _stats.UIHealth;
+            _lastMaxHealthForText = _stats.MaxHealth;
+            _lastUIShieldForText = _stats.UIShield;
+            _lastMaxShieldForText = _stats.MaxShield;
+            SetText(healthText, $"<b><color=#FF00FF>{FormatStat(_stats.UIShield)}/{FormatStat(_stats.MaxShield)}</color> {FormatStat(_stats.UIHealth)}/{FormatStat(_stats.MaxHealth)}</b>");
+        }
     }
 
     private void UpdateHealthRegen()
     {
+        if (_stats.HealthRegen == _lastHealthRegenForText) return;
+        _lastHealthRegenForText = _stats.HealthRegen;
         SetText(healthRegenText, $"<b>+{FormatStat(_stats.HealthRegen, 2)}/s</b>");
     }
 
     private void UpdateDamageReduction()
     {
+        if (_stats.DamageReduction == _lastDamageReductionForText) return;
+        _lastDamageReductionForText = _stats.DamageReduction;
+
         float percent = (1f - _stats.DamageReduction) * 100f;
         string sign = percent >= 0f ? "+" : "";
         SetText(damageReductionText, $"<b>{sign}{percent:F0}%\nDR</b>");
@@ -587,6 +663,9 @@ public class LocalUIManagerPD : MonoBehaviour
         SetFill(dashChargeCooldownImage, _controller.currentState.currentCharges < _stats.dashCharges
             ? 1f - (_controller.currentState.chargeRegenTimer / _stats.DashCooldown)
             : 1f);
+
+        if (_controller.currentState.currentCharges == _lastDashChargesForText) return;
+        _lastDashChargesForText = _controller.currentState.currentCharges;
         SetText(dashChargesText, $"<b>{_controller.currentState.currentCharges}</b>");
     }
 
@@ -636,7 +715,15 @@ public class LocalUIManagerPD : MonoBehaviour
             // same onCooldown edge as the text above, since both should always change together.
             if (ability1CDFill != null) ability1CDFill.gameObject.SetActive(onCooldown);
         }
-        if (onCooldown) SetText(ability1CooldownText, $"{_ability1.CooldownRemaining:F1}s");
+        if (onCooldown)
+        {
+            float rounded = Mathf.Round(_ability1.CooldownRemaining * 10f) / 10f;
+            if (rounded != _lastAbility1CooldownDisplay)
+            {
+                _lastAbility1CooldownDisplay = rounded;
+                SetText(ability1CooldownText, $"{_ability1.CooldownRemaining:F1}s");
+            }
+        }
 
         // HasActiveWindow gates this PERMANENTLY (not just "isn't active right now") — an ability that never
         // has an active window at all (e.g. ExeAxeThrowAbilityPD) should never show this panel even for a
@@ -679,7 +766,15 @@ public class LocalUIManagerPD : MonoBehaviour
             if (ability2CooldownText != null) ability2CooldownText.gameObject.SetActive(onCooldown);
             if (ability2CDFill != null) ability2CDFill.gameObject.SetActive(onCooldown);
         }
-        if (onCooldown) SetText(ability2CooldownText, $"{_ability2.CooldownRemaining:F1}s");
+        if (onCooldown)
+        {
+            float rounded = Mathf.Round(_ability2.CooldownRemaining * 10f) / 10f;
+            if (rounded != _lastAbility2CooldownDisplay)
+            {
+                _lastAbility2CooldownDisplay = rounded;
+                SetText(ability2CooldownText, $"{_ability2.CooldownRemaining:F1}s");
+            }
+        }
 
         // See UpdateAbility1's own identical comment for why HasActiveWindow gates this permanently.
         bool showDuration = _ability2.HasActiveWindow && _ability2.AbilityIsActive;
@@ -702,6 +797,16 @@ public class LocalUIManagerPD : MonoBehaviour
     // the next one, so this is the "on cooldown" window from the player's perspective. Once the timer
     // completes and a Death Prevention is granted, both hide — the outer panel alone (still visible) is
     // enough to signal "ready".
+    //
+    // Delayed by deathPreventionInvincibilityDuration on top of that — the instant a save is spent, the
+    // grant timer immediately re-arms to the full DeathPreventionTime (see CharacterStatsPD.Simulate()'s own
+    // comment), which now always includes that duration as an unreducible flat floor (see
+    // DeathPreventionTime's own doc comment). The FIRST deathPreventionInvincibilityDuration seconds of that
+    // fresh countdown exactly line up with the post-save invincibility window itself, so showing the CD
+    // overlay/timer immediately would visually nag the player while they're still actually protected. Kept
+    // hidden — reads as still "ready" — until UIDeathPreventionTimer drops to baseDeathPreventionTime *
+    // deathPreventionTimeMultiplier (i.e. DeathPreventionTime minus that flat floor), the same instant the
+    // invincibility window itself would have ended.
     private void UpdateDeathPreventionUI()
     {
         if (deathPreventionUI == null) return;
@@ -714,7 +819,8 @@ public class LocalUIManagerPD : MonoBehaviour
         }
         if (!gains) return;
 
-        bool onCooldown = !_stats.HasDeathPrevention;
+        bool onCooldown = !_stats.HasDeathPrevention
+            && _stats.UIDeathPreventionTimer <= _stats.baseDeathPreventionTime * _stats.deathPreventionTimeMultiplier;
         if (onCooldown != _deathPreventionCooldownShown)
         {
             _deathPreventionCooldownShown = onCooldown;
@@ -724,7 +830,15 @@ public class LocalUIManagerPD : MonoBehaviour
         // Whole seconds, rounded UP (CeilToInt) so it never flashes "0" for a frame while still on
         // cooldown — same convention as PausePD.OnFallbackTimerChanged/AugmentManagerPD.
         // OnPresentingTimerChanged's own countdown displays.
-        if (onCooldown) SetText(deathPreventionTimerText, $"{Mathf.CeilToInt(_stats.UIDeathPreventionTimer)}");
+        if (onCooldown)
+        {
+            int seconds = Mathf.CeilToInt(_stats.UIDeathPreventionTimer);
+            if (seconds != _lastDeathPreventionSecondsForText)
+            {
+                _lastDeathPreventionSecondsForText = seconds;
+                SetText(deathPreventionTimerText, $"{seconds}");
+            }
+        }
     }
 
     private void UpdateEnergy()
@@ -733,11 +847,21 @@ public class LocalUIManagerPD : MonoBehaviour
             ? _stats.UIEnergy / _stats.MaxEnergy
             : 1f);
         SetColor(energyImage, _stats.UIIsSurging || _stats.UIEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow);
-        SetText(energyText, $"<b>{(int)_stats.UIEnergy}</b>");
+
+        int energyInt = (int)_stats.UIEnergy;
+        if (energyInt == _lastEnergyIntForText) return;
+        _lastEnergyIntForText = energyInt;
+        SetText(energyText, $"<b>{energyInt}</b>");
     }
 
     private void UpdateStats()
     {
+        // This panel is only visible while held (e.g. Tab) — the full stat readout (15+ live reads plus a
+        // StringBuilder rebuild) was running every single frame regardless, even while completely hidden.
+        // Skipping it entirely while inactive is a much bigger win here than caching each individual stat
+        // value, since the panel is closed the overwhelming majority of the time.
+        if (statsUI == null || !statsUI.activeInHierarchy) return;
+
         SetText(statsDamageText, $" {FormatStat(_stats.Strength, 1)} ({FormatStat(_stats.Strength * _stats.EffectiveLuckFloor, 1)} - {FormatStat(_stats.Strength * _stats.LuckCeiling, 1)})");
 
         _statsSB.Clear();
@@ -761,6 +885,10 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private void UpdateStatsExpanded()
     {
+        // See UpdateStats' own comment — same "only visible while held" panel, same skip-entirely-while-
+        // hidden win.
+        if (statsUIExpanded == null || !statsUIExpanded.activeInHierarchy) return;
+
         _statsExpandedSB.Clear();
         _statsExpandedSB.AppendLine($" {_stats.DashCooldown:F1}s");
         _statsExpandedSB.AppendLine($" {(_stats.EffectiveLuckFloor - 1f) * 100f:+0.0;-0.0}% | {(_stats.LuckCeiling - 1f) * 100f:+0.0;-0.0}%");
@@ -777,13 +905,24 @@ public class LocalUIManagerPD : MonoBehaviour
     {
         if (GameManagerPD.instance == null) return;
         SetSlider(xpBar, GameManagerPD.instance.CurrentXP / GameManagerPD.instance.XPToNextLevel);
-        SetText(xpText, $"<b>Level {GameManagerPD.instance.Level} | {FormatStat(GameManagerPD.instance.CurrentXP, 1)}/{FormatStat(GameManagerPD.instance.XPToNextLevel, 1)} XP</b>");
+
+        int level = GameManagerPD.instance.Level;
+        float current = GameManagerPD.instance.CurrentXP;
+        float toNext = GameManagerPD.instance.XPToNextLevel;
+        if (level == _lastXPLevelForText && current == _lastXPCurrentForText && toNext == _lastXPToNextForText) return;
+        _lastXPLevelForText = level;
+        _lastXPCurrentForText = current;
+        _lastXPToNextForText = toNext;
+        SetText(xpText, $"<b>Level {level} | {FormatStat(current, 1)}/{FormatStat(toNext, 1)} XP</b>");
     }
 
     private void UpdateUpgradePoints()
     {
         if (upgradePointsText == null) return;
-        SetText(upgradePointsText, $"<b>{FormatStat(LocalUpgradePointsTracker.instance.TotalEarnedThisSession)} pts</b>");
+        float points = LocalUpgradePointsTracker.instance.TotalEarnedThisSession;
+        if (points == _lastUpgradePointsForText) return;
+        _lastUpgradePointsForText = points;
+        SetText(upgradePointsText, $"<b>{FormatStat(points)} pts</b>");
     }
 
     private void UpdateRunClock()
@@ -792,6 +931,11 @@ public class LocalUIManagerPD : MonoBehaviour
         float runtime = GameManagerPD.instance.ElapsedRunTime;
         int minutes = (int)(runtime / 60f);
         int seconds = (int)(runtime % 60f);
+        // The underlying value only genuinely changes once per real second — rebuilding the string on every
+        // one of the ~60 frames in between was pure waste.
+        if (minutes == _lastRunClockMinutes && seconds == _lastRunClockSeconds) return;
+        _lastRunClockMinutes = minutes;
+        _lastRunClockSeconds = seconds;
         SetText(timerText, $"<b>{minutes:00}:{seconds:00}</b>");
     }
 
@@ -804,7 +948,13 @@ public class LocalUIManagerPD : MonoBehaviour
             int minutes = (int)(remaining / 60f);
             int seconds = (int)(remaining % 60f);
             bossTimerText.gameObject.SetActive(true);
-            SetText(bossTimerText, $"Next Boss:\n{minutes:00}:{seconds:00}");
+            // Same "only really changes once a second" reasoning as UpdateRunClock above.
+            if (minutes != _lastBossMinutes || seconds != _lastBossSeconds)
+            {
+                _lastBossMinutes = minutes;
+                _lastBossSeconds = seconds;
+                SetText(bossTimerText, $"Next Boss:\n{minutes:00}:{seconds:00}");
+            }
             return;
         }
 

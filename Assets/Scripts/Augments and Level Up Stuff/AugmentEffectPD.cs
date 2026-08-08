@@ -1,5 +1,12 @@
 using PurrNet.Prediction;
 
+// Purely a reflection anchor for AugmentDescriptionFormatter — AugmentData.effectPrefab is a plain
+// GameObject (AugmentEffectPD<TState> is generic per-augment, so it can't be referenced by one concrete
+// type from AugmentData), so description-token resolution needs a common, non-generic type to
+// GetComponent<>() regardless of which TState a given augment closes over. No members — every
+// AugmentEffectPD<TState> already implements this for free (see its own declaration below).
+public interface IAugmentEffectDescribable { }
+
 // Generic base for augment effect prefabs — same generic-base-class pattern as
 // EnemyBasePD<TState>/WeaponBasePD<TState>. Must be spawned via PredictedHierarchy.Create() (never
 // plain Instantiate()) from Simulate()-context (see AugmentManagerPD.SubmitPick()) — Create() is
@@ -12,7 +19,7 @@ using PurrNet.Prediction;
 // grant, etc.) must fire off verified state, never directly from Simulate(): a discrete one-time += is
 // not safe to call from Simulate(), since it risks double-firing during the client's routine in-place
 // reconciliation pass (same reasoning as OnLevelUp()/AwardXP).
-public abstract class AugmentEffectPD<TState> : PredictedIdentity<TState> where TState : struct, IPredictedData<TState>
+public abstract class AugmentEffectPD<TState> : PredictedIdentity<TState>, IAugmentEffectDescribable where TState : struct, IPredictedData<TState>
 {
     protected CharacterStatsPD Stats { get; private set; }
 

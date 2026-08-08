@@ -8,17 +8,6 @@ public class PlayerUIWorldSpace : MonoBehaviour
     // runtime in Start() (see WorldSpaceUICameraPD's own doc comment for why this can't be a static
     // Inspector reference on the prefab — the camera lives in the scene, not the prefab asset).
     [SerializeField] private Canvas worldspaceCanvas;
-    // Whichever transform actually carries the panel's fixed height-above-head offset (most likely the
-    // "WorldspaceUI" Canvas's own transform) — its authored local Y is cached once in Start() and re-scaled
-    // live by the character's current Size (bonusSizePercent) every frame in Update(), so the panel keeps
-    // sitting proportionally above the head as Size grows instead of staying pinned at a fixed world height
-    // and eventually getting clipped into by a bigger character. Leave unassigned and this simply never
-    // adjusts, no error. Deliberately NOT inherited automatically via ordinary Unity scale-inheritance —
-    // WorldspaceUI/UI Wrapper's own localScale is kept fixed (not multiplied by bonusSizePercent the way
-    // Model/weapons are) specifically so the UI panel itself doesn't visually grow/distort with character
-    // Size, only its position needs the manual correction here.
-    [SerializeField] private Transform verticalOffsetTarget;
-    private float _baseVerticalOffsetY;
     [SerializeField] private Slider healthBar;
     [SerializeField] private Slider shieldBar;
     [SerializeField] private GameObject dashUI;
@@ -84,9 +73,6 @@ public class PlayerUIWorldSpace : MonoBehaviour
         // rather than in the Inspector.
         if (worldspaceCanvas != null) worldspaceCanvas.worldCamera = WorldSpaceUICameraPD.instance;
 
-        // Captured once — see verticalOffsetTarget's own doc comment.
-        if (verticalOffsetTarget != null) _baseVerticalOffsetY = verticalOffsetTarget.localPosition.y;
-
         if (dashUI != null) dashUI.SetActive(true);
         if (energyUI != null) energyUI.SetActive(true);
         // Icon is fixed for the whole match (this character's class doesn't change), so it's set once here
@@ -99,18 +85,16 @@ public class PlayerUIWorldSpace : MonoBehaviour
     {
         if (_stats == null) return;
 
-        // Keeps the panel proportionally above the head as Size changes — see verticalOffsetTarget's own
-        // doc comment for why this can't just be ordinary Unity scale-inheritance.
-        if (verticalOffsetTarget != null)
-        {
-            var p = verticalOffsetTarget.localPosition;
-            verticalOffsetTarget.localPosition = new Vector3(p.x, _baseVerticalOffsetY * _stats.bonusSizePercent, p.z);
-        }
-
         if (healthBar != null)
-            healthBar.value = _stats.MaxHealth > 0f ? _stats.UIHealth / _stats.MaxHealth : 0f;
+        {
+            float value = _stats.MaxHealth > 0f ? _stats.UIHealth / _stats.MaxHealth : 0f;
+            if (!Mathf.Approximately(healthBar.value, value)) healthBar.value = value;
+        }
         if (shieldBar != null)
-            shieldBar.value = _stats.MaxShield > 0f ? _stats.UIShield / _stats.MaxShield : 0f;
+        {
+            float value = _stats.MaxShield > 0f ? _stats.UIShield / _stats.MaxShield : 0f;
+            if (!Mathf.Approximately(shieldBar.value, value)) shieldBar.value = value;
+        }
 
         UpdateAbility1();
         UpdateAbility2();
@@ -235,20 +219,29 @@ public class PlayerUIWorldSpace : MonoBehaviour
     private void UpdateDash()
     {
         if (dashChargeCooldownImage != null)
-            dashChargeCooldownImage.fillAmount = _controller.currentState.currentCharges < _stats.dashCharges
+        {
+            float fill = _controller.currentState.currentCharges < _stats.dashCharges
                 ? 1f - (_controller.currentState.chargeRegenTimer / _stats.DashCooldown)
                 : 1f;
+            if (!Mathf.Approximately(dashChargeCooldownImage.fillAmount, fill)) dashChargeCooldownImage.fillAmount = fill;
+        }
         for (int i = 0; i < dashNotches.Length; i++)
-            dashNotches[i].SetActive(i < _controller.currentState.currentCharges);
+        {
+            bool active = i < _controller.currentState.currentCharges;
+            if (dashNotches[i].activeSelf != active) dashNotches[i].SetActive(active);
+        }
     }
 
     private void UpdateEnergy()
     {
         if (energyImage == null) return;
-        energyImage.fillAmount = _stats.MaxEnergy > 0f ? _stats.UIEnergy / _stats.MaxEnergy : 1f;
-        energyImage.color = _stats.UIIsSurging || _stats.UIEnergy < _stats.SurgeActivationThreshhold
+        float fill = _stats.MaxEnergy > 0f ? _stats.UIEnergy / _stats.MaxEnergy : 1f;
+        if (!Mathf.Approximately(energyImage.fillAmount, fill)) energyImage.fillAmount = fill;
+
+        Color color = _stats.UIIsSurging || _stats.UIEnergy < _stats.SurgeActivationThreshhold
             ? Color.red
             : Color.yellow;
+        if (energyImage.color != color) energyImage.color = color;
     }
 
     private void LateUpdate()

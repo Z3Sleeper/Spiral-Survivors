@@ -31,14 +31,18 @@ public class AugmentCardUI : MonoBehaviour
         pickButton.onClick.AddListener(OnPicked);
     }
 
-    public void AugmentSetup(AugmentData augment, int cardIndex)
+    // stats is optional — pass the picking player's own live CharacterStatsPD for a real level-up card so
+    // {Token}-style placeholders in the description resolve to actual computed values; leave it null for
+    // display-only contexts (Character Select, Encyclopedia) where there's no live character to read from.
+    // See AugmentDescriptionFormatter's own doc comment for the full resolution contract.
+    public void AugmentSetup(AugmentData augment, int cardIndex, CharacterStatsPD stats = null)
     {
         _cardIndex = cardIndex;
         pickButton.interactable = true;
 
         augmentImage.sprite = augment.icon;
         titleText.text = augment.displayName;
-        descriptionText.text = augment.description;
+        descriptionText.text = AugmentDescriptionFormatter.Format(augment, stats);
 
         pickButton.onClick.RemoveAllListeners();
         pickButton.onClick.AddListener(OnPicked);
@@ -59,11 +63,15 @@ public class AugmentCardUI : MonoBehaviour
     // For showing a class's IAbilityPD in the same card layout as its passive augments (character select's
     // detail panel) — there's no AugmentData asset backing an ability, so this takes the raw display fields
     // directly instead. Always paired with SetInteractive(false) by the caller, same as the passive cards.
-    public void AbilitySetup(string title, string description, Sprite icon)
+    // Takes the ability itself (not just its already-extracted Description string) so
+    // AugmentDescriptionFormatter has an object to resolve {Token}-style placeholders against — same
+    // optional-stats convention as AugmentSetup (null for display-only contexts like Character Select,
+    // where there's no live character to preview values off of).
+    public void AbilitySetup(string title, IAbilityPD ability, Sprite icon, CharacterStatsPD stats = null)
     {
         pickButton.onClick.RemoveAllListeners();
         augmentImage.sprite = icon;
         titleText.text = title;
-        descriptionText.text = description;
+        descriptionText.text = AugmentDescriptionFormatter.Format(ability.Description, ability, stats);
     }
 }

@@ -22,7 +22,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Spin Slash";
     [SerializeField, TextArea] private string description = "Leap forward, dealing damage in a burst around you as your weapons spin.";
-    [SerializeField] private float cooldown = 10f;
+    public float cooldown = 10f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full
     // value throughout the leap) — the cooldown reflects "time since the ability ended". true: cooldown
     // starts ticking immediately at cast, running concurrently with the active window — see Simulate().
@@ -83,10 +83,19 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // changes (10 base + 2 weapons = 20 hits at half damage each; 10 base + 4 weapons = 40 hits at quarter
     // damage each). Hits land evenly spaced across the whole duration — one at t=0 (cast), one at t=duration
     // (ability end), the rest spread between. See HitTime()'s own doc comment for the exact spacing.
-    [SerializeField] private int hitCountPerWeapon = 6;
+    public int hitCountPerWeapon = 6;
     // Flat multiplier on each hit's damage — base damage per hit is Strength * AttackSpeed * this (see
     // BaseDamage()'s own doc comment).
-    [SerializeField] private float spinAbilityDamageMultiplier = 1f;
+    public float spinAbilityDamageMultiplier = 1f;
+
+    // Total damage across the whole burst at current stats — hitCountPerWeapon * current TotalWeaponCount
+    // (mirrors _effectiveHitCount's own Activate()-time formula, just read live off CURRENT weapon count
+    // rather than a cast-time snapshot, since this previews "what would happen if cast right now") times
+    // BaseDamage()'s own per-hit formula. Baseline (unrolled), same convention as every other Live*Ratio.
+    public string LiveDamageRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * stats.Strength * stats.AttackSpeed * spinAbilityDamageMultiplier * stats.AbilityPower)} "
+            : "";
 
     private CharacterStatsPD    _stats;
     private PlayerControllerPD  _controller;
@@ -169,6 +178,17 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
+
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
 
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>
@@ -391,7 +411,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * hitData.onHitPower);
-        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
+        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
     }
 
     // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been

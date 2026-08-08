@@ -213,7 +213,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _knockback * state.currentOnHitPower);
-        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
+        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
 
         ApplyHitDropoffAndRicochet(ref state);
     }

@@ -28,11 +28,28 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float damagePercent     = 2f;
-    [SerializeField] private float onHitPowerPercent = 2f;
+    public float damagePercent     = 2f;
+    public float onHitPowerPercent = 2f;
     [SerializeField] private float explosionRadius   = 5f;
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate     = 0.5f;
+
+    // Mirrors AreaEffectCastHelper.Cast's own damage formula (abilityPower left at its neutral default here,
+    // so areaAndAbilityPower reduces to exactly Stats.AreaEffectPower — see that method's own doc comment),
+    // minus the luck/crit roll (baseline preview, not a randomly-sampled one — see
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention), for
+    // AugmentDescriptionFormatter's {LiveStrengthRatio} token.
+    public string LiveStrengthRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.UnpenalizedStrength * damagePercent * stats.AreaEffectPower)} "
+            : "";
+
+    // Mirrors the onHitPower half of the same Cast() formula, for AugmentDescriptionFormatter's
+    // {LiveOnHitPowerRatio} token.
+    public string LiveOnHitPowerRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.OnHitPower * onHitPowerPercent * stats.AreaEffectPower)} "
+            : "";
 
     [Header("VFX")]
     // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
@@ -74,6 +91,7 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
         // deliberately NOT scaled by Stats.AreaEffectPower (per the "AoE Effects" default rules).
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, vfxPerCast: true);
+                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, vfxPerCast: true,
+                source: DamageSource.DashExplosion);
     }
 }

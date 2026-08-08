@@ -47,7 +47,7 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     [SerializeField] private string abilityName = "Blade Dance";
     [SerializeField, TextArea] private string description =
         "Send your blades to the target location. They stay there for a few seconds before returning.";
-    [SerializeField] private float cooldown = 10f;
+    public float cooldown = 10f;
     // false (default): cooldown only starts ticking once the whole Outbound->Hold->Return sequence ends
     // (phase returns to Idle) — see Simulate(). true: starts ticking immediately at cast instead.
     [SerializeField] private bool cooldownStartsOnCast = false;
@@ -63,7 +63,7 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // WeaponBasePD.GetOuterReach's own doc comment) * this.
     [SerializeField] private float castRangeMultiplier = 2f;
     [SerializeField] private float travelSpeed = 25f;
-    [SerializeField] private float holdDuration = 5f;
+    public float holdDuration = 5f;
 
     [Header("Ability Haste -> Attack Speed")]
     // AbilityHaste normally only ever shortens THIS ability's own cooldown (EffectiveCooldown below) — barely
@@ -84,7 +84,26 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // NotifyAbilityStart/NotifyAbilityEnd (see Activate()/EndDance()) are both gated on cooldown > 0f, same
     // universal guard every ability in this codebase uses — harmless no-op at cooldown = 0 (the original
     // spammable-recast design), and fires normally now that cooldown is a real, if small, value.
-    [SerializeField] private float attackSpeedPercentPerHaste = 0.01f;
+    public float attackSpeedPercentPerHaste = 0.01f;
+
+    // attackSpeedPercentPerHaste doesn't END in "Percent" (it's in the middle), so a direct
+    // {attackSpeedPercentPerHaste} reference wouldn't get the *100 treatment — same alias-property fix as
+    // KnightAreaStunHealAbilityPD.BaseHealPercent/ArcherArrowRainAbilityPD.BaseDamagePercent.
+    public float AttackSpeedPerHastePercent => attackSpeedPercentPerHaste;
+
+    // Mirrors Activate()'s own _appliedAttackSpeedPercent formula exactly — see attackSpeedPercentPerHaste's
+    // own doc comment for the full reasoning. Outside a live match, falls back to 0 — EffectiveAbilityHaste's
+    // own neutral (no-investment) value is 0, and 0 haste genuinely means 0% bonus, so this isn't a
+    // misleading placeholder the way it would be for a stat with no true "neutral" — same reasoning as
+    // every other ability's smart-fallback Live*Ratio (see ArcherFocusFireAbilityPD.LiveDurationRatio's own
+    // doc comment).
+    public string LiveAttackSpeedBonusRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste * stats.AbilityPower
+            : 0f;
+        return $"{AugmentDescriptionFormatter.FormatLivePercent(value)}";
+    }
 
     private CharacterStatsPD   _stats;
     private WeaponManagerPD    _weaponManager;
@@ -168,6 +187,17 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
+
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
 
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>

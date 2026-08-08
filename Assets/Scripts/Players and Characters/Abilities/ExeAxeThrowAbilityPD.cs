@@ -27,7 +27,7 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     [SerializeField] private string abilityName = "Axe Throw";
     [SerializeField, TextArea] private string description =
         "Throw an axe dealing 200% Unpenalized Strength that pierces every enemy in its path. Crits deal double crit damage.";
-    [SerializeField] private float cooldown = 6f;
+    public float cooldown = 6f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false — moot here (see class
     // doc comment, AbilityIsActive is always false), kept only for interface/Inspector consistency with
     // every other ability.
@@ -42,7 +42,15 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     [SerializeField] private bool activeSurgeBlock = false;
 
     [Header("Effect")]
-    [SerializeField] private float strengthPercent    = 2f;
+    public float strengthPercent    = 2f;
+
+    // Baseline (unrolled) damage — this ability has no AbilityPower/AreaEffectPower scaling at all (see
+    // class doc comment), so this is a straight preview of strengthPercent * UnpenalizedStrength, same
+    // "baseline, not a randomly-sampled roll" convention every other Live*Ratio in this codebase uses.
+    public string LiveStrengthRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(strengthPercent * stats.UnpenalizedStrength)} "
+            : "";
     // How far the throw can fly before expiring = true weapon reach * this — see class doc comment.
     [SerializeField] private float maxRangeMultiplier = 3f;
     [SerializeField] private float projectileSpeed    = 20f;
@@ -114,6 +122,17 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
+
+    // Mirrors EffectiveCooldown's own formula exactly. Outside a live match, falls back to the base field
+    // itself — exact at neutral EffectiveAbilityHaste (0, i.e. cooldown / (1+0/100) == cooldown), same
+    // "neutral stat value == the base field" convention as every other Live*Ratio in this file.
+    public string LiveCooldownRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? cooldown / (1f + stats.EffectiveAbilityHaste / 100f)
+            : cooldown;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
 
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
     public void ReduceCooldownFlat(float seconds) =>

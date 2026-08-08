@@ -667,8 +667,8 @@ MonoBehaviour:
   baseRicochet: 0
   baseMultishot: 0
   baseMultishotSpreadAngle: 75
-  baseProjectileDamageDropoff: 0.1
-  baseProjectileOnHitDropoff: 0.1
+  baseProjectileDamageDropoff: 0.2
+  baseProjectileOnHitDropoff: 0.2
   baseFireRate: 1
   baseProjectileSpeed: 1
   baseMaxHealth: 50
@@ -1919,7 +1919,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 1.8}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &7156328250478668226
@@ -1935,7 +1935,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerUIWorldSpace
   worldspaceCanvas: {fileID: 7400062420861314861}
-  verticalOffsetTarget: {fileID: 0}
   healthBar: {fileID: 3933464473374717423}
   shieldBar: {fileID: 1302228547604071240}
   dashUI: {fileID: 7903088238848282226}
@@ -2961,7 +2960,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 1.8}
   m_SizeDelta: {x: 10, y: 10}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!223 &7400062420861314861

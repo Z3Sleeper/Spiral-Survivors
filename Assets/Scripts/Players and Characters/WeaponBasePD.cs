@@ -82,6 +82,25 @@ public struct AllyStrikeData
 // the right guard built in (skips notifying listeners entirely while the owner is mid-replay, only fires
 // on the one live execution), so invoking this directly from Hit()/OnHit() and letting the listener call
 // TriggerHitFeedback needs no queue at all.
+// Groups HitFeedbackData for DamageNumberManager's stacking system — see that class's own doc comment for
+// the full stacking rule. Every weapon-like source (melee/axe/ranged projectile/thrown-axe ability/spin
+// ability) folds into one Weapon bucket; every Phantom Blade trigger (crit/passive/dash/onhit/ability-start/
+// carnival) funnels through PhantomBladePD's own single construction site, so it's naturally already one
+// bucket without needing its own collapsing logic here. Everything else gets its own dedicated value so it
+// only stacks with itself, never with a different effect that happens to land in the same tight window.
+public enum DamageSource
+{
+    Weapon,
+    PhantomBlade,
+    OnHitDamageAugment,
+    OnHitDamageHealthAugment,
+    OnHitDamageHealthRegenAugment,
+    KillLaunch,
+    ShieldBreakBurst,
+    DashExplosion,
+    ArcherArrowRain,
+}
+
 public struct HitFeedbackData
 {
     public PredictedObjectID target;
@@ -90,6 +109,8 @@ public struct HitFeedbackData
     public bool isHighroll;
     public CharacterStatsPD attacker;
     public bool isPriority;
+    // Which stacking bucket this hit belongs to — see DamageSource's own doc comment.
+    public DamageSource source;
 
     // Lets a hit source override the default per-attacker hitSfx entirely — false (default) means "play
     // attacker.hitSfx as normal," exactly what every existing call site already gets for free without

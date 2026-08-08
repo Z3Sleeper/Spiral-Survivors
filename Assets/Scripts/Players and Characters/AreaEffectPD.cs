@@ -55,6 +55,9 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     // 1f (neutral) default — see AreaEffectCastHelper.Cast's own doc comment on the identical parameter.
     // Only a real IAbilityPD implementer (e.g. ArcherArrowRainAbilityPD) ever passes something else in.
     private float _abilityPower = 1f;
+    // See AreaEffectCastHelper.Cast's own doc comment — passed straight through, only meaningful when
+    // _dealDamage is true.
+    private DamageSource _source = DamageSource.Weapon;
     private Action<IEnemyPD> _onEnemyHit;
     private Action<CharacterStatsPD> _onAllyHit;
     // Fired once per cast with the total enemies/allies hit that cast — e.g. KnightAreaStunHealAbilityPD
@@ -89,7 +92,7 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         float radius, GameObject radiusVFXPrefab,
         bool targetAllies = false, bool dealDamage = true, float damagePercent = 0f, float onHitPowerPercent = 0f,
         bool notifyOnHit = true, bool hasKnockback = false, float? knockback = null, bool interrupt = false,
-        float abilityPower = 1f,
+        float abilityPower = 1f, DamageSource source = DamageSource.Weapon,
         Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null,
         bool overrideHitSfx = false, AudioClip hitSfxOverride = null, bool vfxPerCast = false)
     {
@@ -113,6 +116,7 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         _knockback = knockback;
         _interrupt = interrupt;
         _abilityPower = abilityPower;
+        _source = source;
         _onEnemyHit = onEnemyHit;
         _onAllyHit = onAllyHit;
         _onCastComplete = onCastComplete;
@@ -161,7 +165,7 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         AreaEffectCastHelper.Cast(hierarchy, _owner, _castPosition, _radius, _radiusVFXPrefab,
             targetAllies: _targetAllies, dealDamage: _dealDamage, damagePercent: _damagePercent, onHitPowerPercent: _onHitPowerPercent,
             notifyOnHit: _notifyOnHit, hasKnockback: _hasKnockback, knockback: _knockback, interrupt: _interrupt,
-            abilityPower: _abilityPower,
+            abilityPower: _abilityPower, source: _source,
             onEnemyHit: _onEnemyHit, onAllyHit: _onAllyHit, onCastComplete: _onCastComplete,
             overrideHitSfx: _overrideHitSfx, hitSfxOverride: _hitSfxOverride);
     }

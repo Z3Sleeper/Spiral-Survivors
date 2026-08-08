@@ -16,7 +16,15 @@ public class OnHitDamageAugment : AugmentEffectPD<OnHitDamageAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float onHitDamagePercent = 0.2f;
+    public float onHitDamagePercent = 0.2f;
+
+    // Baseline damage at 100% OnHitPower (the per-hit multiplier itself isn't included since it varies
+    // hit-to-hit) for AugmentDescriptionFormatter's {LiveStrengthRatio} token — see
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention.
+    public string LiveStrengthRatio(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.UnpenalizedStrength * onHitDamagePercent)} "
+            : "";
 
     protected override void OnApply()
     {
@@ -49,6 +57,6 @@ public class OnHitDamageAugment : AugmentEffectPD<OnHitDamageAugment.State>
         if (data.isCrit) rolled *= Stats.CritDamage;
 
         enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
-        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false });
+        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false, source = DamageSource.OnHitDamageAugment });
     }
 }

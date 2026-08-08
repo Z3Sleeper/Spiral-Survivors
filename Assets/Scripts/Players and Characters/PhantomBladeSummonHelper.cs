@@ -43,6 +43,21 @@ public static class PhantomBladeSummonHelper
     private static readonly Collider[] _overlapResults = new Collider[128];
     private static readonly List<IEnemyPD> _found = new();
 
+    // Baseline (unrolled, non-crit) per-blade damage for a given trigger's own baseDamageMultiplier/
+    // usePenalizedDamage — mirrors SummonAtTarget's own damage formula exactly, minus the luck/crit roll
+    // (previewing the baseline expected number, not a randomly-sampled one, same convention as
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio). Shared by every Phantom Blade augment's own
+    // {LiveBladeDamageRatio} token instead of each one duplicating this formula — same centralization
+    // rationale as SummonAtTarget/SummonAtClosestEnemies above. Deliberately per-blade, not multiplied by
+    // bladeCount — matches how each augment's own description states its damage per-blade, with bladeCount
+    // shown as a separate, plain token.
+    public static float PreviewDamage(CharacterStatsPD stats, float baseDamageMultiplier, bool usePenalizedDamage = false)
+    {
+        float strengthBase = usePenalizedDamage ? stats.Strength : stats.UnpenalizedStrength;
+        return baseDamageMultiplier * strengthBase
+            * (1f + stats.phantomBladeDamageBonus) * stats.phantomBladeDamageBonusPercent * stats.phantomBladeDamagePenalty;
+    }
+
     // Finds up to `summonCount` closest, unique, alive enemies within TargetSearchRadius of `origin` and
     // summons one blade at each — nearest first. If fewer valid enemies exist than `summonCount`, the
     // excess blades all target the closest one (index 0) instead, per the family's stated design (unique

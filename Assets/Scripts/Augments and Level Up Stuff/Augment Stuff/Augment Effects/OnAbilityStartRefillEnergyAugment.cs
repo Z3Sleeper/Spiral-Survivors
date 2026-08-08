@@ -14,7 +14,23 @@ public class OnAbilityStartRefillEnergyAugment : AugmentEffectPD<OnAbilityStartR
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // 1f = 100% Energy Regen per second of BaseCooldownDuration.
-    [SerializeField] private float energyRegenPercentPerCooldownSecond = 1f;
+    public float energyRegenPercentPerCooldownSecond = 1f;
+
+    // No single number to preview (the actual refill depends on which of this character's two abilities was
+    // cast) — shows both class abilities' own actual values instead, "Ability1/Ability2", for
+    // AugmentDescriptionFormatter's {LiveEnergyRegenRatio} token.
+    public string LiveEnergyRegenRatio(CharacterStatsPD stats)
+    {
+        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "";
+        float ability1Value = 0f, ability2Value = 0f;
+        foreach (var ability in stats.GetComponents<IAbilityPD>())
+        {
+            float value = stats.EnergyRegen * energyRegenPercentPerCooldownSecond * ability.BaseCooldownDuration;
+            if (ability.Slot == AbilitySlot.Ability1) ability1Value = value;
+            else if (ability.Slot == AbilitySlot.Ability2) ability2Value = value;
+        }
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}/{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
+    }
 
     protected override void OnApply() => Stats.AddAbilityStartListener(OnAbilityStart);
 
