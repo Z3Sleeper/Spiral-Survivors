@@ -17,6 +17,12 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         public EnemyBaseState b;
         public int     stateId;              // cast to/from LeapState, same convention as SpearGloomPD
         public float   stateTimer;
+        // Counts up from 0 at EnterWindup() through the end of Leaping — unlike stateTimer (which counts
+        // DOWN and gets reset to a new baseline at the Windup->Leaping boundary, so it means "time left in
+        // THIS sub-phase" rather than one consistent thing), this represents one single quantity ("time
+        // since this windup began") for the whole combined span. See UpdateView's fill computation for why
+        // that distinction matters for interpolated rendering specifically.
+        public float   attackElapsed;
         public float   attackCooldownTimer;
         public Vector3 leapStart;
         public Vector3 leapTarget;            // locked in at Windup entry, reused through Leaping/Landing
@@ -167,10 +173,12 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
                 break;
 
             case LeapState.Windup:
+                state.attackElapsed += delta * EffectiveAttackSpeed;
                 if (state.stateTimer <= 0f) EnterLeap(ref state);
                 break;
 
             case LeapState.Leaping:
+                state.attackElapsed += delta * EffectiveAttackSpeed;
                 // Kinematic arc lerp, not the shared dash primitives — a leap ignores normal ground
                 // collision along the way (matching the hurtbox/collider being disabled below), which the
                 // velocity-based dash primitives aren't built for.
@@ -259,7 +267,8 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         _leapTargetSnapshot = state.leapTarget;
 
         SnapFaceTarget(ref state);
-        state.stateTimer = windupDuration;
+        state.stateTimer    = windupDuration;
+        state.attackElapsed = 0f;
         SetLeapState(ref state, LeapState.Windup);
     }
 
@@ -386,18 +395,21 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
         // Live, every frame regardless of the _lastVisualState-gated block below — reacts immediately to
         // EffectiveAttackSpeed changing mid-state, same reasoning as every other attack-speed-scaled enemy
-        // in this pass. The fill spans both Windup and Leaping as one combined span (see its own comment
-        // further down for why), so progress is "how far into the combined windup+leap baseline are we,"
-        // computed from whichever of the two states we're currently in rather than a single self-timed
-        // StartFill(windupDuration + leapDuration) call that would go stale the instant attack speed
-        // changes mid-span.
+        // in this pass. The fill spans both Windup and Leaping as one combined span, driven off
+        // attackElapsed (counts up continuously across the whole span, reset once at EnterWindup) rather
+        // than stateTimer. stateTimer counts DOWN and gets given a brand new baseline the instant Windup
+        // hands off to Leaping, so it means two different things on either side of that handoff — fine for
+        // verified/simulated reads, but PurrDiction's viewState is interpolated between ticks for smooth
+        // rendering, and blending "windup time remaining" against "leap time remaining" across that one
+        // tick boundary produced a real, visible glitch (the fill briefly reading a wrong value) for
+        // whichever single render frame straddled the transition — worst-case-visible exactly when
+        // windupDuration == leapDuration, i.e. right at the midpoint. attackElapsed has one consistent
+        // meaning for the WHOLE span, so interpolating it across that same boundary is safe.
         if (_windupFill != null)
         {
             float combined = windupDuration + leapDuration;
-            if (ss == LeapState.Windup)
-                _windupFill.SetProgress((windupDuration - viewState.stateTimer) / combined);
-            else if (ss == LeapState.Leaping)
-                _windupFill.SetProgress((windupDuration + (leapDuration - viewState.stateTimer)) / combined);
+            if (ss == LeapState.Windup || ss == LeapState.Leaping)
+                _windupFill.SetProgress(viewState.attackElapsed / combined);
         }
         if (_animator != null)
         {
@@ -464,6 +476,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         currentState.leapsRemaining      = leapsPerAttack;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.stateTimer          = 0f;
+        currentState.attackElapsed       = 0f;
         if (_yAxisMovers != null) _yAxisMovers.localPosition = _yAxisMoversRestPosition;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.ResetFill();

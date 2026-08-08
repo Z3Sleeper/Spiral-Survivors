@@ -98,11 +98,11 @@ MonoBehaviour:
     with <color=#FFA000>50% reduced Fire Rate</color>.
 
     <color=#FFBE50><i>Ability
-    Power reduces the Fire Rate Penalty and increases the Duration</i></color>
+    Power reduces the Fire Rate Penalty</i></color>
 
     <color=#FFBE50>Cooldown:
-    15 seconds</color>'
-  cooldown: 15
+    8 seconds</color>'
+  cooldown: 8
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
@@ -128,9 +128,6 @@ MonoBehaviour:
     location within <color=#3278FF>2x Range</color>, dealing <color=#FF5000>315%
     unpenalized Strength</color> over <color=#FFA000>5 seconds</color> and applying
     a <color=#FFA000>40% Slow</color>.
-
-    <color=#FFBE50><i>Damage & Slow scale
-    with AoE Power & Ability Power</i></color>
 
     <color=#FFBE50>Cooldown: 20 seconds</color>'
   cooldown: 20

@@ -16,7 +16,7 @@ MonoBehaviour:
   description: '<color=#8C3CFF>+30% Stack Power</color>
 
     <color=#FFBE50><i>Stack
-    Power boosts the effect of all Stacking effects</i></color>'
+    Power boosts the effects of all Stacking effects</i></color>'
   icon: {fileID: 21300000, guid: 4d9e26cd8401d64458c1b85fece693e5, type: 3}
   effectPrefab: {fileID: 543852543365188260, guid: 07579cc5d79135f408fe1f71970059a6, type: 3}
   multiplayerOnly: 0

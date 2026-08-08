@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e8d04588651e93f4898529eb4051300a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeEndMoveSpeedAugment
-  totalMoveSpeedPercent: 0.25
+  totalMoveSpeedPercent: 0.5
   buffDuration: 2
   buffIcon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}

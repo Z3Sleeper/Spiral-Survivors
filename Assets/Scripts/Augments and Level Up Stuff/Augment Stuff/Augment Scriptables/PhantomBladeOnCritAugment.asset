@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#8C8C8C>Phantom</color> <color=#FF0000>Crit</color>
   description: '<color=#FFA000>Every 10 <color=#FF0000>Crit</color> Strikes:</color>
     <color=#FFA000>Summon</color> 3 <color=#8C8C8C>Phantom Blades</color> piercing
-    the nearest enemies for <color=#FF5000>30% Strength</color>.
+    the nearest enemies for <color=#FF5000>60% Strength</color>.
 
     <color=#8C8C8C>+10%
     Phantom Blade Damage and Size</color>'

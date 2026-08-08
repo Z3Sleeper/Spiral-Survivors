@@ -65,6 +65,18 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private Image ability2DurationBar;
     private bool _ability2DurationUIShown;
 
+    // Parent panel hidden entirely while Stats.GainsDeathPreventions is false (the character has no way to
+    // ever earn one, e.g. DeathPreventionShieldDRAugment not picked) — CDOverlay/Timer are a nested pair,
+    // shown together only while eligible AND no save is currently banked (Stats.HasDeathPrevention false),
+    // i.e. the grant timer is actively counting toward the next one. See LocalUIManagerPD.
+    // UpdateDeathPreventionUI's own comment for the full show/hide logic.
+    [Header("Death Prevention UI")]
+    [SerializeField] private GameObject deathPreventionUI;
+    [SerializeField] private GameObject deathPreventionCDOverlay;
+    [SerializeField] private TextMeshProUGUI deathPreventionTimerText;
+    private bool _deathPreventionUIShown;
+    private bool _deathPreventionCooldownShown;
+
     [Header("Boss UI")]
     // Pooled per-boss health bar, one instance per currently-alive boss — supports any number spawned
     // simultaneously (see EnemySpawnerPD's activeBosses list). bossBarTemplate is a prefab asset (not an
@@ -442,6 +454,7 @@ public class LocalUIManagerPD : MonoBehaviour
         UpdateDash();
         UpdateAbility1();
         UpdateAbility2();
+        UpdateDeathPreventionUI();
         UpdateEnergy();
         UpdateStats();
         UpdateStatsExpanded();
@@ -679,6 +692,39 @@ public class LocalUIManagerPD : MonoBehaviour
             SetFill(ability2DurationBar, _ability2.ActiveTimeDuration > 0f
                 ? _ability2.ActiveTimeRemaining / _ability2.ActiveTimeDuration
                 : 0f);
+    }
+
+    // Whole DeathPreventionUI panel hidden unless Stats.GainsDeathPreventions is true — a character who
+    // never picked the augment (or whatever else grants it) has no business showing an empty/dormant
+    // Death Prevention indicator at all. CDOverlay + Timer are a nested pair inside that panel, shown
+    // together only while a save ISN'T currently banked (Stats.HasDeathPrevention false) — that's exactly
+    // when CharacterStatsPD's own grant timer is actively ticking (see its Simulate()'s own comment) toward
+    // the next one, so this is the "on cooldown" window from the player's perspective. Once the timer
+    // completes and a Death Prevention is granted, both hide — the outer panel alone (still visible) is
+    // enough to signal "ready".
+    private void UpdateDeathPreventionUI()
+    {
+        if (deathPreventionUI == null) return;
+
+        bool gains = _stats.GainsDeathPreventions;
+        if (gains != _deathPreventionUIShown)
+        {
+            _deathPreventionUIShown = gains;
+            deathPreventionUI.SetActive(gains);
+        }
+        if (!gains) return;
+
+        bool onCooldown = !_stats.HasDeathPrevention;
+        if (onCooldown != _deathPreventionCooldownShown)
+        {
+            _deathPreventionCooldownShown = onCooldown;
+            if (deathPreventionCDOverlay != null) deathPreventionCDOverlay.SetActive(onCooldown);
+            if (deathPreventionTimerText != null) deathPreventionTimerText.gameObject.SetActive(onCooldown);
+        }
+        // Whole seconds, rounded UP (CeilToInt) so it never flashes "0" for a frame while still on
+        // cooldown — same convention as PausePD.OnFallbackTimerChanged/AugmentManagerPD.
+        // OnPresentingTimerChanged's own countdown displays.
+        if (onCooldown) SetText(deathPreventionTimerText, $"{Mathf.CeilToInt(_stats.UIDeathPreventionTimer)}");
     }
 
     private void UpdateEnergy()

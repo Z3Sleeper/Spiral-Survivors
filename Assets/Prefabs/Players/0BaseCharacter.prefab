@@ -657,15 +657,13 @@ MonoBehaviour:
   characterClass: 0
   classPassive: {fileID: 0}
   baseMoveSpeed: 10
-  strengthPerLevel: 2.5
   baseStrength: 15
   baseWeaponRadius: 0
   baseAttackSpeed: 0.5
   baseWeaponCount: 1
-  weaponTracks: 1
   baseWeaponRange: 10
   baseCritChance: 0
-  baseCritDamage: 2
+  baseCritDamage: 3
   baseRicochet: 0
   baseMultishot: 0
   baseMultishotSpreadAngle: 75
@@ -676,16 +674,15 @@ MonoBehaviour:
   baseMaxHealth: 50
   baseHealthRegen: 0
   baseMaxShieldPercent: 0.05
-  shieldRechargeTime: 5
+  baseDeathPreventionTime: 30
+  deathPreventionInvincibilityDuration: 1
+  deathPreventionRepeatReductionMultiplier: 0.75
   baseMaxEnergy: 50
   baseEnergyRegen: 4
   baseSurgeCost: 2
   surgeMoveSpeedMulti: 1
-  surgeMoveSpeedPenalty: 0.5
   surgeAttackSpeedMulti: 2
-  dashCharges: 1
   baseDashCooldown: 5
-  levelUpOptions: 3
   baseLuck: 0
   baseLuckFloor: 0.5
   baseLuckCeiling: 1.5
@@ -702,146 +699,6 @@ MonoBehaviour:
   invisibleModelAlpha: 0.3
   _modelTransform: {fileID: 4644740684117971822}
   reviveTime: 3
-  bonusMoveSpeedFlat: 0
-  bonusMoveSpeedPercent: 1
-  moveSpeedPenalty: 1
-  totalMoveSpeedPercent: 1
-  totalMoveSpeedPenalty: 1
-  bonusStrengthFlat: 0
-  bonusStrengthPercent: 1
-  bonusStrengthPenalty: 1
-  totalStrengthPercent: 1
-  totalStrengthPenalty: 1
-  bonusWeaponRadiusFlat: 0
-  bonusWeaponRadiusPercent: 1
-  totalWeaponRadiusPercent: 1
-  totalWeaponRadiusPenalty: 1
-  attackSpeedFlat: 0
-  attackSpeedTotalPercent: 1
-  attackSpeedPenalty: 1
-  bonusWeaponCountFlat: 0
-  weaponCountMultiplier: 1
-  bonusWeaponRangeFlat: 0
-  bonusWeaponRangePercent: 1
-  weaponRangePenalty: 1
-  totalWeaponRangePercent: 1
-  totalWeaponRangePenalty: 1
-  bonusSizePercent: 1
-  bonusCritChanceFlat: 0
-  bonusCritChancePercent: 1
-  totalCritChancePercent: 1
-  totalCritChancePenalty: 1
-  bonusCritDamageFlat: 0
-  bonusCritDamagePercent: 1
-  bonusRicochetFlat: 0
-  bonusRicochetPercent: 1
-  totalRicochetPercent: 1
-  totalRicochetPenalty: 1
-  bonusMultishotFlat: 0
-  bonusMultishotPercent: 1
-  bonusMultishotSpreadPercent: 1
-  totalMultishotPercent: 1
-  totalMultishotPenalty: 1
-  projectileDamageDropoffReduction: 1
-  projectileOnHitDropoffReduction: 1
-  fireRateFlat: 0
-  fireRateTotalPercent: 1
-  fireRateTotalPenalty: 1
-  projectileSpeedFlat: 0
-  projectileSpeedTotalPercent: 1
-  projectileSpeedTotalPenalty: 1
-  bonusMaxHealthFlat: 0
-  bonusMaxHealthPercent: 1
-  totalMaxHealthPercent: 1
-  totalMaxHealthPenalty: 1
-  bonusHealthRegenFlat: 0
-  bonusHealthRegenPercent: 1
-  totalHealthRegenPercent: 1
-  totalHealthRegenPenalty: 1
-  bonusMaxShieldAdditive: 0
-  totalMaxShieldPercent: 1
-  totalMaxShieldPenalty: 1
-  bonusMaxEnergyFlat: 0
-  bonusMaxEnergyPercent: 1
-  bonusEnergyRegenFlat: 0
-  bonusEnergyRegenPercent: 1
-  energyRegenPenalty: 1
-  totalEnergyRegenPercent: 1
-  totalEnergyRegenPenalty: 1
-  bonusSurgeCostFlat: 0
-  bonusSurgeCostPercent: 1
-  surgeAttackSpeedPenalty: 1
-  dashHaste: 0
-  bonusDashHastePercent: 1
-  totalDashHastePercent: 1
-  totalDashHastePenalty: 1
-  abilityHaste: 0
-  bonusAbilityHastePercent: 1
-  totalAbilityHastePercent: 1
-  totalAbilityHastePenalty: 1
-  bonusLuckFlat: 0
-  bonusLuckPercent: 1
-  luckPenalty: 1
-  totalLuckPercent: 1
-  totalLuckPenalty: 1
-  bonusLuckFloorPercent: 1
-  luckFloorPenalty: 1
-  bonusLuckCeilingFlat: 0
-  bonusLuckCeilingPercent: 1
-  luckCeilingPenalty: 1
-  bonusHighrollPercent: 1
-  highrollPenalty: 1
-  bonusHighrollBonusPercent: 1
-  highrollBonusPenalty: 1
-  knockbackMultiplier: 1
-  knockbackPenalty: 1
-  bonusOnHitPowerMultiplier: 1
-  bonusOnHitPowerPenalty: 1
-  totalOnHitPowerPercent: 1
-  totalOnHitPowerPenalty: 1
-  stackPowerPercent: 1
-  stackPowerPenalty: 1
-  abilityPowerMultiplier: 1
-  abilityPowerPenalty: 1
-  areaEffectSizePercent: 1
-  areaEffectSizePenalty: 1
-  areaEffectPowerPercent: 1
-  areaEffectPowerPenalty: 1
-  areaEffectCountFlat: 1
-  areaEffectCountPenalty: 1
-  outerXZMultiplierPercent: 1
-  xpMultiplier: 1
-  xpPenalty: 1
-  bonusXPRadiusFlat: 0
-  bonusXPRadiusPercent: 1
-  reviveTimePenalty: 1
-  reviveTimePenaltyReduction: 1
-  revivePower: 1
-  damageReductionPercent: 1
-  damageReductionPenalty: 1
-  specialSpinRate: 0
-  useSpecialSpinRate: 0
-  weaponOrbitFlipped: 0
-  continuousFire: 0
-  focusFireAimAngle: 0
-  weaponOrbitOriginOverridden: 0
-  weaponOrbitOriginOverride: {x: 0, y: 0, z: 0}
-  specialHeightOffset: 0
-  phantomBladeDamageBonus: 0
-  phantomBladeSizeBonus: 0
-  phantomBladeDamageBonusPercent: 1
-  phantomBladeSizeBonusPercent: 1
-  phantomBladeDamagePenalty: 1
-  phantomBladeSizePenalty: 1
-  phantomBladeOnHitEnabled: 0
-  phantomBladeOnHitPowerPercent: 0
-  allyStrikeHitEnabled: 0
-  deathEventCount: 0
-  killEventCount: 0
-  energyRegenWhileSurgingPercent: 0
-  allyStrikeDamageEnabled: 0
-  executeThreshold: 0
-  critExecuteThreshold: 0
   unscaledSizeChildren:
   - {fileID: 5925581709578661190}
   - {fileID: 7530299037405727771}

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: CritTriggerOnHitAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FF0000>Critically</color> <color=#FF0050>Efficient</color>
+  displayName: <color=#FF0000>Critically Efficient</color>
   description: <color=#FFA000>On Strike <color=#FF0000>Crit</color>:</color> <color=#FFA000>Trigger
     On-Hit Effects</color> a second time at <color=#FFA000>30% On-Hit Power</color>.
   icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}

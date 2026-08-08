@@ -2,13 +2,15 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Rogue's second class ability, built on the IAbilityPD architecture — drops enemy aggro by going invisible
-// (CharacterStatsPD.SetInvisible) and grants +50% total move speed, both for the same fixed duration. Gated
-// by a cooldown, same shape as RogueSpinAbilityPD (see that file for the template this mirrors) — the two
-// slots are otherwise functionally identical now, this one just doesn't force a special action while active.
-// EnemyBasePD/EnemySpawnerPD already react to SetInvisible immediately (the taunt/invisible enemy-targeting
-// work) — this ability only needs to flip the flag on and back off, all the actual retargeting behavior
-// already exists. The visual fade (CharacterStatsPD's own model-renderer alpha) is likewise driven
-// generically off the invisible flag itself, not by this ability directly.
+// (CharacterStatsPD.GrantInvisibility, a duration-max contribution, not a raw on/off — see its own doc
+// comment) and grants +50% total move speed, both for the same fixed duration. Gated by a cooldown, same
+// shape as RogueSpinAbilityPD (see that file for the template this mirrors) — the two slots are otherwise
+// functionally identical now, this one just doesn't force a special action while active. EnemyBasePD/
+// EnemySpawnerPD already react to invisibility changing immediately (the taunt/invisible enemy-targeting
+// work) — this ability only needs to grant its own duration at cast, never explicitly turning it back off
+// (GrantInvisibility's own shared timer handles that), all the actual retargeting behavior already exists.
+// The visual fade (CharacterStatsPD's own model-renderer alpha) is likewise driven generically off the
+// invisible flag itself, not by this ability directly.
 public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State>, IAbilityPD
 {
     public struct State : IPredictedData<State>
@@ -108,6 +110,14 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // See IAbilityPD's own doc comments for the exact contract of each of these three.
+    public void ReduceCooldownFlat(float seconds) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
+    public void ReduceCooldownPercentRemaining(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
+    public void ReduceCooldownPercentTotal(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+
     public void Activate()
     {
         if (!IsReady || _stats == null) return;
@@ -131,7 +141,11 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
             _stats.ForceEndSurge();
             _stats.AddSurgeBlock();
         }
-        _stats.SetInvisible(true);
+        // GrantInvisibility, not a raw on/off — contributes this ability's own duration as a floor rather
+        // than unconditionally claiming the flag, so a DIFFERENT overlapping invisibility source (e.g.
+        // DeathPreventionInvisibleAugment) never gets cut short by this ability's own end-of-buff turning it
+        // off early. See CharacterStatsPD.GrantInvisibility's own doc comment.
+        _stats.GrantInvisibility(_appliedDuration);
         _stats.AddMoveSpeedTotalPercent(_appliedMoveSpeedTotalPercent);
 
         _onActiveStarted.Invoke();
@@ -166,11 +180,11 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
 
         state.isActive = false;
         if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
-        if (_stats != null)
-        {
-            _stats.SetInvisible(false);
-            _stats.AddMoveSpeedTotalPercent(-_appliedMoveSpeedTotalPercent);
-        }
+        // Invisibility itself is deliberately NOT turned off here — it's left to CharacterStatsPD's own
+        // shared invisibleTimer to expire naturally (see GrantInvisibility's own doc comment), so it isn't
+        // cut short if some other source is still relying on it. Only this ability's own Move Speed grant
+        // reverts here, since that's exclusively this ability's to give and take back.
+        _stats?.AddMoveSpeedTotalPercent(-_appliedMoveSpeedTotalPercent);
         _onActiveEnded.Invoke();
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.

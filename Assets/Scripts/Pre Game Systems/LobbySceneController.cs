@@ -2,7 +2,6 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using PurrLobby;
-using PurrLobby.Providers;
 using PurrNet;
 using PurrNet.Modules;
 using PurrNet.Steam;
@@ -56,19 +55,13 @@ public class LobbySceneController : MonoBehaviour
     // lobby, or let a connection through that wasn't part of what it visibly saw when it started.
     private readonly HashSet<ulong> _expectedSteamIds = new();
     // Host-only: Steam IDs that actually completed a real PurrNet connection this attempt (populated
-    // alongside _joinedPlayerIds in OnPurrNetPlayerJoined). Compared against _expectedSteamIds in
-    // AbortStuckMatchStart to know exactly who to exclude from a lobby rebuild — see
-    // RebuildLobbyExcludingFailed's own doc comment.
+    // alongside _joinedPlayerIds in OnPurrNetPlayerJoined). Not currently used to change any behavior —
+    // kept purely as diagnostic bookkeeping (see the "connected — N/M" log in OnPurrNetPlayerJoined) and
+    // for the TODO in AbortStuckMatchStart that wants to eventually name which player(s) never connected.
     private readonly HashSet<ulong> _joinedSteamIds = new();
     private bool _initializedForLobby;
     private bool _connectingToHost;
     private Coroutine _connectRoutine;
-    // True once THIS client's own connection attempt has actually succeeded at least once during the
-    // current match-start try (set in ConnectToHostWithRetry's success branch, reset whenever a fresh
-    // attempt starts). Distinguishes, in AbortStuckMatchStart, "I was connected and got reset because
-    // someone ELSE failed" (stay in the lobby, no fault of mine) from "I personally never managed to
-    // connect at all" (my own failure — leave, same practical effect as being kicked for not connecting).
-    private bool _hasConnectedThisAttempt;
 
     // Normal match-start (ready confirmed -> actually loaded into the Game scene) takes well under 5s —
     // 20s is a generous ceiling, not a tuned "typical" wait. A successful transition unloads this whole
@@ -250,15 +243,13 @@ public class LobbySceneController : MonoBehaviour
     // loading screen indefinitely. Covers both roles: a stuck HOST also gets its own
     // StopServer()/StopClient() here, not just a stuck client.
     //
-    // Does NOT always mean leaving the Steam lobby room — only whoever's actually at fault does. The host
-    // (or a client that HAD successfully connected this attempt, and is only being reset because someone
-    // ELSE failed) has no reason to abandon a perfectly good lobby room over a failure that wasn't theirs;
-    // it resets local match-start state and drops back to character select instead, same room, same other
-    // players, ready to try again. Only a client that itself never actually connected this attempt (see
-    // _hasConnectedThisAttempt's own doc comment) — or a lobby that's genuinely no longer valid at all —
-    // actually leaves. This is what makes a single struggling connection no longer take the whole lobby
-    // down with it (previously: EVERY role unconditionally called LeaveLobby() here, so a host hitting its
-    // own watchdog abandoned the room out from under everyone else still in it).
+    // Deliberately simple and unconditional: EVERYONE in the lobby leaves and lands back at the main menu,
+    // regardless of role or whether their own connection actually succeeded. Previously tried a more
+    // surgical approach (host stays, only the specific non-connecting player gets excluded via a full lobby
+    // rebuild + targeted Steam invites) — worked, but was a lot of moving parts (a whole second lobby
+    // creation, invite-accept UX, a reentrant-callback bug that took a real debugging session to track down)
+    // for a failure mode that should be rare. Simpler and more predictable to just reset everyone and let
+    // them manually re-create/re-join, same as any other hard failure.
     private void AbortStuckMatchStart(string reason)
     {
         if (_matchStartWatchdog != null)
@@ -286,168 +277,22 @@ public class LobbySceneController : MonoBehaviour
             if (networkManager.isServer) networkManager.StopServer();
         }
 
-        var lobby = lobbyManager.CurrentLobby;
-        bool shouldLeaveLobby = !lobby.IsValid || (!lobby.IsOwner && !_hasConnectedThisAttempt);
-
-        if (shouldLeaveLobby)
-        {
-            if (LoadingScreen.instance != null) LoadingScreen.instance.Hide();
-            Debug.LogWarning($"[LobbySceneController] {reason} — this machine never connected this attempt, leaving the lobby.");
-            // Actually leaves the Steam lobby too, not just resets local UI/PurrNet state — without this,
-            // the player stayed a real member of the OLD (broken) Steam lobby underneath the main menu,
-            // which silently collided with a subsequent "Create Lobby" attempt (LobbyManager.CreateRoom()
-            // has no guard against being called while already in a lobby — live-confirmed this exact
-            // collision). Routes through the SAME LeaveLobby() path the real "Leave Lobby" button uses,
-            // which fires OnRoomLeft() — that handler already resets _expectedPlayerCount/_joinedPlayerIds/
-            // _expectedSteamIds and toggles the panels, so none of that is duplicated here.
-            // TODO: replace this bare kick-to-main-menu with a proper "match start failed" popup/message
-            // once the UI for it exists — right now this is silent from the player's perspective beyond
-            // suddenly landing back on the main menu, which is a real UX gap, just no longer an indefinite
-            // frozen loading screen.
-            lobbyManager.LeaveLobby();
-            return;
-        }
-
-        // Host, with someone in _expectedSteamIds who never actually completed a PurrNet connection this
-        // attempt: rebuild into a fresh, private lobby that excludes them, rather than just resetting in
-        // place and leaving them stuck as a permanent, unremovable member — see
-        // RebuildLobbyExcludingFailed's own doc comment for why this is the only genuinely host-authoritative
-        // way to shed them (Steamworks has no owner-side force-kick). Loading screen deliberately NOT hidden
-        // here — stays up for the whole rebuild so nobody can press UI buttons mid-transition; the coroutine
-        // itself hides it once this machine's own move to the new lobby is confirmed complete.
-        if (lobby.IsOwner && !_expectedSteamIds.SetEquals(_joinedSteamIds))
-        {
-            Debug.LogWarning($"[LobbySceneController] {reason} — rebuilding into a fresh lobby to drop whoever never connected.");
-            StartCoroutine(RebuildLobbyExcludingFailed(lobby));
-            return;
-        }
-
         if (LoadingScreen.instance != null) LoadingScreen.instance.Hide();
-        Debug.LogWarning($"[LobbySceneController] {reason} — staying in the lobby and returning to character select.");
+        Debug.LogWarning($"[LobbySceneController] {reason} — aborting and returning to main menu.");
 
-        // Host-only write (SetLobbyData is single-writer, lobby-owner-only) — undoes SetLobbyStarted() so
-        // every other client's own OnRoomUpdated naturally settles back to character select too instead of
-        // continuing to try to connect to a host that's no longer accepting the attempt. Also re-opens
-        // joinability if OnAllReady had locked it. Harmless to skip on a client (lobby.IsOwner already false
-        // means we wouldn't reach here unless _hasConnectedThisAttempt is true — i.e. we're a successfully-
-        // connected client just being reset, nothing to write).
-        if (lobby.IsOwner && ulong.TryParse(lobby.LobbyId, out ulong lobbyId))
-        {
-            var steamLobbyId = new CSteamID(lobbyId);
-            SteamMatchmaking.SetLobbyData(steamLobbyId, "Started", "False");
-            if (lockLobbyOnMatchStart) SteamMatchmaking.SetLobbyJoinable(steamLobbyId, true);
-        }
-
-        // Un-ready THIS machine specifically (never another player's flag — Steam per-member data can only
-        // ever be written by that member themselves, same reason ColorRequestKey is a request, not a claim).
-        // Every machine that lands in this "stay" branch — the host, plus any client whose own connection
-        // had actually succeeded — independently does the same thing, which collectively resets everyone's
-        // readiness. Without this, the reduced member count alone was enough for ConfirmAllReadyStable to
-        // immediately re-fire OnAllReady() against whoever's left, silently auto-retrying a match start
-        // nobody actually asked for again.
-        CharacterSelectUI.instance?.ResetReadyOnly();
-        lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
-        CharacterSelectUI.instance?.RefreshFromLobby(lobby);
-
-        _expectedPlayerCount = 0;
-        _joinedPlayerIds.Clear();
-        _expectedSteamIds.Clear();
-        _joinedSteamIds.Clear();
-        ShowCharacterSelect();
-    }
-
-    // The only genuinely host-authoritative way to shed a player who never connected this attempt —
-    // Steamworks has no owner-side "kick" for a lobby member, and a broadcast "here's the new lobby, come
-    // join" signal written into shared lobby data would be exactly as readable by a modified client as by a
-    // legitimate one (it could just read the new lobby ID and rejoin anyway), which defeats the whole point.
-    // Instead: create a brand-new PRIVATE lobby — not FriendsOnly, since the excluded player is usually a
-    // genuine Steam friend, who could still see and join a FriendsOnly lobby via Steam's own friends-list UI
-    // completely independently of anything this game does — and send a TARGETED
-    // SteamMatchmaking.InviteUserToLobby invite to each Steam ID that actually connected this attempt. The
-    // excluded player is never told the new lobby exists at all; there's no channel for them to discover it
-    // through, not just a polite request to leave that a modified client could ignore.
-    private IEnumerator RebuildLobbyExcludingFailed(Lobby oldLobby)
-    {
-        var toInvite = new List<ulong>(_joinedSteamIds);
-        string oldLobbyId = oldLobby.LobbyId;
-        int maxPlayers = oldLobby.MaxPlayers;
-
-        // Reset match-start bookkeeping BEFORE calling CreateRoom() below, not after — LobbyManager.CreateRoom
-        // fires its own OnRoomUpdated event reentrantly, synchronously, the moment the new lobby is actually
-        // created (LobbyManager.cs's CreateRoom continuation), which reaches THIS SAME LobbySceneController's
-        // own OnRoomUpdated handler while this coroutine is still mid-flight. That handler's pre-existing
-        // "member count shrank, re-check TryLoadGameScene" logic was written assuming it only ever reacts to
-        // the SAME ongoing lobby losing a player — it has no way to know a whole new lobby just replaced the
-        // old one. A brand-new lobby naturally starts with fewer members than the old (now-stale)
-        // _expectedPlayerCount, so leaving that check live during the rebuild let it misfire and call
-        // TryLoadGameScene() using leftover _joinedPlayerIds data from the ABANDONED attempt — which could
-        // satisfy the gate and incorrectly load the Game scene mid-rebuild, destroying this very
-        // LobbySceneController (and this coroutine) before it ever got to send invites or leave the old lobby.
-        // Confirmed live: the resulting NullReferenceException inside CreateRoom's own continuation, and this
-        // coroutine's own "new lobby created" success log never printing, both trace back to exactly this.
-        _expectedPlayerCount = 0;
-        _joinedPlayerIds.Clear();
-        _expectedSteamIds.Clear();
-        _joinedSteamIds.Clear();
-
-        Debug.Log($"[LobbySceneController] RebuildLobbyExcludingFailed: leaving lobby {oldLobbyId}, will invite {toInvite.Count} known-good Steam ID(s) [{string.Join(", ", toInvite)}] to the new one.");
-
-        // Temporarily force Private for just this one CreateRoom call. SteamLobbyProvider.CreateLobbyAsync
-        // reads its own lobbyType field synchronously, before its first await (confirmed via source read),
-        // so restoring it on the very next line is race-free — the normal "Create Lobby" flow's own
-        // configured type (FriendsOnly) is untouched for every OTHER lobby creation.
-        SteamLobbyProvider.LobbyType? originalType = null;
-        if (lobbyManager.CurrentProvider is SteamLobbyProvider steamProvider)
-        {
-            originalType = steamProvider.lobbyType;
-            steamProvider.lobbyType = SteamLobbyProvider.LobbyType.Private;
-        }
-        lobbyManager.CreateRoom(maxPlayers);
-        if (originalType.HasValue && lobbyManager.CurrentProvider is SteamLobbyProvider restoreProvider)
-            restoreProvider.lobbyType = originalType.Value;
-
-        float elapsed = 0f;
-        const float createTimeout = 15f;
-        while (elapsed < createTimeout &&
-               (!lobbyManager.CurrentLobby.IsValid || lobbyManager.CurrentLobby.LobbyId == oldLobbyId))
-        {
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-
-        if (!lobbyManager.CurrentLobby.IsValid || lobbyManager.CurrentLobby.LobbyId == oldLobbyId)
-        {
-            Debug.LogError("[LobbySceneController] Lobby rebuild failed — new lobby never created in time, leaving entirely.");
-            if (LoadingScreen.instance != null) LoadingScreen.instance.Hide();
-            lobbyManager.LeaveLobby(oldLobbyId);
-            yield break;
-        }
-
-        var newLobby = lobbyManager.CurrentLobby;
-
-        // Called directly rather than relying on the automatic OnRoomJoined relay (which reacts to a LATER,
-        // separately-arriving Steam callback) — guarantees character select is genuinely ready for the new
-        // lobby before this coroutine hides the loading screen, no ordering race between the two. Idempotent
-        // if the automatic relay ALSO fires afterward — OnRoomJoined's own _initializedForLobby guard just
-        // no-ops the redundant call.
-        InitializeForLobby(newLobby);
-
-        if (ulong.TryParse(newLobby.LobbyId, out ulong newLobbyId))
-        {
-            var newLobbySteamId = new CSteamID(newLobbyId);
-            foreach (ulong steamId in toInvite)
-                SteamMatchmaking.InviteUserToLobby(newLobbySteamId, new CSteamID(steamId));
-            Debug.Log($"[LobbySceneController] RebuildLobbyExcludingFailed: new lobby {newLobby.LobbyId} created, {toInvite.Count} invite(s) sent, leaving old lobby {oldLobbyId} now.");
-        }
-
-        // Only now safe to actually leave the old one — the new one exists, invites are sent, and this
-        // machine has already fully moved over. Routes through the normal LeaveLobby()/OnRoomLeft() path
-        // (briefly touches panel state internally) rather than a hand-rolled variant — invisible under the
-        // loading screen, and OnRoomLeft's own resets don't matter here since InitializeForLobby above
-        // already set everything up fresh for the lobby we actually care about now.
-        lobbyManager.LeaveLobby(oldLobbyId);
-
-        if (LoadingScreen.instance != null) LoadingScreen.instance.Hide();
+        // Actually leaves the Steam lobby too, not just resets local UI/PurrNet state — without this, the
+        // player stayed a real member of the OLD (broken) Steam lobby underneath the main menu, which
+        // silently collided with a subsequent "Create Lobby" attempt (LobbyManager.CreateRoom() has no
+        // guard against being called while already in a lobby — live-confirmed this exact collision).
+        // Routes through the SAME LeaveLobby() path the real "Leave Lobby" button uses, which fires
+        // OnRoomLeft() — that handler already resets _expectedPlayerCount/_joinedPlayerIds/_expectedSteamIds
+        // and toggles the panels, so none of that is duplicated here.
+        // TODO: replace this bare kick-to-main-menu with a proper "match start failed" popup/message once
+        // the UI for it exists — right now this is silent from every player's perspective beyond suddenly
+        // landing back on the main menu. Ideally it should name which player(s) never connected, e.g.
+        // "<name> didn't connect in time" — _expectedSteamIds minus _joinedSteamIds (both still tracked
+        // above) is exactly that set, on the host's own machine at least.
+        lobbyManager.LeaveLobby();
     }
 
     // e.g. CreateLobbyAsync timing out or Steam rejecting the request — bail back to the main PurrLobby
@@ -502,11 +347,10 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.LeaveLobby();
     }
 
-    // Locked out while LoadingScreen is up — covers both an ordinary match-start attempt and the
-    // lobby-rebuild "kick" migration (RebuildLobbyExcludingFailed keeps it up for its whole sequence). A
-    // real logical guard, not just relying on the loading screen visually covering this panel, in case that
-    // ever fails to render for some reason — see LoadingScreen.IsShowing's own doc comment. Every other
-    // character-select-adjacent button below guards the same way.
+    // Locked out while LoadingScreen is up — covers an ordinary match-start attempt. A real logical guard,
+    // not just relying on the loading screen visually covering this panel, in case that ever fails to render
+    // for some reason — see LoadingScreen.IsShowing's own doc comment. Every other character-select-adjacent
+    // button below guards the same way.
     public void OnSettingsClicked()
     {
         if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
@@ -645,7 +489,6 @@ public class LobbySceneController : MonoBehaviour
         // nothing ever cleared it back to false. Left stuck true, it would permanently block
         // OnRoomUpdated's own auto-connect check (!_connectingToHost) for every future lobby this session.
         _connectingToHost = false;
-        _hasConnectedThisAttempt = false;
         // Defensive cleanup in case a game-start sequence was still in flight when we left (e.g. the host
         // started loading but this client bailed out before TryLoadGameScene's own normal unsubscribe ran)
         // — an un-cleared subscription would keep firing OnPurrNetPlayerJoined for a lobby we're no longer
@@ -678,18 +521,10 @@ public class LobbySceneController : MonoBehaviour
 
         // REMOVED (2026-08-05): this used to shrink _expectedPlayerCount and re-check TryLoadGameScene the
         // instant the Steam lobby's member count dropped below it, so a host wouldn't wait forever for a
-        // join that could now never come. That reasoning predates the watchdog/rebuild system below — now
-        // that a struggling client's OWN code leaves the Steam lobby the moment IT decides it never
-        // connected (see _hasConnectedThisAttempt), this fired IMMEDIATELY on that departure and let the
-        // match proceed short-handed WITHOUT ever reaching AbortStuckMatchStart's rebuild-vs-stay decision —
-        // confirmed live: a client that failed to connect left the lobby, the host's member count dropped
-        // to 1, and the host silently loaded straight into a solo match instead of ever getting a chance to
-        // rebuild-and-invite (there was nothing wrong to protect against here, but the host also never got
-        // the option — it just happened, unannounced). The 20s watchdog already provides a bound on "how
-        // long could this possibly wait," and AbortStuckMatchStart already makes the correct decision once
-        // it fires (rebuild if someone genuinely never connected, otherwise reset in place) — letting IT be
-        // the only path that ever concludes "we're not getting everyone" is what's actually correct, even
-        // though it now takes up to 20s to react instead of being instant.
+        // join that could now never come. Letting the 20s watchdog (AbortStuckMatchStart) be the only path
+        // that ever concludes "we're not getting everyone" is simpler and avoids reacting to a member-count
+        // dip that might just be a transient reconnect, even though it now takes up to 20s to react instead
+        // of being instant.
 
         // Sole trigger for a client to connect — see OnAllReady's own comment for why clients no longer act
         // on their own independent "everyone's ready" conclusion. This reacts to the real Steam lobby data
@@ -712,7 +547,6 @@ public class LobbySceneController : MonoBehaviour
                     // OnAllReady client branch used to apply here.
                     if (_connectRoutine != null) StopCoroutine(_connectRoutine);
                     _connectingToHost = true;
-                    _hasConnectedThisAttempt = false;
                     StartMatchStartWatchdog();
                     if (networkManager.transport is SteamTransport steamTransport)
                     {
@@ -869,7 +703,6 @@ public class LobbySceneController : MonoBehaviour
             {
                 _connectingToHost = false;
                 _connectRoutine = null;
-                _hasConnectedThisAttempt = true;
                 yield break;
             }
 

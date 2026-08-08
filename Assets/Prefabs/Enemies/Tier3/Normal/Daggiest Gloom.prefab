@@ -101,16 +101,8 @@ PrefabInstance:
       value: 18
       objectReference: {fileID: 0}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: postSpinPause
-      value: 0.32
-      objectReference: {fileID: 0}
-    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: windupDuration
-      value: 0.32
-      objectReference: {fileID: 0}
-    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: betweenSpinPause
-      value: 0.16
+      propertyPath: spinRadius
+      value: 4.2
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

@@ -160,6 +160,27 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // own doc comment for why.
     public float shieldRechargeTime => currentState.shieldRechargeTime != 0f ? currentState.shieldRechargeTime : 5f;
 
+    [Header("Death Prevention")]
+    // Only ever a single banked save at a time (see HasDeathPrevention) — how long it takes to (re-)earn
+    // one is baseDeathPreventionTime seconds, scaled by deathPreventionTimeMultiplier (neutral 1f, a lower
+    // value grants faster) via the DeathPreventionTime property below. See Simulate()'s own comment for the
+    // full grant-timer logic.
+    public float baseDeathPreventionTime = 20f;
+    // In State, not a plain field — ActivateDeathPreventions() mutates this at runtime (a second augment
+    // that grants the mechanic compounds it down instead of no-oping), so it needs the same rollback safety
+    // as every other runtime-mutable stat modifier in this class. Neutral-1f-fallback convention, same
+    // shape as totalStrengthPercent/etc.
+    public float deathPreventionTimeMultiplier => currentState.deathPreventionTimeMultiplier != 0f ? currentState.deathPreventionTimeMultiplier : 1f;
+    public float DeathPreventionTime => baseDeathPreventionTime * deathPreventionTimeMultiplier;
+    // How long the post-save invincibility window lasts — same GrantInvincibility mechanism (and "longest
+    // active window wins" stacking) as dash/DeathPreventionShieldDRAugment's own death save/Revive(), so this
+    // stacks harmlessly with any of those rather than fighting over which invincibility "wins".
+    public float deathPreventionInvincibilityDuration = 1f;
+    // Tuning knob for ActivateDeathPreventions()'s own "already active, shrink the timer instead" rule — see
+    // that method's own doc comment. Centralized here specifically so every augment that grants the
+    // mechanic shares one tunable value instead of each carrying its own copy.
+    public float deathPreventionRepeatReductionMultiplier = 0.75f;
+
     [Header("Energy")]
     public float baseMaxEnergy = 50f;
     public float baseEnergyRegen = 4f;
@@ -380,6 +401,34 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float totalMaxShieldPercent => currentState.totalMaxShieldPercent != 0f ? currentState.totalMaxShieldPercent : 1f;
     public float totalMaxShieldPenalty => currentState.totalMaxShieldPenalty != 0f ? currentState.totalMaxShieldPenalty : 1f;
 
+    // Only ever one banked at a time (not a stacking count) — whether an augment has made this character
+    // eligible to earn one at all, and whether one is currently banked and ready to spend. See Simulate()'s
+    // own grant-timer comment for the full tick logic and TakeDamage()'s own comment for how a banked save
+    // gets spent.
+    public bool GainsDeathPreventions => currentState.gainsDeathPreventions;
+    public bool HasDeathPrevention => currentState.hasDeathPrevention;
+    // The ONLY entry point augments should use to grant this mechanic — never mutate gainsDeathPreventions
+    // directly, so the "already active" stacking rule below stays centralized in one place instead of
+    // needing to be duplicated in every augment that wants to grant it. First activator turns the mechanic
+    // on; every subsequent one additionally compounds deathPreventionTimeMultiplier down by
+    // deathPreventionRepeatReductionMultiplier (25% off by default) — a redundant "already have this" pick
+    // tightens the grant cycle instead of doing nothing. EVERY call (first or repeat) instantly grants a
+    // ready-to-use save — deliberate QoL: picking up a DP-granting source should feel like gaining
+    // protection right now, not starting on cooldown. Also unconditionally resets the grant timer to a
+    // fresh full cycle at whatever DeathPreventionTime now is (not just clamping it down) — otherwise the
+    // NEXT recharge (once this instantly-granted save gets spent) could inherit whatever tiny amount was
+    // left on the timer at the moment of this call, making it suspiciously fast instead of a full cycle.
+    public void ActivateDeathPreventions()
+    {
+        if (!currentState.gainsDeathPreventions)
+            currentState.gainsDeathPreventions = true;
+        else
+            currentState.deathPreventionTimeMultiplier = deathPreventionTimeMultiplier * deathPreventionRepeatReductionMultiplier;
+
+        currentState.hasDeathPrevention = true;
+        currentState.deathPreventionTimer = Mathf.Max(1, Mathf.RoundToInt(DeathPreventionTime / _currentDelta));
+    }
+
     public float bonusMaxEnergyFlat => currentState.bonusMaxEnergyFlat;
     public float bonusMaxEnergyPercent => currentState.bonusMaxEnergyPercent != 0f ? currentState.bonusMaxEnergyPercent : 1f;
 
@@ -586,21 +635,33 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // switch its firing behavior: normally a shot requires FindTarget() to first confirm something's
     // actually in the raycast's path before firing; while true, it skips that requirement entirely and just
     // fires straight forward (wherever the weapon is currently aimed) every time its normal fire-rate timer
-    // allows, target or not. In State — see specialSpinRate's own doc comment for why.
+    // allows — gated by ContinuousFireHasTarget below, not truly "target or not" anymore. In State — see
+    // specialSpinRate's own doc comment for why.
     public bool continuousFire { get => currentState.continuousFire; private set => currentState.continuousFire = value; }
     public bool ContinuousFire => continuousFire;
     public void SetContinuousFire(bool value) => continuousFire = value;
     // The shared OrbitalPosition baseAngle every weapon on this character should use INSTEAD of the normal,
     // ever-incrementing WeaponOrbitAngle while ContinuousFire is active — same Atan2-based convention
     // OrbitalPosition's own flatOffset math uses (X = cos(rad), Z = sin(rad)), so setting this to
-    // Atan2(cursorDir.z, cursorDir.x) * Rad2Deg makes the SlotIndex-0 weapon point exactly at the cursor.
-    // Every other weapon still applies its own normal 360/total*SlotIndex offset on top of this shared base
-    // exactly as it always does during ordinary orbiting — only the shared base itself changes source, so
-    // the whole ring freezes and re-aims as one rigid formation instead of each weapon trying to face the
-    // cursor independently. In State — see specialSpinRate's own doc comment for why.
+    // Atan2(aimDir.z, aimDir.x) * Rad2Deg makes the SlotIndex-0 weapon point exactly at the aim direction
+    // (the closest enemy — see ArcherFocusFireAbilityPD.UpdateAutoAimAngle's own doc comment, this used to
+    // be cursor-derived before the auto-aim rework). Every other weapon still applies its own normal
+    // 360/total*SlotIndex offset on top of this shared base exactly as it always does during ordinary
+    // orbiting — only the shared base itself changes source, so the whole ring freezes and re-aims as one
+    // rigid formation instead of each weapon trying to aim independently. In State — see specialSpinRate's
+    // own doc comment for why.
     public float focusFireAimAngle { get => currentState.focusFireAimAngle; private set => currentState.focusFireAimAngle = value; }
     public float FocusFireAimAngle => focusFireAimAngle;
     public void SetFocusFireAimAngle(float degrees) => focusFireAimAngle = degrees;
+    // Set alongside focusFireAimAngle by ArcherFocusFireAbilityPD.UpdateAutoAimAngle — whether that same
+    // auto-aim search actually found a living enemy within range this tick. WeaponRangedPD.LateSimulate()
+    // checks this before actually firing during ContinuousFire, so the weapon no longer shoots blindly into
+    // empty space just because the fire-rate timer allows it — it still skips FindTarget()/line-of-sight
+    // entirely (fires straight at the aimed direction, not along a raycast), it just also requires SOMETHING
+    // to be in range at all. In State — see specialSpinRate's own doc comment for why.
+    public bool continuousFireHasTarget { get => currentState.continuousFireHasTarget; private set => currentState.continuousFireHasTarget = value; }
+    public bool ContinuousFireHasTarget => continuousFireHasTarget;
+    public void SetContinuousFireHasTarget(bool value) => continuousFireHasTarget = value;
     // Overrides the point every weapon orbits (WeaponMeleePD/WeaponAxePD/WeaponRangedPD each read this
     // instead of transform.position directly for their own LateSimulate origin) — lets a special action
     // relocate the whole orbit somewhere other than the player (e.g. BWBladeDanceAbilityPD sending its
@@ -763,7 +824,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float CurrentShield => currentState.shield;
     public bool  IsDead        => currentState.isDead;
     public bool  IsSurging     => currentState.isSurging;
-    public bool  IsInvincible  => currentState.invincible;
+    // True only during a Berserk-Surge-style forced Surge (StartBerserkSurge) — grants invincibility for
+    // the surge's own duration (see IsInvincible/TakeDamage's own OR against this) without needing a
+    // separate, hand-computed invincibility timer that could drift out of sync with however long the surge
+    // actually ends up lasting.
+    public bool  IsForcedSurging => currentState.forcedSurge;
+    // ORs in IsForcedSurging — see its own doc comment for why a forced Surge grants invincibility this way
+    // instead of a fixed-duration GrantInvincibility() call. TakeDamage's own guard mirrors this same OR.
+    public bool  IsInvincible  => currentState.invincible || currentState.forcedSurge;
     public bool  IsTaunting    => currentState.taunting;
     public bool  IsInvisible   => currentState.invisible;
     // Gates weapon hit/damage application only — weapons keep orbiting/spinning visually regardless (see
@@ -786,6 +854,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float UIHealth              { get; private set; }
     public float UIShield              { get; private set; }
     public float UIShieldRechargeTimer { get; private set; }
+    public float UIDeathPreventionTimer { get; private set; }
     public float UIEnergy              { get; private set; }
     public bool  UIIsSurging           { get; private set; }
 
@@ -795,8 +864,20 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         public float health;
         public float energy;
         public float shield;
+        // Grant-timer tick count toward the next banked Death Prevention — 0 means "dormant, ready to
+        // (re-)arm", same convention as every other countdown-tick field in this class (see Simulate()'s
+        // own comment for the full arm/tick/grant cycle).
+        public int deathPreventionTimer;
+        // Whether an augment has made this character eligible to earn a Death Prevention at all.
+        public bool gainsDeathPreventions;
+        // Whether one is currently banked and ready to spend — only ever one at a time, never a stacking
+        // count.
+        public bool hasDeathPrevention;
         public bool isDead;
         public bool isSurging;
+        // True only during a Berserk-Surge-style forced Surge (see StartBerserkSurge/IsForcedSurging's own
+        // doc comments) — never true at the same time isSurging is false.
+        public bool forcedSurge;
         public bool invincible;
         // Enemy-targeting only (2026-07-26, ahead of the Bursts/Abilities Taunt/Invisibility abilities that
         // will actually set these) — see EnemyBasePD.FindClosestTarget for how these are consumed.
@@ -813,6 +894,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // GetInitialState() as a "not yet converted" sentinel — see Simulate()'s own comment on it, since
         // GetInitialState() has no delta available yet to convert its seconds-based initial value.
         public int invincibleTimer;
+        // Same duration-max shape as invincibleTimer — see GrantInvisibility's own doc comment.
+        public int invisibleTimer;
         public int surgeTickTimer;
         public int surgeMinDurationTimer;
         public int colorIndex;
@@ -912,6 +995,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         public float bonusMaxShieldAdditive;
         public float totalMaxShieldPercent;
         public float totalMaxShieldPenalty;
+        public float deathPreventionTimeMultiplier;
         public float bonusMaxEnergyFlat;
         public float bonusMaxEnergyPercent;
         public float bonusEnergyRegenFlat;
@@ -995,6 +1079,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         public bool    weaponOrbitFlipped;
         public bool    continuousFire;
         public float   focusFireAimAngle;
+        public bool    continuousFireHasTarget;
         public bool    weaponOrbitOriginOverridden;
         public Vector3 weaponOrbitOriginOverride;
         public float   specialHeightOffset;
@@ -1173,15 +1258,22 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     private PredictedEvent _onShieldBreak;
     // Fires the tick shield crosses from <=0 back up to >0 — the natural Simulate()-driven regen (see that
     // method's own shield-regen block) and the instant RechargeShield() both funnel through this same
-    // detection so "reapply while shielded"-style effects (e.g. ShieldDamageReductionAugment) never need to
+    // detection so "reapply while shielded"-style effects (e.g. DeathPreventionShieldDRAugment) never need to
     // care which path actually refilled the shield.
     private PredictedEvent _onShieldRecharge;
     // Fires from inside TakeDamage the moment it determines the incoming hit WOULD reduce health to <=0,
     // before that reduction is actually applied — gives a death-prevention effect a chance to call
     // PreventLethalDamage() synchronously (see that method's own doc comment) before TakeDamage finalizes
     // the outcome. No payload — a listener that wants to react conditionally (e.g. a cooldown) tracks that
-    // itself; the incoming damage amount isn't needed to decide whether to intervene.
+    // itself; the incoming damage amount isn't needed to decide whether to intervene. No subscribers as of
+    // the deathPreventions rework (DeathPreventionShieldDRAugment moved to _onDeathPrevented below) — kept for
+    // any future listener-based save that wants the SAME "veto before it happens" hook this already provides.
     private PredictedEvent _onLethalDamageTaken;
+    // Fires from inside TakeDamage the moment a banked Death Prevention actually gets spent (health set to
+    // 1, invincibility already granted by TakeDamage itself before this fires) — for effects that want to
+    // react to the save landing, not decide whether it happens (that's what gainsDeathPreventions/
+    // hasDeathPrevention already gate). e.g. DeathPreventionShieldDRAugment refreshing shield on this.
+    private PredictedEvent _onDeathPrevented;
     // Fires from inside TakeDamage whenever incoming damage actually reduces shield and/or health by a
     // positive amount (gate itself unchanged from before DamageTakenData existed — post-DamageReduction,
     // before the shield/health split) — e.g. PhantomBladeOnDamagedAugment. Excludes a killing blow, same
@@ -1278,6 +1370,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void RemoveShieldRechargeListener(Action listener) => _onShieldRecharge.RemoveListener(listener);
     public void AddLethalDamageTakenListener(Action listener) => _onLethalDamageTaken.AddListener(listener);
     public void RemoveLethalDamageTakenListener(Action listener) => _onLethalDamageTaken.RemoveListener(listener);
+    public void AddDeathPreventedListener(Action listener) => _onDeathPrevented.AddListener(listener);
+    public void RemoveDeathPreventedListener(Action listener) => _onDeathPrevented.RemoveListener(listener);
     public void AddDamagedListener(Action<DamageTakenData> listener) => _onDamaged.AddListener(listener);
     public void RemoveDamagedListener(Action<DamageTakenData> listener) => _onDamaged.RemoveListener(listener);
     public void AddCritStrikeListener(Action<WeaponHitData> listener) => _onCritStrike.AddListener(listener);
@@ -1334,6 +1428,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onShieldBreak   = new PredictedEvent(predictionManager, this);
         _onShieldRecharge = new PredictedEvent(predictionManager, this);
         _onLethalDamageTaken = new PredictedEvent(predictionManager, this);
+        _onDeathPrevented = new PredictedEvent(predictionManager, this);
         _onDamaged       = new PredictedEvent<DamageTakenData>(predictionManager, this);
         _onCritStrike    = new PredictedEvent<WeaponHitData>(predictionManager, this);
         _onHit           = new PredictedEvent<WeaponHitData>(predictionManager, this);
@@ -1435,6 +1530,41 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
                 state.invincible = false;
         }
 
+        // Invisibility timer — same shape as the invincibility timer above, but invisibility also has a
+        // change event (_onInvisibleChanged) enemy targeting reacts to, so the natural expiry here has to
+        // fire the falling edge itself, same as GrantInvisibility fires the rising edge. Safe to invoke
+        // directly from Simulate() — PredictedEvent fires exactly once per real occurrence regardless of
+        // resimulation, same reasoning _onShieldRecharge's own Simulate()-driven regen block already relies on.
+        if (state.invisible && state.invisibleTimer > 0)
+        {
+            state.invisibleTimer--;
+            if (state.invisibleTimer <= 0)
+            {
+                state.invisible = false;
+                RefreshAnyValidTargetExists();
+                _onInvisibleChanged.Invoke(false);
+            }
+        }
+
+        // Death Prevention grant timer — only ticks while eligible (gainsDeathPreventions) AND not already
+        // holding a banked save (see "stop ticking, it only ticks when we DON'T have one" above), AND not
+        // paused by a forced Surge (Berserk Surge already grants full invincibility for its whole duration
+        // — see IsInvincible's own doc comment — so there's nothing for a Death Prevention to protect
+        // against right now anyway). 0 means "dormant, ready to (re-)arm" — same self-arming shape as
+        // healthRegenTimer's own sentinel-conversion below, just using 0 as the sentinel instead of -1 since
+        // arming always happens right here in Simulate() (delta is always available), never at spawn.
+        // Grants and immediately re-parks at 0 the instant the timer bottoms out, so the very next tick
+        // after the granted save gets spent (hasDeathPrevention flips back false in TakeDamage) starts a
+        // fresh full-length cycle automatically.
+        if (state.gainsDeathPreventions && !state.hasDeathPrevention && !state.forcedSurge)
+        {
+            if (state.deathPreventionTimer <= 0)
+                state.deathPreventionTimer = Mathf.Max(1, Mathf.RoundToInt(DeathPreventionTime / delta));
+            state.deathPreventionTimer--;
+            if (state.deathPreventionTimer <= 0)
+                state.hasDeathPrevention = true;
+        }
+
         // One-time sentinel conversion — see GetInitialState()'s own comment. Only ever true on the very
         // first Simulate() call this character's whole life; healthRegenTimer is never negative again
         // after this, since the block below always reassigns it to a valid positive count before ending.
@@ -1459,8 +1589,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             }
         }
 
-        // Shield regen
-        if (state.shield < MaxShield)
+        // Shield regen — paused during a forced Surge (Berserk Surge), per its own design: the shield stays
+        // exactly as broken/depleted as it was when the surge started for the whole forced-invincibility
+        // window, rather than quietly regenerating underneath it.
+        if (state.shield < MaxShield && !state.forcedSurge)
         {
             state.shieldRechargeTimer--;
             if (state.shieldRechargeTimer <= 0)
@@ -1490,6 +1622,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
                 {
                     state.energy = 0f;
                     state.isSurging = false;
+                    // Cleared unconditionally — a no-op false=false assignment for a normal, non-forced
+                    // Surge, and the only place a Berserk Surge (StartBerserkSurge) can ever actually end,
+                    // since forcedSurge itself blocks TryEndSurge() and IsForcedSurging blocks every
+                    // ActiveSurgeBlock ability's Activate() (see PlayerControllerPD's own gate) from
+                    // reaching ForceEndSurge() early.
+                    state.forcedSurge = false;
                     _onSurgeEnded.Invoke();
                 }
             }
@@ -1511,6 +1649,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             // LocalUIManagerPD's fill-ratio math alongside shieldRechargeTime (also seconds), so it needs
             // to stay in seconds even though the underlying predicted field is ticks now.
             UIShieldRechargeTimer = verified.Value.shieldRechargeTimer * _currentDelta;
+            // Same tick-to-seconds conversion, same verified-only gating — deathPreventionTimer is just as
+            // subject to prediction-rollback correction as shieldRechargeTimer, so this avoids the same
+            // visible-jump problem the comment above already covers.
+            UIDeathPreventionTimer = verified.Value.deathPreventionTimer * _currentDelta;
         }
         UIEnergy              = viewState.energy;
         UIIsSurging           = viewState.isSurging;
@@ -1579,10 +1721,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     {
         public float strengthFlat, moveSpeedFlat, attackSpeedPct, energyRegenFlat;
         public float dashHaste, critChanceFlat, xpRadiusFlat, weaponRangeFlat, maxEnergyFlat;
+        public float abilityHaste;
         public int   dashChargesBonus, levelUpOptionsBonus;
         public float revivePower, reviveTimePenaltyMult, xpMultiplier;
         public float maxHealthFlat, healthRegenFlat, strengthTotalPercent;
         public float luckFlat, strengthPerLevel, maxShieldFlat, shieldRechargeTime;
+        // Not an amount to add — a one-time unlock flag (StatType.DeathPrevention is a single-tier shop
+        // item, GetBaseStatBonus reads > 0 once bought). See ApplyProgressionBonuses' own handling below.
+        public bool  deathPreventionUnlocked;
     }
 
     public static ProgressionBonuses ComputeProgressionBonuses() => new()
@@ -1592,6 +1738,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         attackSpeedPct          = ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f,
         energyRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen),
         dashHaste               = ProgressionManager.GetBaseStatBonus(StatType.DashHaste),
+        abilityHaste            = ProgressionManager.GetBaseStatBonus(StatType.AbilityHaste),
         critChanceFlat          = ProgressionManager.GetBaseStatBonus(StatType.CritChance) * 0.01f,
         xpRadiusFlat            = ProgressionManager.GetBaseStatBonus(StatType.CollectionRadius),
         weaponRangeFlat         = ProgressionManager.GetBaseStatBonus(StatType.WeaponRange),
@@ -1608,6 +1755,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         strengthPerLevel        = ProgressionManager.GetBaseStatBonus(StatType.StrengthPerLevel),
         maxShieldFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxShield),
         shieldRechargeTime      = ProgressionManager.GetBaseStatBonus(StatType.ShieldRechargeTime),
+        deathPreventionUnlocked = ProgressionManager.GetBaseStatBonus(StatType.DeathPrevention) > 0f,
     };
 
     // Wraps any stat mutation that might raise MaxHealth/MaxEnergy, and carries current resources up
@@ -1768,6 +1916,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void AddAbilityHaste(float amount) => ApplyStatChange(() => currentState.abilityHaste += amount);
     public void AddAbilityHastePercent(float amount) => ApplyStatChange(() => currentState.bonusAbilityHastePercent += amount);
     public void AddAbilityHasteTotalPercent(float amount) => ApplyStatChange(() => currentState.totalAbilityHastePercent += amount);
+    // Additive against the 1f baseline, same convention as every other bonusXPercent field here — e.g.
+    // -0.5 halves SurgeCost (see its own formula). SurgeCost currently only has this one percent tier (no
+    // separate multiplicative Penalty tier), so stacking multiple sources adds rather than compounds.
+    public void AddSurgeCostPercent(float amount) => ApplyStatChange(() => currentState.bonusSurgeCostPercent += amount);
     public void AddWeaponCountFlat(int amount) => ApplyStatChange(() => currentState.bonusWeaponCountFlat += amount);
     // Multiplicative compounding, same convention as MultiplyStrengthPenalty/MultiplyOnHitPowerMultiplier
     // — bonusWeaponCountMultiplier already sits in the WeaponCount formula (previously only ever touched by
@@ -2001,6 +2153,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             currentState.attackSpeedFlat            += b.attackSpeedPct * baseAttackSpeed;
             currentState.bonusEnergyRegenFlat       += b.energyRegenFlat;
             currentState.dashHaste                  += b.dashHaste;
+            currentState.abilityHaste                += b.abilityHaste;
             currentState.bonusCritChanceFlat += b.critChanceFlat;
             currentState.bonusXPRadiusFlat          += b.xpRadiusFlat;
             currentState.bonusWeaponRangeFlat       += b.weaponRangeFlat;
@@ -2018,6 +2171,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             currentState.bonusMaxShieldAdditive     += b.maxShieldFlat;
             currentState.shieldRechargeTime         += b.shieldRechargeTime;
         });
+
+        // Not a stat add — activates the Death Prevention mechanic itself, same centralized entry point any
+        // augment that grants it also calls (see ActivateDeathPreventions' own doc comment for the
+        // "already active elsewhere, shrink the grant timer instead" stacking rule). Outside the
+        // ApplyStatChange block above since it doesn't touch MaxHealth/MaxEnergy/Shield. This call always
+        // runs before any augment could possibly have activated it already (ApplyProgressionBonuses fires at
+        // spawn, augments only apply mid-run), so it's always the "first activator" branch in practice.
+        if (b.deathPreventionUnlocked) ActivateDeathPreventions();
     }
 
     // Called from GameManagerPD.UpdateView() once per level gained, off verified state only — never
@@ -2358,9 +2519,45 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
 
     public void TryEndSurge()
     {
-        if (!currentState.isSurging || currentState.surgeMinDurationTimer > 0) return;
+        // forcedSurge makes this uncancellable via normal player input — a Berserk Surge only ever ends by
+        // running its energy pool dry (see the natural-end block in Simulate()). Player releasing/re-
+        // pressing the Surge button during one is a silent no-op, same as any other blocked-input case.
+        if (!currentState.isSurging || currentState.surgeMinDurationTimer > 0 || currentState.forcedSurge) return;
         currentState.isSurging = false;
         _onSurgeEnded.Invoke();
+    }
+
+    // Forced, uncancellable Surge triggered by an effect rather than player input (e.g.
+    // ShieldBreakFrenzyAugment's reworked shield-break reaction) — refills energy to full and (forces)
+    // a Surge that runs until that energy pool naturally drains to 0 (see Simulate()'s own surge-drain
+    // block), with TryEndSurge() blocked from ending it early. Invincible for the whole window via
+    // forcedSurge itself (IsInvincible/TakeDamage OR it in — see their own doc comments), not a fixed-
+    // duration GrantInvincibility() call, since exactly how long this surge lasts depends on MaxEnergy/
+    // SurgeCost/SurgeTickInterval at the moment it starts and isn't precomputed here. Shield regen and the
+    // Death Prevention grant timer both also pause for forcedSurge's own duration — see their respective
+    // gates in Simulate().
+    //
+    // If a Surge is already running (player-initiated, or an earlier Berserk one), this does NOT end it and
+    // start a fresh one — it piggybacks: refills energy and flips it to forced in place, extending whatever
+    // was already going rather than interrupting it. _onSurgeStarted only fires when this call is what
+    // ACTUALLY starts the surge (nothing was running before); an extended surge never gets a redundant
+    // second start event, so every real start still pairs with exactly one later end.
+    public void StartBerserkSurge()
+    {
+        if (currentState.isDead) return;
+
+        bool alreadySurging = currentState.isSurging;
+
+        currentState.energy = MaxEnergy;
+        currentState.isSurging = true;
+        currentState.forcedSurge = true;
+        currentState.surgeTickTimer = Mathf.Max(1, Mathf.RoundToInt(SurgeTickInterval / _currentDelta));
+        // No min-duration throttle needed — TryEndSurge() is blocked outright by forcedSurge regardless of
+        // this timer's value, so there's nothing left for it to gate here.
+        currentState.surgeMinDurationTimer = 0;
+
+        if (!alreadySurging)
+            _onSurgeStarted.Invoke();
     }
 
     // Unconditional surge end, bypassing the surgeMinDurationTimer throttle TryEndSurge() respects — for
@@ -2384,7 +2581,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Grants (or extends) invincibility for `duration` seconds. Always MAXES against whatever time is
     // already remaining rather than overwriting it, and a non-positive duration is simply a no-op — nothing
     // ever explicitly turns invincibility off "for" another source anymore. This is deliberate: dash,
-    // ShieldBreakBurstAugment, ShieldDamageReductionAugment's death save, and Revive() all call this
+    // ShieldBreakBurstAugment, DeathPreventionShieldDRAugment's death save, and Revive() all call this
     // independently, and previously (when this was a plain setter) whichever one fired LAST would win,
     // including a dash ending early and wiping out a still-active augment-granted window. Now every source
     // just contributes its own floor, the longest one currently active always wins, and each source's own
@@ -2410,12 +2607,25 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         _onTauntChanged.Invoke(value);
     }
 
-    public void SetInvisible(bool value)
+    // Duration-based, same "every source contributes its own floor, longest wins, natural countdown handles
+    // turning it off" convention as GrantInvincibility — replaces the old direct on/off SetInvisible(bool),
+    // which let one source's own end-of-buff call clobber a DIFFERENT source's still-active invisibility
+    // window early (e.g. RogueVanishAbilityPD's own end-of-buff call used to unconditionally turn
+    // invisibility off, even if some other overlapping effect still wanted it on). Fires _onInvisibleChanged
+    // only on the rising edge here (invisible was off, this grant turns it on) — the falling edge fires from
+    // Simulate()'s own natural-expiry block once the shared timer actually runs out, same change-guarded
+    // contract SetInvisible used to provide.
+    public void GrantInvisibility(float duration)
     {
-        if (currentState.invisible == value) return;
-        currentState.invisible = value;
-        RefreshAnyValidTargetExists();
-        _onInvisibleChanged.Invoke(value);
+        if (duration <= 0f) return;
+        bool wasInvisible = currentState.invisible;
+        currentState.invisible = true;
+        currentState.invisibleTimer = Mathf.Max(currentState.invisibleTimer, Mathf.RoundToInt(duration / _currentDelta));
+        if (!wasInvisible)
+        {
+            RefreshAnyValidTargetExists();
+            _onInvisibleChanged.Invoke(true);
+        }
     }
 
     // No change-guard/event needed (unlike SetTaunting/SetInvisible) — nothing reacts to the flip itself,
@@ -2428,7 +2638,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Migrated anyway for consistency with the rest of this class.
     private bool lethalDamagePrevented { get => currentState.lethalDamagePrevented; set => currentState.lethalDamagePrevented = value; }
 
-    // Called by a death-prevention listener (e.g. ShieldDamageReductionAugment), synchronously from inside
+    // Called by a death-prevention listener (e.g. DeathPreventionShieldDRAugment), synchronously from inside
     // its own _onLethalDamageTaken callback, to flag that the lethal hit currently being processed by
     // TakeDamage should instead leave the player at 1 health. Calling this outside that callback (i.e. any
     // time TakeDamage isn't mid-resolution of a lethal hit) has no effect — the flag is only ever read once,
@@ -2436,7 +2646,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void PreventLethalDamage() => lethalDamagePrevented = true;
 
     // Instantly refills shield to full and fires the same recharge-edge event the natural Simulate()-driven
-    // regen does (only if it was actually broken) — used by effects like ShieldDamageReductionAugment's
+    // regen does (only if it was actually broken) — used by effects like DeathPreventionShieldDRAugment's
     // death save, so "reapply while shielded"-style effects correctly reapply immediately rather than
     // waiting for the natural shieldRechargeTimer to also elapse.
     public void RechargeShield()
@@ -2451,7 +2661,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void TakeDamage(float damage)
     {
         if (currentState.isDead) return;
-        if (currentState.invincible) return;
+        // See IsInvincible's own doc comment for why forcedSurge is ORed in here too.
+        if (currentState.invincible || currentState.forcedSurge) return;
 
         currentState.damageEventId++;
         currentState.shieldRechargeTimer = Mathf.Max(1, Mathf.RoundToInt(shieldRechargeTime / _currentDelta));
@@ -2496,6 +2707,23 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
                 // see that method's own doc comment.
                 lethalDamagePrevented = false;
                 _onLethalDamageTaken.Invoke();
+
+                // Built-in fallback save, checked only if nothing above already claimed this hit via
+                // PreventLethalDamage() (a free, listener-based veto — none currently exist, but the hook
+                // stays available for a future one) — a banked Death Prevention takes a fresh
+                // DeathPreventionTime-long grant cycle to earn back (see Simulate()'s own comment), so it's
+                // only spent when nothing cheaper already covered this hit.
+                if (!lethalDamagePrevented && currentState.hasDeathPrevention)
+                {
+                    currentState.hasDeathPrevention = false;
+                    lethalDamagePrevented = true;
+                    GrantInvincibility(deathPreventionInvincibilityDuration);
+                    // Fires AFTER invincibility is granted and hasDeathPrevention is already cleared — a
+                    // listener (e.g. DeathPreventionShieldDRAugment) reacts to the save having landed, it
+                    // never decides whether it happens (that's gainsDeathPreventions/hasDeathPrevention's
+                    // job, resolved above).
+                    _onDeathPrevented.Invoke();
+                }
             }
 
             if (wouldBeLethal && lethalDamagePrevented)

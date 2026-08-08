@@ -414,16 +414,25 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
 
         // Ability1 input — PlayerControllerPD only gates/forwards; the ability component itself owns its
         // own cooldown state and decides what Activate()/NotifyActivationBlocked() actually do.
+        //
+        // Also blocked outright during a Berserk-Surge-style forced Surge (CharacterStatsPD.
+        // IsForcedSurging) for any ability whose own ActiveSurgeBlock is true — that flag already marks
+        // exactly the abilities that call ForceEndSurge()/AddSurgeBlock() at the top of their own Activate()
+        // (see IAbilityPD.ActiveSurgeBlock's own doc comment), i.e. abilities that would otherwise cancel
+        // the forced surge the instant they're cast (RogueSpinAbilityPD, etc.) — reusing it here instead of
+        // adding a second, parallel flag to the interface.
         if (input.ability1Pressed && _ability1 != null)
         {
-            if (_ability1.IsReady && !lockedOut) _ability1.Activate();
+            bool blocked1 = lockedOut || (_stats.IsForcedSurging && _ability1.ActiveSurgeBlock);
+            if (_ability1.IsReady && !blocked1) _ability1.Activate();
             else _ability1.NotifyActivationBlocked();
         }
 
         // Ability2 input — same gate/forward split as Ability1 above.
         if (input.ability2Pressed && _ability2 != null)
         {
-            if (_ability2.IsReady && !lockedOut) _ability2.Activate();
+            bool blocked2 = lockedOut || (_stats.IsForcedSurging && _ability2.ActiveSurgeBlock);
+            if (_ability2.IsReady && !blocked2) _ability2.Activate();
             else _ability2.NotifyActivationBlocked();
         }
 

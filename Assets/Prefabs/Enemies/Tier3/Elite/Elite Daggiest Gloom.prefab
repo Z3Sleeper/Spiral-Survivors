@@ -73,16 +73,8 @@ PrefabInstance:
       value: 18
       objectReference: {fileID: 0}
     - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: postSpinPause
-      value: 0.32
-      objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: windupDuration
-      value: 0.32
-      objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: betweenSpinPause
-      value: 0.16
+      propertyPath: spinRadius
+      value: 6.3
       objectReference: {fileID: 0}
     - target: {fileID: 2823677713980239291, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'

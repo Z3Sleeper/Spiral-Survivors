@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -8,6 +9,10 @@ public class BuffIconPD : MonoBehaviour
 {
     [SerializeField] private Image icon;
     [SerializeField] private Image cooldownSweep;
+    // Hidden by default in the prefab — generic, not tied to any one effect. Only shown once something
+    // actually calls SetStackText (e.g. a stacking effect writing "x10"); most buff icons never touch this
+    // at all.
+    [SerializeField] private TextMeshProUGUI stackText;
 
     public void SetIcon(Sprite sprite)
     {
@@ -19,5 +24,15 @@ public class BuffIconPD : MonoBehaviour
     public void SetCooldownFill(float value01)
     {
         if (cooldownSweep != null) cooldownSweep.fillAmount = Mathf.Clamp01(value01);
+    }
+
+    // Null or empty hides it again — callers don't need their own separate show/hide bookkeeping, just pass
+    // whatever should currently be displayed (or nothing) every time it changes.
+    public void SetStackText(string text)
+    {
+        if (stackText == null) return;
+        bool show = !string.IsNullOrEmpty(text);
+        stackText.gameObject.SetActive(show);
+        if (show) stackText.text = text;
     }
 }

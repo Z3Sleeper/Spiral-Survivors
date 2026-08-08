@@ -98,9 +98,6 @@ MonoBehaviour:
     Range</color>, <color=#FFA000>+25% Execute Threshold</color> and <color=#FF0000>+25%
     Crit Chance</color>.
 
-    <color=#FFBE50><i>Buffs and Duration scale with Ability
-    Power</i></color>
-
     <color=#FFBE50>Cooldown: 20 seconds</color>'
   cooldown: 20
   cooldownStartsOnCast: 0
@@ -129,12 +126,10 @@ MonoBehaviour:
     <color=#FF5000>100% unpenalized Strength</color>. Has <color=#FF0000>+100% Crit
     Damage</color>.
 
-    <color=#FFBE50><i>Damage scales with Ability Power</i></color>
+    <color=#FFBE50><i>Size scales with Range</i></color>
 
-    <color=#FFBE50><i>Size
-    scales with Range</i></color>
-
-    <color=#FFBE50>Cooldown: 8 seconds</color>'
+    <color=#FFBE50>Cooldown:
+    8 seconds</color>'
   cooldown: 8
   cooldownStartsOnCast: 0
   slot: 0

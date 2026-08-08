@@ -48,4 +48,4 @@ MonoBehaviour:
   phantomBladeDamageBonus: 0.1
   critsNeeded: 10
   bladeCount: 3
-  baseDamageMultiplier: 0.3
+  baseDamageMultiplier: 0.6

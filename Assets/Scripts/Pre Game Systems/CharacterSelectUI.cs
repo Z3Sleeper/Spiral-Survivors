@@ -474,14 +474,6 @@ public class CharacterSelectUI : MonoBehaviour
         _powerLevels.Clear();
     }
 
-    // Narrower than ResetLocalLobbyState() — only the ready flag, none of the character/color/power-cache
-    // resets that method also does. Used by LobbySceneController.AbortStuckMatchStart's "stay in the lobby
-    // and retry" path: a failed match-start attempt shouldn't wipe anyone's character/color picks, just
-    // their readiness (since the whole point is forcing everyone to re-confirm ready before another attempt
-    // auto-fires, not making them redo their selections). Caller is still responsible for the matching
-    // lobbyManager.SetIsReady(..., false) write and a RefreshFromLobby call to actually show it.
-    public void ResetReadyOnly() => _localIsReady = false;
-
     // Just files a REQUEST — never claims the color directly. The host (see ResolveColorAssignments) is the
     // only thing that ever actually grants it, via ColorAssignmentsKey; GameStartData.LocalColorIndex only
     // updates once RefreshFromLobby reads that confirmation back, not optimistically here. For the host's
@@ -510,12 +502,11 @@ public class CharacterSelectUI : MonoBehaviour
 
     private void SelectCharacter(int index)
     {
-        // Locked out while LoadingScreen is up — covers both an ordinary match-start attempt (shown from
-        // LobbySceneController.OnAllReady/OnRoomUpdated through TryLoadGameScene) and the lobby-rebuild
-        // "kick" migration (RebuildLobbyExcludingFailed keeps it up for its whole sequence). A real logical
-        // guard, not just relying on the loading screen visually covering this panel, in case that ever
-        // fails to render for some reason — see LoadingScreen.IsShowing's own doc comment. Every other
-        // character-select button below guards the same way.
+        // Locked out while LoadingScreen is up — covers an ordinary match-start attempt (shown from
+        // LobbySceneController.OnAllReady/OnRoomUpdated through TryLoadGameScene). A real logical guard, not
+        // just relying on the loading screen visually covering this panel, in case that ever fails to render
+        // for some reason — see LoadingScreen.IsShowing's own doc comment. Every other character-select
+        // button below guards the same way.
         if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
 
         _isRandom = false;

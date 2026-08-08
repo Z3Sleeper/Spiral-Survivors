@@ -13,9 +13,7 @@ MonoBehaviour:
   m_Name: RangeAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#3278FF>Compensating</color>
-  description: '<color=#3278FF>+2.5 Range
-
-    +15% Bonus Range</color>'
+  description: <color=#3278FF>+6 Range</color>
   icon: {fileID: 21300000, guid: f2c8a7fb8497a4746b04f47c4f7d2a9a, type: 3}
   effectPrefab: {fileID: 2274702801810251529, guid: 217c0de02e6ec3a48846ae27e1f3c36b, type: 3}
   multiplayerOnly: 0

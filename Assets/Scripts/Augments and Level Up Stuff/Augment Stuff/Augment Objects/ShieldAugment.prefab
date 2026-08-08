@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8a4da75d835e0194388c092356de3153, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShieldAugment
-  bonusMaxShieldPercent: 0.2
+  bonusMaxShieldPercent: 0.4

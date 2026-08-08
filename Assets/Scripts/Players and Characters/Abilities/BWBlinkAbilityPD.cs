@@ -149,19 +149,17 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // See IAbilityPD's own doc comments for the exact contract of each of these three.
+    public void ReduceCooldownFlat(float seconds) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
+    public void ReduceCooldownPercentRemaining(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
+    public void ReduceCooldownPercentTotal(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+
     public void Activate()
     {
         if (!IsReady) return;
-
-        // AbilityPower's interpretation for this ability: scales both the Move Speed bonus AND the buff's
-        // own duration, same as RogueVanishAbilityPD — see class doc comment.
-        float abilityPower = _stats.AbilityPower;
-        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent * abilityPower;
-        _appliedDuration              = duration * abilityPower;
-
-        currentState.activeTimer   = _appliedDuration;
-        currentState.isActive      = true;
-        currentState.cooldownTimer = EffectiveCooldown;
 
         // Fired at the OLD position, before anything moves — see class doc comment for why Started/Ended
         // straddle the teleport instead of both firing together.
@@ -189,6 +187,27 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         // Fired at the NEW (blinked-to) position — see class doc comment.
         _controller?.NotifyDashEnded();
 
+        ApplyBuffAndCooldown();
+    }
+
+    // Shared by a real cast (Activate(), above) and the auto-cast that fires when the Blade Dance finishes
+    // on its own (AutoCastOnDanceReturn(), below) — everything about Blink EXCEPT the teleport itself: the
+    // AbilityPower-scaled Move Speed buff (same cast-time-snapshot convention as RogueVanishAbilityPD), its
+    // duration, the cooldown, the surge-block pairing, and the Ability Started notification. Kept as one
+    // shared method rather than duplicated across both call sites so the two can never drift out of sync —
+    // e.g. a future surge-block or AbilityPower-scaling change would otherwise need to be made twice.
+    private void ApplyBuffAndCooldown()
+    {
+        // AbilityPower's interpretation for this ability: scales both the Move Speed bonus AND the buff's
+        // own duration, same as RogueVanishAbilityPD — see class doc comment.
+        float abilityPower = _stats.AbilityPower;
+        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent * abilityPower;
+        _appliedDuration              = duration * abilityPower;
+
+        currentState.activeTimer   = _appliedDuration;
+        currentState.isActive      = true;
+        currentState.cooldownTimer = EffectiveCooldown;
+
         // See IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract — RemoveSurgeBlock's
         // matching call sits in Simulate()'s own end-of-active block below.
         if (activeSurgeBlock)
@@ -200,6 +219,25 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
 
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
         if (cooldown > 0f) _stats.NotifyAbilityStart(this);
+    }
+
+    // Called directly by BWBladeDanceAbilityPD.Simulate() the instant the dance's blades arrive back home
+    // under their own power (natural Return-phase completion ONLY — that call site deliberately never
+    // reaches here from the death-forced end, since there's no point buffing a caster who's already dead).
+    // Grants Blink's usual Move Speed buff/duration/cooldown/Ability Started notification exactly as if it
+    // had really been cast, but skips every teleport-specific side effect (position snap, invincibility
+    // grace, RecallInstantly, dash-start/end notifications) — there's nowhere left to teleport TO, the
+    // blades already got there on their own. Only gated on cooldown + not already active, deliberately NOT
+    // the full IsReady (which also requires _bladeDance.IsActive) — that gate exists so a MANUAL cast can't
+    // teleport into a dance that isn't running; this only ever fires the instant the dance STOPS running, so
+    // that same check would incorrectly fail every single time here. A manual Blink cast mid-dance already
+    // puts this on cooldown itself, so when RecallInstantly's own follow-up Return-arrival tick reaches this
+    // same call site one tick later, the cooldown check here naturally no-ops it — no separate guard needed
+    // against double-triggering off a player-initiated Blink.
+    public void AutoCastOnDanceReturn()
+    {
+        if (_stats == null || _stats.IsDead || currentState.isActive || currentState.cooldownTimer > 0f) return;
+        ApplyBuffAndCooldown();
     }
 
     public void NotifyActivationBlocked() { }

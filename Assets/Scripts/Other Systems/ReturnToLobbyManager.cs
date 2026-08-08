@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using PurrLobby;
 using PurrNet;
 using PurrNet.Modules;
 using Steamworks;
@@ -47,12 +46,8 @@ public class ReturnToLobbyManager : NetworkIdentity
         // gives it the whole multi-second confirm window as a head start — a client reading stale "True"
         // left over from the original match was skipping straight into ConnectToHostWithRetry() the instant
         // its own scene reloaded, colliding with objects that hadn't finished settling yet.
-        var lobbyDataHolder = FindFirstObjectByType<LobbyDataHolder>();
-        if (lobbyDataHolder != null && lobbyDataHolder.CurrentLobby.IsValid &&
-            ulong.TryParse(lobbyDataHolder.CurrentLobby.LobbyId, out ulong lobbyId))
-        {
-            SteamMatchmaking.SetLobbyData(new CSteamID(lobbyId), "Started", "False");
-        }
+        if (GameStartData.TryGetCurrentSteamLobbyId(out CSteamID lobbyId))
+            SteamMatchmaking.SetLobbyData(lobbyId, "Started", "False");
 
         _waitingForFlushConfirmation = true;
         _waitTimer = 0f;

@@ -12,6 +12,27 @@ public static class ProgressionManager
     private const float FeeMultiplier = 1.1f;
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
+    // ── Pricing design principles (deliberate, not accidental — check against these before assuming a typo) ──
+    // 1. Every cost array below is a pure arithmetic progression: cost(tier) = start + step*tier, with a
+    //    CONSTANT step within that stat (no per-stat compounding/curving). Verified true for every single
+    //    array as of 2026-08-07, no exceptions, including the 10-entry LevelUpStats/XPMultiplier tables. The
+    //    exponential "getting more expensive over time" feel comes entirely from the separate, global
+    //    feePart = BaseFee * FeeMultiplier^boughtUpgrades surcharge added to every purchase regardless of
+    //    which stat/tier (see GetBaseStatUpgradeCost) — NOT from these tables. If asked to normalize/audit
+    //    these for typos later, check for constant step-per-array first; a broken step is the tell.
+    // 2. Step is ~50% of that stat's own starting price almost everywhere (WeaponRange 500→750, MaxHealth/
+    //    AttackSpeed/MoveSpeed/LevelUpStats/XPMultiplier/LevelUpOptions/StrengthPerLevel/TotalStrengthPercent
+    //    all exactly start/2). ShieldRechargeTime (500 step on a 1500 start, ~33%) is the one deliberate
+    //    outlier to that ratio — still a constant step per rule 1, just not exactly half.
+    // 3. Stats are grouped into rough price brackets by perceived power, each roughly an order of magnitude
+    //    above the last: ~250-750 (core stats), ~1000-3000 (high-impact), ~4000-44000 (systemic/meta),
+    //    ~100000-750000 (capstone: StrengthPerLevel/TotalStrengthPercent).
+    // 4. Tier COUNT (separate from price) also follows a rule: "core stats" get 4 tiers on purpose — 4
+    //    unupgraded stat-augment levels, i.e. 2 "upgraded" levels, since LevelUpStats effectively doubles
+    //    the per-level value from the stat augment database at max rank. MaxHealth is the one deliberate
+    //    exception at 5 tiers (base 50 + 5 points of +10 lands exactly on 100), and MoveSpeed is
+    //    deliberately capped at 2 tiers (far higher per-point impact in this game than other core stats, so
+    //    it gets less total room to buy).
     private static readonly int[] StrengthCosts =
         { 0, 250, 500 };
     private static readonly int[] DashChargesCosts =
@@ -21,6 +42,9 @@ public static class ProgressionManager
     private static readonly int[] EnergyRegenCosts =
         { 0, 250, 500 };
     private static readonly int[] DashHasteCosts =
+        { 0, 250, 500, 750 };
+    // Same shape as DashHasteCosts — see StatType.AbilityHaste's own wiring throughout this file for why.
+    private static readonly int[] AbilityHasteCosts =
         { 0, 250, 500, 750 };
     private static readonly int[] CritChanceCosts =
         { 0, 250, 500, 750 };
@@ -46,6 +70,12 @@ public static class ProgressionManager
         { 1500, 2000, 2500, 3000 };
     private static readonly int[] MoveSpeedCosts =
         { 2000, 3000 };
+    // Single tier, deliberately — this isn't a scaling stat, it's a one-time unlock (see
+    // CharacterStatsPD.ApplyProgressionBonuses' own DeathPrevention handling). The existing generic
+    // tier-array system already treats a length-1 array correctly (one purchase, then MAXED), no bespoke
+    // one-off toggle needed.
+    private static readonly int[] DeathPreventionCosts =
+        { 3000 };
     private static readonly int[] LevelUpStatsCosts =
         { 4000, 6000, 8000, 10000, 12000, 14000, 16000, 18000, 20000, 22000 };
     private static readonly int[] XPMultiplierCosts =
@@ -181,6 +211,8 @@ public static class ProgressionManager
         StatType.StrengthPerLevel    => StrengthPerLevelCosts,
         StatType.MaxShield           => MaxShieldCosts,
         StatType.ShieldRechargeTime  => ShieldRechargeTimeCosts,
+        StatType.AbilityHaste        => AbilityHasteCosts,
+        StatType.DeathPrevention     => DeathPreventionCosts,
         _                           => System.Array.Empty<int>()
     };
 
@@ -212,7 +244,7 @@ public static class ProgressionManager
         StatType.HealthRegen       => 0.5f,
         StatType.EnergyRegen       => 2f,
         StatType.DashHaste         => 10f,
-        StatType.CritChance        => 10f,
+        StatType.CritChance        => 5f,
         StatType.WeaponRange       => 1f,
         StatType.CollectionRadius  => 1f,
         StatType.MaxEnergy         => 10f,
@@ -227,6 +259,10 @@ public static class ProgressionManager
         StatType.StrengthPerLevel    => 1f,
         StatType.MaxShield           => 0.05f,
         StatType.ShieldRechargeTime  => -0.5f,
+        StatType.AbilityHaste        => 10f,
+        // Not a scaling amount — just a nonzero flag so GetBaseStatBonus reads > 0 once bought (tier 1 of 1)
+        // and 0 otherwise. See CharacterStatsPD.ApplyProgressionBonuses' own DeathPrevention handling.
+        StatType.DeathPrevention     => 1f,
         _                           => 0f
     };
 
@@ -320,6 +356,46 @@ public static class ProgressionManager
         Save();
     }
 
+    // Repeatedly buys whatever's currently affordable, one purchase at a time: among affordable+unlocked
+    // stats, prioritizes the LOWEST current tier first (spreads investment broadly instead of dumping
+    // everything into whichever stat happens to be cheapest), and among stats tied for that lowest tier,
+    // the MOST expensive one (so a cheaper affordable purchase in that same tier group isn't left on the
+    // table just because a pricier one in the group got bought first and ate the budget). Re-evaluates from
+    // scratch after every single purchase, not just once up front — GetBaseStatUpgradeCost's feePart scales
+    // off BoughtUpgrades, which increases with every purchase, so which stat is "most expensive" (and even
+    // which stats remain affordable at all) can genuinely change mid-run. Returns how many purchases were
+    // made, purely informational for a caller that wants to report/log it.
+    public static int AutoBuy()
+    {
+        int purchased = 0;
+        while (true)
+        {
+            StatType? best     = null;
+            int       bestTier = int.MaxValue;
+            long      bestCost = -1;
+
+            foreach (StatType stat in System.Enum.GetValues(typeof(StatType)))
+            {
+                if (!IsStatUnlocked(stat) || !CanUpgradeBaseStat(stat)) continue;
+
+                int  tier = GetBaseStatTier(stat);
+                long cost = GetBaseStatUpgradeCost(stat);
+                if (tier > bestTier) continue;
+                if (tier < bestTier || cost > bestCost)
+                {
+                    best     = stat;
+                    bestTier = tier;
+                    bestCost = cost;
+                }
+            }
+
+            if (best == null) break;
+            TryUpgradeBaseStat(best.Value);
+            purchased++;
+        }
+        return purchased;
+    }
+
     public static void CommitPoints(long upgradePoints)
     {
         bool shopWasUnlocked = IsShopUnlocked;
@@ -362,6 +438,8 @@ public static class ProgressionManager
         StatType.StrengthPerLevel    => "Strength Per Level",
         StatType.MaxShield           => "Max Shield",
         StatType.ShieldRechargeTime  => "Shield Recharge Time",
+        StatType.AbilityHaste        => "Ability Haste",
+        StatType.DeathPrevention     => "Death Prevention",
         _                           => stat.ToString()
     };
 

@@ -8,14 +8,22 @@ using UnityEngine;
 // - CharacterStatsPD.ContinuousFire (see its own doc comment): while true, WeaponRangedPD skips its normal
 //   FindTarget()/line-of-sight requirement entirely and just fires straight forward every time its fire-rate
 //   timer allows, target or not.
-// - CharacterStatsPD.FocusFireAimAngle (see its own doc comment): continuously updated from the LIVE cursor
-//   direction every tick this is active (not snapshotted once at cast — Focus Fire is meant to be aimed
-//   throughout its whole window, not just at the instant it's cast), in the same Atan2-based convention
-//   OrbitalPosition's own baseAngle already uses. Every weapon this owner has substitutes this shared angle
-//   in place of the normal ever-incrementing WeaponOrbitAngle while ContinuousFire is set, which freezes the
-//   whole ring from sweeping — the SlotIndex-0 weapon ends up pointing exactly at the cursor, and every
-//   other weapon keeps its own normal relative spacing around that point instead of independently trying to
-//   aim at the cursor too (multiple weapons don't all converge on one point).
+// - CharacterStatsPD.FocusFireAimAngle (see its own doc comment): continuously updated every tick this is
+//   active (not snapshotted once at cast — Focus Fire is meant to keep tracking a target throughout its
+//   whole window, not just at the instant it's cast), in the same Atan2-based convention OrbitalPosition's
+//   own baseAngle already uses. Every weapon this owner has substitutes this shared angle in place of the
+//   normal ever-incrementing WeaponOrbitAngle while ContinuousFire is set, which freezes the whole ring from
+//   sweeping — the SlotIndex-0 weapon ends up pointing exactly at the aim direction, and every other weapon
+//   keeps its own normal relative spacing around that point instead of independently trying to aim on its
+//   own (multiple weapons don't all converge on one point).
+//
+// Auto-aim, not free aim — reworked from the original cursor-driven version: this game is meant to stay
+// low-input, and requiring the player to actively aim a whole ability's worth of continuous fire was too
+// much manual input for that design goal. UpdateAutoAimAngle() (below) sources the direction from
+// WeaponRangedPD.TryFindAutoAimDirection instead of cursor input — the closest living enemy within
+// WeaponRange, found via a physics query, same deterministic/replay-safe reasoning that method's own doc
+// comment gives. The original cursor-driven UpdateAimAngle() is deliberately left in place, just unused —
+// kept in case free aim is ever wanted again (e.g. as a togglable variant) without needing to rebuild it.
 //
 // Never touches player movement — only weapon orbit/firing — so ForcesSpecialAction is false, same as
 // RogueVanishAbilityPD/KnightBigBuffAbilityPD.
@@ -53,7 +61,7 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Focus Fire";
     [SerializeField, TextArea] private string description =
-        "Stop orbiting and fire continuously at your cursor for 3 seconds, ignoring the need for a target in your weapons' path, at -50% Fire Rate. Recast to end early.";
+        "Stop orbiting and fire continuously at the closest enemy for 3 seconds, ignoring the need for a target in your weapons' path, at -50% Fire Rate. Recast to end early.";
     [SerializeField] private float cooldown = 10f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
     // throughout the active window) — see Simulate(). true: cooldown starts ticking immediately at cast,
@@ -137,6 +145,14 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // See IAbilityPD's own doc comments for the exact contract of each of these three.
+    public void ReduceCooldownFlat(float seconds) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
+    public void ReduceCooldownPercentRemaining(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
+    public void ReduceCooldownPercentTotal(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+
     public void Activate()
     {
         if (!IsReady || _stats == null) return;
@@ -170,7 +186,7 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
         // see class doc comment.
         _appliedFireRatePenaltyPercent = fireRatePenaltyPercent / _stats.AbilityPower;
         _stats.AddFireRateTotalPercent(-_appliedFireRatePenaltyPercent);
-        UpdateAimAngle();
+        UpdateAutoAimAngle();
 
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
         if (cooldown > 0f) _stats.NotifyAbilityStart(this);
@@ -190,9 +206,9 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
 
     public void NotifyActivationBlocked() { }
 
-    // Live cursor direction converted to OrbitalPosition's own Atan2-based baseAngle convention — see
-    // CharacterStatsPD.FocusFireAimAngle's own doc comment for the full formula reasoning. Called every
-    // active tick (not just once at Activate()) so the aim keeps tracking the cursor for the whole window.
+    // Free-aim version — no longer called (see class doc comment), kept in place in case free aim is ever
+    // wanted again. Live cursor direction converted to OrbitalPosition's own Atan2-based baseAngle
+    // convention — see CharacterStatsPD.FocusFireAimAngle's own doc comment for the full formula reasoning.
     private void UpdateAimAngle()
     {
         if (_stats == null) return;
@@ -200,6 +216,24 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
             ? _controller.currentState.cursorDir
             : transform.forward;
         _stats.SetFocusFireAimAngle(Mathf.Atan2(dir.z, dir.x) * Mathf.Rad2Deg);
+    }
+
+    // Auto-aim version — what's actually called now (see class doc comment). Sources the direction from
+    // WeaponRangedPD.TryFindAutoAimDirection (closest living enemy within WeaponRange of this character)
+    // instead of cursor input, then converts it the same Atan2 way UpdateAimAngle() above does. Falls back
+    // to the character's current forward facing if no enemy is currently in range, same "always have SOME
+    // defined direction to freeze the ring at" fallback the free-aim version used for a zero cursorDir.
+    // Called every active tick (not just once at Activate()) so the aim keeps tracking the closest enemy —
+    // which can change — for the whole window.
+    private void UpdateAutoAimAngle()
+    {
+        if (_stats == null) return;
+        bool found = WeaponRangedPD.TryFindAutoAimDirection(_stats.transform.position, _stats.WeaponRange, out Vector3 aimDir);
+        Vector3 dir = found ? aimDir : transform.forward;
+        _stats.SetFocusFireAimAngle(Mathf.Atan2(dir.z, dir.x) * Mathf.Rad2Deg);
+        // See CharacterStatsPD.ContinuousFireHasTarget's own doc comment — WeaponRangedPD.LateSimulate()
+        // reads this to decide whether ContinuousFire should actually fire this tick, not just where to aim.
+        _stats.SetContinuousFireHasTarget(found);
     }
 
     protected override void Simulate(ref State state, float delta)
@@ -214,7 +248,7 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
 
         if (!state.isActive) return;
 
-        UpdateAimAngle();
+        UpdateAutoAimAngle();
 
         state.activeTimer -= delta;
         // Death force-ends the window early — see ExeBigAxeAbilityPD.Simulate()'s own identical comment for

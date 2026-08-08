@@ -19,7 +19,7 @@ PrefabInstance:
     - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: weaponPrefab
       value: 
-      objectReference: {fileID: 2942187867930129664, guid: c2522599a7ce86843a28389dd9424ed3, type: 3}
+      objectReference: {fileID: 2942187867930129664, guid: 76b2145e6a31a1f43b119a7682c153a2, type: 3}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
       value: Rogue
@@ -103,10 +103,8 @@ MonoBehaviour:
     with your <color=#FFA000>Weapons</color> <color=#FFA000>5 times</color> with
     damage multiplied by <color=#FF0050>Attack Speed</color>.
 
-    <color=#FFBE50><i>Damage
-    scales with Ability Power</i></color>
-
-    <color=#FFBE50>Cooldown: 6 seconds</color>'
+    <color=#FFBE50>Cooldown:
+    6 seconds</color>'
   cooldown: 6
   cooldownStartsOnCast: 0
   slot: 0
@@ -137,9 +135,6 @@ MonoBehaviour:
   abilityName: <color=#FFFFFF>Ability:\nVanish</color>
   description: 'Become <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>25%
     total Move Speed</color> for <color=#FFA000>3 seconds</color>.
-
-    <color=#FFBE50><i>Move
-    Speed & Duration scale with Ability Power</i></color>
 
     <color=#FFBE50>Cooldown:
     15 seconds</color>'

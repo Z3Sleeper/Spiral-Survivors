@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: ArcherStartingAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#3278FF>Archer</color>
-  description: '<color=#3278FF>+100% Total Range</color>
+  description: '<color=#3278FF>+150% Total Range</color>
 
-    <color=#FF0050>x6 Weapon
+    <color=#FF0050>x8 Weapon
     Fire Rate Attack Speed Scaling</color>
 
     <color=#FFA000>x20 Weapon Projectile

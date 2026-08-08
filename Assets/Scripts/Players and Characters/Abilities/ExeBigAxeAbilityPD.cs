@@ -96,6 +96,14 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
 
+    // See IAbilityPD's own doc comments for the exact contract of each of these three.
+    public void ReduceCooldownFlat(float seconds) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
+    public void ReduceCooldownPercentRemaining(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
+    public void ReduceCooldownPercentTotal(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+
     public void Activate()
     {
         if (!IsReady || _stats == null) return;

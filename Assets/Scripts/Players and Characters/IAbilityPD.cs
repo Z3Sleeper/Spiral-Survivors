@@ -117,6 +117,28 @@ public interface IAbilityPD
     bool CooldownStartsOnCast { get; }
     Sprite Icon { get; }
 
+    // Cooldown-reduction hooks — for augments that want to shave time off whatever's left on an ability's
+    // cooldown (e.g. OnStrikeReduceAbilityCDAugment) rather than granting a stat that only ever affects
+    // FUTURE casts (EffectiveAbilityHaste). All three are safe to call on an ability that's already off
+    // cooldown (CooldownRemaining == 0) — every implementer clamps its own cooldownTimer at 0, so calling
+    // any of these on a ready ability is a harmless no-op rather than something callers need to guard for
+    // themselves. Each concrete implementer owns an identical one-line body against its own
+    // currentState.cooldownTimer field, same "duplicated small formula per class" convention
+    // EffectiveCooldown's own shared shape already uses throughout this ability system.
+    //
+    // Flat: reduces remaining cooldown by a fixed number of seconds, unaffected by how much cooldown was
+    // left or the ability's own total cooldown length.
+    void ReduceCooldownFlat(float seconds);
+    // Percent-of-remaining: reduces remaining cooldown by a fraction of whatever's CURRENTLY left — e.g. 0.5
+    // on an ability with 4s left cuts it to 2s, but only 0.5s left on the same ability only cuts it to
+    // 0.25s. percent01 is a 0..1 fraction (0.05 = 5%), clamped internally.
+    void ReduceCooldownPercentRemaining(float percent01);
+    // Percent-of-total: reduces remaining cooldown by a fraction of the ability's own EFFECTIVE (haste-
+    // scaled) full cooldown length (CooldownDuration) — e.g. 0.5 always cuts off half of a 10s cooldown's
+    // worth of time (5s) regardless of how much was actually left, capping at 0 rather than going negative
+    // if less than that much remained. percent01 is a 0..1 fraction, clamped internally.
+    void ReduceCooldownPercentTotal(float percent01);
+
     // A character can carry one of each (an Ability1-slot component and an Ability2-slot component) on the
     // same GameObject, which makes a plain GetComponent<IAbilityPD>() ambiguous — PlayerControllerPD/
     // CharacterSelectUI/AugmentManagerPD all use GetComponents<IAbilityPD>() plus this to route each

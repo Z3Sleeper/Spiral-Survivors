@@ -17,6 +17,7 @@ public class UpgradePanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI healthRegenFlatButtonText;
     [SerializeField] private TextMeshProUGUI energyRegenFlatButtonText;
     [SerializeField] private TextMeshProUGUI dashHasteFlatButtonText;
+    [SerializeField] private TextMeshProUGUI abilityHasteFlatButtonText;
     [SerializeField] private TextMeshProUGUI critChanceFlatButtonText;
     [SerializeField] private TextMeshProUGUI rangeFlatButtonText;
     [SerializeField] private TextMeshProUGUI collectionRadiusFlatButtonText;
@@ -31,6 +32,7 @@ public class UpgradePanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI strengthPerLevelButtonText;
     [SerializeField] private TextMeshProUGUI maxShieldButtonText;
     [SerializeField] private TextMeshProUGUI shieldRechargeTimeButtonText;
+    [SerializeField] private TextMeshProUGUI deathPreventionButtonText;
 
     [Header("Selection Bar")]
     [SerializeField] private Image selectedIcon;
@@ -81,6 +83,7 @@ public class UpgradePanel : MonoBehaviour
         RefreshButtonText(StatType.HealthRegen,        "Health Regen",        healthRegenFlatButtonText);
         RefreshButtonText(StatType.EnergyRegen,        "Energy Regen",        energyRegenFlatButtonText);
         RefreshButtonText(StatType.DashHaste,          "Dash Haste",          dashHasteFlatButtonText);
+        RefreshButtonText(StatType.AbilityHaste,       "Ability Haste",       abilityHasteFlatButtonText);
         RefreshButtonText(StatType.CritChance,         "Crit Chance",         critChanceFlatButtonText);
         RefreshButtonText(StatType.WeaponRange,        "Range",               rangeFlatButtonText);
         RefreshButtonText(StatType.CollectionRadius,   "Collection Radius",   collectionRadiusFlatButtonText);
@@ -95,6 +98,7 @@ public class UpgradePanel : MonoBehaviour
         RefreshButtonText(StatType.StrengthPerLevel,    "Strength Per Level",       strengthPerLevelButtonText);
         RefreshButtonText(StatType.MaxShield,            "Max Shield",             maxShieldButtonText);
         RefreshButtonText(StatType.ShieldRechargeTime,   "Shield Recharge",        shieldRechargeTimeButtonText);
+        RefreshButtonText(StatType.DeathPrevention,      "Death Prevention",       deathPreventionButtonText);
 
         foreach (var entry in upgradeButtons)
             if (entry.buttonObject != null)
@@ -152,7 +156,8 @@ public class UpgradePanel : MonoBehaviour
             StatType.AttackSpeed       => $"Increases your Weapon Attack Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nAttack Speed is equivalent to revolutions per second.",
             StatType.HealthRegen       => $"Increases your Health Regen per second by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.EnergyRegen       => $"Increases your Energy Regen per second by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEnergy is used to activate Surge, reducing your Move Speed by 50% to double your Attack Speed.",
-            StatType.DashHaste         => $"Increases your Dash Haste by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEach 1 Dash Haste speeds up your Dash Charge cooldown by 1%.\nYou are invulnerable while Dashing.",
+            StatType.DashHaste         => $"Increases your Dash Haste by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEach 1 Dash Haste reduces your Dash Charge cooldown by 1%.\nYou are invulnerable while Dashing.",
+            StatType.AbilityHaste      => $"Increases your Ability Haste by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEach 1 Ability Haste reduces your Ability cooldowns by 1%.",
             StatType.CritChance        => $"Increases the chance for your Weapon Strikes to Critically Strike by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEach 1% Crit Chance over 100% is converted into 0.5% Crit Damage.",
             StatType.WeaponRange       => $"Increases your Weapon Range by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.CollectionRadius  => $"Increases the distance you collect XP Orbs by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
@@ -167,6 +172,10 @@ public class UpgradePanel : MonoBehaviour
             StatType.StrengthPerLevel    => $"Increases your Strength per Level by {absPer} per tier ({current}/{max}).",
             StatType.MaxShield           => $"Increases your Max Shield by {absPer}{unit} of your Max Health ({sign}{current}{unit}/{sign}{max}{unit}).\nShield takes 5 seconds to fully recharge, reduced by Shield Recharge Time Reductions.",
             StatType.ShieldRechargeTime  => $"Reduces your Shield Recharge Time by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
+            // Single tier, no per-tier scaling — uses {tier}/{maxTier} directly ("bought?/total tiers")
+            // instead of the generic {current}/{max} amount phrasing above, so it still reads as "(0/1)"/
+            // "(1/1)" like every other stat's tier count without implying a scaling amount that isn't real.
+            StatType.DeathPrevention     => $"Unlocks Death Prevention ({tier}/{maxTier}).\nEvery 30 seconds, if you would die, instead set your Health to 1 and become Invincible for 1 second.",
             _                            => string.Empty
         };
     }
@@ -217,6 +226,7 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeHealthRegenFlatClicked()      { Select(StatType.HealthRegen); }
     public void OnUpgradeEnergyRegenFlatClicked()      { Select(StatType.EnergyRegen); }
     public void OnUpgradeDashHasteFlatClicked()        { Select(StatType.DashHaste); }
+    public void OnUpgradeAbilityHasteFlatClicked()     { Select(StatType.AbilityHaste); }
     public void OnUpgradeCritChanceFlatClicked()       { Select(StatType.CritChance); }
     public void OnUpgradeRangeFlatClicked()            { Select(StatType.WeaponRange); }
     public void OnUpgradeCollectionRadiusFlatClicked() { Select(StatType.CollectionRadius); }
@@ -231,6 +241,7 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeStrengthPerLevelClicked()     { Select(StatType.StrengthPerLevel); }
     public void OnUpgradeMaxShieldClicked()            { Select(StatType.MaxShield); }
     public void OnUpgradeShieldRechargeTimeClicked()   { Select(StatType.ShieldRechargeTime); }
+    public void OnUpgradeDeathPreventionClicked()      { Select(StatType.DeathPrevention); }
 
     // Selection bar action buttons
     public void OnBuyOneClicked()
@@ -252,6 +263,14 @@ public class UpgradePanel : MonoBehaviour
     {
         if (_selectedStat.HasValue)
             ProgressionManager.ResetBaseStat(_selectedStat.Value);
+        Refresh();
+    }
+
+    // Not tied to _selectedStat at all — unlike Buy One/Buy All, this buys across every unlocked stat per
+    // ProgressionManager.AutoBuy's own lowest-tier-then-most-expensive priority.
+    public void OnAutoBuyClicked()
+    {
+        ProgressionManager.AutoBuy();
         Refresh();
     }
 

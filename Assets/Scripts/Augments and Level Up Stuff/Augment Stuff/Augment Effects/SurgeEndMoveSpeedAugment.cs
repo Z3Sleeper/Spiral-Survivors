@@ -4,7 +4,7 @@ using UnityEngine;
 // New tech, not a port. On Surge End, gain +60% Move Speed for 2 seconds — cut short immediately if a new
 // Surge is started before the buff naturally expires, rather than stacking or refreshing. Buff icon is
 // fully transient (added the instant the bonus activates, removed the instant it ends, whether by natural
-// expiry or an early Surge-start cutoff) — unlike ShieldDamageReductionAugment's persistent "always shown"
+// expiry or an early Surge-start cutoff) — unlike DeathPreventionShieldDRAugment's persistent "always shown"
 // icon, which only ever sweeps a cooldown that's already visible beforehand.
 public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment.State>
 {
@@ -24,11 +24,11 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
     // Plain, not State — mutated only from PredictedEvent listener callbacks (OnSurgeStarted/OnSurgeEnded
     // themselves guarantee exactly-once-per-real-occurrence, see CharacterStatsPD._onSurgeStarted/_onSurgeEnded's
     // own doc comments) or from Simulate() itself, same toggle-tracking shape as
-    // ShieldDamageReductionAugment's own _reductionActive.
+    // DeathPreventionShieldDRAugment's own _reductionActive.
     private bool _bonusActive;
 
     // Spawned only while the buff is active — removed the instant it ends, unlike
-    // ShieldDamageReductionAugment's persistent icon.
+    // DeathPreventionShieldDRAugment's persistent icon.
     private BuffIconPD _buffIconInstance;
 
     protected override void OnApply()

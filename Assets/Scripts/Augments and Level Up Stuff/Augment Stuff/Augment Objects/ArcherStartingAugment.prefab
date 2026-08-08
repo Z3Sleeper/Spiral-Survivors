@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 29ddf4e4931044b47800e6f6f3d4ddb7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ArcherStartingAugment
-  fireRateTotalPercent: 5
-  bonusWeaponRangeFlat: 10
+  fireRateTotalPercent: 7
+  weaponRangeTotalPercent: 1.5
   projectileSpeedTotalPercent: 19

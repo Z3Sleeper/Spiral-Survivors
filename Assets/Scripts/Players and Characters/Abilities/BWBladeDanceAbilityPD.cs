@@ -89,6 +89,9 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     private CharacterStatsPD   _stats;
     private WeaponManagerPD    _weaponManager;
     private PlayerControllerPD _controller;
+    // Auto-cast target — see the Return case in Simulate() for why this is only ever poked on a NATURAL
+    // arrival, never the death-forced end.
+    private BWBlinkAbilityPD   _blink;
 
     // Snapshotted at cast time — see attackSpeedPercentPerHaste's own doc comment for why.
     private float _appliedAttackSpeedPercent;
@@ -100,6 +103,7 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         _stats         = GetComponent<CharacterStatsPD>();
         _weaponManager = GetComponent<WeaponManagerPD>();
         _controller    = GetComponent<PlayerControllerPD>();
+        _blink         = GetComponent<BWBlinkAbilityPD>();
     }
 
     public Sprite Icon => icon;
@@ -164,6 +168,14 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
     // EffectiveAbilityHaste ever goes negative (a penalty).
     private float EffectiveCooldown => _stats != null ? cooldown / (1f + _stats.EffectiveAbilityHaste / 100f) : cooldown;
+
+    // See IAbilityPD's own doc comments for the exact contract of each of these three.
+    public void ReduceCooldownFlat(float seconds) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
+    public void ReduceCooldownPercentRemaining(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
+    public void ReduceCooldownPercentTotal(float percent01) =>
+        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
 
     public void Activate()
     {
@@ -290,7 +302,17 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
                 float   dist          = toPlayer.magnitude;
                 float   step          = travelSpeed * delta;
                 if (dist <= step)
+                {
                     EndDance(ref state);
+                    // Auto-cast Blink's buff (never the teleport itself — the blades just got home under
+                    // their own power) the instant the dance genuinely finishes, so a player who forgets to
+                    // press Blink mid-dance doesn't lose out on its Move Speed buff or its Ability Started/
+                    // Ended-triggered augment interactions just for not pressing an extra button — see
+                    // BWBlinkAbilityPD.AutoCastOnDanceReturn's own doc comment. Deliberately NOT reached from
+                    // the death-forced EndDance() call above — a dead caster gets nothing from this either
+                    // way, and AutoCastOnDanceReturn's own _stats.IsDead guard would block it regardless.
+                    _blink?.AutoCastOnDanceReturn();
+                }
                 else
                     state.currentOrigin += toPlayer * (step / dist);
                 break;

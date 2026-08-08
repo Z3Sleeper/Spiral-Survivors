@@ -10,12 +10,19 @@ using UnityEngine;
 // see OnHitDamageAugment's own doc comment for the WeaponCount-divide reasoning. No flat stat grant. Doesn't
 // scale with data.isCrit — matches OnStrikeHealAllyAugment's own precedent that a restore triggered off a
 // strike event doesn't crit-scale, unlike the damage-dealing OnHit augments.
+//
+// Deliberately weaker while Surging (surgeEffectivenessMultiplier, default 0.1f = 90% less effective) —
+// this is intentionally strong enough unconditionally to feed a near-permanent Surge loop (Strike -> Energy
+// -> Surge again), and this multiplier is the separate knob for tuning THAT specific self-sustain case
+// without touching the baseline out-of-Surge value at all.
 public class OnStrikeEnergyRegenAugment : AugmentEffectPD<OnStrikeEnergyRegenAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // 0.1f = 10% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
     [SerializeField] private float onStrikeEnergyRegenPercent = 0.1f;
+    // 0.1f = 10% of normal effectiveness while Surging (i.e. 90% less) — see class doc comment.
+    [SerializeField] private float surgeEffectivenessMultiplier = 0.1f;
 
     protected override void OnApply()
     {
@@ -30,18 +37,10 @@ public class OnStrikeEnergyRegenAugment : AugmentEffectPD<OnStrikeEnergyRegenAug
 
     private void OnStrike(WeaponHitData data)
     {
-        // No energy while already surging — this used to be able to feed its own Surge (strike during Surge
-        // -> gain energy -> Surge again immediately once it ends), which felt underwhelming at a low
-        // regen-to-onstrike ratio and outright overpowered (near-permanent Surge uptime) at a normal one.
-        // Blocking generation during Surge removes that self-sustain loop entirely rather than trying to
-        // find a "correct" ratio in between.
-        if (Stats.IsSurging) return;
+        float surgeMultiplier = Stats.IsSurging ? surgeEffectivenessMultiplier : 1f;
 
-        // Anything that deals/restores an amount rolls luck variance — no exceptions.
-        float baseGain = Stats.EnergyRegen * onStrikeEnergyRegenPercent * data.onHitPower;
-        float rolled = WeaponDamageMath.RollDamage(baseGain, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
-        if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
-
-        Stats.GainEnergy(rolled);
+        // No luck roll — energy restores aren't damage/healing, so this doesn't get luck variance by
+        // default (see feedback_luckroll_scope memory).
+        Stats.GainEnergy(Stats.EnergyRegen * onStrikeEnergyRegenPercent * data.onHitPower * surgeMultiplier);
     }
 }

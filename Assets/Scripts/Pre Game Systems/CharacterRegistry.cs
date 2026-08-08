@@ -1,4 +1,3 @@
-using PurrLobby;
 using PurrLobby.Providers;
 using Steamworks;
 using UnityEngine;
@@ -33,29 +32,25 @@ public class CharacterRegistry : MonoBehaviour
     // Editor) mid-match never left the Steam lobby through that path — it stayed open on Steam's backend
     // for the rest of this process's Steam session (an Editor Play Mode stop doesn't tear down the
     // Steamworks connection the way a real process exit eventually would, so this could accumulate one
-    // orphaned lobby per mid-match test-and-stop cycle in one continued Editor session). LobbyDataHolder
-    // (PurrLobby's own genuinely-persistent, provider-agnostic lobby-tracking object — see its own
-    // DontDestroyOnLoad) survives into the Game scene even though LobbyManager doesn't, so it's read
-    // directly here rather than needing the full LobbyManager/provider stack to exist. Harmless to also
-    // fire when LobbySceneController's own path already ran (e.g. quitting from the Lobby scene itself) —
+    // orphaned lobby per mid-match test-and-stop cycle in one continued Editor session). Resolved via
+    // GameStartData.TryGetCurrentSteamLobbyId (backed by LobbyDataHolder, PurrLobby's own genuinely-
+    // persistent, provider-agnostic lobby-tracking object — see its own DontDestroyOnLoad), which survives
+    // into the Game scene even though LobbyManager doesn't, rather than needing the full LobbyManager/
+    // provider stack to exist. Harmless to also fire when LobbySceneController's own path already ran
+    // (e.g. quitting from the Lobby scene itself) —
     // leaving an already-left/invalid lobby is a silent no-op on Steam's side.
     private void OnApplicationQuit()
     {
         EnemyBasePD.ResetActiveCounts();
 
-        // TEMP diagnostic — confirming this cross-scene safety net actually engages on a mid-match quit
-        // (rather than, say, LobbyDataHolder never being found, or CurrentLobby already reading invalid by
-        // the time this runs). Remove once a mid-match quit has been confirmed to log the "leaving lobby"
-        // line and that lobby is confirmed gone from Steam's own lobby list shortly after.
-        var holder = FindFirstObjectByType<LobbyDataHolder>();
-        if (holder != null && holder.CurrentLobby.IsValid && ulong.TryParse(holder.CurrentLobby.LobbyId, out ulong lobbyId))
+        if (GameStartData.TryGetCurrentSteamLobbyId(out CSteamID lobbyId))
         {
             Debug.Log($"[CharacterRegistry] OnApplicationQuit: leaving lobby {lobbyId} directly via Steamworks (scene-scoped LobbyManager may not exist right now).");
-            SteamMatchmaking.LeaveLobby(new CSteamID(lobbyId));
+            SteamMatchmaking.LeaveLobby(lobbyId);
         }
         else
         {
-            Debug.Log($"[CharacterRegistry] OnApplicationQuit: no valid lobby to leave (holder null: {holder == null}).");
+            Debug.Log("[CharacterRegistry] OnApplicationQuit: no valid lobby to leave.");
         }
 
         // Paired with SteamLobbyProvider.HandleSteamInit()'s SteamAPI.Init() call — nothing else in the

@@ -133,10 +133,15 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
         if (_stats.ContinuousFire)
         {
-            // No FindTarget()/LOS requirement at all — see CharacterStatsPD.ContinuousFire's own doc
-            // comment: just fires straight forward from wherever this weapon is currently aimed (see
-            // baseAngle above), target or not, every time the fire-rate timer allows. No per-target hit
-            // cooldown bookkeeping either — there's no selected target to gate.
+            // Still skips FindTarget()/LOS entirely — fires straight at wherever this weapon is currently
+            // aimed (see baseAngle above), not along a raycast — but now requires ContinuousFireHasTarget
+            // (set by ArcherFocusFireAbilityPD.UpdateAutoAimAngle alongside the aim angle itself) so it
+            // doesn't fire blindly into empty space when nothing's actually in range. Deliberately NOT reset
+            // on the no-target branch — same "hard reset only on an actual shot, let debt accumulate
+            // otherwise" reasoning FindTarget's own fireTimer reset below already uses, so a target coming
+            // back into range fires immediately instead of waiting out a fresh full interval. No per-target
+            // hit cooldown bookkeeping either — there's no selected target to gate.
+            if (!_stats.ContinuousFireHasTarget) return;
             Fire(transform.position + transform.forward * _stats.WeaponRange);
             state.fireTimer = Mathf.RoundToInt(1f / Mathf.Max(0.01f, _stats.AttackSpeed * _stats.FireRate) / delta);
             return;
@@ -185,6 +190,41 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
             hurtboxCenter = collider.bounds.center;
         }
         return enemy != null;
+    }
+
+    // Auto-aim targeting for ArcherFocusFireAbilityPD's own aim direction (see CharacterStatsPD.
+    // FocusFireAimAngle's own doc comment) — finds the closest living enemy within `range` of `from` via a
+    // fixed-radius physics query, same deterministic/replay-safe reasoning WeaponRangedProjectilePD.
+    // FindRicochetTarget's own doc comment gives for why this isn't a FindObjectsByType scan. Static, not
+    // instance-scoped: Focus Fire's aim angle is ONE shared value for the whole character, not per-weapon,
+    // so the ability calls this once rather than needing to pick a specific weapon instance out of however
+    // many ranged weapons this character currently owns (WeaponCount stacking). 128-slot buffer (not 16/32)
+    // — OverlapSphereNonAlloc does NOT return colliders in distance order and truncates silently, so a
+    // "closest one in a wide radius" query needs a generous buffer or a dense swarm could hide the true
+    // closest enemy behind a wall of farther ones that happened to fill the buffer first (see
+    // PhantomBladeSummonHelper/AreaEffectCastHelper's own identical comment on this exact gotcha).
+    private static readonly Collider[] _autoAimResults = new Collider[128];
+
+    public static bool TryFindAutoAimDirection(Vector3 from, float range, out Vector3 direction)
+    {
+        int   n        = Physics.OverlapSphereNonAlloc(from, range, _autoAimResults, CombatLayerMasks.EnemyHurtboxMask);
+        float bestDist = float.MaxValue;
+        direction = default;
+        bool found = false;
+
+        for (int i = 0; i < n; i++)
+        {
+            var enemy = _autoAimResults[i].GetComponent<IEnemyPD>();
+            if (enemy == null || enemy._isDead) continue;
+
+            float dist = Vector3.Distance(from, enemy.transform.position);
+            if (dist >= bestDist) continue;
+
+            bestDist  = dist;
+            direction = (enemy.transform.position - from).normalized;
+            found     = true;
+        }
+        return found;
     }
 
     // ── Fire ──────────────────────────────────────────────────────────────────
