@@ -140,9 +140,25 @@ namespace PurrLobby
         // delay no matter what order/whether callbacks arrived. This is what makes the ready-check
         // GUARANTEED rather than best-effort — the reactive OnLobbyUpdated check is still there too, purely
         // so the common case still feels instant instead of interval-bounded.
+        // Project-specific narrowing (2026-08-08), not stock PurrLobby behavior — vendored fix, re-apply if
+        // this package is ever updated. This project's own LobbySceneController.OnAllReady() now discards
+        // this event entirely on any non-host machine (`if (!lobby.IsOwner) return;`) — a client acting on
+        // its own independent "everyone's ready" conclusion was a real split-brain race (see that method's
+        // own doc comment), fixed by making the HOST the sole source of truth via a host-authoritative
+        // "Started" Steam lobby-data flag instead. That means evaluating this ready-check at all on a
+        // non-host machine is pure wasted work now — a Steam API round-trip every readyPollInterval, plus a
+        // reactive check on every lobby update, for a result nothing anywhere reads. Both this method and the
+        // reactive check in SubscribeToProviderEvents' _onLobbyUpdatedHandler below are now skipped entirely
+        // unless _currentLobby.IsOwner.
+        // WHAT THIS USED TO DO, for reversibility: before this gate, EVERY machine (host and every client)
+        // independently ran this exact ready-check and could independently fire OnAllReady on its own —
+        // that's the original, generic PurrLobby design (any client-side consumer could react to it), and
+        // it's what enabled the split-brain race in the first place. If a future design ever goes back to
+        // letting clients act on their own local "everyone's ready" conclusion instead of solely reacting to
+        // a host-authoritative signal, remove the `!_currentLobby.IsOwner` conditions added here and below.
         private void PollReadyState()
         {
-            if (IsStarting || _currentProvider == null || !_currentLobby.IsValid) return;
+            if (IsStarting || _currentProvider == null || !_currentLobby.IsValid || !_currentLobby.IsOwner) return;
 
             RunTask(async () =>
             {
@@ -180,26 +196,24 @@ namespace PurrLobby
         // from before someone un-readied. Costs at most one extra readyPollInterval (default 1s) of latency
         // on every legitimate match start, racy or not — the check can't tell a genuinely-stable member list
         // apart from one that's about to keep changing until it's actually seen not change once.
+        // Diagnostic PurrLogger.Log calls that used to sit in each branch below (removed 2026-08-08) —
+        // confirmed live, twice, via real 2-player Player.log captures (see
+        // project_purrlobby_premature_start_race_fix memory): "everyone ready, first time seeing this
+        // count — deferring" followed by "CONFIRMED stable" ~1 poll apart, exactly as designed. No longer
+        // needed now that the mechanism itself is proven; re-add the same three lines (not-ready-reset,
+        // first-time-seeing-count, confirmed-stable) if this ever needs re-diagnosing.
         private bool ConfirmAllReadyStable(bool allReady, int memberCount)
         {
             if (!allReady)
             {
-                if (_stableReadyMemberCount != -1)
-                    PurrLogger.Log($"[LobbyManager] Ready check: not everyone ready (was tracking a stable count of {_stableReadyMemberCount}, resetting).");
                 _stableReadyMemberCount = -1;
                 return false;
             }
             if (_stableReadyMemberCount != memberCount)
             {
-                // TEMP diagnostic — confirming/ruling out the premature-match-start race (host readies up
-                // right as a client joins, starting the match before that client is counted). If this line
-                // never appears right before a real match start, the debounce isn't actually the thing
-                // preventing anything and the race lives somewhere else. Remove once confirmed either way.
-                PurrLogger.Log($"[LobbyManager] Ready check: everyone ready at member count {memberCount}, but this is the FIRST time seeing this count — deferring one more check before trusting it (was {_stableReadyMemberCount}).");
                 _stableReadyMemberCount = memberCount;
                 return false;
             }
-            PurrLogger.Log($"[LobbyManager] Ready check: CONFIRMED stable at member count {memberCount} across two consecutive checks — starting match.");
             return true;
         }
 
@@ -271,7 +285,8 @@ namespace PurrLobby
                 _currentLobby = room;
                 OnRoomUpdated?.Invoke(room);
 
-                if (!IsStarting && ConfirmAllReadyStable(room.Members.TrueForAll(x => x.IsReady), room.Members.Count))
+                // See PollReadyState's own doc comment — same host-only gate, same reversibility note.
+                if (room.IsOwner && !IsStarting && ConfirmAllReadyStable(room.Members.TrueForAll(x => x.IsReady), room.Members.Count))
                 {
                     IsStarting = true; //Prevent calling ready again if lobby is updated after all ready
                     CallOnAllReady();

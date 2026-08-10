@@ -47,7 +47,14 @@ public class ReturnToLobbyManager : NetworkIdentity
         // left over from the original match was skipping straight into ConnectToHostWithRetry() the instant
         // its own scene reloaded, colliding with objects that hadn't finished settling yet.
         if (GameStartData.TryGetCurrentSteamLobbyId(out CSteamID lobbyId))
+        {
             SteamMatchmaking.SetLobbyData(lobbyId, "Started", "False");
+            // Same reset, same reasoning — see LobbySceneController.OnAllReady's own comment on the
+            // "Locking" write. A stale "True" left over from the original match-start would show every
+            // client's LoadingScreen (and lock every lobby button via its IsShowing guards) immediately on
+            // landing back in a fresh Lobby scene, with nothing left to ever clear it.
+            SteamMatchmaking.SetLobbyData(lobbyId, "Locking", "False");
+        }
 
         _waitingForFlushConfirmation = true;
         _waitTimer = 0f;

@@ -91,6 +91,10 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     private CharacterStatsPD _stats;
     private Vector3 _baseScale;
     private float[] _baseYScales;
+    // Prefab-authored x/z for visualHeightTarget, captured once in Awake() — see its own comment. Y is
+    // overwritten fresh every Launch() (counter-scaled against that throw's rangeScale), so this is only
+    // ever read for its x/z; whatever Y this snapshot happens to hold is never used.
+    private Vector3 _baseVisualHeightTargetLocal;
     private float _speed;
     private float _maxRange;
     private float _strengthPercent;
@@ -121,22 +125,12 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
                     _baseYScales[i] = yScaleFollowers[i].localScale.y;
         }
 
-        // Same "correct for the player's default 1x1x1-unit sphere" constant WeaponBasePD.
-        // ApplyVisualAdjustments()/WeaponRangedProjectilePD's own Awake() lift orbiting/flying weapon models
-        // by — this projectile's own root spawns at the caster's un-lifted, ground-level position
-        // (ExeAxeThrowAbilityPD.Activate() reads _stats.transform.position, not a visually-lifted model), so
-        // the visual mesh needs the same compensating offset to render at the same mid-body height every
-        // other weapon model appears to fire from. No explicit multiply by the root's own Range-driven scale
-        // here (deliberately — this is a LOCAL offset, and Launch() below already scales this projectile's
-        // own root, so Unity's ordinary parent-child scale inheritance applies that multiply for free). Set
-        // once here, not in Launch() — this value never changes per-throw, and Awake() is guaranteed to fire
-        // exactly once per real GameObject instance even under this projectile's own SetActive-based
-        // pooling, so a pooled reuse can never re-run this and drift.
-        if (visualHeightTarget != null)
-        {
-            var p = visualHeightTarget.localPosition;
-            visualHeightTarget.localPosition = new Vector3(p.x, WeaponVisualConstants.BaseMidHeightLift, p.z);
-        }
+        // Base authored local position cached here (not the final offset itself) — the actual height-lift
+        // write now happens in Launch() instead, AFTER rangeScale is known, since it needs to counter-scale
+        // against it (see Launch()'s own comment for why). Awake() only runs once per real GameObject
+        // instance even under this projectile's own SetActive-based pooling, so this is still the right
+        // place to capture the true prefab-authored x/z once, same reasoning as _baseScale/_baseYScales.
+        if (visualHeightTarget != null) _baseVisualHeightTargetLocal = visualHeightTarget.localPosition;
     }
 
     // Called by ExeAxeThrowAbilityPD.Activate() immediately after hierarchy.Create() returns — synchronous
@@ -180,6 +174,26 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
                 var s = yScaleFollowers[i].localScale;
                 yScaleFollowers[i].localScale = new Vector3(s.x, _baseYScales[i] / rangeScale, s.z);
             }
+        }
+
+        // Same "correct for the player's default 1x1x1-unit sphere" constant WeaponBasePD.
+        // ApplyVisualAdjustments()/WeaponRangedProjectilePD's own Awake() lift orbiting/flying weapon models
+        // by — this projectile's own root spawns at the caster's un-lifted, ground-level position
+        // (ExeAxeThrowAbilityPD.Activate() reads _stats.transform.position, not a visually-lifted model), so
+        // the visual mesh needs the same compensating offset to render at the same mid-body height every
+        // other weapon model appears to fire from. Deliberately counter-scaled here (divided by rangeScale,
+        // set AFTER transform.localScale above, unlike WeaponRangedProjectilePD's own version of this same
+        // constant, which is fine left unscaled since ITS root only ever grows with the much more modest
+        // Size/bonusSizePercent) — AxeThrow's root instead grows with WeaponRange, which a dedicated Range
+        // build can push far higher than Size ever would, and letting the height lift compound with that
+        // (the naive "set once in Awake(), let ordinary parent-child inheritance apply the multiply for
+        // free" approach every other weapon in this codebase uses) visibly launched the axe absurdly high
+        // off the ground at high Range — as if the caster were a giant. Same yScaleFollowers-style
+        // counter-scale shape, just for this one Y position instead of a handful of child scales.
+        if (visualHeightTarget != null)
+        {
+            var p = _baseVisualHeightTargetLocal;
+            visualHeightTarget.localPosition = new Vector3(p.x, WeaponVisualConstants.BaseMidHeightLift / rangeScale, p.z);
         }
 
         _hitTargets.Clear();

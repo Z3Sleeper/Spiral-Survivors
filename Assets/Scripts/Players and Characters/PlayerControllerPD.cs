@@ -44,6 +44,25 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     public void NotifyDashStarted() => _onDashStarted.Invoke();
     public void NotifyDashEnded() => _onDashEnded.Invoke();
 
+    // Grants back one dash charge, clamped to the character's own current max — e.g.
+    // DashThroughInterruptAugment refunding a charge on a successful interrupt. Doesn't touch
+    // chargeRegenTimer — the existing passive regen (see Simulate()'s own regen block) keeps counting toward
+    // whatever charge it was already counting toward; this only adds one on top, up to the cap.
+    public void RefundDashCharge()
+    {
+        if (_stats == null) return;
+        currentState.currentCharges = Mathf.Min(currentState.currentCharges + 1, _stats.dashCharges);
+    }
+
+    // Not predicted state — set once (ConstantMovementAugment.OnApply(), never reverted, same "permanent for
+    // the whole match" lifecycle every other simple stat-granting augment already uses, e.g. MoveSpeedAugment
+    // never overrides OnDestroy() either) and read every Simulate() tick, same category as any other
+    // effectively-constant-for-the-match field (baseMoveSpeed, etc.) rather than a per-tick predicted value.
+    // Forces the Movement block below to fall back to state.lastMoveDir whenever there's no current input,
+    // instead of standing still — "you can't stand still."
+    private bool _forceMovement;
+    public void SetForceMovement(bool force) => _forceMovement = force;
+
     private bool _wasDeadLastFrame;
     private bool _pendingReadyPressed;
     private bool _pendingPausePressed;
@@ -465,6 +484,12 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         Vector3 moveDir = new Vector3(input.direction.x, 0, input.direction.y).normalized;
         if (moveDir != Vector3.zero)
             state.lastMoveDir = moveDir;
+        // ConstantMovementAugment: no current input, but forced to always be moving — fall back to the last
+        // real direction instead of standing still. state.lastMoveDir is already normalized (only ever
+        // assigned from an already-.normalized moveDir above), so this stays full-speed, same as every real
+        // move input — see SetForceMovement's own doc comment.
+        else if (_forceMovement)
+            moveDir = state.lastMoveDir;
 
         if (state.isDashing)
             _rigidbody.velocity = state.dashVelocity;

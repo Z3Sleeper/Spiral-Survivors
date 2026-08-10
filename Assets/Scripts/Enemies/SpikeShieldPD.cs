@@ -1,0 +1,482 @@
+using PurrNet;
+using PurrNet.Packing;
+using PurrNet.Pooling;
+using PurrNet.Prediction;
+using UnityEngine;
+
+// The actual "enemy" here — ShielderGloomPD's body is nearly featureless (see its own class doc comment);
+// almost everything Shielder Gloom does lives on this orbiting sub-object instead. Deliberately NOT
+// IEnemyPD/EnemyBasePD — no health, no death, no XP ("similar to a player's weapon, it's just a tool the
+// enemy uses" — this is what makes it safe for the body to keep walking through the Shield's whole
+// windup/release sequence unlike SpearGloomPD's own body, which freezes for its own attack).
+//
+// Structured after WeaponBasePD's own equipped-weapon orbit — every player weapon is already a separate
+// top-level PredictedIdentity (never Unity-parented under the player) that computes its own world position
+// every tick straight from the owner's live transform.position (see WeaponBasePD.OrbitalPosition()) — this
+// mirrors that exact, already-proven-smooth mechanism rather than inventing a new one. Position AND facing
+// are always the same computed direction (orbits at a fixed radius, always facing straight outward along
+// that same radius), so there's only ever one angle to track per phase.
+//
+// Owns two fully independent damage sources: a continuous, always-on contact-damage trigger ("same shape as
+// our other enemies for contact damage" — a direct copy of EnemyBasePD's own ContactCooldown/OnContactTrigger
+// mechanism, since this class can't literally inherit it) and a single-target windup->release attack that
+// only ever considers the Shielder's own current target, never a broad sweep of every nearby player.
+[RequireComponent(typeof(PredictedRigidbody))]
+public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
+{
+    public enum ShieldPhase { FreeRotating, Windup, Releasing }
+
+    public struct State : IPredictedData<State>, IDuplicate<State>
+    {
+        // Live free-rotation facing angle (degrees) — only advances during FreeRotating, wrapped 0-360
+        // every change. CompressedFloat, not a plain float, since this changes virtually every tick while
+        // free-rotating — a plain float would pay PurrNet's full 33-bit "changed" cost every single tick
+        // instead of CompressedFloat's quantized/compressed one (same reasoning as CharacterStatsPD's own
+        // weaponOrbitAngle).
+        public CompressedFloat facingAngle;
+        // Captured once, the instant the attack triggers (conceptually identical to SpearGloomPD's own
+        // CaptureAttackAnchor/attackAnchorPosition) — position+facing read this instead of facingAngle
+        // throughout Windup/Releasing, so the attack can't be visually redirected mid-swing. Plain float,
+        // not CompressedFloat: changes once per attack, so it already gets the cheap "unchanged" case for
+        // free without needing the wrapped-int machinery.
+        public float lockedAngle;
+        public int phaseId;
+        public float phaseTimer;
+        // Ticks down unconditionally every tick, any phase — gates the FreeRotating->Windup transition.
+        // Not its own separate "Cooldown" phase, mirroring SpearGloomPD.spearAttackCooldownTimer's own
+        // always-ticking design.
+        public float attackCooldownTimer;
+        // The Shield's own independent copy of the per-player contact-damage cooldown list — same
+        // ContactCooldown struct EnemyBasePD already defines (a public top-level type, reused directly, not
+        // duplicated) for its own contact damage, just tracked separately here since this class isn't an
+        // EnemyBasePD subclass and can't inherit its copy.
+        public DisposableList<ContactCooldown> contactCooldowns;
+
+        public void Dispose() => contactCooldowns.Dispose();
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.contactCooldowns = contactCooldowns.Duplicate();
+            return copy;
+        }
+    }
+
+    [Header("Visuals")]
+    [SerializeField] private Transform _windupIndicator;
+    [SerializeField] private WindupFillPD _windupFill;
+    // Whichever renderers should flash to shieldReadyMaterial the instant this Shield is actually able to
+    // trigger Shieldburst again, reverting to their own original material otherwise (on cooldown or mid-
+    // attack) — e.g. ShooterGloomPD's own projectileMaterial-style pass-down, just toggled live here instead
+    // of applied once. Original materials cached once per-renderer in Awake() (sharedMaterial, not .material
+    // — this is a pooled object reused across many Shielder lives, and .material would silently instantiate
+    // a new copy every single toggle, matching EnemyProjectilePD.SetRenderersMaterial's own precedent).
+    [SerializeField] private Renderer[] readyMaterialRenderers;
+    // Separate from readyMaterialRenderers above — these grab shieldReadyMaterial once (Configure()-time)
+    // and never revert, for decorative pieces (e.g. the spike clusters) that should just permanently match
+    // the ready color rather than toggling with attack state. No original-material caching needed since
+    // there's nothing to revert to.
+    [SerializeField] private Renderer[] permanentReadyMaterialRenderers;
+
+    private Material[] _originalMaterials;
+    private Material _shieldReadyMaterial;
+    // Plain view-layer bookkeeping, not State — edge-detects the toggle so this only writes materials on an
+    // actual ready/not-ready transition, not every frame.
+    private bool _readyMaterialApplied;
+
+    private PredictedRigidbody _rigidbody;
+    private Collider _physicsCollider;
+    private Collider _contactDamageCollider;
+
+    // Plain, not State — this Shield is a 1:1, whole-life companion to exactly one ShielderGloomPD instance,
+    // same "spawned effect stores its owner as a plain reference, not a re-resolved PredictedObjectID"
+    // convention this codebase already uses for effects that never outlive or get reassigned away from their
+    // owner (see AreaEffectPD/PhantomBladeSummonHelper's own precedent).
+    private ShielderGloomPD _owner;
+
+    // Every tunable is pushed in once via Configure() — the Shielder owns all of these (see its own class
+    // doc comment), this class just holds the copy it was configured with.
+    private float _orbitRadius;
+    private float _rotationRateDegPerSecond;
+    private float _attackRange;
+    // Full width, not a half-width — see InAttackRectangle's own comment for the halving done at the
+    // actual check.
+    private float _attackWidth;
+    private float _windupDuration;
+    private float _releaseDuration;
+    private float _attackCooldown;
+    // Inherited from the Shielder's own EnemyBasePD.size — see Configure()'s own comment.
+    private float _size = 1f;
+    // Multipliers, not flat amounts — actual damage is _owner.damage * these, read LIVE at the moment each
+    // hit resolves (not cached here at Configure()-time), same reasoning ExeAxeThrowProjectilePD's own
+    // ProcessHit() already uses for AbilityPower: reflects whatever the Shielder's own damage stat currently
+    // is (including EnemySpawnerPD.ConfigureSpawn's own damageMultiplier scaling, which runs AFTER this
+    // Shield's own Configure() call, so caching a value here would miss it).
+    private float _shieldburstDamageMultiplier;
+    private float _shieldContactDamageMultiplier;
+    private float _contactCooldownSeconds;
+
+    // Cached at the top of Simulate() (before the physics pass runs), same reasoning as EnemyBasePD's own
+    // _currentDelta — OnShieldContactTrigger fires from the physics callback, which happens between
+    // Simulate() and LateSimulate() (confirmed tick order: Simulate() on every identity, then physics
+    // integrates, then LateSimulate() on every identity), so it needs a fresh delta already cached before
+    // that pass runs, not whatever LateSimulate() would only get around to setting afterward.
+    private float _currentDelta;
+
+    private void Awake()
+    {
+        _rigidbody = GetComponent<PredictedRigidbody>();
+        // Always kinematic, set once, never toggled — this object's own position is entirely scripted every
+        // tick (orbit math), never physics-driven, unlike e.g. SpearGloomPD's body which only goes kinematic
+        // during its own Windup/Stabbing. Still a real (kinematic) Rigidbody + collider so it physically
+        // pushes players like any other enemy's body does.
+        if (_rigidbody != null) _rigidbody.isKinematic = true;
+
+        // Same child-name convention EnemyBasePD.Awake() resolves PhysicsCollider/ContactDamageCollider by,
+        // for consistency, even though this class can't literally inherit that lookup code.
+        var physicsChild = transform.Find("PhysicsCollider");
+        if (physicsChild != null) _physicsCollider = physicsChild.GetComponent<Collider>();
+
+        var contactChild = transform.Find("ContactDamageCollider");
+        if (contactChild != null) _contactDamageCollider = contactChild.GetComponent<Collider>();
+
+        // Captured exactly once per real GameObject instance (Awake(), not LateAwake()/Configure(), neither
+        // of which are guaranteed to run before any pooled reuse might already have swapped these to
+        // shieldReadyMaterial) — same "cache the true prefab-authored value before anything can touch it"
+        // reasoning WeaponRangedProjectilePD's own _baseScale/EnemyBasePD's own _originalColors already use.
+        if (readyMaterialRenderers != null)
+        {
+            _originalMaterials = new Material[readyMaterialRenderers.Length];
+            for (int i = 0; i < readyMaterialRenderers.Length; i++)
+                if (readyMaterialRenderers[i] != null)
+                    _originalMaterials[i] = readyMaterialRenderers[i].sharedMaterial;
+        }
+    }
+
+    protected override void LateAwake()
+    {
+        // Same wiring EnemyBasePD.LateAwake() uses for its own ContactDamageCollider — generic
+        // PurrNet component, not EnemyBasePD-specific, so this class can attach to it directly.
+        if (_contactDamageCollider != null && _contactDamageCollider.TryGetComponent(out PredictedPhysicsCallbacks callbacks))
+        {
+            callbacks.onTriggerEnter += OnShieldContactTrigger;
+            callbacks.onTriggerStay += OnShieldContactTrigger;
+        }
+    }
+
+    // contactCooldowns must be a real, Create()'d DisposableList from the moment this identity first exists
+    // (a default DisposableList<T> has no valid backing list) — GetInitialState() only ever runs on true
+    // first creation, never on pooled reuse, so Configure()'s own contactCooldowns.Clear() below is what
+    // keeps a REUSED instance's stale entries from a previous life from leaking into a new one.
+    protected override State GetInitialState() => new()
+    {
+        contactCooldowns = DisposableList<ContactCooldown>.Create(4),
+    };
+
+    // Called once, synchronously, by ShielderGloomPD.LateAwake() immediately after hierarchy.Create()
+    // returns — same "mutate currentState right after Create()" pattern as RemoteSpikeBurstPD.Launch().
+    public void Configure(ShielderGloomPD owner, float orbitRadius, float rotationRateDegPerSecond,
+        float attackRange, float attackWidth, float windupDuration, float releaseDuration,
+        float attackCooldown, float shieldburstDamageMultiplier, float shieldContactDamageMultiplier,
+        float contactCooldownSeconds, Material shieldReadyMaterial)
+    {
+        _owner = owner;
+        _orbitRadius = orbitRadius;
+        _rotationRateDegPerSecond = rotationRateDegPerSecond;
+        _attackRange = attackRange;
+        _attackWidth = attackWidth;
+        _windupDuration = windupDuration;
+        _releaseDuration = releaseDuration;
+        _attackCooldown = attackCooldown;
+        _shieldburstDamageMultiplier = shieldburstDamageMultiplier;
+        _shieldContactDamageMultiplier = shieldContactDamageMultiplier;
+        _contactCooldownSeconds = contactCooldownSeconds;
+        _shieldReadyMaterial = shieldReadyMaterial;
+        ApplyPermanentReadyMaterial();
+
+        // Inherits the Shielder's own generic per-enemy size scalar (EnemyBasePD.size) directly — an Elite
+        // variant is just a bigger Shielder prefab (size tuned up in the Editor, same as any other enemy),
+        // and this is what makes the Shield visually/physically scale up right along with it, uniformly,
+        // same "transform.localScale = Vector3.one * size" convention CharacterStatsPD.AddSizePercent
+        // already uses. Cached (not re-read every tick) since it's a fixed per-prefab Inspector value, not
+        // something that changes mid-life — but still re-applied here on every Configure() call (not just
+        // once in Awake()) since a pooled Shield instance could in principle be reused by a
+        // differently-sized Shielder across lives.
+        _size = owner.size;
+        transform.localScale = Vector3.one * _size;
+        // Same 1:1 treatment as _attackRange/_attackWidth (see InAttackRectangle's own comment) — a bigger
+        // Shield model orbiting at an unchanged radius would clip closer into the body as it scales up, so
+        // baking size into the radius here avoids needing to hand-retune orbitRadius per Elite variant too.
+        _orbitRadius *= _size;
+
+        float initialAngle = 0f;
+        if (owner.Target != null)
+        {
+            Vector3 toTarget = owner.Target.position - owner.transform.position;
+            initialAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+        }
+        currentState.facingAngle = initialAngle;
+        currentState.lockedAngle = initialAngle;
+        currentState.phaseId = (int)ShieldPhase.FreeRotating;
+        currentState.phaseTimer = 0f;
+        // Randomized initial offset so multiple Shielders don't all attack in lockstep — same pattern
+        // SpearGloomPD.LateAwake() already uses for its own spearAttackCooldownTimer.
+        currentState.attackCooldownTimer = GameRandom.instance.NextFloat(0f, attackCooldown);
+        // Reset, not left alone — this instance may be a pooled reuse carrying a previous life's stale
+        // per-player cooldown entries (see GetInitialState()'s own comment).
+        currentState.contactCooldowns.Clear();
+
+        if (_windupFill != null) _windupFill.ResetFill();
+        if (_windupIndicator != null) _windupIndicator.gameObject.SetActive(false);
+
+        // Force back to original materials immediately — avoids a one-frame stale "ready" flash on a pooled
+        // Shield whose PREVIOUS life ended mid-ready (UpdateView's own edge-detect would self-correct next
+        // frame regardless, this just skips that visible frame).
+        ApplyReadyMaterial(false);
+
+        // Snap the transform immediately to the freshly-configured orbit position instead of waiting a tick
+        // for LateSimulate() to first run — avoids a one-frame pop/flash at the old (pre-reuse) position for
+        // a pooled Shield reactivating with a brand new owner.
+        WriteTransform(owner.transform.position, initialAngle);
+    }
+
+    private void WriteTransform(Vector3 origin, float angleDeg)
+    {
+        float rad = angleDeg * Mathf.Deg2Rad;
+        // Same parametric form as WeaponBasePD.OrbitalPosition() (x=cos, z=sin) — kept consistent so this
+        // angle convention never drifts from the rest of the codebase's own orbit math.
+        Vector3 dir = new(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+        transform.SetPositionAndRotation(origin + dir * _orbitRadius, Quaternion.LookRotation(dir));
+    }
+
+    protected override void Simulate(ref State state, float delta)
+    {
+        // See _currentDelta's own doc comment for why this is cached here (before the physics pass) rather
+        // than in LateSimulate(), even though all the actual gameplay logic below lives there.
+        _currentDelta = delta;
+    }
+
+    // All real per-tick logic runs here, not Simulate() — same convention WeaponMeleePD/WeaponRangedPD/
+    // RemoteSpikeBurstPD already use for exactly this reason: LateSimulate() runs only after EVERY
+    // identity's own Simulate() (plus the physics pass) has already completed for this tick, so reading
+    // _owner.transform.position here is always guaranteed fresh for this tick regardless of which identity
+    // was created/registered first.
+    protected override void LateSimulate(ref State state, float delta)
+    {
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+        if (_owner == null) return;
+
+        Vector3 origin = _owner.transform.position;
+
+        state.attackCooldownTimer -= delta;
+
+        // Same decrement/remove shape as EnemyBasePD.Simulate()'s own contactCooldowns loop.
+        for (int i = state.contactCooldowns.Count - 1; i >= 0; i--)
+        {
+            var entry = state.contactCooldowns[i];
+            entry.remaining--;
+            if (entry.remaining <= 0)
+                state.contactCooldowns.RemoveAt(i);
+            else
+                state.contactCooldowns[i] = entry;
+        }
+
+        var phase = (ShieldPhase)state.phaseId;
+        float effectiveAngle;
+
+        switch (phase)
+        {
+            case ShieldPhase.FreeRotating:
+            {
+                Transform target = _owner.Target;
+                if (target != null)
+                {
+                    Vector3 toTarget = target.position - origin;
+                    toTarget.y = 0f;
+                    if (toTarget != Vector3.zero)
+                    {
+                        float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * delta));
+                    }
+                }
+
+                if (state.attackCooldownTimer <= 0f && IsTargetValid(_owner.TargetStats))
+                {
+                    Vector3 forward = AngleToDir(state.facingAngle);
+                    if (InAttackRectangle(origin, forward, _owner.TargetStats.transform.position))
+                    {
+                        state.lockedAngle = state.facingAngle;
+                        state.phaseId = (int)ShieldPhase.Windup;
+                        state.phaseTimer = _windupDuration;
+                    }
+                }
+
+                effectiveAngle = state.facingAngle;
+                break;
+            }
+
+            case ShieldPhase.Windup:
+            {
+                state.phaseTimer -= delta;
+                if (state.phaseTimer <= 0f)
+                {
+                    // Re-validate — the target could have died/gone invisible since the trigger check.
+                    // The attack still visually completes either way, it just deals no damage if invalid.
+                    var targetStats = _owner.TargetStats;
+                    if (IsTargetValid(targetStats))
+                    {
+                        Vector3 forward = AngleToDir(state.lockedAngle);
+                        if (InAttackRectangle(origin, forward, targetStats.transform.position))
+                            targetStats.TakeDamage(_owner.damage * _shieldburstDamageMultiplier);
+                    }
+                    state.phaseId = (int)ShieldPhase.Releasing;
+                    state.phaseTimer = _releaseDuration;
+                }
+                effectiveAngle = state.lockedAngle;
+                break;
+            }
+
+            default: // Releasing
+            {
+                state.phaseTimer -= delta;
+                if (state.phaseTimer <= 0f)
+                {
+                    state.phaseId = (int)ShieldPhase.FreeRotating;
+                    state.attackCooldownTimer = _attackCooldown;
+                }
+                effectiveAngle = state.lockedAngle;
+                break;
+            }
+        }
+
+        WriteTransform(origin, effectiveAngle);
+    }
+
+    private static float WrapAngle(float angle) => ((angle % 360f) + 360f) % 360f;
+
+    private static Vector3 AngleToDir(float angleDeg)
+    {
+        float rad = angleDeg * Mathf.Deg2Rad;
+        return new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+    }
+
+    private static bool IsTargetValid(CharacterStatsPD stats) =>
+        stats != null && !stats.IsDead && (!stats.IsInvisible || stats.IsTaunting) && !stats.IsInvincible;
+
+    // Same forward-rectangle math SpearGloomPD.EnterStab() uses, scoped to exactly one candidate instead of
+    // sweeping CharacterStatsPD.All — the user was explicit that this should only ever consider the
+    // Shielder's own current target, never any nearby player.
+    private bool InAttackRectangle(Vector3 origin, Vector3 forward, Vector3 targetPosition)
+    {
+        // Both terms scaled 1:1 by _size (the Shielder's own inherited size, see Configure()'s own
+        // comment) — per explicit design, the real hitbox itself grows with an Elite Shielder, not just the
+        // model. This also makes the indicator's own inherited-via-parent-scale growth (see UpdateView(),
+        // no counter-scaling needed there) accurate again, since both now scale the same way.
+        Vector3 offset = targetPosition - origin;
+        offset.y = 0f;
+        float forwardDist = Vector3.Dot(offset, forward);
+        if (forwardDist < 0f || forwardDist > _attackRange * _size) return false;
+
+        // _attackWidth is a full width (see its own doc comment) — lateralDist is a one-sided distance from
+        // the centerline, so the actual check needs half of it, same as SpearGloomPD's own
+        // `stabWidth * 0.5f * size`.
+        float lateralDist = (offset - forward * forwardDist).magnitude;
+        return lateralDist <= _attackWidth * 0.5f * _size;
+    }
+
+    // Direct adaptation of EnemyBasePD.OnContactTrigger's body — a deliberately separate, always-on "anyone
+    // touching me" mechanism, fully independent of the single-target windup/release attack above. No
+    // isDead/isStunnable gating (none of that exists for this class).
+    private void OnShieldContactTrigger(GameObject other)
+    {
+        var stats = other.GetComponent<CharacterStatsPD>();
+        if (stats == null || !stats.owner.HasValue) return;
+
+        var player = stats.owner.Value;
+        var cooldowns = currentState.contactCooldowns;
+        int ticks = Mathf.Max(1, Mathf.RoundToInt(_contactCooldownSeconds / _currentDelta));
+
+        for (int i = 0; i < cooldowns.Count; i++)
+        {
+            if (!cooldowns[i].player.Equals(player)) continue;
+            if (cooldowns[i].remaining > 0) return;
+            cooldowns[i] = new ContactCooldown { player = player, remaining = ticks };
+            stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier);
+            return;
+        }
+
+        cooldowns.Add(new ContactCooldown { player = player, remaining = ticks });
+        stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier);
+    }
+
+    protected override void UpdateView(State viewState, State? verified)
+    {
+        var phase = (ShieldPhase)viewState.phaseId;
+        bool showIndicator = phase == ShieldPhase.Windup;
+
+        if (_windupIndicator != null)
+        {
+            // ApplyLineTransform only ever sizes LENGTH (Z) — width (X) is deliberately left untouched by
+            // that shared helper (SpearGloomPD's own identical call has the same gap, just never needed
+            // fixing there). Width applied here instead, directly on this indicator only, so the shared
+            // helper — and Spear's own usage of it — stays exactly as-is. _attackWidth is already a full
+            // width, same 0.1-world-units-per-scale-unit convention ApplyLineTransform's own
+            // `distance * 0.1f` uses for Z, assuming this indicator is the standard 10-unit-at-scale-1 plane
+            // mesh (matches every other line indicator in this codebase). No counter-scaling against this
+            // Shield's own size-driven root scale needed here (unlike an earlier version of this method) —
+            // the actual hit-check (InAttackRectangle) now scales attackRange/attackWidth by _size too, so
+            // the indicator inheriting the same root scale automatically via ordinary Unity parent-child
+            // inheritance is exactly correct, not a double-count.
+            IndicatorMath.ApplyLineTransform(_windupIndicator, _attackRange);
+            var scale = _windupIndicator.localScale;
+            scale.x = _attackWidth * 0.1f;
+            _windupIndicator.localScale = scale;
+
+            if (_windupIndicator.gameObject.activeSelf != showIndicator)
+                _windupIndicator.gameObject.SetActive(showIndicator);
+        }
+
+        if (_windupFill != null)
+        {
+            if (showIndicator)
+                _windupFill.SetProgress(1f - Mathf.Clamp01(viewState.phaseTimer / _windupDuration));
+            else
+                _windupFill.ResetFill();
+        }
+
+        // Instant/predicted (viewState, not verified) same as every other purely-cosmetic view sync in this
+        // codebase. Shows the ready color for ready-to-trigger, Windup, AND Releasing alike (per explicit
+        // design) — only reverts to original while genuinely on cooldown (FreeRotating with
+        // attackCooldownTimer still counting down). Framed as the on-cooldown check specifically (not an
+        // "isReady" check covering all three other cases) since attackCooldownTimer keeps ticking
+        // (increasingly negative) unchanged all through Windup/Releasing too and only resets to a positive
+        // value once Releasing ends — a naive "> 0f means not ready" read would have to explicitly exclude
+        // Windup/Releasing anyway, so checking the ONE case that should revert is simpler than checking the
+        // three that shouldn't.
+        bool onCooldown = phase == ShieldPhase.FreeRotating && viewState.attackCooldownTimer > 0f;
+        bool showReadyMaterial = !onCooldown;
+        if (showReadyMaterial != _readyMaterialApplied)
+            ApplyReadyMaterial(showReadyMaterial);
+    }
+
+    private void ApplyPermanentReadyMaterial()
+    {
+        if (permanentReadyMaterialRenderers == null || _shieldReadyMaterial == null) return;
+        foreach (var r in permanentReadyMaterialRenderers)
+            if (r != null) r.sharedMaterial = _shieldReadyMaterial;
+    }
+
+    private void ApplyReadyMaterial(bool ready)
+    {
+        _readyMaterialApplied = ready;
+        if (readyMaterialRenderers == null || _originalMaterials == null) return;
+
+        for (int i = 0; i < readyMaterialRenderers.Length; i++)
+        {
+            if (readyMaterialRenderers[i] == null) continue;
+            readyMaterialRenderers[i].sharedMaterial = ready && _shieldReadyMaterial != null
+                ? _shieldReadyMaterial
+                : _originalMaterials[i];
+        }
+    }
+}

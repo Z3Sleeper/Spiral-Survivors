@@ -29,7 +29,8 @@ public class OnAbilityStartRefillEnergyAugment : AugmentEffectPD<OnAbilityStartR
             if (ability.Slot == AbilitySlot.Ability1) ability1Value = value;
             else if (ability.Slot == AbilitySlot.Ability2) ability2Value = value;
         }
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}/{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
+        // "|" not "/" — see OnAbilityStartHealPercentHPAugment's identical LiveHealthRatio for why.
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
     }
 
     protected override void OnApply() => Stats.AddAbilityStartListener(OnAbilityStart);

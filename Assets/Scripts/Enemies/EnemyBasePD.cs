@@ -11,6 +11,15 @@ using UnityEngine;
 // be an EnemyBasePD spawned via SpawnCategory.Boss instead of needing a dedicated BossBasePD subclass.
 public enum EnemySpawnCategory { Normal, Elite, Pleb, Boss }
 
+// Claimed is the gap between "an owner has selected this enemy to grab" (IEnemyPD.ClaimForOrbit — frozen in
+// place, invulnerable/kinematic/movement-disabled all already applied, IsBeingHeld already true so a SECOND
+// owner's own grab-scan correctly excludes it) and "the actual pull motion has started" (IEnemyPD.OrbitTarget
+// — only called once the owner's own windup finishes). LateSimulate() does nothing during Claimed (the
+// freeze is entirely SetKinematic's job); Pulling/Orbiting share one continuous position formula there
+// (straight-line lerp toward the live slot while Pulling, angle advances at a fixed rate while Orbiting) —
+// see IEnemyPD.OrbitTarget's own doc comment for why THOSE two are one mechanism, not two separate ones.
+public enum EnemyOrbitPhase { None, Claimed, Pulling, Orbiting }
+
 // Shared attack-indicator sizing math — not enemy-specific (RemoteSpikeBurstPD, a standalone hazard, is
 // not an EnemyBasePD<TState> at all), so this lives as a static class rather than a protected method on
 // EnemyBasePD<TState>, same reasoning as WeaponDamageMath sitting outside WeaponBasePD<TState>. Project
@@ -87,6 +96,12 @@ public interface IEnemyPD
     // I started tracking" (e.g. DamageNumber following an enemy that dies) must compare a captured
     // SpawnGeneration snapshot against this live value, not just null/active-check the Transform.
     int SpawnGeneration { get; }
+    // This enemy's own current damage output — a method, not a property, matching the existing
+    // EnemyBasePD.GetDamage() virtual it wraps (some subclasses, e.g. KingSpikePD, situationally compute
+    // something other than the raw `damage` field — see that override's own doc comment). Exposed on the
+    // interface so a held enemy's own base-class override (see EnemyBasePD.GetDamage()'s own doc comment)
+    // can read a DIFFERENT enemy's live value through this same generic surface.
+    float GetDamage();
     void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
@@ -97,14 +112,133 @@ public interface IEnemyPD
     // see EnemyBasePD.Interrupt()'s own doc comment. Call this BEFORE a paired Stun()/AddKnockbackVelocity
     // on the same hit (e.g. AreaEffectCastHelper's own interrupt param), never after — see Interrupt()'s
     // own doc comment for why the ordering matters.
-    void Interrupt();
+    //
+    // Returns whether this call actually cancelled something (got past the isDead/CanBeInterrupted guard) —
+    // e.g. DashThroughInterruptAugment combines this with IsStunnable to tell a real interrupt (enemy was
+    // genuinely mid dash/windup/attack AND the call actually took effect) from a no-op (dead, or a phase
+    // explicitly excluded from CanBeInterrupted, like KingSpikePD's SpikeBurstWindup — that phase is both
+    // non-stunnable AND non-interruptible, so IsStunnable alone isn't enough to tell the two apart).
+    bool Interrupt();
+    // Hard on/off switch for this enemy's own normal approach/backpedal movement (HandleMovement) —
+    // deliberately generic/public so ANOTHER entity (at least another enemy; nothing restricts it to that)
+    // can freeze/unfreeze a DIFFERENT enemy's movement from the outside, e.g. one enemy anchoring/rooting
+    // another as part of its own attack. Does NOT touch isStunnable, the rigidbody's kinematic state, attack
+    // state machines, or anything else — an enemy with movement disabled still attacks/rotates/telegraphs
+    // completely normally, it just never walks. Purely a movement gate; pair it with Stun()/Interrupt()
+    // separately if a caller also wants those effects. See EnemyBasePD.HandleMovement's own doc comment for
+    // exactly what this gates.
+    void SetMovementDisabled(bool disabled);
     void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, DamageSource source, bool isPriority = false, bool overrideSfx = false, AudioClip sfxOverride = null);
+
+    // Whether this enemy currently takes 0 damage — gates TakeDamage only (this enemy taking a hit), never
+    // what this enemy itself deals to a player. Does NOT grant CC immunity — an invulnerable enemy is still
+    // fully stunnable/slowable/targetable, matching CharacterStatsPD.IsInvincible's own identical
+    // player-side contract. Also suppresses this enemy's own damage-number popups (see TriggerHitFeedback)
+    // so a 0-damage hit never shows a "0" — does not suppress the hit-flash or SFX, an explicit, narrower
+    // scope than a full "ignore this hit entirely" gate. Drives invulnerableShell (see UpdateView's own
+    // viewB.invulnerable-driven toggle), independent of hurtbox state either way.
+    //
+    // Deliberately ONE-WAY with SetHurtboxDisabled below, not a symmetric coupling: an untargetable enemy
+    // MUST also be invulnerable (SetHurtboxDisabled(true) forces this internally — see its own doc comment
+    // for why), but an invulnerable enemy is NOT necessarily untargetable — calling this alone leaves the
+    // hurtbox untouched, for the "takes no damage but is still interactable/stunnable/targetable" case.
+    bool IsInvulnerable { get; }
+    void SetInvulnerable(bool invulnerable);
+
+    // Whether this enemy is currently OUT of a CC-protected commitment window (dash/windup/attack) — the same
+    // intentional per-tick flag every enemy's own HandleActiveState already maintains to decide whether a Stun
+    // can freeze it right now (see each subclass's own isStunnable assignment). NOT sufficient on its own to
+    // mean "Interrupt() will actually do something" — some states (e.g. KingSpikePD.SpikeBurstWindup) are both
+    // non-stunnable AND explicitly excluded from CanBeInterrupted. See Interrupt()'s own doc comment for why
+    // callers combine this with Interrupt()'s own return value. Read-only passthrough of the existing
+    // isStunnable field.
+    bool IsStunnable { get; }
+
+    // Whether another entity currently controls this enemy's position (pulled/orbiting) — see OrbitTarget's
+    // own doc comment. Read-only; callers don't set this directly, it's derived from orbit state.
+    bool IsBeingHeld { get; }
+
+    // Hard on/off switch for this enemy's own rigidbody kinematic flag, forced ON by an outside caller (e.g.
+    // an enemy that's grabbed this one) independent of whatever this enemy's own attack state machine would
+    // otherwise set it to. Asymmetric on purpose: ON is a defensive per-tick re-assertion (never fights a
+    // legitimate internal reason to also be kinematic); OFF is an immediate, real revert (isKinematic doesn't
+    // spontaneously un-set itself, so the caller releasing this enemy MUST be the one to turn it back off) —
+    // see EnemyBasePD's own implementation for the exact mechanics. Doesn't touch SetMovementDisabled,
+    // SetInvulnerable, or anything else — pure kinematic gate, callers compose it with those separately.
+    void SetKinematic(bool kinematic);
+
+    // Hard on/off switch for this enemy's own physics (push) collider, forced OFF by an outside caller —
+    // e.g. a grabbed enemy that's now frozen/kinematic shouldn't still physically block/push players or
+    // other enemies. Same asymmetric shape as SetKinematic: ON (disabled=true) is a defensive per-tick
+    // re-assertion, OFF is an immediate direct revert. Doesn't touch the hurtbox or contact-damage collider —
+    // pure physics-push gate, callers compose it with SetKinematic/SetMovementDisabled/SetInvulnerable
+    // separately.
+    void SetPhysicsColliderDisabled(bool disabled);
+
+    // Hard on/off switch for this enemy's own hurtbox, forced OFF by an outside caller — makes it
+    // "untargetable" the same way LeaperGloomPD's own leap does (which now calls this instead of touching
+    // _hurtbox directly): weapon hit-detection queries CombatLayerMasks.EnemyHurtboxMask directly, so with
+    // this off nothing can register a hit here at all, not just a 0-damage one — otherwise homing/pierce/
+    // cleave/ricochet effects would still waste themselves on an enemy that can't be meaningfully damaged.
+    //
+    // ALSO calls SetInvulnerable(disabled) internally — untargetable implies takes-no-damage, always,
+    // enforced here so a caller can never disable the hurtbox while forgetting to also grant invulnerability
+    // (which would just look like an invisible wall taking real damage nobody can see land). This is
+    // deliberately ONE-WAY, not a symmetric coupling — SetInvulnerable itself never touches the hurtbox, so
+    // "invulnerable but still targetable/stunnable/interactable" remains a valid, distinct state reachable
+    // by calling SetInvulnerable alone. See that method's own doc comment for the full contrast.
+    //
+    // Same asymmetric ON/OFF shape as SetKinematic/SetPhysicsColliderDisabled: ON is a defensive per-tick
+    // re-assertion, OFF is an immediate direct revert. Doesn't touch kinematic/movement-disabled — callers
+    // compose those separately.
+    void SetHurtboxDisabled(bool disabled);
+
+    // Marks this enemy as claimed by `owner` the MOMENT it's selected to be grabbed — before any pull motion
+    // starts, before the owner's own windup even finishes. Sets orbitPhase to Claimed (so IsBeingHeld reads
+    // true immediately), letting IsBeingHeld actually protect against a second owner grabbing the same enemy
+    // mid-windup — the race this exists to close. Deliberately separate from OrbitTarget (which only starts
+    // the actual pull motion once the owner's windup ends) — this call does nothing to this enemy's position;
+    // the caller is expected to ALSO call SetKinematic(true)/SetMovementDisabled(true)/SetInvulnerable(true)
+    // in the same breath (same "small composable primitives" convention as everything else here) so the
+    // enemy is frozen in place the instant it's claimed, not just marked unavailable to other owners.
+    void ClaimForOrbit(PredictedObjectID owner);
+
+    // Starts this enemy pulling toward, then orbiting, `owner` — used by an enemy that's grabbed this one
+    // (e.g. Orbiter's pull attack). `targetAngleDeg` is the CALLER-assigned final orbit slot (e.g. Orbiter
+    // evenly-spacing its held plebs around itself) — this enemy does NOT compute its own angle from whatever
+    // bearing it happened to be grabbed at; the caller decides where every held enemy ends up and is
+    // expected to use the SAME angle here as it shows in its own windup indicator (see OrbiterGloomPD.UpdateView
+    // for that precedent). `ownerPosition` is read once, at the instant of the call, purely to seed
+    // `targetAngleDeg`'s current-tick target position for the very first pull-position lerp step; every tick
+    // afterward this enemy re-resolves `owner`'s LIVE position itself (see EnemyBasePD.LateSimulate()'s own
+    // doc comment for why that has to happen in ITS OWN LateSimulate(), not be pushed in by the owner). Pull
+    // phase: this enemy's OWN current world position (captured here, at the instant of the call) is straight-
+    // line-lerped toward `owner`'s live position + the `targetAngleDeg`/`radius` orbit slot, over
+    // `pullDuration` seconds — a Cartesian lerp, not a radius-only lerp, so it visibly moves toward wherever
+    // it's actually going to end up rather than snapping sideways onto the target angle first. Orbit phase
+    // (begins automatically once the pull lerp completes): radius fixed at `radius`, angle advances from
+    // `targetAngleDeg` at `angularSpeedDegPerSec`. Does NOT itself set movement-disabled/kinematic/
+    // invulnerable — the caller composes those separately (same "small composable primitives" convention as
+    // Stun/Interrupt).
+    void OrbitTarget(PredictedObjectID owner, Vector3 ownerPosition, float radius, float pullDuration, float angularSpeedDegPerSec, float targetAngleDeg);
+    // Ends pulling/orbiting immediately — does not itself touch kinematic/movement-disabled/invulnerable
+    // (the caller releasing this enemy is expected to also call SetKinematic(false)/SetMovementDisabled(false)/
+    // SetInvulnerable(false) as separate, explicit steps).
+    void StopOrbiting();
+
+    // Which spawn-cap bucket this enemy counts against (see EnemySpawnCategory's own doc comment) — exposed
+    // generically so code that doesn't know (or care about) this enemy's concrete TState can still filter by
+    // it, e.g. an attack that only ever targets Pleb-tier enemies regardless of which prefab/tier spawned them.
+    EnemySpawnCategory SpawnCategory { get; }
 
     // Lets a spawner mark a freshly hierarchy.Create()'d enemy with which category spawned it (deciding
     // which Active*Count bucket it counts against) and apply co-op/elite stat scaling, generically,
     // regardless of which concrete TState the enemy's subclass uses — same reason this interface exists
     // at all.
-    void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier);
+    // moveSpeedMultiplier added alongside the original 3 — same "generic co-op/elite/tier stat scaling"
+    // purpose, just covering the one stat ConfigureSpawn didn't touch before (EnemySpawnerPD.cs's own
+    // tier-scaling formulas need all 4).
+    void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier, float moveSpeedMultiplier);
 
     // Generic death-hold API — see EnemyBasePD.RequestDeathHold's own doc comment. Only safe to call from a
     // verified-state reaction (e.g. CharacterStatsPD.OnEnemyDeath), never from raw Simulate()-context code.
@@ -120,6 +254,12 @@ public interface IEnemyPD
     // EnemyBasePD<TState>'s own implementation for the actual reaction logic.
     void OnPlayerTauntChanged(CharacterStatsPD player, bool isTaunting);
     void OnPlayerInvisibleChanged(CharacterStatsPD player, bool isInvisible);
+
+    // Difficulty-pacing wipe (e.g. EnemySpawnerPD clearing the field right before a boss spawns) —
+    // deliberately NOT a real death: no XP orbs, no RaiseOnEnemyDeath (so no on-kill augment/effect ever
+    // reacts to this), no death-hold/kill-launch interaction, no red death-flash. See EnemyBasePD's own
+    // implementation for the full reasoning.
+    void SilentDespawn();
 }
 
 // Per-target contact damage cooldown — contact damage repeats over time (unlike a one-shot attack),
@@ -156,6 +296,38 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public float slowTimer;
     public float slowMultiplier;
     public bool atPreferredRange;
+    // Hard gate on HandleMovement — see IEnemyPD.SetMovementDisabled's own doc comment for the full
+    // reasoning (why this exists, who's expected to call it, and what it does/doesn't affect).
+    public bool movementDisabled;
+    // See IEnemyPD.IsInvulnerable's own doc comment.
+    public bool invulnerable;
+    // See IEnemyPD.SetKinematic's own doc comment — the ON side lives in State (re-asserted every tick in
+    // Simulate(), see that call site's own comment); the OFF side is an immediate direct write, never
+    // reflected here (SetKinematic(false) clears this too, but by the time it returns the rigidbody has
+    // already been un-kinematic'd directly, not waiting for next tick's re-assertion pass).
+    public bool externalKinematic;
+    // See IEnemyPD.SetPhysicsColliderDisabled's own doc comment — same asymmetric ON-in-State/OFF-immediate
+    // shape as externalKinematic, for the same reason.
+    public bool physicsColliderDisabled;
+    // See IEnemyPD.SetHurtboxDisabled's own doc comment — same asymmetric shape again, same reason.
+    public bool hurtboxDisabled;
+
+    // See IEnemyPD.OrbitTarget's own doc comment for the full pull->orbit mechanism this drives.
+    public int   orbitPhase; // EnemyOrbitPhase
+    public PredictedObjectID orbitOwnerId;
+    // Changes every tick while Orbiting — CompressedFloat for the same reason SpikeShieldPD.facingAngle/
+    // CharacterStatsPD.weaponOrbitAngle already use it (a plain float here would pay PurrNet's full
+    // "changed" cost every single tick instead of a quantized/compressed one).
+    public CompressedFloat orbitAngleDeg;
+    public float orbitRadiusTarget;
+    // This enemy's own world position, captured the instant OrbitTarget() is called — the Pulling phase
+    // straight-line-lerps FROM this TO the live target slot (owner position + orbitAngleDeg/orbitRadiusTarget);
+    // irrelevant once Orbiting.
+    public Vector3 orbitPullStartPosition;
+    public float orbitPullDuration;
+    public float orbitPullElapsed;
+    public float orbitAngularSpeedDegPerSec;
+
     public DisposableList<ContactCooldown> contactCooldowns;
     public bool isDashing;
     public Vector3 dashDirection;
@@ -175,6 +347,11 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // in scope as that call's own parameter.
     public bool killedByCrit;
     public bool initialized;
+    // Difficulty-pacing wipe — deliberately separate from isDead, never set alongside it. See
+    // IEnemyPD.SilentDespawn's own doc comment for the full reasoning (no XP, no death effects/holds, no
+    // red flash — just gone). Reset explicitly on every pooled reuse (Simulate()'s own !b.initialized
+    // block), same as isDead, since GetInitialState() alone only covers a genuinely fresh instance.
+    public bool wiped;
     // Live, ticking-down countdown — kept separate from EnemyBasePD.enrageTimer (the configured starting
     // duration, a plain never-mutated field) for the same reason WeaponRangedPD's fireTimer isn't just a
     // plain field: anything that changes every tick during Simulate() has to live in predicted State to
@@ -274,7 +451,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // enemy never reads this at all. A subclass that wants attack speed to matter reads EffectiveAttackSpeed
     // itself wherever it currently uses a flat attack-cooldown/windup duration (e.g. divide by it, same shape
     // as any other rate stat), and how exactly attackSpeed shapes that cadence is left entirely up to it.
-    public float attackSpeed = 1f;
+    // Hidden from the Inspector (still public + serialized, so every prefab's currently-tuned value is
+    // preserved) — same "doesn't read as a real per-prefab setting" reasoning isStunnable's own [HideInInspector]
+    // already uses just below: it's slow-interaction infrastructure (see EffectiveAttackSpeed's own doc
+    // comment), not something meant to be hand-tuned per enemy in the Inspector.
+    [HideInInspector] public float attackSpeed = 1f;
     public float backpedalSpeedDivisor = 3f;
     public float maxHealth = 30f;
     [NonSerialized] public float baseHealth;
@@ -351,6 +532,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // every tick from current attack state. Hidden so it doesn't read as a real Inspector setting
     // alongside stunResistant, which actually is one.
     [HideInInspector] public bool isStunnable = true;
+    // IEnemyPD passthrough — see the interface member's own doc comment.
+    public bool IsStunnable => isStunnable;
     public bool IsStunned => B.stunTimer > 0f;
     // True only for a real Stun() call, never AddKnockbackVelocity's own derived micro-stun (see
     // EnemyBaseState.trueStunTimer's own doc comment). A true stun always lands even mid-attack-sequence
@@ -375,7 +558,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // SpearGloomPD/ShooterGloomPD's own dashSpeedMultiplier, KingSpikePD's charge) deliberately reads
     // baseMoveSpeed directly instead, same as it already bypasses even KingSpikePD's own enrage moveSpeed
     // override — a slow affects normal movement, not those separately-tuned burst speeds.
-    public float EffectiveMoveSpeed => moveSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f);
+    // virtual so a subclass can layer its own situational multiplier on top (e.g. OrbiterGloomPD's own move-speed
+    // boost while holding orbited enemies) via base.EffectiveMoveSpeed * ..., without duplicating
+    // HandleMovement's own force/rotation code or mutating the plain moveSpeed field directly every phase
+    // transition. No existing enemy overrides this — purely additive.
+    public virtual float EffectiveMoveSpeed => moveSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f);
     // Same slow-multiply shape as EffectiveMoveSpeed — every slow now doubles as an attack-speed slow (per
     // the user's own call: one shared multiplier drives both), so a subclass just swaps its own flat
     // attackSpeed read for this one wherever it paces its attacks and gets the slow interaction for free.
@@ -414,7 +601,41 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ActiveBossCount = 0;
     }
 
-    public virtual float GetDamage() => damage;
+    // NOT virtual — this is the single, uniform gate every subclass's own damage computation passes through
+    // before ever reaching a caller. While held (any non-None orbitPhase — see IEnemyPD.OrbitTarget's own
+    // doc comment), reads the OWNER's live GetDamage() instead of this enemy's own damage — "using a grabbed
+    // enemy like a weapon" (Orbiter's own pull attack) means it should hit as hard as its wielder currently
+    // does, not whatever IT was tuned to. Read live every call, never cached/snapshotted — damage isn't
+    // State-backed (a plain component field, like moveSpeed/maxHealth/xpValue), so there's no separate
+    // "restore the original on release" bookkeeping needed at all: this enemy's own `damage` field (or
+    // GetOwnDamage()'s own computed result) is never actually touched, only what GetDamage() ultimately
+    // RETURNS changes, and that automatically reverts the instant orbitPhase goes back to None (StopOrbiting,
+    // on release or the owner's own death) with nothing left to reset or leak across pooled reuse. Falls
+    // back to GetOwnDamage() if the owner no longer resolves (deleted/dead) — defensive only, the owner's
+    // own release path is expected to call StopOrbiting on every enemy it's holding before that could ever
+    // actually happen.
+    //
+    // Subclasses override GetOwnDamage() below for their own situational logic (e.g. KingSpikePD's own
+    // Charging multiplier), NOT this method — that's what guarantees ANY current or future subclass's own
+    // damage override automatically composes correctly with being held, without that subclass needing to
+    // remember to re-add its own held-check (which is exactly the gap a plain `virtual GetDamage()` would
+    // have left open to a future override silently bypassing this entirely, same as KingSpikePD's own
+    // pre-existing override already did before this split).
+    public float GetDamage()
+    {
+        if (B.orbitPhase != (int)EnemyOrbitPhase.None)
+        {
+            var ownerGo = hierarchy.GetGameObject(B.orbitOwnerId);
+            if (ownerGo != null && ownerGo.TryGetComponent(out IEnemyPD owner) && !owner._isDead)
+                return owner.GetDamage();
+        }
+        return GetOwnDamage();
+    }
+
+    // Override point for subclass-specific damage computation (e.g. KingSpikePD's own Charging multiplier)
+    // — see GetDamage()'s own doc comment for why this exists as a separate method instead of just
+    // overriding GetDamage() directly.
+    protected virtual float GetOwnDamage() => damage;
     public virtual bool CanContactDamage => true;
 
     // Cached at the very top of Simulate() every tick (before the paused early-return, since
@@ -425,9 +646,30 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Simulate() -> DoPhysicsPass() -> LateSimulate() for a given tick regardless of exactly when read.
     private float _currentDelta;
 
+    // Captured EXACTLY once, in Awake() — see that method's own comment for why this exists and the bug it
+    // fixes (ConfigureSpawn's multipliers compounding across pooled reuse). baseHealth/baseDamage/
+    // baseMoveSpeed/baseXpValue are NOT a safe substitute for this despite the similar name: those get
+    // multiplied by ConfigureSpawn too, so they're just as contaminated by a previous pooled life as
+    // maxHealth/damage/moveSpeed/xpValue themselves are.
+    private float _authoredMaxHealth;
+    private float _authoredDamage;
+    private float _authoredMoveSpeed;
+    private float _authoredXpValue;
+
     [SerializeField] private Renderer[] _renderers;
+    // Optional per-prefab visual shown while IsInvulnerable — same shape/precedent as CharacterStatsPD's own
+    // _invincibilityShell. Left unassigned on prefabs that don't need one (nothing breaks — see UpdateView's
+    // own null-guarded toggle).
+    [SerializeField] private GameObject invulnerableShell;
     private Color[] _originalColors;
     private bool  _wasDeadLastFrame;
+    // Same edge-detect role as _wasDeadLastFrame, for SilentDespawn's own ActiveCount/category decrement —
+    // kept fully separate since isDead/wiped are mutually exclusive outcomes for a given life, never both.
+    private bool  _wasWipedLastFrame;
+    // Same two-way predicted (viewState, not verified) hide edge-detect as _hiddenOnDeath, for
+    // SilentDespawn — always hidden the instant wiped goes true, no deathHoldCount gating (a wipe has no
+    // hold concept at all).
+    private bool  _hiddenOnWipe;
     // Plain view-layer bookkeeping, not predicted state — edge-detects the instant predicted hide/unhide
     // below (a two-way sync against viewState.isDead, not a one-way latch — see UpdateView's own comment
     // for why this has to be reversible), same pattern as PhantomBladePD/WeaponRangedProjectilePD's
@@ -525,10 +767,14 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             _contactDamageCollider.enabled = contactColliderEnabled;
         }
 
-        baseHealth = maxHealth;
-        baseDamage = damage;
-        baseMoveSpeed = moveSpeed;
-        baseXpValue = xpValue;
+        // Guaranteed pristine — Awake() runs exactly once per real GameObject, before hierarchy.Create() has
+        // ever returned to a spawner, so nothing has called ConfigureSpawn yet. See these 4 fields' own doc
+        // comment for why LateAwake() (which DOES re-fire on every pooled reuse) resets maxHealth/damage/
+        // moveSpeed/xpValue back to these every life, instead of just trusting whatever they currently hold.
+        _authoredMaxHealth = maxHealth;
+        _authoredDamage    = damage;
+        _authoredMoveSpeed = moveSpeed;
+        _authoredXpValue   = xpValue;
         isStunnable = !stunResistant;
 
         CacheRenderers();
@@ -561,6 +807,24 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     protected override void LateAwake()
     {
+        // Reset to the true prefab-authored baseline BEFORE anything below reads maxHealth/damage/
+        // moveSpeed/xpValue, and BEFORE the spawner's own ConfigureSpawn() call (which always runs after
+        // LateAwake(), once hierarchy.Create() returns) gets a chance to multiply them again — LateAwake()
+        // re-fires on every pooled reuse (unlike Awake(), which only captured _authoredMaxHealth/etc. once),
+        // so without this, a pooled slot's stats compounded further every time it got reused (e.g. a Tier 2
+        // enemy reading 750, then 3750, health across successive lives instead of a stable 150 — see
+        // _authoredMaxHealth's own doc comment for the full bug). baseHealth/baseDamage/baseMoveSpeed/
+        // baseXpValue reset here too, for the same reason — they're just as multiplied/contaminated by a
+        // previous life's ConfigureSpawn call as the main 4 fields are.
+        maxHealth     = _authoredMaxHealth;
+        damage        = _authoredDamage;
+        moveSpeed     = _authoredMoveSpeed;
+        xpValue       = _authoredXpValue;
+        baseHealth    = _authoredMaxHealth;
+        baseDamage    = _authoredDamage;
+        baseMoveSpeed = _authoredMoveSpeed;
+        baseXpValue   = _authoredXpValue;
+
         ActiveCount++;
         AdjustCategoryCount(spawnCategory, +1);
         _verifiedHealth = maxHealth;
@@ -669,11 +933,27 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             _target = null;
             _targetStats = null;
             _wasDeadLastFrame = false;
+            b.wiped = false;
+            _wasWipedLastFrame = false;
+            _hiddenOnWipe = false;
             _hiddenOnDeath    = false;
             _physicsDisabledOnDeath = false;
             _deathStopped     = false;
             _verifiedHealth   = maxHealth;
             gameObject.layer  = _originalLayer;
+
+            // Same "previous life died mid-something and never got a chance to clean up after itself"
+            // reasoning as killLaunchActive's own reset below — a pooled slot reused before an owning
+            // Orbiter (or any future caller) ever released it would otherwise silently hand a brand new
+            // spawn a stuck movementDisabled/invulnerable/externalKinematic/physicsColliderDisabled/
+            // orbitPhase from its PREVIOUS life, with nothing left around to ever call the matching
+            // SetX(false)/StopOrbiting() again to clear it.
+            b.movementDisabled        = false;
+            b.invulnerable             = false;
+            b.externalKinematic        = false;
+            b.physicsColliderDisabled  = false;
+            b.hurtboxDisabled          = false;
+            b.orbitPhase               = (int)EnemyOrbitPhase.None;
 
             // Defensive — in case a previous life died mid-kill-launch (still kinematic, physics collider
             // still disabled) and got pooled before that ever got a chance to clean itself up.
@@ -813,11 +1093,104 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         if (!b.isDashing)
             HandleActiveState(ref state, delta, wasDashing);
+
+        // See IEnemyPD.SetKinematic's own doc comment for why this is a defensive re-assertion here rather
+        // than an immediate write inside SetKinematic(true) itself — applied AFTER HandleActiveState so it
+        // wins if this same tick's subclass logic tried to set isKinematic to something else, never forces
+        // false (that's SetKinematic(false)'s own job, an immediate direct write, not this).
+        if (b.externalKinematic && _rigidbody != null && !_rigidbody.isKinematic)
+        {
+            // Zeroed on the entering edge only, same convention every other kinematic-toggle site in this
+            // codebase already uses (e.g. Interrupt()'s own revert, every subclass's own Windup/Stabbing
+            // kinematic block) — a kinematic Rigidbody's velocity setters throw if attempted AFTER this
+            // flips true, and leftover velocity would otherwise still be sitting there (silently reapplied)
+            // the instant something un-kinematics it later.
+            _rigidbody.velocity = Vector3.zero;
+            _rigidbody.angularVelocity = Vector3.zero;
+            _rigidbody.isKinematic = true;
+        }
+
+        if (b.physicsColliderDisabled && _physicsCollider != null && _physicsCollider.enabled)
+            _physicsCollider.enabled = false;
+
+        if (b.hurtboxDisabled && _hurtbox != null && _hurtbox.enabled)
+            _hurtbox.enabled = false;
     }
 
     protected virtual void HandleActiveState(ref TState state, float delta, bool dashJustEnded = false)
     {
         if (_target != null) HandleMovement(ref state, delta);
+    }
+
+    private static float WrapOrbitAngle(float angle) => ((angle % 360f) + 360f) % 360f;
+
+    // Drives a currently-held enemy's own pull->orbit position (see IEnemyPD.OrbitTarget's own doc comment
+    // for the full mechanism and why this lives here rather than being pushed in by the owner). Runs from
+    // THIS identity's own LateSimulate() specifically — by the time any identity's LateSimulate() runs for a
+    // given tick, every identity's Simulate() (including whichever owner just called OrbitTarget() on this
+    // enemy, or moved itself) has already landed for that same tick, per the tick-order guarantee _currentDelta's
+    // own doc comment already establishes. Reading the owner's transform.position from here is therefore
+    // always fresh, with no ordering race — the same reasoning SpikeShieldPD's own orbit-around-owner design
+    // already relies on, just generalized onto the base class since any enemy can now be the one orbiting.
+    protected override void LateSimulate(ref TState state, float delta)
+    {
+        ref var b = ref GetBase(ref state);
+        if (b.isDead) return;
+        // None: not held at all. Claimed: held, but SetKinematic(true) is what's actually freezing this
+        // enemy in place — there's no position math to run yet, OrbitTarget() hasn't been called (see
+        // IEnemyPD.ClaimForOrbit's own doc comment for why these are deliberately separate calls).
+        if (b.orbitPhase == (int)EnemyOrbitPhase.None || b.orbitPhase == (int)EnemyOrbitPhase.Claimed) return;
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        var ownerGo = hierarchy.GetGameObject(b.orbitOwnerId);
+        if (ownerGo == null || !ownerGo.TryGetComponent(out IEnemyPD owner) || owner._isDead)
+        {
+            // Defensive only — the owner's own Die()/OnInterrupted() (or equivalent) are expected to
+            // proactively StopOrbiting() every enemy it's holding the instant it goes away. This just guards
+            // against some future teardown path that skips that call, so a held enemy never gets stuck
+            // orbiting a GameObject that no longer resolves.
+            b.orbitPhase = (int)EnemyOrbitPhase.None;
+            return;
+        }
+
+        Vector3 ownerPos = owner.transform.position;
+
+        // Slot position is always computed the same way regardless of phase — the caller-assigned angle
+        // (fixed during Pulling, advancing during Orbiting) at orbitRadiusTarget from the owner's current
+        // position. Pulling only differs in that the enemy hasn't arrived there yet (see the Lerp below).
+        if (b.orbitPhase == (int)EnemyOrbitPhase.Orbiting)
+            b.orbitAngleDeg = WrapOrbitAngle(b.orbitAngleDeg + b.orbitAngularSpeedDegPerSec * delta);
+
+        float rad = b.orbitAngleDeg * Mathf.Deg2Rad;
+        Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+        Vector3 slotPos = ownerPos + dir * b.orbitRadiusTarget;
+
+        Vector3 pos;
+        if (b.orbitPhase == (int)EnemyOrbitPhase.Pulling)
+        {
+            b.orbitPullElapsed += delta;
+            float t = Mathf.Clamp01(b.orbitPullElapsed / b.orbitPullDuration);
+            // Straight-line (Cartesian) lerp from wherever this enemy actually started to the live slot
+            // position — NOT a radius-at-fixed-angle lerp — so it visibly travels toward where it's really
+            // going instead of snapping sideways onto the target angle the instant the pull begins. See
+            // IEnemyPD.OrbitTarget's own doc comment.
+            pos = Vector3.Lerp(b.orbitPullStartPosition, slotPos, t);
+            if (t >= 1f) b.orbitPhase = (int)EnemyOrbitPhase.Orbiting;
+        }
+        else
+        {
+            pos = slotPos;
+        }
+        pos.y = transform.position.y;
+
+        if (_rigidbody != null)
+        {
+            Vector3 facing = pos - ownerPos;
+            facing.y = 0f;
+            if (facing.sqrMagnitude < 0.0001f) facing = -dir;
+            _rigidbody.MovePosition(pos);
+            _rigidbody.MoveRotation(Quaternion.LookRotation(-facing.normalized)); // faces inward, toward the owner
+        }
     }
 
     protected override void UpdateView(TState viewState, TState? verified)
@@ -850,6 +1223,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // alive — the "invisible enemy" bug. Edge-detected both ways now so a correction actually restores
         // visibility instead of leaving a ghost.
         ref var viewB = ref GetBase(ref viewState);
+
+        // Unconditional, no edge-detect — SetActive on an already-matching value is a cheap no-op, same
+        // precedent as CharacterStatsPD._invincibilityShell's own identical toggle.
+        if (invulnerableShell != null) invulnerableShell.SetActive(viewB.invulnerable);
 
         // PhysicsCollider + layer are gated on isDead ALONE (not deathHoldCount) — a dead body's physical
         // presence (can't be re-hit, doesn't collide) should end immediately regardless of whether the
@@ -894,6 +1271,19 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             // (some enemies never deal contact damage at all), so restoring on an un-hide has to respect it
             // rather than forcing this back on unconditionally.
             if (_contactDamageCollider != null) _contactDamageCollider.enabled = shouldHide ? false : contactColliderEnabled;
+        }
+
+        // Same instant/predicted hide as the isDead block above, for SilentDespawn — no deathHoldCount
+        // gating at all (a wipe has no hold concept), and deliberately no red-paint/flash to go with it
+        // (see SilentDespawn's own doc comment — this should read as a clean vanish, not a death).
+        if (viewB.wiped != _hiddenOnWipe)
+        {
+            _hiddenOnWipe = viewB.wiped;
+            if (_renderers != null)
+                foreach (var r in _renderers)
+                    if (r != null) r.enabled = !viewB.wiped;
+            if (_hurtbox != null) _hurtbox.enabled = !viewB.wiped;
+            if (_contactDamageCollider != null) _contactDamageCollider.enabled = viewB.wiped ? false : contactColliderEnabled;
         }
 
         // Stay red for as long as this enemy is dead — not just kill-launch specifically, and not just a
@@ -1007,6 +1397,18 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             if (vb.isDead && vb.deathHoldCount <= 0)
                 hierarchy.Delete(this);
 
+            // Mirrors the isDead block above exactly, minus every consequence — see SilentDespawn's own
+            // doc comment. No death-hold concept at all, so deletion isn't gated on anything beyond wiped
+            // itself once verified.
+            if (vb.wiped && !_wasWipedLastFrame)
+            {
+                ActiveCount--;
+                AdjustCategoryCount(spawnCategory, -1);
+            }
+            if (vb.wiped)
+                hierarchy.Delete(this);
+            _wasWipedLastFrame = vb.wiped;
+
             _wasDeadLastFrame = vb.isDead;
             _verifiedHealth   = vb.health;
             _verifiedEnrageCountdown = vb.enrageCountdown;
@@ -1074,6 +1476,62 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
     }
 
+    // Scratch buffer for FindRandomTarget below — cleared and reused every call, never left holding
+    // references between calls, same zero-alloc convention as ShooterGloomPD's own _multishotAngles. Static
+    // (not per-instance) is safe since each call runs synchronously start-to-finish within one enemy's own
+    // Simulate()-phase call, never reentrantly. One buffer per closed generic TState (a C# generic-statics
+    // quirk — each concrete enemy type gets its own copy of any static field declared on this generic base),
+    // not a single buffer shared across every enemy type — harmless, just a handful of small lists instead
+    // of exactly one.
+    private static readonly List<CharacterStatsPD> _randomTargetScratch = new();
+
+    // Alternative to FindClosestTarget() above for enemies that should pick randomly instead of by
+    // proximity — bosses, per design (a boss shouldn't feel "leashed" to whoever's nearest the way a normal
+    // enemy does), but available to any future non-boss enemy that wants the same random-pressure feel too.
+    // No range restriction, matching FindClosestTarget's own unrestricted scan. Still respects invisibility
+    // (excluded unless taunting, same rule as FindClosestTarget) and taunting (a taunting player is always
+    // eligible, overriding BOTH invisibility AND the "not the last target" exclusion below — matches
+    // FindClosestTarget's own "taunt trumps everything" convention). Deliberately does NOT keep
+    // FindClosestTarget's own "closest" tie-break for multiple simultaneous taunters either — picks randomly
+    // among them too, for consistency with this method's whole "random, not closest" philosophy. This is a
+    // separate method, not an override of FindClosestTarget — callers explicitly opt into it (e.g.
+    // KingSpikePD.FireSpikeBurst) wherever they'd otherwise call FindClosestTarget; both remain available
+    // side by side, and calling this doesn't change what FindClosestTarget itself does for anyone else.
+    protected void FindRandomTarget()
+    {
+        if (!CharacterStatsPD.AnyValidTargetExists) return;
+
+        _randomTargetScratch.Clear();
+        foreach (var p in CharacterStatsPD.All.Values)
+            if (!p.IsDead && p.IsTaunting) _randomTargetScratch.Add(p);
+
+        if (_randomTargetScratch.Count == 0)
+        {
+            // Nobody taunting to override anything — exclude whoever we were just targeting (the actual
+            // "not the last target" request), still respecting invisibility since nothing here overrides it.
+            foreach (var p in CharacterStatsPD.All.Values)
+                if (!p.IsDead && !p.IsInvisible && p != _targetStats) _randomTargetScratch.Add(p);
+        }
+
+        if (_randomTargetScratch.Count == 0)
+        {
+            // Excluding the last target left nobody — if THEY'RE still valid, they're the only option left,
+            // so re-pick them rather than going targetless. Matches FindClosestTarget's own "leave untouched
+            // if nothing found" fallback for the case even this comes up empty.
+            if (_targetStats != null && !_targetStats.IsDead && !_targetStats.IsInvisible)
+                _randomTargetScratch.Add(_targetStats);
+        }
+
+        if (_randomTargetScratch.Count == 0) return;
+
+        var chosen = _randomTargetScratch[GameRandom.instance.Next(_randomTargetScratch.Count)];
+        _target = chosen.transform;
+        _targetStats = chosen;
+
+        // TODO: signal to `chosen` that this enemy is now targeting them, once the planned player-side
+        // "boss is targeting you" indicator exists.
+    }
+
     // Called by EnemySpawnerPD (the enemy-targeting hub) the instant any player's taunt state changes —
     // immediate reaction, not polled. Taunt starting overrides everything (even that player's own
     // invisibility) — every enemy snaps straight onto them. Taunt ending only matters if that player is
@@ -1121,6 +1579,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (_target == null) return;
 
         ref var b = ref GetBase(ref state);
+        // See IEnemyPD.SetMovementDisabled's own doc comment — a hard gate on the normal approach/backpedal
+        // movement this method drives (both the facing-rotation and the AddForce calls below), set by
+        // another entity (typically a different enemy) rather than this enemy's own state machine. Attack
+        // sequences already go kinematic/collider-disabled through their own separate mechanisms during a
+        // windup/dash/etc., so this is specifically for "keep this enemy otherwise fully alive and attacking
+        // normally, just don't let it walk" — a different, narrower effect than Stun()/Interrupt().
+        if (b.movementDisabled) return;
         Vector3 toTarget = _target.position - transform.position;
         toTarget.y = 0;
         Vector3 dir = toTarget.normalized;
@@ -1381,6 +1846,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ref var b = ref B;
         if (b.isDead) return;
         if (b.health <= 0) return;
+        // See IEnemyPD.IsInvulnerable's own doc comment — mirrors CharacterStatsPD.TakeDamage's own
+        // identical invincible guard placement, before any mutation.
+        if (b.invulnerable) return;
 
         b.killerOwner = attackerOwner;
         b.health      -= damage;
@@ -1445,7 +1913,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // this method processes that same hit's feedback), so a separate normal flash here would just be
         // redundant color-painting fighting the same value.
         if (!_hiddenOnDeath && !B.isDead && gameObject.activeInHierarchy) TriggerFlash();
-        if (showDamageNumbers) ShowDamageNumber(damage, attacker.owner ?? default, source, isCrit, isHighroll, isPriority);
+        // !B.invulnerable — a 0-damage hit against an invulnerable enemy never shows a "0" popup. Scoped
+        // tightly to just the number (per explicit design) — TriggerFlash()/SFX above/below are untouched.
+        if (showDamageNumbers && !B.invulnerable) ShowDamageNumber(damage, attacker.owner ?? default, source, isCrit, isHighroll, isPriority);
         if (attacker.isOwner && SFXManager.instance != null)
         {
             AudioClip clip = overrideSfx ? sfxOverride : attacker.hitSfx;
@@ -1493,6 +1963,22 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         if (XPOrbManagerPD.instance != null)
             XPOrbManagerPD.instance.SpawnOrbs(hierarchy, transform.position, xpValue);
+    }
+
+    // Difficulty-pacing wipe (EnemySpawnerPD, right before a boss spawns) — deliberately NOT a real death:
+    // no XP orbs, no RaiseOnEnemyDeath (so no on-kill augment/effect ever reacts to this — see Die()'s own
+    // XP/RaiseOnEnemyDeath handling for contrast), no death-hold reservation, no kill-launch interaction, no
+    // red death-flash. Just a predicted-instant hide (see UpdateView's own wiped block) followed by a
+    // verified-gated hierarchy.Delete() once confirmed — same deletion-safety convention as every other
+    // spawned/despawned object in this codebase (never delete off raw predicted state), just with its own
+    // separate edge-detection from isDead's, since the two are mutually exclusive outcomes for one life.
+    // Guarded against an enemy already dying/dead/wiped — a wipe landing on the same tick as a real death
+    // (e.g. a player's own hit lands the same instant the spawner wipes) should never double up; the real
+    // death already in progress simply wins.
+    public void SilentDespawn()
+    {
+        if (B.isDead || B.wiped) return;
+        B.wiped = true;
     }
 
     // ── Death hold ─────────────────────────────────────────────────────────
@@ -1667,13 +2153,18 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // comment. isStunnable flips back to true here for the same reason: a paired Stun()/Slow() call right
     // after this one must not itself get blocked by this enemy still reading as attack-protected.
     //
-    // Windup indicators and attack animations are NOT explicitly touched here — every subclass's own
-    // UpdateView already declaratively re-derives both from its own stateId every view tick (see e.g.
-    // SpearGloomPD.UpdateView's switch), so resetting that state machine via OnInterrupted() below is
-    // already the whole story; no separate indicator/animator-specific code needed.
-    public void Interrupt()
+    // Attack animations are NOT explicitly touched here — every subclass's own UpdateView already
+    // declaratively re-derives them from its own stateId every view tick (see e.g. SpearGloomPD.UpdateView's
+    // switch), so resetting that state machine via OnInterrupted() below already handles them for free.
+    // Windup INDICATORS are the one exception each subclass's own OnInterrupted() override now handles
+    // explicitly (predicted-instant SetActive(false)/ResetFill(), not left for UpdateView to catch up on its
+    // own) — Interrupt() mutates currentState out-of-band, from a different identity's own Simulate() call
+    // rather than this enemy's own HandleActiveState flow, which was leaving the indicator visibly stuck for
+    // a stray tick before UpdateView's viewState caught up. See any of Spear/Dagger/Leaper/Blitz/
+    // KingSpikePD's own OnInterrupted() for the pattern.
+    public bool Interrupt()
     {
-        if (_isDead || !CanBeInterrupted) return;
+        if (_isDead || !CanBeInterrupted) return false;
 
         B.isDashing = false;
 
@@ -1689,7 +2180,92 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         isStunnable = !stunResistant;
 
         OnInterrupted();
+        return true;
     }
+
+    // See IEnemyPD.SetMovementDisabled's own doc comment. No _isDead guard — harmless either way (a dead
+    // enemy's HandleMovement never runs regardless), and a caller may legitimately want to pre-arm/clear
+    // this before this specific enemy has even spawned into whatever chain called it, so refusing the write
+    // here would just be an arbitrary restriction.
+    public void SetMovementDisabled(bool disabled) => B.movementDisabled = disabled;
+
+    public bool IsInvulnerable => B.invulnerable;
+    public void SetInvulnerable(bool invulnerable) => B.invulnerable = invulnerable;
+
+    public bool IsBeingHeld => B.orbitPhase != (int)EnemyOrbitPhase.None;
+
+    // See IEnemyPD.ClaimForOrbit's own doc comment. Sets orbitOwnerId early so LateSimulate()'s own defensive
+    // owner-resolve (if this somehow starts running before OrbitTarget() ever gets called — e.g. the owner
+    // dying during the claimed-but-not-yet-pulling window) already has a valid reference to release against.
+    public void ClaimForOrbit(PredictedObjectID owner)
+    {
+        B.orbitOwnerId = owner;
+        B.orbitPhase   = (int)EnemyOrbitPhase.Claimed;
+    }
+
+    // See IEnemyPD.SetKinematic's own doc comment for why ON/OFF are asymmetric. ON just arms the flag —
+    // actually applying it is Simulate()'s own job (see that call site's comment), a defensive per-tick
+    // re-assertion rather than an immediate write here, so it never races whatever this same tick's
+    // HandleActiveState is doing with the rigidbody. OFF can't wait for next tick's Simulate() pass the same
+    // way — nothing else will ever un-kinematic a rigidbody left kinematic by this, so it has to be a real,
+    // immediate revert right here, mirroring Interrupt()'s own explicit revert above.
+    public void SetKinematic(bool kinematic)
+    {
+        B.externalKinematic = kinematic;
+        if (!kinematic && _rigidbody != null)
+        {
+            _rigidbody.isKinematic = false;
+            _rigidbody.velocity = Vector3.zero;
+            _rigidbody.angularVelocity = Vector3.zero;
+        }
+    }
+
+    // See IEnemyPD.SetPhysicsColliderDisabled's own doc comment for why ON/OFF are asymmetric — same
+    // reasoning as SetKinematic, just for the push collider instead of the rigidbody's kinematic flag.
+    public void SetPhysicsColliderDisabled(bool disabled)
+    {
+        B.physicsColliderDisabled = disabled;
+        if (!disabled && _physicsCollider != null) _physicsCollider.enabled = true;
+    }
+
+    public void SetHurtboxDisabled(bool disabled)
+    {
+        // One-way coupling — see this method's own IEnemyPD doc comment for why. SetInvulnerable is safe to
+        // call unconditionally here even on the OFF path (disabled=false): a caller that independently
+        // wants THIS enemy to stay invulnerable while merely re-enabling its hurtbox needs to call
+        // SetInvulnerable(true) again itself, same as any other composed-primitives case elsewhere in this
+        // codebase — this method has no way to know "should invulnerable survive past this hurtbox
+        // re-enable" on its own, so it doesn't try to guess.
+        SetInvulnerable(disabled);
+        B.hurtboxDisabled = disabled;
+        if (!disabled && _hurtbox != null) _hurtbox.enabled = true;
+    }
+
+    // See IEnemyPD.OrbitTarget's own doc comment for the full mechanism. ownerPosition is unused beyond this
+    // call (LateSimulate() re-resolves owner's LIVE position every tick from here on) — kept as a parameter
+    // for symmetry/because callers already have it on hand, not because this method needs it for anything
+    // beyond the caller's own convenience.
+    public void OrbitTarget(PredictedObjectID owner, Vector3 ownerPosition, float radius, float pullDuration, float angularSpeedDegPerSec, float targetAngleDeg)
+    {
+        ref var b = ref B;
+
+        b.orbitPullStartPosition    = transform.position;
+        b.orbitAngleDeg             = targetAngleDeg;
+        b.orbitOwnerId              = owner;
+        b.orbitRadiusTarget         = radius;
+        b.orbitPullDuration         = Mathf.Max(0.0001f, pullDuration);
+        b.orbitPullElapsed          = 0f;
+        b.orbitAngularSpeedDegPerSec = angularSpeedDegPerSec;
+        b.orbitPhase                = (int)EnemyOrbitPhase.Pulling;
+    }
+
+    public void StopOrbiting()
+    {
+        B.orbitPhase   = (int)EnemyOrbitPhase.None;
+        B.orbitOwnerId = default;
+    }
+
+    public EnemySpawnCategory SpawnCategory => spawnCategory;
 
     // Override to reset this enemy's own attack-sequence state machine back to Moving/idle (typically its
     // own EnterMoving(ref currentState), same terminal transition its own attack-chain already uses when it
@@ -1712,7 +2288,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // (nothing bakes it into predicted state at spawn time — it's read live off the field every use), but
     // its base* snapshot (captured in Awake(), before this ever runs) DOES need to be scaled in lockstep,
     // since subclasses can derive further values from it.
-    public void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier)
+    public void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier, float moveSpeedMultiplier)
     {
         if (category != spawnCategory)
         {
@@ -1735,6 +2311,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         {
             damage *= damageMultiplier;
             baseDamage *= damageMultiplier;
+        }
+
+        if (moveSpeedMultiplier != 1f)
+        {
+            moveSpeed *= moveSpeedMultiplier;
+            baseMoveSpeed *= moveSpeedMultiplier;
         }
     }
 

@@ -20,6 +20,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: a0c2e8268b9a1d54dbe63437cda3523d, type: 2}
+    - target: {fileID: 6580685453525733676, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: dc8962cbfd4b6ee4ba23c999ce0b9df9, type: 2}
     - target: {fileID: 7839943648137112170, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -61,28 +65,12 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: damage
-      value: 20
-      objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: xpValue
-      value: 125
-      objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
       propertyPath: enemyName
       value: Speariest Gloom
       objectReference: {fileID: 0}
     - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: maxHealth
-      value: 2500
-      objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: moveSpeed
-      value: 18
-      objectReference: {fileID: 0}
-    - target: {fileID: 8261783560099478087, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
-      propertyPath: stabRange
-      value: 5.6
+      propertyPath: attacksPerAttack
+      value: 3
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

@@ -22,7 +22,7 @@ MonoBehaviour:
     <color=#FF00FF>Recharge your Shield</color>.
 
     <color=#FFBE50><i>If you already
-    have Death Prevention, -25% cd.</i></color>'
+    have Death Prevention, -25% cooldown.</i></color>'
   icon: {fileID: 21300000, guid: 37a9507e367a9dc4e964a6b2fa3a1d43, type: 3}
   effectPrefab: {fileID: 128303859756713544, guid: ec614b706e5c1494f86d50803dc8c147, type: 3}
   multiplayerOnly: 0

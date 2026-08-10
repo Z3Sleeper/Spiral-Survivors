@@ -41,7 +41,11 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;
 
-    public override float GetDamage() =>
+    // Overrides GetOwnDamage(), not GetDamage() itself — GetDamage() is the fixed base-class wrapper that
+    // checks held-state first (see its own doc comment); overriding this hook instead means this charge
+    // multiplier automatically composes correctly if this boss were ever grabbable in the future, without
+    // needing its own held-check re-added here.
+    protected override float GetOwnDamage() =>
         (KingSpikeState)currentState.stateId == KingSpikeState.Charging ? damage * chargeDamageMultiplier : damage;
 
     // Fires exactly once, via EnemyBasePD's enrageTimer/enrageCountdown machinery (armed by setting
@@ -131,7 +135,9 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     {
         if (dashJustEnded)
         {
-            state.chargesRemaining--;
+            // Decrement moved to EnterChargeWindup (attack START, not this completion point) — see its own
+            // doc comment for why. chargesRemaining already reflects the charge that just ended by the time
+            // we get here.
             // IsTargetStillValid (also covers a null target, same as everyone else's explicit != null check)
             // — a target that went invisible-and-non-taunting since the last charge shouldn't get chained
             // into another one against them; see that property's own doc comment.
@@ -170,7 +176,8 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
                 if (cooldownReady && _target != null &&
                     Vector3.Distance(transform.position, _target.position) <= chargeDistance)
                 {
-                    state.chargesRemaining = chargesPerAttack;
+                    // chargesRemaining itself is handled by EnterChargeWindup now, not here — see its own
+                    // doc comment for why.
                     // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
                     CaptureAttackAnchor(ref state);
                     EnterChargeWindup(ref state);
@@ -248,6 +255,21 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
     private void EnterChargeWindup(ref State state)
     {
+        // Decrement lives HERE — the actual START of one charge attempt (dashtotarget/windup) — not at the
+        // charge's own completion (dashJustEnded, above). A charge cancelled mid-windup or mid-dash via
+        // Interrupt() now still counts against the budget, since chargesRemaining already dropped the
+        // instant this ran; the old completion-gated decrement meant an interrupted charge was never counted
+        // at all, letting a fresh Moving->attack cycle hand out a full chargesPerAttack again on top of it.
+        // Refill-if-exhausted (not an unconditional reset) — called from both a fresh Moving-triggered
+        // attack (chargesRemaining sitting at 0 from the previous fully-completed sequence, or a pooled
+        // spawn) AND EnterBetweenCharges' own mid-chain continuation (chargesRemaining already > 0, so this
+        // is a no-op there). This is also why Moving's own attack-trigger and OnInterrupted() no longer
+        // stomp chargesRemaining themselves — this single self-contained check is now the only reset point,
+        // so an interrupted sequence's leftover count survives into whatever attack comes next instead of
+        // being silently thrown away.
+        if (state.chargesRemaining <= 0) state.chargesRemaining = chargesPerAttack;
+        state.chargesRemaining--;
+
         var snapDir = SnapFaceAnchor(ref state);
         if (snapDir != Vector3.zero) state.chargeDirection = snapDir;
         _chargeDirectionSnapshot = state.chargeDirection;
@@ -293,6 +315,9 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         state.remoteBurstsSpawned  = 0;
         state.remoteSequenceTimer  = remoteBurstInterval;
         if (state.b.enraged) state.attackCooldownTimer = attackCooldown;
+        // Reprioritize now that the attack sequence is over — random, not closest, per this boss's own
+        // design (see EnemyBasePD.FindRandomTarget's own doc comment for why).
+        FindRandomTarget();
         SetSpikeState(ref state, KingSpikeState.Moving);
     }
 
@@ -303,8 +328,22 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // FireSpikeBurst, which CanBeInterrupted below already keeps this from ever running during.
     protected override void OnInterrupted()
     {
-        currentState.chargesRemaining = chargesPerAttack;
+        // chargesRemaining deliberately left untouched — see EnterChargeWindup's own comment for why. The
+        // charge that was just cancelled already counted against the budget the instant its windup began, so
+        // resetting here would un-count it and hand out extra charges on the next attempt.
         SetSpikeState(ref currentState, KingSpikeState.Moving);
+
+        // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
+        // up — Interrupt() mutates currentState out-of-band (from a different identity's own Simulate(),
+        // not this enemy's own HandleActiveState flow this tick), which was leaving the windup indicator
+        // visibly stuck for a stray tick before UpdateView's viewState caught up to the interrupt.
+        // SpikeBurstWindup/spikeBurstFill untouched — that phase isn't interruptible in the first place
+        // (see CanBeInterrupted).
+        // _lastVisualState deliberately NOT written here — that field is UpdateView's own edge-detection
+        // bookkeeping. Setting it here would make UpdateView's next real call see ss == _lastVisualState and
+        // bail out early via its own guard, silently skipping whatever else that guard protects.
+        if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
+        if (chargeWindupFill != null) chargeWindupFill.ResetFill();
     }
 
     // SpikeBurstWindup specifically is NOT interruptible (per design) — the actual spike burst/remote wave

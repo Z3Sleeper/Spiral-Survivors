@@ -1822,8 +1822,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedFlat += amount);
     // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
     public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedPercent += amount);
-    // NEW Total tier — what MoveSpeedAugment/GremlinAugment/ShieldBreakFrenzyAugment/SurgeEndMoveSpeedAugment
-    // all call now (every existing MoveSpeed-percent-granting augment, redirected together).
+    // NEW Total tier — what MoveSpeedAugment/GremlinAugment/ShieldBreakFrenzyAugment all call now (every
+    // remaining MoveSpeed-percent-granting augment). SurgeEndMoveSpeedAugment used to as well, before it
+    // switched to a flat AddMoveSpeedFlat grant instead (see its own doc comment).
     public void AddMoveSpeedTotalPercent(float amount) => ApplyStatChange(() => currentState.totalMoveSpeedPercent += amount);
     // Direct override, not additive — surgeMoveSpeedPenalty (default 0.5f) is the actual reduction
     // multiplier itself (SurgeMoveSpeedMulti = surgeMoveSpeedMulti * surgeMoveSpeedPenalty * ...), not a

@@ -1,7 +1,7 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Passive: +25% Total Attack Speed for the whole time the user is invisible, from ANY source — Stats.
+// Passive: +60% (flat, not Total) Attack Speed for the whole time the user is invisible, from ANY source — Stats.
 // IsInvisible/_onInvisibleChanged is a single shared flag (CharacterStatsPD.GrantInvisibility), so this
 // reacts identically whether invisibility came from this augment's own death-prevented grant below,
 // RogueVanishAbilityPD, or any future source. Granted immediately if already invisible at pick time, same
@@ -10,7 +10,7 @@ using UnityEngine;
 //
 // Also activates CharacterStatsPD's Death Prevention mechanic (Stats.ActivateDeathPreventions() — see its
 // own doc comment for the "already active elsewhere, shrink the grant timer instead" stacking rule). On a
-// save landing (_onDeathPrevented), grants invisibility + 25% Total Move Speed for 3 seconds.
+// save landing (_onDeathPrevented), grants invisibility + a flat 5 Move Speed for 3 seconds.
 //
 // The buff timer is armed directly inside the PredictedEvent listener (OnDeathPrevented) — safe, since
 // PredictedEvent guarantees a listener fires exactly once per real occurrence regardless of resimulation,
@@ -34,8 +34,10 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
         public void Dispose() { }
     }
 
-    [SerializeField] private float attackSpeedTotalPercentWhileInvisible = 0.25f;
-    [SerializeField] private float onSaveMoveSpeedTotalPercent           = 0.25f;
+    // AddAttackSpeedFlat takes an intuitive fraction of baseAttackSpeed (e.g. 0.6 for +60%), despite the
+    // "Flat" name — see that method's own doc comment. Not a Total-tier multiplier.
+    [SerializeField] private float attackSpeedFlatWhileInvisible = 0.6f;
+    [SerializeField] private float onSaveMoveSpeedFlat                   = 5f;
     [SerializeField] private float onSaveDuration                       = 3f;
 
     // Plain, not State — mutated only from the _onInvisibleChanged listener callback, which (like every
@@ -55,7 +57,7 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
         if (Stats.IsInvisible)
         {
             _attackSpeedGranted = true;
-            Stats.AddAttackSpeedTotalPercent(attackSpeedTotalPercentWhileInvisible);
+            Stats.AddAttackSpeedFlat(attackSpeedFlatWhileInvisible);
         }
     }
 
@@ -71,7 +73,7 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
     {
         if (invisible == _attackSpeedGranted) return;
         _attackSpeedGranted = invisible;
-        Stats.AddAttackSpeedTotalPercent(invisible ? attackSpeedTotalPercentWhileInvisible : -attackSpeedTotalPercentWhileInvisible);
+        Stats.AddAttackSpeedFlat(invisible ? attackSpeedFlatWhileInvisible : -attackSpeedFlatWhileInvisible);
     }
 
     private void OnDeathPrevented() => currentState.buffTimer = onSaveDuration;
@@ -98,13 +100,13 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
             // GrantInvisibility fires _onInvisibleChanged itself (rising edge) — OnInvisibleChanged above
             // reacts to it, so the Attack Speed passive composes automatically with no extra call here.
             Stats.GrantInvisibility(onSaveDuration);
-            Stats.AddMoveSpeedTotalPercent(onSaveMoveSpeedTotalPercent);
+            Stats.AddMoveSpeedFlat(onSaveMoveSpeedFlat);
         }
         else
         {
             // Only reverts the Move Speed half — invisibility itself is left to the shared timer (see class
             // doc comment), not explicitly turned off here.
-            Stats.AddMoveSpeedTotalPercent(-onSaveMoveSpeedTotalPercent);
+            Stats.AddMoveSpeedFlat(-onSaveMoveSpeedFlat);
         }
     }
 }

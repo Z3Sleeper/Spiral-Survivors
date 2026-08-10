@@ -61,29 +61,17 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 6822992866423716524, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
-      propertyPath: damage
-      value: 15
-      objectReference: {fileID: 0}
-    - target: {fileID: 6822992866423716524, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
-      propertyPath: xpValue
-      value: 125
-      objectReference: {fileID: 0}
-    - target: {fileID: 6822992866423716524, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
       propertyPath: enemyName
       value: Elite Spearier Gloom
       objectReference: {fileID: 0}
     - target: {fileID: 6822992866423716524, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
-      propertyPath: maxHealth
-      value: 2500
+      propertyPath: attacksPerAttack
+      value: 2
       objectReference: {fileID: 0}
-    - target: {fileID: 6822992866423716524, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
-      propertyPath: moveSpeed
-      value: 15
-      objectReference: {fileID: 0}
-    - target: {fileID: 6822992866423716524, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
-      propertyPath: stabRange
-      value: 7.2
-      objectReference: {fileID: 0}
+    - target: {fileID: 8594180018612654535, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: c708cde7a9b4c664195359cc5fd34b61, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

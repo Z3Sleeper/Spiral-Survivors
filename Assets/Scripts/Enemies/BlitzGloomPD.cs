@@ -68,7 +68,9 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     {
         if (dashJustEnded)
         {
-            state.blitzesRemaining--;
+            // Decrement moved to EnterWindup (attack START, not this completion point) — see its own
+            // comment for why. blitzesRemaining already reflects the blitz that just ended by the time we
+            // get here.
             // _target == null guard matters here — without it, a chain that lost its target mid-way would
             // charge again in whatever the PREVIOUS charge's stale direction was (SnapFaceAnchor no-ops
             // on a zero direction, leaving blitzDirection untouched) instead of ending the chain.
@@ -102,7 +104,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
                 if (_target != null) HandleMovement(ref state, delta);
                 if (state.attackCooldownTimer <= 0f && TargetInRange())
                 {
-                    state.blitzesRemaining = blitzesPerAttack;
+                    // blitzesRemaining itself is handled by EnterWindup now, not here — see its own comment.
                     // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
                     CaptureAttackAnchor(ref state);
                     EnterWindup(ref state);
@@ -149,6 +151,20 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 
     private void EnterWindup(ref State state)
     {
+        // Decrement lives HERE — the actual START of one blitz attempt — not at the dash's own completion
+        // (dashJustEnded, above, where it used to live). A blitz cancelled mid-windup or mid-dash via
+        // Interrupt() now still counts against the budget, since blitzesRemaining already dropped the
+        // instant this ran. Refill-if-exhausted (not an unconditional reset) — called from both a fresh
+        // Moving-triggered attack (blitzesRemaining sitting at 0 from a previous fully-completed sequence,
+        // or a pooled spawn) AND the dashJustEnded continuation branch above (blitzesRemaining already > 0,
+        // so this is a no-op there). This is also why Moving's own attack-trigger and EnterMoving/
+        // OnInterrupted no longer stomp blitzesRemaining themselves — this single self-contained check is
+        // the only reset point now, so an interrupted sequence's leftover count survives into whatever
+        // attack comes next instead of being thrown away. See KingSpikePD.EnterChargeWindup for the same
+        // pattern.
+        if (state.blitzesRemaining <= 0) state.blitzesRemaining = blitzesPerAttack;
+        state.blitzesRemaining--;
+
         var snapDir = SnapFaceAnchor(ref state);
         if (snapDir != Vector3.zero) state.blitzDirection = snapDir;
         state.stateTimer = windupDuration;
@@ -173,7 +189,9 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 
     private void EnterMoving(ref State state)
     {
-        state.blitzesRemaining = blitzesPerAttack;
+        // blitzesRemaining deliberately left untouched here — EnterWindup now owns resetting it
+        // (refill-if-exhausted, not unconditional), so an attempt cancelled via Interrupt() (which funnels
+        // through here) keeps whatever count it already had instead of getting silently topped back up.
         // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
         // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
         FindClosestTarget();
@@ -183,7 +201,21 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     // Every Blitz phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
     // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
     // of blitzesRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
-    protected override void OnInterrupted() => EnterMoving(ref currentState);
+    protected override void OnInterrupted()
+    {
+        EnterMoving(ref currentState);
+
+        // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
+        // up — Interrupt() mutates currentState out-of-band (from a different identity's own Simulate(),
+        // not this enemy's own HandleActiveState flow this tick), which could otherwise leave the windup
+        // indicator visibly stuck for a stray tick before UpdateView's viewState catches up to the
+        // interrupt. Same fix applied to every other enemy with a windup indicator (Spear/Dagger/Leaper/
+        // KingSpike) — see KingSpikePD.OnInterrupted's own comment.
+        // _lastVisualState deliberately NOT written here — see SpearGloomPD.OnInterrupted's own comment for
+        // why (UpdateView's own edge-detection bookkeeping, not ours to set).
+        if (windupIndicator != null) windupIndicator.SetActive(false);
+        if (windupFill != null) windupFill.ResetFill();
+    }
 
     // ── View ──────────────────────────────────────────────────────────────────
     private BlitzState _lastVisualState = (BlitzState)(-1);

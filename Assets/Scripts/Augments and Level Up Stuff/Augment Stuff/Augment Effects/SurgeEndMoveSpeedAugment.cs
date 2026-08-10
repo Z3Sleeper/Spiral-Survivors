@@ -1,7 +1,7 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// New tech, not a port. On Surge End, gain +60% Move Speed for 2 seconds — cut short immediately if a new
+// New tech, not a port. On Surge End, gain +5 flat Move Speed for 2 seconds — cut short immediately if a new
 // Surge is started before the buff naturally expires, rather than stacking or refreshing. Buff icon is
 // fully transient (added the instant the bonus activates, removed the instant it ends, whether by natural
 // expiry or an early Surge-start cutoff) — unlike DeathPreventionShieldDRAugment's persistent "always shown"
@@ -15,7 +15,12 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
         public void Dispose() { }
     }
 
-    [SerializeField] private float totalMoveSpeedPercent = 0.3f;
+    // Flat, not percent — see CharacterStatsPD.MoveSpeed's own formula: this goes through bonusMoveSpeedFlat
+    // (the same additive term class passives/meta-progression use), so it's a clean, unscaled +5 for the
+    // common case, and proportionally scales with the caster's own bonusMoveSpeedPercent/moveSpeedPenalty
+    // only if those are already non-neutral (e.g. a class with an innate move speed penalty gets a
+    // slightly weaker flat buff too) — same as any other Bonus-tier grant.
+    [SerializeField] private float moveSpeedFlat = 5f;
     [SerializeField] private float buffDuration    = 2f;
 
     [Header("Buff Bar")]
@@ -73,7 +78,7 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
         if (_bonusActive) return;
 
         _bonusActive = true;
-        Stats.AddMoveSpeedTotalPercent(totalMoveSpeedPercent);
+        Stats.AddMoveSpeedFlat(moveSpeedFlat);
 
         if (isOwner && BuffBarPD.instance != null && _buffIconInstance == null)
             _buffIconInstance = BuffBarPD.instance.AddBuffIcon(buffIcon);
@@ -85,7 +90,7 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
     {
         if (!_bonusActive) return;
         _bonusActive = false;
-        Stats.AddMoveSpeedTotalPercent(-totalMoveSpeedPercent);
+        Stats.AddMoveSpeedFlat(-moveSpeedFlat);
 
         if (_buffIconInstance != null && BuffBarPD.instance != null)
         {

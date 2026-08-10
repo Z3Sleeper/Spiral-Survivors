@@ -81,29 +81,17 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2100000, guid: a0c2e8268b9a1d54dbe63437cda3523d, type: 2}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: damage
-      value: 20
-      objectReference: {fileID: 0}
-    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: xpValue
-      value: 125
-      objectReference: {fileID: 0}
-    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: enemyName
       value: Daggiest Gloom
       objectReference: {fileID: 0}
     - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: maxHealth
-      value: 2500
+      propertyPath: attacksPerAttack
+      value: 3
       objectReference: {fileID: 0}
-    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: moveSpeed
-      value: 18
-      objectReference: {fileID: 0}
-    - target: {fileID: 8575732301113306527, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
-      propertyPath: spinRadius
-      value: 4.2
-      objectReference: {fileID: 0}
+    - target: {fileID: 8685968687310733855, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: dc8962cbfd4b6ee4ba23c999ce0b9df9, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

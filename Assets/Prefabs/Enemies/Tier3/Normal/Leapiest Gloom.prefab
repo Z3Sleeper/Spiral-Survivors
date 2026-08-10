@@ -9,24 +9,8 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
-      propertyPath: damage
-      value: 20
-      objectReference: {fileID: 0}
-    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
-      propertyPath: xpValue
-      value: 125
-      objectReference: {fileID: 0}
-    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: enemyName
       value: Leapiest Gloom
-      objectReference: {fileID: 0}
-    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
-      propertyPath: maxHealth
-      value: 2500
-      objectReference: {fileID: 0}
-    - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
-      propertyPath: moveSpeed
-      value: 18
       objectReference: {fileID: 0}
     - target: {fileID: -2476056797873705952, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: leapsPerAttack
@@ -40,6 +24,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: a0c2e8268b9a1d54dbe63437cda3523d, type: 2}
+    - target: {fileID: 3966839981962778771, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: dc8962cbfd4b6ee4ba23c999ce0b9df9, type: 2}
     - target: {fileID: 7839943648137112170, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

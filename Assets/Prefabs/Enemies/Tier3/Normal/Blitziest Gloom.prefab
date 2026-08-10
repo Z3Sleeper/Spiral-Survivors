@@ -16,6 +16,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: a0c2e8268b9a1d54dbe63437cda3523d, type: 2}
+    - target: {fileID: 1517465230569387927, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: dc8962cbfd4b6ee4ba23c999ce0b9df9, type: 2}
     - target: {fileID: 1597157536724350220, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
       propertyPath: m_Name
       value: Blitziest Gloom
@@ -65,24 +69,8 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
-      propertyPath: damage
-      value: 20
-      objectReference: {fileID: 0}
-    - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
-      propertyPath: xpValue
-      value: 125
-      objectReference: {fileID: 0}
-    - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
       propertyPath: enemyName
       value: Blitziest Gloom
-      objectReference: {fileID: 0}
-    - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
-      propertyPath: maxHealth
-      value: 2500
-      objectReference: {fileID: 0}
-    - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
-      propertyPath: moveSpeed
-      value: 18
       objectReference: {fileID: 0}
     - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
       propertyPath: blitzesPerAttack

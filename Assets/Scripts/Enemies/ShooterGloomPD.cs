@@ -144,7 +144,12 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 if (_target != null) HandleMovement(ref state, delta);
                 if (state.attackCooldownTimer <= 0f && TargetInRange())
                 {
-                    state.shotsRemaining = shotsPerAttack;
+                    // Decrement/refill lives here (the actual start of the attempt — dash-away OR windup,
+                    // whichever runs first — not EnterShooting's own fire-resolve point) so an attempt
+                    // cancelled via Interrupt() mid-dash or mid-windup still counts against the budget. See
+                    // EnterMoving's own comment for why the reset moved here too.
+                    if (state.shotsRemaining <= 0) state.shotsRemaining = shotsPerAttack;
+                    state.shotsRemaining--;
                     // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
                     CaptureAttackAnchor(ref state);
                     float dist = Vector3.Distance(transform.position, _target.position);
@@ -189,6 +194,11 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                     }
                     else
                     {
+                        // Same refill-if-exhausted + decrement as the Moving case above — this is the other
+                        // funnel into a fresh attempt (continuing an existing burst rather than starting a
+                        // brand new one), same reasoning applies.
+                        if (state.shotsRemaining <= 0) state.shotsRemaining = shotsPerAttack;
+                        state.shotsRemaining--;
                         CaptureAttackAnchor(ref state);
                         EnterWindup(ref state);
                     }
@@ -250,7 +260,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     private void EnterShooting(ref State state)
     {
         state.shooterStateTimer = shootDuration;
-        state.shotsRemaining--;
+        // Decrement moved to the attack-start sites (Moving/BetweenShots, above) — see their own comment.
         SetShooterState(ref state, ShooterState.Shooting);
         FireShots(ref state);
     }
@@ -347,13 +357,15 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 break;
             case ShooterState.Windup:
                 // Only the FIRST windup of an attack sequence plays the actual lower-into-firing-position
-                // clip — shotsRemaining == shotsPerAttack means no shot has fired yet this sequence (it's
-                // set fresh right before the sequence starts, then EnterShooting decrements it after each
-                // shot). Repeat windups between shots in the same multishot burst skip the Play call
-                // entirely: the weapon is already at firing level from the previous Shoot's recoil, and
-                // forcing WindupHash to restart at frame 0 (which begins at the raised idle pose) would
-                // teleport it back up mid-burst instead of holding position between shots.
-                if (viewState.shotsRemaining == shotsPerAttack)
+                // clip — shotsRemaining == shotsPerAttack - 1 means no shot has fired yet this sequence
+                // (decrement now happens at the START of each attempt, not after each shot resolves — see
+                // the Moving/BetweenShots CaptureAttackAnchor sites — so the first windup's own decrement
+                // already dropped a fresh shotsPerAttack by exactly one). Repeat windups between shots in
+                // the same multishot burst skip the Play call entirely: the weapon is already at firing
+                // level from the previous Shoot's recoil, and forcing WindupHash to restart at frame 0
+                // (which begins at the raised idle pose) would teleport it back up mid-burst instead of
+                // holding position between shots.
+                if (viewState.shotsRemaining == shotsPerAttack - 1)
                     _animator.Play(WindupHash, 0, 0f);
                 break;
             case ShooterState.Shooting:

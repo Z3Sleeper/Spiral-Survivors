@@ -18,6 +18,10 @@ public class EnemyUIPD : MonoBehaviour
     private float _lastCurrentHealth = -1f;
     private float _lastMaxHealth = -1f;
 
+    // Whether this enemy's category should currently show a worldspace bar at all — see Update()'s own
+    // comment for why this is tracked/re-evaluated every frame instead of decided once.
+    private bool _lastShouldShow = true;
+
     private void Awake()
     {
         _enemy = GetComponentInParent<IEnemyPD>();
@@ -31,6 +35,28 @@ public class EnemyUIPD : MonoBehaviour
         // while after death, so the bar needs to keep updating to actually show 0/max instead of freezing
         // at whatever it last displayed the instant before the killing blow landed.
         if (_enemy == null) return;
+
+        // Bosses already have a dedicated screenspace health bar UI (see BossHealthBarUI.cs) — this
+        // worldspace one is redundant and, on something King Spike-sized, sits awkwardly high above the
+        // model. Plebs are numerous/small enough that a per-instance floating bar is just visual clutter at
+        // swarm scale. Both are a generic, category-based rule, checked every frame here (not once in
+        // Awake()) for two reasons: spawnCategory isn't actually set yet at Awake()-time — ConfigureSpawn
+        // only runs once hierarchy.Create() returns to the spawner, strictly AFTER Awake()/LateAwake() have
+        // already run — and a pooled enemy can be a DIFFERENT category on its next life, so the decision has
+        // to be able to flip back. Hides/shows this object's own CHILDREN (Background/Fill/Text), never
+        // this GameObject itself — this script and its Slider both live directly on the same "HealthBar"
+        // object (confirmed in the prefab), so disabling IT would also stop this very Update() from ever
+        // running again, permanently stuck hidden even once the pooled slot is reused as a category that
+        // should show a bar.
+        bool shouldShow = _enemy.SpawnCategory != EnemySpawnCategory.Boss && _enemy.SpawnCategory != EnemySpawnCategory.Pleb;
+        if (shouldShow != _lastShouldShow)
+        {
+            _lastShouldShow = shouldShow;
+            for (int i = 0; i < transform.childCount; i++)
+                transform.GetChild(i).gameObject.SetActive(shouldShow);
+        }
+        if (!shouldShow) return;
+
         if (_enemy.MaxHealth <= 0f) return;
 
         float current = _enemy.CurrentHealth;

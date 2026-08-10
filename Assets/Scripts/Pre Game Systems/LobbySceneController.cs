@@ -73,6 +73,22 @@ public class LobbySceneController : MonoBehaviour
     // see RewriteStartedFlagPeriodically's own doc comment for why a single write isn't reliable enough.
     private Coroutine _startedFlagRewriteRoutine;
 
+    // How long every machine's UI gets to visually settle (LoadingScreen up, every lobby button locked out
+    // via its existing LoadingScreen.IsShowing guard) after the host writes the "Locking" flag (see
+    // OnAllReady's own comment), before the host actually writes "Started" and the real match-start runs.
+    // Purely cosmetic smoothing for a real, otherwise-unfixable gap: each machine's own character-select
+    // ready-status display reads raw Steam member IsReady flags directly, propagated independently of (and
+    // with no ordering guarantee against) the "Locking"/"Started" flags — so without this, a client's own
+    // screen could still be showing "host not ready" the instant it jumps straight to the loading screen.
+    // This doesn't make that underlying propagation any faster; it just gives the LOADING SCREEN itself a
+    // head start so it's very unlikely to still be mid-transition by the time "Started" lands moments later.
+    [SerializeField] private float lockInGraceSeconds = 1.5f;
+    // Edge-detect for the "Locking" reaction in OnRoomUpdated — LoadingScreen.Show() is harmless to call
+    // repeatedly (just resets its own dot-animation timer), but there's no reason to do that every single
+    // OnRoomUpdated tick for the whole time "Locking" stays "True". Reset alongside every other per-attempt
+    // bookkeeping field in OnRoomLeft().
+    private bool _lockInSeen;
+
     private void OnEnable()  => UnlockManager.OnUnlockQueued += OnUnlockQueuedWhileInLobby;
     private void OnDisable() => UnlockManager.OnUnlockQueued -= OnUnlockQueuedWhileInLobby;
 
@@ -165,6 +181,11 @@ public class LobbySceneController : MonoBehaviour
                 var steamId = new CSteamID(returnLobbyId);
                 SteamMatchmaking.SetLobbyJoinable(steamId, true);
                 SteamMatchmaking.SetLobbyData(steamId, "Started", "False");
+                // Same reset, same reasoning — see ReturnToLobbyManager.ReturnToLobby()'s own comment on its
+                // matching "Started" reset for why a stale flag from a previous match-start attempt must not
+                // survive into a fresh lobby session (would show the LoadingScreen — and lock every lobby
+                // button — immediately on landing here, with nothing to ever clear it back).
+                SteamMatchmaking.SetLobbyData(steamId, "Locking", "False");
             }
             InitializeForLobby(lobby);
         }
@@ -489,6 +510,9 @@ public class LobbySceneController : MonoBehaviour
         // nothing ever cleared it back to false. Left stuck true, it would permanently block
         // OnRoomUpdated's own auto-connect check (!_connectingToHost) for every future lobby this session.
         _connectingToHost = false;
+        // Same reasoning — a stale true here would block OnRoomUpdated's "Locking" edge-detection from ever
+        // firing again for a later lobby this session.
+        _lockInSeen = false;
         // Defensive cleanup in case a game-start sequence was still in flight when we left (e.g. the host
         // started loading but this client bailed out before TryLoadGameScene's own normal unsubscribe ran)
         // — an un-cleared subscription would keep firing OnPurrNetPlayerJoined for a lobby we're no longer
@@ -526,6 +550,32 @@ public class LobbySceneController : MonoBehaviour
         // dip that might just be a transient reconnect, even though it now takes up to 20s to react instead
         // of being instant.
 
+        // Early visual smoothing, client-side only — see OnAllReady's own comment on the "Locking" write and
+        // lockInGraceSeconds' own doc comment. Shows the LoadingScreen (and, via its existing IsShowing
+        // guards, locks out every lobby button) the moment the host's real "everyone confirmed ready"
+        // decision is visible here, WITHOUT yet attempting to connect — the actual connect trigger stays
+        // exactly the "Started"=="True" check below, deliberately unchanged. Edge-detected via _lockInSeen
+        // so this doesn't re-call Show() every single tick "Locking" stays "True".
+        //
+        // Also starts the watchdog right here, not just in the "Started" branch below — without this, a
+        // client whose UI locks on "Locking" but never sees "Started" arrive (e.g. the host dies during just
+        // the lockInGraceSeconds window) would have NO watchdog running yet to ever recover it, since
+        // starting one used to only happen once a real connect attempt began. StartMatchStartWatchdog()
+        // safely restarts (stops-then-starts) if the "Started" branch below also calls it moments later —
+        // harmless, just means a client that jumps straight from Locking to Started gets a fresh full
+        // timeout window for the actual connection attempt, not a shortened one.
+        if (!lobby.IsOwner && !_lockInSeen && ulong.TryParse(lobby.LobbyId, out ulong lockingLobbyIdRaw))
+        {
+            string locking = SteamMatchmaking.GetLobbyData(new CSteamID(lockingLobbyIdRaw), "Locking");
+            if (locking == "True")
+            {
+                Debug.Log("[LobbySceneController] OnRoomUpdated: saw Locking=True — showing LoadingScreen early and arming watchdog.");
+                _lockInSeen = true;
+                if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
+                StartMatchStartWatchdog();
+            }
+        }
+
         // Sole trigger for a client to connect — see OnAllReady's own comment for why clients no longer act
         // on their own independent "everyone's ready" conclusion. This reacts to the real Steam lobby data
         // the host wrote via SetLobbyStarted(), so every client starts from the SAME single fact regardless
@@ -540,6 +590,7 @@ public class LobbySceneController : MonoBehaviour
                 string started = SteamMatchmaking.GetLobbyData(steamLobbyId, "Started");
                 if (started == "True")
                 {
+                    Debug.Log("[LobbySceneController] OnRoomUpdated: saw Started=True — beginning connect.");
                     if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
                     // Defensive — guards against a still-running coroutine from an earlier attempt (e.g. a
                     // prior lobby session) that somehow wasn't cleared, same "don't let two
@@ -580,6 +631,28 @@ public class LobbySceneController : MonoBehaviour
 
         if (LoadingScreen.instance != null) LoadingScreen.instance.Show();
         StartMatchStartWatchdog();
+
+        // Two-phase start, purely for visual smoothing — see lockInGraceSeconds' own doc comment for the
+        // full reasoning. Writes the "Locking" flag right away: every CLIENT's OnRoomUpdated reacts to
+        // seeing it by showing ITS OWN LoadingScreen (the host's own copy is already up two lines above),
+        // which — for free, via the exact same LoadingScreen.IsShowing guards OnSettingsClicked/
+        // OnUpgradeClicked/OnEncyclopediaClicked/OnLeaveLobbyClicked already had — also locks out every
+        // lobby button on every machine. Only AFTER lockInGraceSeconds does the real, already-working
+        // match-start logic below actually run (unchanged from before this two-phase split, just deferred).
+        Debug.Log($"[LobbySceneController] OnAllReady: wrote Locking=True, waiting {lockInGraceSeconds}s before Started.");
+        lobbyManager.SetLobbyData("Locking", "True");
+        StartCoroutine(LockInThenStart(lobby));
+    }
+
+    // Deferred half of OnAllReady() — see its own comment on the "Locking" write for why this exists. Takes
+    // the SAME lobby snapshot OnAllReady itself observed (not a fresh CurrentLobby re-read after the wait)
+    // so this reproduces exactly what the original, single-phase OnAllReady would have done at the instant
+    // it fired, just delayed — not exposed to whatever CurrentLobby happens to look like lockInGraceSeconds
+    // later (e.g. a member leaving mid-wait), which the original synchronous method never had to consider.
+    private IEnumerator LockInThenStart(Lobby lobby)
+    {
+        yield return new WaitForSeconds(lockInGraceSeconds);
+
         _expectedPlayerCount = lobby.Members.Count;
 
         // Snapshot exactly who's visually here right now — see _expectedSteamIds' own doc comment. Parsed

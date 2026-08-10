@@ -57,25 +57,13 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2100000, guid: a0c2e8268b9a1d54dbe63437cda3523d, type: 2}
     - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: damage
-      value: 20
+      propertyPath: attacksPerAttack
+      value: 3
       objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: xpValue
-      value: 625
-      objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: maxHealth
-      value: 12500
-      objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: moveSpeed
-      value: 18
-      objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: spinRadius
-      value: 6.3
-      objectReference: {fileID: 0}
+    - target: {fileID: 2105163416172843845, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: dc8962cbfd4b6ee4ba23c999ce0b9df9, type: 2}
     - target: {fileID: 2823677713980239291, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 

@@ -148,7 +148,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b199eaec503d014489345869ebf512b0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedPhysicsCallbacks
-  _eventMask: 63
+  _eventMask: 40
 --- !u!1 &5048430250576323162
 GameObject:
   m_ObjectHideFlags: 0

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFA000>Blast Off</color>
   description: <color=#FFA000>On Kill:</color> Launch the enemy away, causing them
-    to deal <color=#FF5000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
+    to deal <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
     unpenalized Strength</color>) damage</color> to all other enemies they <color=#FFA000>collide</color>
     with.
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}

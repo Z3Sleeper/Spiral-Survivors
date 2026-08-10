@@ -9,24 +9,8 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: damage
-      value: 15
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: xpValue
-      value: 125
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
       propertyPath: enemyName
       value: Elite Leapier Gloom
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: maxHealth
-      value: 2500
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: moveSpeed
-      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
       propertyPath: leapsPerAttack
@@ -84,6 +68,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
+    - target: {fileID: 8527893660066536922, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: c708cde7a9b4c664195359cc5fd34b61, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

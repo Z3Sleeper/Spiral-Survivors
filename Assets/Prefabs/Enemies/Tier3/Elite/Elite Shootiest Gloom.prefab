@@ -9,22 +9,6 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 593286561736656083, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
-      propertyPath: damage
-      value: 20
-      objectReference: {fileID: 0}
-    - target: {fileID: 593286561736656083, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
-      propertyPath: xpValue
-      value: 625
-      objectReference: {fileID: 0}
-    - target: {fileID: 593286561736656083, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
-      propertyPath: maxHealth
-      value: 12500
-      objectReference: {fileID: 0}
-    - target: {fileID: 593286561736656083, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
-      propertyPath: moveSpeed
-      value: 18
-      objectReference: {fileID: 0}
-    - target: {fileID: 593286561736656083, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
       propertyPath: multishotCount
       value: 4
       objectReference: {fileID: 0}
@@ -36,6 +20,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: Elite Shootiest Gloom
       objectReference: {fileID: 0}
+    - target: {fileID: 4399111599322804318, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: dc8962cbfd4b6ee4ba23c999ce0b9df9, type: 2}
     - target: {fileID: 5883451818479189640, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

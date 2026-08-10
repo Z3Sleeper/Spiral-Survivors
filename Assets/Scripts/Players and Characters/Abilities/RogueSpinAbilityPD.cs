@@ -190,13 +190,29 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
     }
 
+    // Mirrors Simulate()'s own tick condition exactly (see that method's own comment) — a cooldown-reduction
+    // effect should only ever eat into time that's ACTUALLY counting down right now, not a cooldownTimer
+    // that's merely sitting at its full pre-loaded value while the active window (cooldownStartsOnCast=false)
+    // hasn't ended yet to let it start ticking.
+    private bool IsCooldownActivelyTicking =>
+        currentState.cooldownTimer > 0f && (cooldownStartsOnCast || !currentState.isActive);
+
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
-    public void ReduceCooldownFlat(float seconds) =>
+    public void ReduceCooldownFlat(float seconds)
+    {
+        if (!IsCooldownActivelyTicking) return;
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
-    public void ReduceCooldownPercentRemaining(float percent01) =>
+    }
+    public void ReduceCooldownPercentRemaining(float percent01)
+    {
+        if (!IsCooldownActivelyTicking) return;
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
-    public void ReduceCooldownPercentTotal(float percent01) =>
+    }
+    public void ReduceCooldownPercentTotal(float percent01)
+    {
+        if (!IsCooldownActivelyTicking) return;
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+    }
 
     public void Activate()
     {

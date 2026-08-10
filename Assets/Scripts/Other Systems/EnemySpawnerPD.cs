@@ -74,13 +74,18 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private float spawnIntervalQ2 = 3f;
     [SerializeField] private float spawnIntervalQ3 = 1.5f;
     [SerializeField] private float spawnIntervalQ4 = 0.75f;
-    [SerializeField] private float cycleInterval = 240f;
+    [SerializeField] private float cycleInterval = 180f;
 
     [Header("Elite Scaling")]
-    // First/last elite of the cycle fire at these cycleTimer values (seconds remaining, matching how
-    // cycleTimer already counts down) — the rest are auto-scheduled between them, see BuildEliteSchedule().
-    [SerializeField] private float eliteSpawnTimeFirst = 150f;
-    [SerializeField] private float eliteSpawnTimeLast = 30f;
+    // First/last elite of the cycle fire this far INTO the cycle, as a percent of cycleInterval (0.25 =
+    // 25% elapsed, i.e. 75% of cycleInterval still remaining on cycleTimer) — the rest are auto-scheduled
+    // between them, see BuildEliteSchedule(). Percent-based (not raw seconds, like the old
+    // eliteSpawnTimeFirst/Last fields these replaced) specifically so retuning cycleInterval alone doesn't
+    // also require re-deriving these by hand — they scale automatically with whatever cycleInterval is set
+    // to. BuildEliteSchedule() converts these to actual cycleTimer (remaining-seconds) thresholds once, at
+    // Awake() — see its own comment.
+    [SerializeField] private float eliteSpawnTimeFirstPercent = 0.25f;
+    [SerializeField] private float eliteSpawnTimeLastPercent = 0.75f;
     // Each gap between consecutive elite spawns shrinks by this ratio from the previous gap (0.8 = each
     // gap 80% the size of the one before it), so elites arrive more and more frequently as the cycle
     // approaches its boss spawn.
@@ -88,6 +93,31 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // Total elites spawned across the whole cycle (not per-burst — deliberately NOT player-count-scaled;
     // see GameManagerPD.CoopToughnessScalar below for how co-op difficulty is handled instead).
     [SerializeField] private int baseEliteCount = 10;
+
+    [Header("Tier Stat Scaling")]
+    // Applied at spawn time, generically, to every category (normal/pleb/elite/boss) on top of whatever
+    // that category's own elite/co-op multiplier already is (see Simulate()'s own comment on ordering) — so
+    // an enemy TYPE only ever needs ONE authored (tier1-baseline) stat set on its prefab. Reusing the same
+    // prefabs across a different "level" with a different tier progression means retuning these 3 growth
+    // curves once here, not re-tuning every individual tier's own hand-authored numbers on every prefab.
+    // Move speed and damage grow LINEARLY (tier1 + this fraction of tier1 per tier step above 1); health and
+    // XP each grow on their OWN independent EXPONENTIAL curve (this many multiplier steps compounded per
+    // tier step above 1, separately tunable so one can be retuned without affecting the other) — shape
+    // confirmed against the project's own current T1/T2/T3 numbers before this was built.
+    [SerializeField] private float moveSpeedTierGrowth = 0.25f;
+    [SerializeField] private float damageTierGrowth = 0.5f;
+    [SerializeField] private float healthExponentialTierBase = 5f;
+    [SerializeField] private float xpExponentialTierBase = 5f;
+
+    // Cached once per Simulate() tick (see that method's own comment for exactly where) — plain fields, not
+    // State, since they're fully re-derived from state.bossesDefeated every tick regardless, same "compute
+    // once at the top, read by same-tick logic further down" convention _currentDelta already establishes
+    // elsewhere in this codebase. SpawnEnemy is the only reader, and only ever runs from within this same
+    // Simulate() call (directly or via SpawnElite), so these are always fresh by the time it's called.
+    private float _tierMoveSpeedMultiplier = 1f;
+    private float _tierDamageMultiplier = 1f;
+    private float _tierHealthMultiplier = 1f;
+    private float _tierXpMultiplier = 1f;
 
     [SerializeField] private int bossesToDefeatForWin = 1;
     [SerializeField] private int maxNormalEnemies = 100;
@@ -119,6 +149,11 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
     public void RegisterEnemy(IEnemyPD enemy) => _activeEnemies.Add(enemy);
     public void UnregisterEnemy(IEnemyPD enemy) => _activeEnemies.Remove(enemy);
+
+    // Read-only enumeration for callers that need to scan currently-alive enemies (e.g. OrbiterGloomPD finding
+    // nearby Pleb-tier enemies to grab) — IEnumerable, not a collection type, since every known caller only
+    // ever foreach's it.
+    public IEnumerable<IEnemyPD> ActiveEnemies => _activeEnemies;
 
     // Players don't exist yet in CharacterStatsPD.All at this object's own LateAwake() (they register from
     // PlayerDataPD.Simulate(), which only starts running once actual per-tick simulation begins) — so this
@@ -164,15 +199,21 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // avoid a visible flicker (that concern is specific to discrete boolean transitions like isPaused).
     public float CycleTimer => currentState.cycleTimer;
 
-    // baseEliteCount points spread between eliteSpawnTimeFirst and eliteSpawnTimeLast (both measured in
-    // cycleTimer-remaining seconds, so "first" > "last" since cycleTimer counts down), with the gaps
-    // between consecutive points shrinking geometrically by eliteSpawnRampRatio each step — elites arrive
-    // increasingly often as the cycle approaches its boss spawn instead of at fixed evenly-spaced marks.
+    // baseEliteCount points spread between eliteSpawnTimeFirstPercent and eliteSpawnTimeLastPercent, with
+    // the gaps between consecutive points shrinking geometrically by eliteSpawnRampRatio each step —
+    // elites arrive increasingly often as the cycle approaches its boss spawn instead of at fixed
+    // evenly-spaced marks. The two percent fields are converted to actual cycleTimer-remaining-seconds
+    // thresholds right here, once, since cycleInterval is fixed for the whole match — everything below this
+    // conversion is unchanged from before eliteSpawnTimeFirst/Last became percent-based, still working
+    // entirely in remaining-seconds terms (firstRemaining > lastRemaining, since cycleTimer counts down).
     private void BuildEliteSchedule()
     {
+        float firstRemaining = cycleInterval * (1f - eliteSpawnTimeFirstPercent);
+        float lastRemaining  = cycleInterval * (1f - eliteSpawnTimeLastPercent);
+
         int n = Mathf.Max(1, baseEliteCount);
         _eliteSchedule = new float[n];
-        if (n == 1) { _eliteSchedule[0] = eliteSpawnTimeLast; return; }
+        if (n == 1) { _eliteSchedule[0] = lastRemaining; return; }
 
         int gapCount = n - 1;
         float ratioSum = 0f;
@@ -183,10 +224,10 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             r *= eliteSpawnRampRatio;
         }
 
-        float totalSpan = eliteSpawnTimeFirst - eliteSpawnTimeLast;
+        float totalSpan = firstRemaining - lastRemaining;
         float firstGap = ratioSum > 0f ? totalSpan / ratioSum : 0f;
 
-        _eliteSchedule[0] = eliteSpawnTimeFirst;
+        _eliteSchedule[0] = firstRemaining;
         float gap = firstGap;
         for (int i = 1; i < n; i++)
         {
@@ -194,8 +235,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             gap *= eliteSpawnRampRatio;
         }
         // Force the exact configured endpoint rather than whatever the accumulated geometric sum lands on
-        // — floating point drift over several steps would otherwise leave it a hair off eliteSpawnTimeLast.
-        _eliteSchedule[n - 1] = eliteSpawnTimeLast;
+        // — floating point drift over several steps would otherwise leave it a hair off lastRemaining.
+        _eliteSchedule[n - 1] = lastRemaining;
     }
 
     protected override State GetInitialState() => new()
@@ -252,6 +293,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         if (wasBossAlive && !bossAlive)
         {
             state.bossesDefeated++;
+            // Same clean-arena wipe as right before a boss spawns (see its own call site's doc comment) —
+            // clears out whatever pleb/normal/elite swarm accumulated during the boss fight (which keep
+            // spawning through it, at 0 XP — see the pleb comment above) the instant the boss itself falls,
+            // rather than leaving them to wander around XP-less after the fact. Fires on every boss defeat,
+            // win-triggering or not, so the win screen doesn't have a stray swarm still visible either.
+            WipeAllEnemies();
             if (state.bossesDefeated >= bossesToDefeatForWin)
             {
                 if (GameManagerPD.instance != null) GameManagerPD.instance.TriggerWin();
@@ -265,6 +312,15 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
 
         var tier = GetCurrentTier(state.bossesDefeated);
+
+        // Recomputed fresh every tick from state.bossesDefeated — see these 3 fields' own doc comment for
+        // why this is the one place that needs to run (SpawnEnemy, the only reader, only ever gets called
+        // later in this same Simulate() call, directly or via SpawnElite).
+        int tierNumber = GetCurrentTierNumber(state.bossesDefeated);
+        _tierMoveSpeedMultiplier = 1f + (tierNumber - 1) * moveSpeedTierGrowth;
+        _tierDamageMultiplier    = 1f + (tierNumber - 1) * damageTierGrowth;
+        _tierHealthMultiplier    = Mathf.Pow(healthExponentialTierBase, tierNumber - 1);
+        _tierXpMultiplier        = Mathf.Pow(xpExponentialTierBase, tierNumber - 1);
 
         // ── Phase escalation ───────────────────────────────────────────────
         // Tightens the interval settings (without cutting short a countdown already in flight — only the
@@ -292,10 +348,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             RollNewSet(ref state);
         }
 
-        bool spawnBlackout = state.spawnPhase == 3 && state.cycleTimer < 15f;
-
         // ── Normal enemies ─────────────────────────────────────────────────
-        if (!bossAlive && !spawnBlackout)
+        if (!bossAlive)
         {
             state.spawnTimer -= delta * coopScale;
             if (state.spawnTimer <= 0f)
@@ -311,22 +365,21 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
 
         // ── Plebs ──────────────────────────────────────────────────────────
-        // Keep spawning through a boss fight (at 0 XP, matching old's noXP) — only the blackout window
-        // before a boss arrives stops them.
-        if (!spawnBlackout)
+        // Keep spawning through a boss fight (at 0 XP, matching old's noXP), and — since the pre-boss
+        // spawn blackout was removed — right up until the boss actually spawns too. Nothing left alive
+        // when it does spawn either way, since every currently-alive enemy (plebs included) gets wiped
+        // right before that happens below.
+        state.plebSpawnTimer -= delta * coopScale;
+        if (state.plebSpawnTimer <= 0f)
         {
-            state.plebSpawnTimer -= delta * coopScale;
-            if (state.plebSpawnTimer <= 0f)
+            state.plebSpawnTimer += state.plebSpawnInterval;
+            if (tier.pleb != null && tier.pleb.Length > 0)
             {
-                state.plebSpawnTimer += state.plebSpawnInterval;
-                if (tier.pleb != null && tier.pleb.Length > 0)
+                for (int i = 0; i < plebSpawnAmount; i++)
                 {
-                    for (int i = 0; i < plebSpawnAmount; i++)
-                    {
-                        if (EnemyBasePD.ActivePlebCount >= maxPlebEnemies) break;
-                        var prefab = tier.pleb[GameRandom.instance.Next(tier.pleb.Length)];
-                        SpawnEnemy(prefab, EnemySpawnCategory.Pleb, 1f, 1f, bossAlive ? 0f : 1f);
-                    }
+                    if (EnemyBasePD.ActivePlebCount >= maxPlebEnemies) break;
+                    var prefab = tier.pleb[GameRandom.instance.Next(tier.pleb.Length)];
+                    SpawnEnemy(prefab, EnemySpawnCategory.Pleb, 1f, 1f, bossAlive ? 0f : 1f);
                 }
             }
         }
@@ -353,10 +406,29 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
         if (tier.boss != null && tier.boss.Length > 0)
         {
+            // Wipe every currently-alive enemy right before the boss lands — see WipeAllEnemies' own doc
+            // comment. Now that the pre-boss spawn blackout is gone, enemies keep spawning right up until
+            // this exact moment, so without this the boss would land in the middle of a full, ever-growing
+            // swarm instead of a clean arena.
+            WipeAllEnemies();
+
             var prefab = tier.boss[GameRandom.instance.Next(tier.boss.Length)];
             var id = SpawnEnemy(prefab, EnemySpawnCategory.Boss, coopScale, 1f, coopScale);
             if (id.HasValue) state.activeBosses.Add(id.Value);
         }
+    }
+
+    // Shared by both boss-cycle transitions — right before a boss spawns, and right after one dies (see
+    // each call site's own comment for why). See IEnemyPD.SilentDespawn's own doc comment for why this is a
+    // clean vanish, not a real kill: no XP, no on-kill augment reactions, no death-flash. _activeEnemies
+    // (the same set OnPlayerTauntChanged/OnPlayerInvisibleChanged already fan out through) is every enemy
+    // alive right now — safe to include a boss too on the pre-spawn call (should never actually be one
+    // there, since bossAlive being false is what let control reach either call site at all), since a
+    // SilentDespawn() on an already-dead/already-wiped enemy is a harmless no-op either way.
+    private void WipeAllEnemies()
+    {
+        foreach (var enemy in _activeEnemies)
+            enemy.SilentDespawn();
     }
 
     private void PruneDeadBosses(ref State state)
@@ -475,6 +547,16 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         _ => tier4
     };
 
+    // Mirrors GetCurrentTier's own bossesDefeated->tier mapping exactly (tier1=1, tier2=2, tier3=3, tier4=4+)
+    // — the two must never drift apart, since one picks the prefab pool and the other picks how hard
+    // whatever comes out of it hits.
+    private static int GetCurrentTierNumber(int bossesDefeated) => Mathf.Min(bossesDefeated, 3) + 1;
+
+    // healthMultiplier/damageMultiplier/xpMultiplier arriving here are each category's own existing elite/
+    // co-op scalar (e.g. coopScale) — tier scaling multiplies on top of that, not the other way around (per
+    // explicit design: tier is the base transformation every category shares, elite/co-op is layered on top
+    // of whatever tier already produced). Folded in here, the one choke point every spawn call already goes
+    // through, rather than touching each of the 4 call sites above individually.
     private PredictedObjectID? SpawnEnemy(GameObject prefab, EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier)
     {
         if (prefab == null) return null;
@@ -483,7 +565,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out IEnemyPD enemy))
-            enemy.ConfigureSpawn(category, healthMultiplier, damageMultiplier, xpMultiplier);
+            enemy.ConfigureSpawn(category, _tierHealthMultiplier * healthMultiplier, _tierDamageMultiplier * damageMultiplier, _tierXpMultiplier * xpMultiplier, _tierMoveSpeedMultiplier);
 
         return id;
     }

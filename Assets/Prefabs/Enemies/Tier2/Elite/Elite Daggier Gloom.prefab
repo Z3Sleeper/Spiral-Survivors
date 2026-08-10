@@ -57,29 +57,17 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 2100000, guid: 03cacc8a277212d4fada251539fb9462, type: 2}
     - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: damage
-      value: 15
-      objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: xpValue
-      value: 125
-      objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
       propertyPath: enemyName
       value: Elite Daggier Gloom
       objectReference: {fileID: 0}
     - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: maxHealth
-      value: 2500
+      propertyPath: attacksPerAttack
+      value: 2
       objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: moveSpeed
-      value: 15
-      objectReference: {fileID: 0}
-    - target: {fileID: 1350753807562210501, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
-      propertyPath: spinRadius
-      value: 5.4
-      objectReference: {fileID: 0}
+    - target: {fileID: 2105163416172843845, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: c708cde7a9b4c664195359cc5fd34b61, type: 2}
     - target: {fileID: 2823677713980239291, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
       propertyPath: 'm_Materials.Array.data[0]'
       value: 

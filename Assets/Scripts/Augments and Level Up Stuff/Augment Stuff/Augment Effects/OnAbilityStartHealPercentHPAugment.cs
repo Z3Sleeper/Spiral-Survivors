@@ -28,7 +28,9 @@ public class OnAbilityStartHealPercentHPAugment : AugmentEffectPD<OnAbilityStart
             if (ability.Slot == AbilitySlot.Ability1) ability1Value = value;
             else if (ability.Slot == AbilitySlot.Ability2) ability2Value = value;
         }
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}/{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
+        // "|" not "/" — a slash between two live numbers reads as division at a glance; these are two
+        // independent per-ability values (Ability1 | Ability2), not a fraction.
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
     }
 
     protected override void OnApply() => Stats.AddAbilityStartListener(OnAbilityStart);

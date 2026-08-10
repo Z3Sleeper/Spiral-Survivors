@@ -123,6 +123,12 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
                     if (dist <= preferredRange * 2f)
                     {
                         // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
+                        // Decrement/refill lives here (the actual start of the attempt — dashtotarget OR
+                        // windup, whichever runs first — not EnterSpin's own strike-resolve point) so an
+                        // attempt cancelled via Interrupt() mid-dash or mid-windup still counts against the
+                        // budget. See EnterMoving's own comment for why the reset moved here too.
+                        if (state.attacksRemaining <= 0) state.attacksRemaining = attacksPerAttack;
+                        state.attacksRemaining--;
                         CaptureAttackAnchor(ref state);
                         if (dist > preferredRange / 2f) EnterDashToTarget(ref state);
                         else                             EnterWindup(ref state);
@@ -159,6 +165,11 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
                     }
                     else
                     {
+                        // Same refill-if-exhausted + decrement as the Moving case above — this is the other
+                        // funnel into a fresh attempt (continuing an existing chain rather than starting a
+                        // brand new one), same reasoning applies.
+                        if (state.attacksRemaining <= 0) state.attacksRemaining = attacksPerAttack;
+                        state.attacksRemaining--;
                         CaptureAttackAnchor(ref state);
                         float dist = Vector3.Distance(transform.position, _target.position);
                         if (dist > preferredRange / 2f) EnterDashToTarget(ref state);
@@ -210,18 +221,20 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private void EnterSpin(ref State state)
     {
         state.stateTimer = spinDuration;
-        state.attacksRemaining--;
+        // Decrement moved to the attack-start sites (Moving/BetweenSpins, above) — see their own comment.
         SetDaggerState(ref state, DaggerState.Spinning);
 
         // One-shot AoE resolve, matching KingSpikePD.FireSpikeBurst — a plain distance check against
         // CharacterStatsPD.All rather than a physics trigger/collider, since this is checking against a
         // small, bounded, already-in-memory set (players), not enemies.
+        // * size — matches SpearGloomPD's own stabRange * size precedent; EnemyBasePD.size has no automatic
+        // transform.localScale wiring, so elite/bigger variants need this explicit to actually hit wider.
         float   dmg    = damage * spinDamageMultiplier;
         Vector3 origin = transform.position;
         foreach (var stats in CharacterStatsPD.All.Values)
         {
             if (stats.IsDead || stats.IsInvincible) continue;
-            if (Vector3.Distance(stats.transform.position, origin) <= spinRadius)
+            if (Vector3.Distance(stats.transform.position, origin) <= spinRadius * size)
                 stats.TakeDamage(dmg);
         }
     }
@@ -256,7 +269,10 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
 
     private void EnterMoving(ref State state)
     {
-        state.attacksRemaining = attacksPerAttack;
+        // attacksRemaining deliberately left untouched here — the attack-start sites (Moving/BetweenSpins)
+        // now own resetting it (refill-if-exhausted, not unconditional), so an attempt cancelled via
+        // Interrupt() (which funnels through here) keeps whatever count it already had instead of getting
+        // silently topped back up.
         // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
         // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
         FindClosestTarget();
@@ -266,7 +282,20 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     // Every Dagger phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
     // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
     // of attacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
-    protected override void OnInterrupted() => EnterMoving(ref currentState);
+    protected override void OnInterrupted()
+    {
+        EnterMoving(ref currentState);
+
+        // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
+        // up — Interrupt() mutates currentState out-of-band (from a different identity's own Simulate(),
+        // not this enemy's own HandleActiveState flow this tick), which was leaving the windup indicator
+        // visibly stuck for a stray tick before UpdateView's viewState caught up to the interrupt.
+        // _lastVisualState deliberately NOT written here — see SpearGloomPD.OnInterrupted's own comment for
+        // why (UpdateView's own edge-detection bookkeeping, not ours to set — would silently skip its
+        // _animator.Play(IdleHash, ...) call otherwise).
+        if (_windupIndicator != null) _windupIndicator.SetActive(false);
+        if (_windupFill != null) _windupFill.ResetFill();
+    }
 
     // ── View ───────────────────────────────────────────────────────────────
     private DaggerState _lastVisualState = (DaggerState)(-1);
@@ -279,8 +308,9 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
 
         // Re-applied every frame — same reasoning as every other indicator in this rebuild: if spinRadius
         // changes at runtime, the indicator should never silently drift out of sync with it. Radial
-        // (cylinder), not line — this is an AoE, not a directional reach.
-        if (_windupIndicator != null) IndicatorMath.ApplyRadialTransform(_windupIndicator.transform, spinRadius);
+        // (cylinder), not line — this is an AoE, not a directional reach. * size matches EnterSpin's own
+        // hit-check exactly (see that method's comment).
+        if (_windupIndicator != null) IndicatorMath.ApplyRadialTransform(_windupIndicator.transform, spinRadius * size);
 
         var ss = (DaggerState)viewState.stateId;
 

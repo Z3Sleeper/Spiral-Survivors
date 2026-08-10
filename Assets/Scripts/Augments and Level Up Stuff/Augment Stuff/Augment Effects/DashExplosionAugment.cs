@@ -31,6 +31,10 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
     public float damagePercent     = 2f;
     public float onHitPowerPercent = 2f;
     [SerializeField] private float explosionRadius   = 5f;
+    // Multiplies Stats.Knockback (unpenalized — no onHitPower multiply, same convention
+    // ShieldBreakBurstAugment's own knockbackMultiplier uses). 1 preserves this augment's previous
+    // behavior (raw Stats.Knockback, unscaled) now that it's exposed for tuning.
+    [SerializeField] private float knockbackMultiplier = 1f;
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate     = 0.5f;
 
@@ -81,17 +85,19 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
 
         Vector3 castPosition = Stats.transform.position;
         float radius = explosionRadius * Stats.AreaEffectSize;
+        float knockback = Stats.Knockback * knockbackMultiplier;
         int totalCasts = Mathf.Max(1, Stats.AreaEffectCount);
 
         var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
         if (!chainId.HasValue) return;
 
         var go = hierarchy.GetGameObject(chainId.Value);
-        // hasKnockback: true, knockback left at its default (null) — resolves to Stats.Knockback exactly,
-        // deliberately NOT scaled by Stats.AreaEffectPower (per the "AoE Effects" default rules).
+        // hasKnockback: true, knockback explicitly passed (Stats.Knockback * knockbackMultiplier) — same
+        // "unpenalized, deliberately NOT scaled by Stats.AreaEffectPower" convention ShieldBreakBurstAugment's
+        // own knockback uses (per the "AoE Effects" default rules).
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, vfxPerCast: true,
+                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, knockback: knockback, vfxPerCast: true,
                 source: DamageSource.DashExplosion);
     }
 }

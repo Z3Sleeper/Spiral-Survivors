@@ -8,29 +8,17 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 29242358641370300, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: c708cde7a9b4c664195359cc5fd34b61, type: 2}
     - target: {fileID: 1597157536724350220, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
       propertyPath: m_Name
       value: Shootier Gloom
       objectReference: {fileID: 0}
     - target: {fileID: 3841831650678444081, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
-      propertyPath: damage
-      value: 15
-      objectReference: {fileID: 0}
-    - target: {fileID: 3841831650678444081, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
-      propertyPath: xpValue
-      value: 25
-      objectReference: {fileID: 0}
-    - target: {fileID: 3841831650678444081, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
       propertyPath: enemyName
       value: Shootier Gloom
-      objectReference: {fileID: 0}
-    - target: {fileID: 3841831650678444081, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
-      propertyPath: maxHealth
-      value: 500
-      objectReference: {fileID: 0}
-    - target: {fileID: 3841831650678444081, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
-      propertyPath: moveSpeed
-      value: 12.5
       objectReference: {fileID: 0}
     - target: {fileID: 3841831650678444081, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
       propertyPath: multishotCount

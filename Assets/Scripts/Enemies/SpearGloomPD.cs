@@ -126,6 +126,12 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
                         // Ongoing attack starts here — snapshot the target's position now so the whole
                         // dash+windup+stab sequence resolves against it even if _target gets reassigned
                         // mid-attack (taunt/invisible). See CaptureAttackAnchor's own doc comment.
+                        // Decrement/refill lives here (the actual start of the attempt — dashtotarget OR
+                        // windup, whichever runs first — not EnterStab's own strike-resolve point) so an
+                        // attempt cancelled via Interrupt() mid-dash or mid-windup still counts against the
+                        // budget. See EnterMoving's own comment for why the reset moved here too.
+                        if (state.spearAttacksRemaining <= 0) state.spearAttacksRemaining = attacksPerAttack;
+                        state.spearAttacksRemaining--;
                         CaptureAttackAnchor(ref state);
                         if (dist > preferredRange / 2f) EnterDashToTarget(ref state);
                         else                             EnterWindup(ref state);
@@ -164,6 +170,11 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
                     }
                     else
                     {
+                        // Same refill-if-exhausted + decrement as the Moving case above — this is the other
+                        // funnel into a fresh attempt (continuing an existing chain rather than starting a
+                        // brand new one), same reasoning applies.
+                        if (state.spearAttacksRemaining <= 0) state.spearAttacksRemaining = attacksPerAttack;
+                        state.spearAttacksRemaining--;
                         CaptureAttackAnchor(ref state);
                         float dist = Vector3.Distance(transform.position, _target.position);
                         if (dist > preferredRange / 2f) EnterDashToTarget(ref state);
@@ -223,7 +234,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void EnterStab(ref State state)
     {
         state.spearStateTimer = stabDuration;
-        state.spearAttacksRemaining--;
+        // Decrement moved to the attack-start sites (Moving/BetweenStabs, above) — see their own comment.
         SetSpearState(ref state, SpearState.Stabbing);
 
         // One-shot forward-rectangle AoE resolve, matching KingSpikePD.FireSpikeBurst/DaggerGloomPD.
@@ -252,7 +263,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
             Vector3 offset = stats.transform.position - origin;
             offset.y = 0f;
             float forwardDist = Vector3.Dot(offset, forward);
-            if (forwardDist < 0f || forwardDist > stabRange) continue;
+            if (forwardDist < 0f || forwardDist > stabRange * size) continue;
 
             float lateralDist = (offset - forward * forwardDist).magnitude;
             if (lateralDist > halfWidth) continue;
@@ -286,7 +297,10 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
 
     private void EnterMoving(ref State state)
     {
-        state.spearAttacksRemaining = attacksPerAttack;
+        // spearAttacksRemaining deliberately left untouched here — the attack-start sites (Moving/
+        // BetweenStabs) now own resetting it (refill-if-exhausted, not unconditional), so an attempt
+        // cancelled via Interrupt() (which funnels through here) keeps whatever count it already had instead
+        // of getting silently topped back up.
         // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
         // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
         FindClosestTarget();
@@ -297,7 +311,21 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     // Every Spear phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
     // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
     // of spearAttacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
-    protected override void OnInterrupted() => EnterMoving(ref currentState);
+    protected override void OnInterrupted()
+    {
+        EnterMoving(ref currentState);
+
+        // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
+        // up — Interrupt() mutates currentState out-of-band (from a different identity's own Simulate(),
+        // not this enemy's own HandleActiveState flow this tick), which was leaving the windup indicator
+        // visibly stuck for a stray tick before UpdateView's viewState caught up to the interrupt.
+        // _lastVisualState deliberately NOT written here — that field is UpdateView's own edge-detection
+        // bookkeeping. Setting it here would make UpdateView's next real call see ss == _lastVisualState and
+        // bail out early via its own guard, silently skipping the _animator.Play(IdleHash, ...) call gated
+        // behind that exact same check.
+        if (_windupIndicator != null) _windupIndicator.SetActive(false);
+        if (_windupFill != null) _windupFill.ResetFill();
+    }
 
     // ── View ───────────────────────────────────────────────────────────────
     private SpearState _lastVisualState = (SpearState)(-1);
@@ -314,7 +342,24 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
 
         // Re-applied every frame, not just once at spawn — stabRange is the single source of truth for
         // reach, so the visual indicator can never silently drift out of sync with it.
-        if (_windupIndicator != null) IndicatorMath.ApplyLineTransform(_windupIndicator.transform, stabRange);
+        if (_windupIndicator != null)
+        {
+            // * size on both terms, matching EnterStab's own hit-check exactly (stabRange * size,
+            // stabWidth * 0.5f * size) — EnemyBasePD.size has no automatic transform.localScale wiring
+            // anywhere in this codebase (confirmed via direct grep), so the indicator does NOT inherit
+            // size-driven scaling for free; it must be applied explicitly here or it silently drifts out
+            // of sync with the real (size-scaled) hit-check on any elite/bigger variant.
+            IndicatorMath.ApplyLineTransform(_windupIndicator.transform, stabRange * size);
+            // ApplyLineTransform only ever sizes LENGTH (Z) — width (X) was never wired up here, so
+            // stabWidth changes only ever affected the actual hit-check (EnterStab's own halfWidth), never
+            // the visual indicator. stabWidth is already a FULL width (see its own doc comment), so no x2
+            // needed here (unlike SpikeShieldPD's own half-width field) — same 0.1-world-units-per-scale-unit
+            // convention ApplyLineTransform's own `distance * 0.1f` uses for Z, assuming the standard
+            // 10-unit-at-scale-1 plane mesh every line indicator in this codebase uses.
+            var scale = _windupIndicator.transform.localScale;
+            scale.x = stabWidth * 0.1f * size;
+            _windupIndicator.transform.localScale = scale;
+        }
 
         var ss = (SpearState)viewState.spearStateId;
 

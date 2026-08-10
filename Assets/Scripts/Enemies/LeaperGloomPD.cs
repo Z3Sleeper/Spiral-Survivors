@@ -167,7 +167,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
                 if (_target != null) HandleMovement(ref state, delta);
                 if (state.attackCooldownTimer <= 0f && TargetInRange())
                 {
-                    state.leapsRemaining = leapsPerAttack;
+                    // leapsRemaining itself is handled by EnterWindup now, not here — see its own comment.
                     EnterWindup(ref state);
                 }
                 break;
@@ -249,7 +249,13 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         }
 
         if (_physicsCollider != null) _physicsCollider.enabled = ss != LeapState.Leaping;
-        if (_hurtbox != null)         _hurtbox.enabled         = ss != LeapState.Leaping;
+        // SetHurtboxDisabled (not a raw _hurtbox.enabled write) — this ALSO grants invulnerability + shows
+        // the shell for the same window, per explicit design ("Hurtbox Disabled = Invincible" always, the
+        // reverse not necessarily true — see IEnemyPD.SetHurtboxDisabled's own doc comment). Previously this
+        // enemy was unhittable mid-air but NOT formally invulnerable, meaning a hit that somehow still
+        // landed (e.g. a lingering AoE already resolved against a cached reference) would have dealt real
+        // damage nobody could see land — this closes that gap too, not just the visual/messaging one.
+        SetHurtboxDisabled(ss == LeapState.Leaping);
     }
 
     // ── State transitions ──────────────────────────────────────────────────
@@ -257,6 +263,18 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private void EnterWindup(ref State state)
     {
         if (_target == null) return;
+
+        // Decrement lives HERE — the actual START of one leap attempt — not at landing (EnterPostLand,
+        // where it used to live). A leap cancelled mid-windup or mid-air via Interrupt() now still counts
+        // against the budget, since leapsRemaining already dropped the instant this ran. Refill-if-exhausted
+        // (not an unconditional reset) — called from both a fresh Moving-triggered attack (leapsRemaining
+        // sitting at 0 from a previous fully-completed chain, or a pooled spawn) AND EnterPostLand's own
+        // mid-chain continuation (leapsRemaining already > 0, so this is a no-op there). This is also why
+        // Moving's own attack-trigger and EnterMoving/OnInterrupted no longer stomp leapsRemaining
+        // themselves — this single self-contained check is the only reset point now, so an interrupted
+        // chain's leftover count survives into whatever attack comes next instead of being thrown away.
+        if (state.leapsRemaining <= 0) state.leapsRemaining = leapsPerAttack;
+        state.leapsRemaining--;
 
         // Fixed-radius, random-angle offset — matches KingSpikePD's remote-burst offset (a uniform random
         // angle at a FIXED distance, not old's Random.insideUnitCircle.normalized equivalent, ported to
@@ -294,19 +312,20 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
         // One-shot AoE resolve on landing, matching KingSpikePD.FireSpikeBurst/DaggerGloomPD.EnterSpin — a
         // plain distance check against CharacterStatsPD.All rather than a physics trigger/collider.
+        // * size — matches SpearGloomPD/DaggerGloomPD's own size-scaled hit-check precedent.
         float   dmg    = damage * landDamageMultiplier;
         Vector3 origin = transform.position;
         foreach (var stats in CharacterStatsPD.All.Values)
         {
             if (stats.IsDead || stats.IsInvincible) continue;
-            if (Vector3.Distance(stats.transform.position, origin) <= landRadius)
+            if (Vector3.Distance(stats.transform.position, origin) <= landRadius * size)
                 stats.TakeDamage(dmg);
         }
     }
 
     private void EnterPostLand(ref State state)
     {
-        state.leapsRemaining--;
+        // Decrement moved to EnterWindup (attack START, not this completion point) — see its own comment.
         // _target != null guard matters here — EnterWindup() silently no-ops on a null target (it needs one
         // to compute leapTarget), so without this check a target lost mid-chain left the enemy stuck forever
         // in Landing (leapsRemaining spiraling negative every tick, never actually transitioning out).
@@ -330,7 +349,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
     private void EnterMoving(ref State state)
     {
-        state.leapsRemaining = leapsPerAttack;
+        // leapsRemaining deliberately left untouched here — EnterWindup now owns resetting it
+        // (refill-if-exhausted, not unconditional), so an attempt cancelled via Interrupt() (which funnels
+        // through here) keeps whatever count it already had instead of getting silently topped back up.
         // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
         // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
         FindClosestTarget();
@@ -339,7 +360,26 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
     // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
     // it runs out of leapsRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
-    protected override void OnInterrupted() => EnterMoving(ref currentState);
+    protected override void OnInterrupted()
+    {
+        EnterMoving(ref currentState);
+
+        // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
+        // up — Interrupt() mutates currentState out-of-band (from a different identity's own Simulate(),
+        // not this enemy's own HandleActiveState flow this tick), which was leaving the windup indicator
+        // visibly stuck for a stray tick before UpdateView's viewState caught up to the interrupt. Also
+        // re-parents back immediately (Windup unparents the indicator to world root — see UpdateView's own
+        // reparenting block) since an interrupt only ever fires during Windup (Leaping isn't interruptible
+        // per CanBeInterrupted below), so it's always unparented at this exact point.
+        // _lastVisualState deliberately NOT written here — see SpearGloomPD.OnInterrupted's own comment for
+        // why (UpdateView's own edge-detection bookkeeping, not ours to set).
+        if (_windupIndicator != null)
+        {
+            _windupIndicator.SetActive(false);
+            _windupIndicator.transform.SetParent(_windupIndicatorParent, true);
+        }
+        if (_windupFill != null) _windupFill.ResetFill();
+    }
 
     // Mid-Leaping specifically is NOT interruptible (per design) — the leaper is already mid-air on a fixed
     // kinematic arc lerp with both its collider AND hurtbox disabled (see HandleActiveState's own comment),

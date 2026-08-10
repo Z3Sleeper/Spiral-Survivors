@@ -14672,14 +14672,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - v0.3c
+      - v0.3.1
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - v0.3c
+    - v0.3.1
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -21391,7 +21391,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.3c
+  m_text: Version 0.3.1
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -25665,6 +25665,7 @@ MonoBehaviour:
   unlockSound: {fileID: 8300000, guid: 46c7129edbae410419e8c572ca74f505, type: 3}
   lockLobbyOnMatchStart: 1
   matchStartTimeoutSeconds: 20
+  lockInGraceSeconds: 1.5
 --- !u!1 &1805443636
 GameObject:
   m_ObjectHideFlags: 0

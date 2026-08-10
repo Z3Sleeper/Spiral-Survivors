@@ -9,22 +9,6 @@ PrefabInstance:
     m_TransformParent: {fileID: 0}
     m_Modifications:
     - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: damage
-      value: 20
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: xpValue
-      value: 625
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: maxHealth
-      value: 12500
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
-      propertyPath: moveSpeed
-      value: 18
-      objectReference: {fileID: 0}
-    - target: {fileID: 2087249779492710761, guid: 39e35a18b925c6444ab288f082127594, type: 3}
       propertyPath: leapsPerAttack
       value: 3
       objectReference: {fileID: 0}
@@ -80,6 +64,10 @@ PrefabInstance:
       propertyPath: 'm_Materials.Array.data[0]'
       value: 
       objectReference: {fileID: 2100000, guid: a0c2e8268b9a1d54dbe63437cda3523d, type: 2}
+    - target: {fileID: 8527893660066536922, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+      propertyPath: 'm_Materials.Array.data[0]'
+      value: 
+      objectReference: {fileID: 2100000, guid: dc8962cbfd4b6ee4ba23c999ce0b9df9, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

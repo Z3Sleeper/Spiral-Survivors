@@ -1,17 +1,10 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// New tech — when your shield breaks (CharacterStatsPD._onShieldBreak), become invincible for 1s, deal
-// 200%* unpenalized damage to nearby enemies, knock them back, and stun them for 1s. No onhit trigger
-// (unlike DashExplosionAugment) — not part of this augment's spec.
-//
-// The stun is the first real caller of the public IEnemyPD.Stun(duration) entry point anywhere in this
-// codebase, but NOT a new mechanism — EnemyBasePD already has a fully generic stunTimer gate baked into its
-// base Simulate(), already respects stunResistant/crowdControlResist uniformly. Paired with interrupt: true
-// below (via AreaEffectCastHelper's own interrupt param, applied per-enemy before damage/knockback/onEnemyHit)
-// — this augment's stun is meant to actually cancel whatever attack an enemy is mid-sequence on, not just
-// land and wait for it to finish like a bare Stun() now does by default — see EnemyBasePD.Interrupt()'s own
-// doc comment for the full reasoning and why the ordering (interrupt first, then knockback/stun) matters.
+// Nerfed (per explicit instruction — interrupt and stun removed entirely) — when your shield breaks
+// (CharacterStatsPD._onShieldBreak), become invincible for 1s, deal 200%* unpenalized damage to nearby
+// enemies, and knock them back. No stun, no interrupt, no onhit trigger (unlike DashExplosionAugment) — not
+// part of this augment's spec anymore.
 //
 // "AoE Effects" tag (2026-07-25): damage/knockback/radius/count now all route through the shared
 // AreaEffectCastHelper (same one DashExplosionAugment/DashHealAugment use). Damage scales with
@@ -21,9 +14,7 @@ using UnityEngine;
 // spawned AreaEffectPD (pooled, so this costs a reactivate, not a real spawn; the exact same prefab
 // DashExplosionAugment uses, since the class isn't tied to any one augment), rather than a separate
 // direct-cast path kept in sync by hand. Only the invincibility grant (not per-enemy, so just granted
-// directly once before spawning the chain) and the stun (layered on via the helper's onEnemyHit callback,
-// passed through for every cast in the chain, not just the first — ALSO scaled by Stats.AreaEffectPower,
-// same as damage, per the user's own call) stay as this augment's own unique payload — everything else
+// directly once before spawning the chain) stays as this augment's own unique payload — everything else
 // (enemy-finding, damage roll, knockback, VFX) is shared, not duplicated.
 //
 // Knockback reworked per explicit instruction: no longer an augment-owned flat value entirely separate from
@@ -44,7 +35,6 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
     public float damagePercent        = 2f;
     [SerializeField] private float burstRadius          = 5f;
     [SerializeField] private float knockbackMultiplier  = 2f;
-    [SerializeField] private float stunDuration         = 1f;
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate        = 0.5f;
 
@@ -96,13 +86,9 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
         if (!chainId.HasValue) return;
 
         var go = hierarchy.GetGameObject(chainId.Value);
-        // interrupt: true — this stun is meant to cancel whatever attack an enemy is mid-sequence on, not
-        // just land and wait for it to finish (see EnemyBasePD.Interrupt()'s own doc comment); Cast() applies
-        // it before damage/knockback/onEnemyHit for exactly that reason.
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                damagePercent: damagePercent, notifyOnHit: false, hasKnockback: true, knockback: knockback, interrupt: true,
-                source: DamageSource.ShieldBreakBurst,
-                onEnemyHit: enemy => enemy.Stun(stunDuration * Stats.AreaEffectPower), vfxPerCast: true);
+                damagePercent: damagePercent, notifyOnHit: false, hasKnockback: true, knockback: knockback,
+                source: DamageSource.ShieldBreakBurst, vfxPerCast: true);
     }
 }

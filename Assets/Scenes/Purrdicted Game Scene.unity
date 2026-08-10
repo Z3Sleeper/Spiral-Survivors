@@ -9189,12 +9189,18 @@ MonoBehaviour:
     - {fileID: 1597157536724350220, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
     - {fileID: 1597157536724350220, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
     - {fileID: 1597157536724350220, guid: 7f0cee84dedc68c4b858a47cc40fdea2, type: 3}
+    - {fileID: 1597157536724350220, guid: 35237dad5e860b744967ccf635127c48, type: 3}
+    - {fileID: 1597157536724350220, guid: 453ec4a2b6765b849b2b787593146834, type: 3}
+    - {fileID: 1597157536724350220, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
     - {fileID: 1597157536724350220, guid: db9c9c0ca332c124d8a6378c5efd8512, type: 3}
     - {fileID: 1597157536724350220, guid: adcfa81a3df45e5409b36e0aa823e74b, type: 3}
     elite:
     - {fileID: 1812104275775090706, guid: 85488a841a962ae4a9a0ea80b412b47c, type: 3}
     - {fileID: 8329396689059783766, guid: c77b43ffdc40724428a7c43e4bd16d87, type: 3}
     - {fileID: 6304511416081444933, guid: 39e35a18b925c6444ab288f082127594, type: 3}
+    - {fileID: 7201856391721050173, guid: ce3d3a21a8e352e4eabce33603d5f887, type: 3}
+    - {fileID: 8890874494385762578, guid: 66a572bee6accab4a8010390c9f9180f, type: 3}
+    - {fileID: 5916829704135421742, guid: cba710c566ffea342a2b9f8f58c8903b, type: 3}
     - {fileID: 3116795667001106926, guid: 99d28b2699484ae46aeaa8be29e2ff2b, type: 3}
     - {fileID: 4196754441784489447, guid: e5ac4eed720592e4aa8b05832eafff2e, type: 3}
     boss:
@@ -9206,12 +9212,18 @@ MonoBehaviour:
     - {fileID: 2259831222579492897, guid: e42e5a40a09955945994deb1b38daa88, type: 3}
     - {fileID: 6143286297466499065, guid: a26db6784b72fef439531d5511997e9c, type: 3}
     - {fileID: 6074674118707803445, guid: 3ff4f3108fa30f74d97148e79ee5ca06, type: 3}
+    - {fileID: 1691403965730279195, guid: 3ad84b5f779be6c46abc9c9f9192d806, type: 3}
+    - {fileID: 1953488450354997944, guid: 55e2fdb57afa97e43b4ffb2dff58efc4, type: 3}
+    - {fileID: 6556666209763212248, guid: 052324b77d69d9c488b274aa7c58d649, type: 3}
     - {fileID: 2225048739166665265, guid: b5f7c440579cae24f8a1973987b7bcab, type: 3}
     - {fileID: 3533963572311859131, guid: a31530711b64b664fa77fe41d89f53eb, type: 3}
     elite:
     - {fileID: 4308514868733512369, guid: 93c5e1b6dec8a4249b038f939391ca8e, type: 3}
     - {fileID: 4187810981206843494, guid: 33777791f3d836f4f92320e8d91d5e88, type: 3}
     - {fileID: 3721031815765918055, guid: b018022815749334888b0e5d214e7aca, type: 3}
+    - {fileID: 7525501794134020232, guid: f0f82d68828e5ce4fbf25417aa464ffd, type: 3}
+    - {fileID: 798374418932893617, guid: 012cbfafb2ec6fb4495fc0074acd313c, type: 3}
+    - {fileID: 1799231162588038956, guid: 223833caf9803f546bff6dc58fb38595, type: 3}
     - {fileID: 1927343215851148131, guid: 4faf95e69d801674d8048de09d732d31, type: 3}
     - {fileID: 6594610724574555039, guid: 2adeba403fa71404b9a11b12757312ef, type: 3}
     boss:
@@ -9223,12 +9235,18 @@ MonoBehaviour:
     - {fileID: 6722896333218624035, guid: 67d69e0f26a2e1742b0d7eb8a29b7fdd, type: 3}
     - {fileID: 2303679812330430289, guid: 565bc789f9d87a74db6fb7651d3967e0, type: 3}
     - {fileID: 5986736469591671213, guid: ce5106fa86ec23741bb47b71a03460f8, type: 3}
+    - {fileID: 4088061214075881961, guid: d0f551ce21b4ba54d91b67235404aab6, type: 3}
+    - {fileID: 7735088020750106748, guid: 058c827320508cf4bb2eecf7035b9814, type: 3}
+    - {fileID: 3423524618347213983, guid: ed61005edade4624287f3e06f52a6cb2, type: 3}
     - {fileID: 6444594569439189466, guid: 00556f76e420cf343bdc510adb75c01b, type: 3}
     - {fileID: 3545945481570180743, guid: 3dcabd1361283b847a82eb4a24840ed6, type: 3}
     elite:
     - {fileID: 1645208729138055596, guid: 2594fc2b406005e47a53fa5c3043cef9, type: 3}
     - {fileID: 794650093173876407, guid: 7c1efd76c5bd87c4e93ac927b723dafe, type: 3}
     - {fileID: 2562444785597683105, guid: 770c40d0facc72440ad1c22b307e0ec1, type: 3}
+    - {fileID: 7741764054973699812, guid: 43d4c0e2a7551fd448488fccf0bd04f7, type: 3}
+    - {fileID: 7270836030190586311, guid: 197318cb30f4c7c42ba59364dfe96728, type: 3}
+    - {fileID: 6537369712209308207, guid: db96a3ce818d74f41b1c16d0431d03bb, type: 3}
     - {fileID: 2262413697986120728, guid: adb58e59b9fbfe7418ace81fe5e05cf7, type: 3}
     - {fileID: 6504067297863611638, guid: 849d15bb67e17ea4e9702725a842a927, type: 3}
     boss:
@@ -9259,24 +9277,28 @@ MonoBehaviour:
   - {fileID: 48887943}
   spawnMinDistance: 25
   spawnMaxDistance: 30
-  spawnIntervalQ1: 6
+  spawnIntervalQ1: 4
   spawnIntervalQ2: 3
-  spawnIntervalQ3: 1.5
-  spawnIntervalQ4: 0.75
-  cycleInterval: 240
-  eliteSpawnTimeFirst: 150
-  eliteSpawnTimeLast: 30
+  spawnIntervalQ3: 2
+  spawnIntervalQ4: 1
+  cycleInterval: 180
+  eliteSpawnTimeFirstPercent: 0.25
+  eliteSpawnTimeLastPercent: 0.75
   eliteSpawnRampRatio: 0.8
   baseEliteCount: 10
+  moveSpeedTierGrowth: 0.25
+  damageTierGrowth: 0.5
+  healthExponentialTierBase: 5
+  xpExponentialTierBase: 5
   bossesToDefeatForWin: 3
   maxNormalEnemies: 100
   maxEliteEnemies: 100
   maxPlebEnemies: 500
   plebSpawnAmount: 5
-  plebSpawnIntervalQ1: 2
+  plebSpawnIntervalQ1: 1.75
   plebSpawnIntervalQ2: 1.5
-  plebSpawnIntervalQ3: 1
-  plebSpawnIntervalQ4: 0.5
+  plebSpawnIntervalQ3: 1.25
+  plebSpawnIntervalQ4: 1
 --- !u!1 &1131900761
 GameObject:
   m_ObjectHideFlags: 0
