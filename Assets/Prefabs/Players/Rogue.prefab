@@ -98,7 +98,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TestBurstPD
   icon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}
-  abilityName: <color=#FF0050>Ability:\nEviscerate</color>
+  abilityName: <color=#FF0050>Eviscerate</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     <color=#00FFFF>Somersault
@@ -132,7 +132,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InvisibilityAbilityPD
   icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}
-  abilityName: <color=#FFFFFF>Ability:\nVanish</color>
+  abilityName: <color=#FFFFFF>Vanish</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     Become

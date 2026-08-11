@@ -98,16 +98,21 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // Applied at spawn time, generically, to every category (normal/pleb/elite/boss) on top of whatever
     // that category's own elite/co-op multiplier already is (see Simulate()'s own comment on ordering) — so
     // an enemy TYPE only ever needs ONE authored (tier1-baseline) stat set on its prefab. Reusing the same
-    // prefabs across a different "level" with a different tier progression means retuning these 3 growth
+    // prefabs across a different "level" with a different tier progression means retuning these growth
     // curves once here, not re-tuning every individual tier's own hand-authored numbers on every prefab.
-    // Move speed and damage grow LINEARLY (tier1 + this fraction of tier1 per tier step above 1); health and
-    // XP each grow on their OWN independent EXPONENTIAL curve (this many multiplier steps compounded per
-    // tier step above 1, separately tunable so one can be retuned without affecting the other) — shape
-    // confirmed against the project's own current T1/T2/T3 numbers before this was built.
+    // Move speed, damage, AND xp grow LINEARLY (tier1 + this fraction of tier1 per tier step above 1);
+    // health grows on its OWN independent EXPONENTIAL curve (this many multiplier steps compounded per tier
+    // step above 1) — shape confirmed against the project's own current T1/T2/T3 numbers before this was
+    // built. xp was ALSO exponential originally (xpExponentialTierBase = 5, i.e. 5/25/125/625 for a
+    // tier1-baseline 5xp enemy) but switched to linear on 2026-08-12 after live T4 testing showed it
+    // snowballing the player's level curve — a single T3/T4 kill's xp vastly outstripped
+    // GameManagerPD.xpToNextLevel's own much slower (roughly arithmetic-step) growth. xpTierGrowth = 4
+    // reproduces the same 5/25 (tier1/tier2) values the exponential curve already had validated, then tapers
+    // to 45/65 for tier3/4 instead of continuing to 125/625.
     [SerializeField] private float moveSpeedTierGrowth = 0.25f;
     [SerializeField] private float damageTierGrowth = 0.5f;
     [SerializeField] private float healthExponentialTierBase = 5f;
-    [SerializeField] private float xpExponentialTierBase = 5f;
+    [SerializeField] private float xpTierGrowth = 4f;
 
     // Cached once per Simulate() tick (see that method's own comment for exactly where) — plain fields, not
     // State, since they're fully re-derived from state.bossesDefeated every tick regardless, same "compute
@@ -320,7 +325,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         _tierMoveSpeedMultiplier = 1f + (tierNumber - 1) * moveSpeedTierGrowth;
         _tierDamageMultiplier    = 1f + (tierNumber - 1) * damageTierGrowth;
         _tierHealthMultiplier    = Mathf.Pow(healthExponentialTierBase, tierNumber - 1);
-        _tierXpMultiplier        = Mathf.Pow(xpExponentialTierBase, tierNumber - 1);
+        _tierXpMultiplier        = 1f + (tierNumber - 1) * xpTierGrowth;
 
         // ── Phase escalation ───────────────────────────────────────────────
         // Tightens the interval settings (without cutting short a countdown already in flight — only the

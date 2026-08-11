@@ -9,7 +9,11 @@ using UnityEngine;
 // "AoE Effects" tag (2026-07-25): damage/knockback/radius/count now all route through the shared
 // AreaEffectCastHelper (same one DashExplosionAugment/DashHealAugment use). Damage scales with
 // Stats.AreaEffectPower, radius with Stats.AreaEffectSize, and the whole cast repeats Stats.AreaEffectCount
-// times — same as every other area effect. Knockback deliberately does NOT scale with AreaEffectPower (see
+// times — same as every other area effect. Radius formula standardized (2026-08-10) across
+// DashExplosionAugment/DashHealAugment/ShieldBreakBurstAugment: Stats.RangeScalingAoEBase * radiusMultiplier —
+// extracted onto CharacterStatsPD itself on 2026-08-12 (single source of truth after the 0.5 -> 1
+// WeaponRange-coefficient retune needed touching every family member by hand), same shape
+// KnightAreaStunHealAbilityPD already uses. Knockback deliberately does NOT scale with AreaEffectPower (see
 // its own comment below). Every cast — including AreaEffectCount == 1, always today — goes through a
 // spawned AreaEffectPD (pooled, so this costs a reactivate, not a real spawn; the exact same prefab
 // DashExplosionAugment uses, since the class isn't tied to any one augment), rather than a separate
@@ -33,8 +37,11 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
 
     [SerializeField] private float invincibilityDuration = 1f;
     public float damagePercent        = 2f;
-    [SerializeField] private float burstRadius          = 5f;
-    [SerializeField] private float knockbackMultiplier  = 2f;
+    // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
+    // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
+    // scaling itself.
+    [SerializeField] private float radiusMultiplier    = 1f;
+    [SerializeField] private float knockbackMultiplier = 2f;
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate        = 0.5f;
 
@@ -78,7 +85,7 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
         Stats.GrantInvincibility(invincibilityDuration);
 
         Vector3 castPosition = Stats.transform.position;
-        float radius = burstRadius * Stats.AreaEffectSize;
+        float radius = Stats.RangeScalingAoEBase * radiusMultiplier;
         float knockback = Stats.Knockback * knockbackMultiplier;
         int totalCasts = Mathf.Max(1, Stats.AreaEffectCount);
 

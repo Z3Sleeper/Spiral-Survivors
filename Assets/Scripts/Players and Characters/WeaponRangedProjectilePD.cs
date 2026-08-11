@@ -106,11 +106,15 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // left it at during its PREVIOUS life; `*=` would compound further every reuse instead of resetting.
     // _hitTargets is a plain field too (not part of predicted State, so GetInitialState() can't reset it) —
     // cleared here so a recycled instance doesn't inherit a previous life's hit history.
-    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, int ricochets)
+    // effectiveWeaponRange is WeaponRangedPD.EffectiveWeaponRange (Stats.WeaponRange, scaled by the firing
+    // weapon's own isRanged/rangeMultiplier if it's set) — passed in rather than re-read here so this
+    // projectile's own max travel distance can never drift out of sync with the raycast/aim distance
+    // WeaponRangedPD itself just used to find this target.
+    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, int ricochets, float effectiveWeaponRange)
     {
         _stats = stats;
         _speed          = speed;
-        _maxRange       = stats.WeaponRange * 1.25f;
+        _maxRange       = effectiveWeaponRange * 1.25f;
         _critChance     = stats.CritChance;
         _critDamage     = stats.CritDamage;
         _knockback      = stats.Knockback;
@@ -256,7 +260,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // Deliberately a fixed-radius physics query, not the old system's FindObjectsByType<EnemyBase> scan —
     // that isn't deterministic/replay-safe (iteration order isn't guaranteed, and it wouldn't roll back
     // correctly), a physics query against a synced physics world is. Radius matches _maxRange (the same
-    // WeaponRange * 1.25 the projectile flies) since distanceTravelled resets to 0 on every ricochet leg —
+    // effectiveWeaponRange * 1.25 the projectile flies) since distanceTravelled resets to 0 on every ricochet leg —
     // each bounce gets the same full flight budget to reach its new target as the initial shot did.
     //
     // Enemies only — a ricochet is a deliberate re-aim, not a "happy accident" graze, so it follows the

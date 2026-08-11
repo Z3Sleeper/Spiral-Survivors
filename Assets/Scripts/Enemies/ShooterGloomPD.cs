@@ -286,9 +286,20 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         SetShooterState(ref state, ShooterState.Moving);
     }
 
-    // Every Shooter phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
-    // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
-    // of shotsRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
+    // meant to be cancelable — CanBeInterrupted now defaults to false (see EnemyBasePD's own doc comment),
+    // so this opts in precisely where interrupting this enemy actually cancels something committed.
+    protected override bool CanBeInterrupted
+    {
+        get
+        {
+            var ss = GetShooterState(ref currentState);
+            return ss == ShooterState.Windup || ss == ShooterState.DashingAway || ss == ShooterState.Shooting;
+        }
+    }
+
+    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
+    // it runs out of shotsRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
     protected override void OnInterrupted() => EnterMoving(ref currentState);
 
     // ── Firing ────────────────────────────────────────────────────────────────

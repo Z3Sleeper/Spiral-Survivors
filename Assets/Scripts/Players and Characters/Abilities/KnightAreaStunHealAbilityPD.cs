@@ -8,11 +8,12 @@ using UnityEngine;
 // NotifyAbilityStart/NotifyAbilityEnd fire back to back inside the same Activate() call rather than
 // bracketing a real duration.
 //
-// Radius is the caster's true weapon reach (WeaponManagerPD.TryGetFarthestWeaponReach — same "real hitbox
-// edge, tip offset included" tech RogueSpinAbilityPD's own damage capsule and PlayerRangeIndicatorPD's ring
-// already use, falling back to the plain WeaponRange stat if no weapon is currently registered), scaled by
-// CharacterStatsPD.AreaEffectSize and then by this ability's own flat radiusMultiplier (tuning-only, doesn't
-// affect how it responds to weapons/AreaEffectSize). The actual cast — stun + self-heal, no damage — goes through the shared
+// Radius is CharacterStatsPD.RangeScalingAoEBase (the shared "AoE Effects" family formula — see its own doc
+// comment; built off the actual WeaponRange stat, NOT the caster's true weapon extent —
+// WeaponManagerPD.TryGetFarthestWeaponReach, the "real hitbox edge, tip offset included" tech
+// RogueSpinAbilityPD's own damage capsule and PlayerRangeIndicatorPD's ring use — deliberately not used here
+// per explicit direction) times this ability's own flat radiusMultiplier (tuning-only, doesn't affect how it
+// responds to WeaponRange/AreaEffectSize). The actual cast — stun + self-heal, no damage — goes through the shared
 // "AoE Effects" AreaEffectCastHelper.Cast (dealDamage: false, stun layered on via onEnemyHit same as
 // ShieldBreakBurstAugment's own, self-heal via onCastComplete), via a spawned AreaEffectPD chain — the same
 // generic chain class DashExplosionAugment/DashHealAugment/ShieldBreakBurstAugment all use, not a
@@ -47,10 +48,9 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     [SerializeField] private bool activeSurgeBlock = false;
 
     [Header("Effect")]
-    // Flat multiplier on top of the true-weapon-reach * AreaEffectSize radius below (see Activate()) —
-    // exposed purely for tuning "feel" (2x felt right; the base scaling already responds correctly to
-    // weapons/AreaEffectSize on its own, this just scales the whole result up/down without touching either
-    // of those inputs).
+    // Flat multiplier on top of CharacterStatsPD.RangeScalingAoEBase (see Activate()) — exposed purely for
+    // tuning "feel" — this just scales the whole result up/down without touching either of that shared
+    // formula's own inputs.
     [SerializeField] private float radiusMultiplier = 2f;
     // Base stun duration BEFORE CharacterStatsPD.AreaEffectPower/AbilityPower scale it (see Activate()) —
     // the two stats' own BONUS portions are summed, not the stats themselves multiplied (see Activate()'s
@@ -107,14 +107,12 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     [SerializeField] private GameObject chainPrefab;
 
     private CharacterStatsPD _stats;
-    private WeaponManagerPD  _weaponManager;
 
     protected override State GetInitialState() => default;
 
     private void Awake()
     {
         _stats = GetComponent<CharacterStatsPD>();
-        _weaponManager = GetComponent<WeaponManagerPD>();
     }
 
     public Sprite Icon => icon;
@@ -181,10 +179,7 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
 
         if (chainPrefab != null)
         {
-            float reach = _weaponManager != null && _weaponManager.TryGetFarthestWeaponReach(out float r)
-                ? r
-                : _stats.WeaponRange;
-            float radius = reach * _stats.AreaEffectSize * radiusMultiplier;
+            float radius = _stats.RangeScalingAoEBase * radiusMultiplier;
             int totalCasts = Mathf.Max(1, _stats.AreaEffectCount);
             Vector3 castPosition = _stats.transform.position;
 

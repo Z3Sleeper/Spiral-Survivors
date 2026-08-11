@@ -410,6 +410,19 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     public int     SlotIndex  { get; set; }
     public bool    IsOuterTrack { get; set; }
 
+    // Opt-in per-prefab range multiplier — checked (isRanged = true) on Archer's own WeaponRangedPD prefab,
+    // tuned via rangeMultiplier, rather than inflating the shared WeaponRange stat itself (which every AoE
+    // Effects radius formula now also reads directly — see DashExplosionAugment's own doc comment). isRanged
+    // is a separate flag from IsMelee on purpose: not every non-melee weapon necessarily wants this, and it
+    // keeps the toggle an explicit per-prefab authoring choice rather than an automatic IsMelee side effect.
+    [SerializeField] private bool  isRanged = false;
+    [SerializeField] private float rangeMultiplier = 1f;
+
+    // What this weapon's own range-dependent behavior (raycast/fire distance, projectile max range,
+    // GetOuterReach's own ranged-weapon branch below) should actually use — Stats.WeaponRange for every
+    // ordinary weapon, scaled by rangeMultiplier only for the ones explicitly marked isRanged.
+    public float EffectiveWeaponRange => _stats.WeaponRange * (isRanged ? rangeMultiplier : 1f);
+
     // Every weapon (melee or ranged) registers with its owner's WeaponManagerPD the same way — see
     // WeaponMeleePD.TryInit()/WeaponRangedPD's equivalent — and OrbitalPosition() below needs WeaponCount
     // from it for the multi-weapon angular-spacing term, so this lives here rather than being duplicated
@@ -733,7 +746,7 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     public float GetOuterReach()
     {
         if (!IsMelee)
-            return NominalOrbitRadius() + _stats.WeaponRange;
+            return NominalOrbitRadius() + EffectiveWeaponRange;
 
         Transform hb = hitboxTarget != null ? hitboxTarget : transform;
         // hitboxTip's own pivot tracks the same range-driven position as hb's far edge (both derive from

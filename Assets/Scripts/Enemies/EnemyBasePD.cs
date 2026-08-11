@@ -96,12 +96,33 @@ public interface IEnemyPD
     // I started tracking" (e.g. DamageNumber following an enemy that dies) must compare a captured
     // SpawnGeneration snapshot against this live value, not just null/active-check the Transform.
     int SpawnGeneration { get; }
-    // This enemy's own current damage output — a method, not a property, matching the existing
-    // EnemyBasePD.GetDamage() virtual it wraps (some subclasses, e.g. KingSpikePD, situationally compute
-    // something other than the raw `damage` field — see that override's own doc comment). Exposed on the
-    // interface so a held enemy's own base-class override (see EnemyBasePD.GetDamage()'s own doc comment)
-    // can read a DIFFERENT enemy's live value through this same generic surface.
+    // False until this enemy's own first Simulate() tick for its CURRENT life has actually run (see
+    // EnemyBasePD.Simulate's own !b.initialized block) — that block unconditionally resets
+    // movementDisabled/invulnerable/externalKinematic/physicsColliderDisabled/hurtboxDisabled/
+    // damageOverridden/orbitPhase back to their fresh-spawn defaults (and directly re-enables the hurtbox/
+    // physics collider), since it has to assume nothing external has touched this life's state yet. A caller
+    // that wants to externally freeze/claim/orbit ANOTHER enemy (e.g. OrbiterGloomPD/KingOrbiterPD's own grab
+    // scan) MUST exclude candidates where this reads false — a freshly-spawned-this-tick enemy that gets
+    // grabbed before its own first Simulate() tick runs would have that whole reset silently stomp the grab's
+    // protective state (hurtbox re-enabled, invulnerable cleared, orbitPhase reset to None) the instant that
+    // tick finally does run, leaving it non-invincible and no longer actually orbiting while the grabber
+    // still thinks it's held — confirmed live (2026-08-12), not theoretical.
+    bool HasInitialized { get; }
+    // This enemy's own current damage output — a method, not a property, for interface consistency with
+    // TakeDamage/AddKnockbackVelocity/etc. below. Returns the override value while SetDamageOverride has one
+    // active, otherwise each subclass's own GetOwnDamage() (e.g. KingSpikePD's own Charging multiplier —
+    // see that override's own doc comment). NOT virtual on EnemyBasePD<TState> itself — see GetOwnDamage's
+    // own doc comment for why subclasses hook that instead of this.
     float GetDamage();
+    // Forces GetDamage() to return `damage` instead of this enemy's own GetOwnDamage(), until reverted —
+    // e.g. OrbiterGloomPD gives each held pleb its own damage (scaled by its own orbitDamageMultiplier) for
+    // the duration of the hold, so "using a grabbed enemy like a weapon" hits as hard as its wielder. Generic,
+    // not Orbit-specific — any future mechanic needing to temporarily substitute an enemy's own damage output
+    // can reuse this instead of inventing its own GetDamage() override chain (which is exactly what the
+    // orbit-coupled version of this method used to do, before this was split out). Same "small composable
+    // primitive, caller decides when to revert" shape as SetInvulnerable/SetHurtboxDisabled — overridden=false
+    // ignores whatever `damage` was last passed, so callers don't need to separately track/restore anything.
+    void SetDamageOverride(bool overridden, float damage = 0f);
     void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
@@ -114,10 +135,10 @@ public interface IEnemyPD
     // own doc comment for why the ordering matters.
     //
     // Returns whether this call actually cancelled something (got past the isDead/CanBeInterrupted guard) —
-    // e.g. DashThroughInterruptAugment combines this with IsStunnable to tell a real interrupt (enemy was
-    // genuinely mid dash/windup/attack AND the call actually took effect) from a no-op (dead, or a phase
-    // explicitly excluded from CanBeInterrupted, like KingSpikePD's SpikeBurstWindup — that phase is both
-    // non-stunnable AND non-interruptible, so IsStunnable alone isn't enough to tell the two apart).
+    // e.g. DashThroughInterruptAugment reads this alone as its "did this land on something real" signal.
+    // Reliable on its own now that CanBeInterrupted defaults to false and each subclass opts in only for the
+    // specific states that are both committed (not just stunnable/CC-vulnerable) and meant to be cancelable —
+    // see CanBeInterrupted's own doc comment.
     bool Interrupt();
     // Hard on/off switch for this enemy's own normal approach/backpedal movement (HandleMovement) —
     // deliberately generic/public so ANOTHER entity (at least another enemy; nothing restricts it to that)
@@ -144,15 +165,6 @@ public interface IEnemyPD
     // hurtbox untouched, for the "takes no damage but is still interactable/stunnable/targetable" case.
     bool IsInvulnerable { get; }
     void SetInvulnerable(bool invulnerable);
-
-    // Whether this enemy is currently OUT of a CC-protected commitment window (dash/windup/attack) — the same
-    // intentional per-tick flag every enemy's own HandleActiveState already maintains to decide whether a Stun
-    // can freeze it right now (see each subclass's own isStunnable assignment). NOT sufficient on its own to
-    // mean "Interrupt() will actually do something" — some states (e.g. KingSpikePD.SpikeBurstWindup) are both
-    // non-stunnable AND explicitly excluded from CanBeInterrupted. See Interrupt()'s own doc comment for why
-    // callers combine this with Interrupt()'s own return value. Read-only passthrough of the existing
-    // isStunnable field.
-    bool IsStunnable { get; }
 
     // Whether another entity currently controls this enemy's position (pulled/orbiting) — see OrbitTarget's
     // own doc comment. Read-only; callers don't set this directly, it's derived from orbit state.
@@ -225,6 +237,25 @@ public interface IEnemyPD
     // (the caller releasing this enemy is expected to also call SetKinematic(false)/SetMovementDisabled(false)/
     // SetInvulnerable(false) as separate, explicit steps).
     void StopOrbiting();
+
+    // Directly overwrites this enemy's own live orbit angular speed (see OrbitTarget's own doc comment for
+    // the pull->orbit mechanism this feeds) without touching orbitPhase, position, or radius at all — e.g. an
+    // owner freezing a held enemy in place mid-orbit (0 speed) without dropping it, matching every other
+    // "small composable primitive" setter in this interface (SetKinematic/SetMovementDisabled/etc.). A no-op
+    // while not currently orbiting (nothing reads orbitAngularSpeedDegPerSec unless orbitPhase == Orbiting).
+    void SetOrbitAngularSpeed(float angularSpeedDegPerSec);
+
+    // Independent, fixed-direction/fixed-distance straight-line launch — e.g. a boss "shooting" a held enemy
+    // at a target. Deliberately NOT built on the shared isDashing/HandleDash dash primitives (several pleb
+    // subclasses use that same isDashing/dashJustEnded plumbing for their own attack-chain bookkeeping — an
+    // externally-injected dash risks corrupting it) and NOT coupled to orbitPhase/IsBeingHeld (see
+    // EnemyBaseState.launchActive's own doc comment) — a launching enemy can still be legitimately "held" by
+    // its own owner throughout the flight. speed-based (not duration-based) so retuning distance or speed
+    // independently doesn't require the caller to also recompute the other. No damage/hit-detection of its
+    // own — a launched enemy is still fully alive with its own contact-damage collider active throughout, so
+    // it deals whatever GetDamage() currently returns (e.g. an owner's own SetDamageOverride) to anything it
+    // physically touches via the existing, unmodified contact-damage system; this is pure movement.
+    void LaunchAlong(Vector3 direction, float distance, float speed);
 
     // Which spawn-cap bucket this enemy counts against (see EnemySpawnCategory's own doc comment) — exposed
     // generically so code that doesn't know (or care about) this enemy's concrete TState can still filter by
@@ -312,6 +343,13 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // See IEnemyPD.SetHurtboxDisabled's own doc comment — same asymmetric shape again, same reason.
     public bool hurtboxDisabled;
 
+    // See IEnemyPD.SetDamageOverride's own doc comment — generic, not Orbit-specific. While damageOverridden
+    // is true, GetDamage() returns this instead of GetOwnDamage(). damageOverride is meaningless whenever
+    // damageOverridden is false (not read, not reset independently — SetDamageOverride(false) leaves it
+    // alone since nothing reads a stale value while the flag is off).
+    public bool  damageOverridden;
+    public float damageOverride;
+
     // See IEnemyPD.OrbitTarget's own doc comment for the full pull->orbit mechanism this drives.
     public int   orbitPhase; // EnemyOrbitPhase
     public PredictedObjectID orbitOwnerId;
@@ -327,6 +365,15 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public float orbitPullDuration;
     public float orbitPullElapsed;
     public float orbitAngularSpeedDegPerSec;
+
+    // See IEnemyPD.LaunchAlong's own doc comment — independent of orbitPhase above (checked first in
+    // LateSimulate(), supersedes orbit positioning for its own duration without touching orbitPhase/
+    // IsBeingHeld at all), so a caller composing this with an existing hold (e.g. a boss "shooting" a held
+    // enemy at a target) doesn't need to separately re-claim/re-orbit it afterward.
+    public bool    launchActive;
+    public Vector3 launchDirection;
+    public float   launchRemainingDistance;
+    public float   launchSpeed;
 
     public DisposableList<ContactCooldown> contactCooldowns;
     public bool isDashing;
@@ -439,6 +486,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // see IEnemyPD.SpawnGeneration's own doc comment for why this exists.
     private int _spawnGeneration;
     public int SpawnGeneration => _spawnGeneration;
+    // See IEnemyPD.HasInitialized's own doc comment.
+    public bool HasInitialized => B.initialized;
 
     [Header("Identity")]
     public string enemyName = "Enemy";
@@ -483,7 +532,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // bigger enemy the way a bigger detection radius is, and a flat force keeps the correction subtle
     // regardless of size).
     private const int   SeparationCheckInterval = 8;
-    private const float SeparationRadiusPerSize = 1f;
+    // Matches the actual hand-tuned model/collider radius at size=1 (confirmed 0.5 across the roster) —
+    // previously 1f (a full diameter's worth, not the real radius).
+    private const float SeparationRadiusPerSize = 0.5f;
     private const float SeparationForce = 8f;
     // Cached between checks (in EnemyBaseState.separationPush, not a plain field — see that field's own doc
     // comment) and re-applied as a small continuous force every tick in between — smoother-looking than an
@@ -532,8 +583,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // every tick from current attack state. Hidden so it doesn't read as a real Inspector setting
     // alongside stunResistant, which actually is one.
     [HideInInspector] public bool isStunnable = true;
-    // IEnemyPD passthrough — see the interface member's own doc comment.
-    public bool IsStunnable => isStunnable;
     public bool IsStunned => B.stunTimer > 0f;
     // True only for a real Stun() call, never AddKnockbackVelocity's own derived micro-stun (see
     // EnemyBaseState.trueStunTimer's own doc comment). A true stun always lands even mid-attack-sequence
@@ -601,41 +650,28 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ActiveBossCount = 0;
     }
 
-    // NOT virtual — this is the single, uniform gate every subclass's own damage computation passes through
-    // before ever reaching a caller. While held (any non-None orbitPhase — see IEnemyPD.OrbitTarget's own
-    // doc comment), reads the OWNER's live GetDamage() instead of this enemy's own damage — "using a grabbed
-    // enemy like a weapon" (Orbiter's own pull attack) means it should hit as hard as its wielder currently
-    // does, not whatever IT was tuned to. Read live every call, never cached/snapshotted — damage isn't
-    // State-backed (a plain component field, like moveSpeed/maxHealth/xpValue), so there's no separate
-    // "restore the original on release" bookkeeping needed at all: this enemy's own `damage` field (or
-    // GetOwnDamage()'s own computed result) is never actually touched, only what GetDamage() ultimately
-    // RETURNS changes, and that automatically reverts the instant orbitPhase goes back to None (StopOrbiting,
-    // on release or the owner's own death) with nothing left to reset or leak across pooled reuse. Falls
-    // back to GetOwnDamage() if the owner no longer resolves (deleted/dead) — defensive only, the owner's
-    // own release path is expected to call StopOrbiting on every enemy it's holding before that could ever
-    // actually happen.
-    //
-    // Subclasses override GetOwnDamage() below for their own situational logic (e.g. KingSpikePD's own
-    // Charging multiplier), NOT this method — that's what guarantees ANY current or future subclass's own
-    // damage override automatically composes correctly with being held, without that subclass needing to
-    // remember to re-add its own held-check (which is exactly the gap a plain `virtual GetDamage()` would
-    // have left open to a future override silently bypassing this entirely, same as KingSpikePD's own
-    // pre-existing override already did before this split).
-    public float GetDamage()
-    {
-        if (B.orbitPhase != (int)EnemyOrbitPhase.None)
-        {
-            var ownerGo = hierarchy.GetGameObject(B.orbitOwnerId);
-            if (ownerGo != null && ownerGo.TryGetComponent(out IEnemyPD owner) && !owner._isDead)
-                return owner.GetDamage();
-        }
-        return GetOwnDamage();
-    }
+    // Reworked (2026-08-10) — no longer coupled to the Orbit system directly (see SetDamageOverride's own
+    // doc comment for why: a caller-driven override is more generic/reusable than GetDamage() itself reaching
+    // into B.orbitOwnerId). NOT virtual — this is the single, uniform gate every subclass's own damage
+    // computation passes through before ever reaching a caller; subclasses hook GetOwnDamage() below instead,
+    // which guarantees ANY current or future subclass's own damage logic automatically composes correctly
+    // with an active override, without that subclass needing to remember to re-add its own check.
+    public float GetDamage() => B.damageOverridden ? B.damageOverride : GetOwnDamage();
 
     // Override point for subclass-specific damage computation (e.g. KingSpikePD's own Charging multiplier)
     // — see GetDamage()'s own doc comment for why this exists as a separate method instead of just
     // overriding GetDamage() directly.
     protected virtual float GetOwnDamage() => damage;
+
+    // See IEnemyPD.SetDamageOverride's own doc comment. false ignores `damage` entirely (and zeroes the
+    // stored value — nothing reads it while damageOverridden is false, but zeroing avoids a stale non-zero
+    // value lingering in state for no reason) — same "OFF is an immediate, real revert" shape as
+    // SetKinematic/SetHurtboxDisabled, just with no live component to also touch here.
+    public void SetDamageOverride(bool overridden, float damage = 0f)
+    {
+        B.damageOverridden = overridden;
+        B.damageOverride = overridden ? damage : 0f;
+    }
     public virtual bool CanContactDamage => true;
 
     // Cached at the very top of Simulate() every tick (before the paused early-return, since
@@ -953,6 +989,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             b.externalKinematic        = false;
             b.physicsColliderDisabled  = false;
             b.hurtboxDisabled          = false;
+            b.damageOverridden         = false;
+            b.damageOverride           = 0f;
             b.orbitPhase               = (int)EnemyOrbitPhase.None;
 
             // Defensive — in case a previous life died mid-kill-launch (still kinematic, physics collider
@@ -1136,11 +1174,30 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     {
         ref var b = ref GetBase(ref state);
         if (b.isDead) return;
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        // Checked FIRST, independent of orbitPhase below — see EnemyBaseState.launchActive/IEnemyPD.
+        // LaunchAlong's own doc comments. Supersedes orbit positioning for its own duration; orbitPhase is
+        // left completely untouched (a launching enemy can still be legitimately "held").
+        if (b.launchActive)
+        {
+            float step = Mathf.Min(b.launchSpeed * delta, b.launchRemainingDistance);
+            Vector3 newPos = transform.position + b.launchDirection * step;
+            newPos.y = transform.position.y;
+            if (_rigidbody != null)
+            {
+                _rigidbody.MovePosition(newPos);
+                _rigidbody.MoveRotation(Quaternion.LookRotation(b.launchDirection));
+            }
+            b.launchRemainingDistance -= step;
+            if (b.launchRemainingDistance <= 0f) b.launchActive = false;
+            return;
+        }
+
         // None: not held at all. Claimed: held, but SetKinematic(true) is what's actually freezing this
         // enemy in place — there's no position math to run yet, OrbitTarget() hasn't been called (see
         // IEnemyPD.ClaimForOrbit's own doc comment for why these are deliberately separate calls).
         if (b.orbitPhase == (int)EnemyOrbitPhase.None || b.orbitPhase == (int)EnemyOrbitPhase.Claimed) return;
-        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
         var ownerGo = hierarchy.GetGameObject(b.orbitOwnerId);
         if (ownerGo == null || !ownerGo.TryGetComponent(out IEnemyPD owner) || owner._isDead)
@@ -2265,6 +2322,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         B.orbitOwnerId = default;
     }
 
+    // See IEnemyPD.SetOrbitAngularSpeed's own doc comment.
+    public void SetOrbitAngularSpeed(float angularSpeedDegPerSec) => B.orbitAngularSpeedDegPerSec = angularSpeedDegPerSec;
+
+    // See IEnemyPD.LaunchAlong's own doc comment for the full contract; LateSimulate() does the actual
+    // per-tick movement (checked ahead of the orbit-phase branch there).
+    public void LaunchAlong(Vector3 direction, float distance, float speed)
+    {
+        ref var b = ref B;
+        b.launchActive            = true;
+        b.launchDirection         = direction.sqrMagnitude > 0.0001f ? direction.normalized : transform.forward;
+        b.launchRemainingDistance = distance;
+        b.launchSpeed             = speed;
+    }
+
     public EnemySpawnCategory SpawnCategory => spawnCategory;
 
     // Override to reset this enemy's own attack-sequence state machine back to Moving/idle (typically its
@@ -2272,11 +2343,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // naturally runs out of attacks) — see Interrupt()'s own doc comment. No-op by default.
     protected virtual void OnInterrupted() { }
 
-    // False while in a phase Interrupt() should never be able to cancel — true (interruptible) by default
-    // for every other attack phase. Only two phases in the whole roster are exempt (per design): LeaperGloomPD
-    // mid-Leaping (its own override) and KingSpikePD's SpikeBurstWindup/burst itself (its own override) —
-    // every other windup/dash/stab/spin/charge is fair game.
-    protected virtual bool CanBeInterrupted => true;
+    // Reworked (2026-08-10): false by default, not true — interrupting an enemy does nothing outside of
+    // cancelling one of ITS OWN otherwise-CC-immune attacks, so "can be interrupted" should mean exactly
+    // that, not "happens to not be in the one or two phases explicitly excluded." Each subclass now opts IN
+    // per-state, flagging exactly the states that are both !isStunnable (committed/CC-immune) AND meant to
+    // be cancelable — computed directly from each enemy's own existing isStunnable formula, e.g.
+    // ShooterGloomPD's own override. This is also what makes Interrupt()'s own return value alone a reliable
+    // "did this actually cancel something real" signal for callers like DashThroughInterruptAugment, without
+    // needing a second IsStunnable check layered on top.
+    protected virtual bool CanBeInterrupted => false;
 
     // Called by a spawner right after hierarchy.Create() returns, telling this instance which category
     // spawned it. spawnCategory is [NonSerialized] and always starts Normal — LateAwake() has already

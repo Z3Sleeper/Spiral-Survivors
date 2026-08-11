@@ -711,6 +711,15 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Bonus sub-term (ClassPassiveData is its only writer, same as moveSpeedPenalty/energyRegenPenalty).
     public float WeaponRange => (baseWeaponRange + bonusWeaponRangeFlat * bonusWeaponRangePercent * weaponRangePenalty) * totalWeaponRangePercent * totalWeaponRangePenalty * 0.2f;
 
+    // Shared base radius for the "AoE Effects" family (KnightAreaStunHealAbilityPD, DashExplosionAugment,
+    // DashHealAugment, ShieldBreakBurstAugment — see project_area_effect_system) — single source of truth for
+    // the part of the radius formula that's supposed to be identical across every family member. Each caller
+    // still multiplies this by its own per-augment rangeMultiplier/radiusMultiplier on top (that scalar is
+    // caller-specific tuning, not part of the shared formula, so it stays local to each site). Coefficient
+    // retuned 0.5 -> 1 on 2026-08-12; extracted here the same day so a future retune only ever touches one
+    // place instead of every family member + their doc comments.
+    public float RangeScalingAoEBase => (0.5f + WeaponRange) * AreaEffectSize;
+
     // Same Bonus/Total split — totalCritChancePercent is the new Total tier CritChanceAugment grants.
     public float CritChance => (baseCritChance + bonusCritChanceFlat * bonusCritChancePercent) * totalCritChancePercent * totalCritChancePenalty;
     public float CritDamage => ((baseCritDamage + bonusCritDamageFlat) * bonusCritDamagePercent) + Mathf.Max(0f, CritChance - 1f) * 0.5f;
@@ -840,7 +849,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public bool  IsForcedSurging => currentState.forcedSurge;
     // ORs in IsForcedSurging — see its own doc comment for why a forced Surge grants invincibility this way
     // instead of a fixed-duration GrantInvincibility() call. TakeDamage's own guard mirrors this same OR.
-    public bool  IsInvincible  => currentState.invincible || currentState.forcedSurge;
+    // Also ORs in the separate committed-action invincibility pool — see GrantCommittedInvincibility's own
+    // doc comment for why that's a distinct channel from invincibleTimer.
+    public bool  IsInvincible  => currentState.invincible || currentState.forcedSurge || currentState.committedInvincibleTimer > 0;
     public bool  IsTaunting    => currentState.taunting;
     public bool  IsInvisible   => currentState.invisible;
     // Gates weapon hit/damage application only — weapons keep orbiting/spinning visually regardless (see
@@ -903,6 +914,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         // GetInitialState() as a "not yet converted" sentinel — see Simulate()'s own comment on it, since
         // GetInitialState() has no delta available yet to convert its seconds-based initial value.
         public int invincibleTimer;
+        // Separate pool from invincibleTimer above — see GrantCommittedInvincibility's own doc comment for why.
+        public int committedInvincibleTimer;
         // Same duration-max shape as invincibleTimer — see GrantInvisibility's own doc comment.
         public int invisibleTimer;
         public int surgeTickTimer;
@@ -1538,6 +1551,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
             if (state.invincibleTimer <= 0)
                 state.invincible = false;
         }
+
+        // Committed-action invincibility timer — separate pool, see GrantCommittedInvincibility's own doc
+        // comment. No falling-edge event needed; nothing currently reacts to this specific channel expiring.
+        if (state.committedInvincibleTimer > 0)
+            state.committedInvincibleTimer--;
 
         // Invisibility timer — same shape as the invincibility timer above, but invisibility also has a
         // change event (_onInvisibleChanged) enemy targeting reacts to, so the natural expiry here has to
@@ -2604,6 +2622,26 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         currentState.invincibleTimer = Mathf.Max(currentState.invincibleTimer, Mathf.RoundToInt(duration / _currentDelta));
     }
 
+    // Separate invincibility channel from GrantInvincibility's own shared/merged pool (see its own doc
+    // comment for why that one can't support this) — used exclusively by "committed action" mechanics
+    // (PlayerControllerPD's own dash, RogueSpinAbilityPD's leap) whose invincibility needs to be
+    // independently revocable the instant that specific action gets cancelled (see
+    // PlayerControllerPD.Interrupt()'s own doc comment), without touching any other overlapping
+    // invincibility source. Same max-against-existing shape as GrantInvincibility for safety, though in
+    // practice only one committed action can ever be active at a time (IAbilityPD.ForcesSpecialAction +
+    // isDashing already enforce this via PlayerControllerPD.IsLockedOut), so there's never actually a
+    // "multiple sources competing" scenario on this channel.
+    public void GrantCommittedInvincibility(float duration)
+    {
+        if (duration <= 0f) return;
+        currentState.committedInvincibleTimer = Mathf.Max(currentState.committedInvincibleTimer, Mathf.RoundToInt(duration / _currentDelta));
+    }
+
+    // Immediately zeroes ONLY the committed-action invincibility channel — safe to hard-cancel (unlike
+    // GrantInvincibility's own general pool) specifically because nothing else ever writes to this channel,
+    // so there's no risk of wiping out an unrelated source's contribution.
+    public void CancelCommittedInvincibility() => currentState.committedInvincibleTimer = 0;
+
     // Direct on/off, not duration-based like GrantInvincibility — whatever Taunt/Invisibility ability ends
     // up calling these owns its own duration/timer, this is just the flag enemies actually read. Guarded on
     // an actual change so _onTauntChanged/_onInvisibleChanged only ever fire for a real flip, never a no-op
@@ -2671,8 +2709,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public void TakeDamage(float damage)
     {
         if (currentState.isDead) return;
-        // See IsInvincible's own doc comment for why forcedSurge is ORed in here too.
-        if (currentState.invincible || currentState.forcedSurge) return;
+        // See IsInvincible's own doc comment for why forcedSurge/committedInvincibleTimer are ORed in too.
+        if (currentState.invincible || currentState.forcedSurge || currentState.committedInvincibleTimer > 0) return;
 
         currentState.damageEventId++;
         currentState.shieldRechargeTimer = Mathf.Max(1, Mathf.RoundToInt(shieldRechargeTime / _currentDelta));

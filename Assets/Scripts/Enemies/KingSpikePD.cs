@@ -5,8 +5,14 @@ using UnityEngine;
 // The one and only boss. Ported from _OldSystemArchive/Enemies/KingSpike.cs + BossBase.cs, with the old
 // coroutine-based bomb sequence (StartCoroutine/WaitForSeconds — not viable in PD, not deterministic or
 // resimulation-safe) redesigned as tick-based timers instead. Charging reuses EnemyBasePD's generic dash
-// primitives (StartDashToPoint/HandleDash) directly — no custom movement code needed for it. Enrage uses
-// EnemyBasePD's generic enrageTimer/OnEnrage() (armed via the enrageTimer Inspector field).
+// primitives (StartDashToPoint/HandleDash) directly — no custom movement code needed for it.
+//
+// Enrage reworked (2026-08-10, scrapped the old "halve attackCooldown" design entirely): once
+// EnemyBasePD's generic enrageTimer fires (B.enraged flips true), no immediate effect happens — instead,
+// the very next Spike Burst attack's remote burst sequence (FireSpikeBurst() -> Simulate()'s own
+// wave-spawning loop) simply never completes. It keeps spawning remote burst waves at remoteBurstInterval
+// apart forever, ignoring remoteBurstCount entirely, until this boss dies — see Simulate()'s own comment.
+// No OnEnrage() override needed anymore; B.enraged is just read directly where it matters.
 public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -48,17 +54,6 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     protected override float GetOwnDamage() =>
         (KingSpikeState)currentState.stateId == KingSpikeState.Charging ? damage * chargeDamageMultiplier : damage;
 
-    // Fires exactly once, via EnemyBasePD's enrageTimer/enrageCountdown machinery (armed by setting
-    // enrageTimer in the Inspector — 120s per the old system's default). One-time permanent reassignment
-    // (halves whatever attackCooldown currently is, not a repeating multiplier) — safe to read attackCooldown
-    // here since OnEnrage only ever fires once, before anything else has had a chance to touch it.
-    // The "cooldown starts at Spike Burst instead of after the remote sequence" half of enrage lives in
-    // FireSpikeBurst()/Simulate(), gated on state.b.enraged.
-    protected override void OnEnrage()
-    {
-        attackCooldown *= 0.5f;
-    }
-
     [Header("Damage")]
     [SerializeField] private float chargeDamageMultiplier      = 1f;
     [SerializeField] private float spikeBurstDamageMultiplier  = 1.5f;
@@ -69,7 +64,6 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     [SerializeField] private float chargeSpeedMultiplier = 3f;
     private float ChargeSpeed => baseMoveSpeed * chargeSpeedMultiplier;
     [SerializeField] private float chargeDistance       = 15f;
-    [SerializeField] private float attackCooldown       = 8f;
     [SerializeField] private int   chargesPerAttack     = 3;
     [SerializeField] private float betweenChargePause   = 0.5f;
     [SerializeField] private GameObject   chargeWindupIndicator;
@@ -89,15 +83,23 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     [SerializeField] private float      remoteBurstInterval     = 1f;
     [SerializeField] private float      remoteChargeTime        = 1f;
 
+    [Header("Attack Cooldown")]
+    // Only actually starts counting down once the whole remote burst sequence finishes (all waves spawned
+    // AND the final wave's own remoteChargeTime elapsed) — see Simulate()'s own remote-sequence tail. Never
+    // restarts at all once enraged (state.b.enraged), since that sequence is designed to never complete —
+    // see the class doc comment.
+    [SerializeField] private float attackCooldown = 8f;
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     protected override void LateAwake()
     {
         base.LateAwake();
-        // Half cooldown grace period on spawn, matching old KingSpike — plain currentState assignment, so
-        // even if LateAwake somehow re-fires on a pooled reuse this is harmless (idempotent), unlike an
-        // accumulating event subscription would be.
-        currentState.attackCooldownTimer = attackCooldown * 0.5f;
+        // Full cooldown grace period on spawn (2026-08-12: changed from half — this boss's opening attack
+        // would otherwise fire before players have even finished loading in) — plain currentState
+        // assignment, so even if LateAwake somehow re-fires on a pooled reuse this is harmless (idempotent),
+        // unlike an accumulating event subscription would be.
+        currentState.attackCooldownTimer = attackCooldown;
     }
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -114,19 +116,22 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         state.remoteSequenceTimer -= delta;
         if (state.remoteSequenceTimer > 0f) return;
 
-        if (state.remoteBurstsSpawned < remoteBurstCount)
+        // Enraged: this sequence never actually completes — keep spawning waves at remoteBurstInterval
+        // apart forever, ignoring remoteBurstCount, for the rest of the fight (see class doc comment).
+        // remoteSequenceActive staying permanently true also naturally blocks Moving's own cooldownReady
+        // check (attackCooldownTimer <= 0f && !remoteSequenceActive) from ever re-triggering another
+        // Charge/Spike Burst attack cycle again — no extra gating needed for that.
+        if (state.remoteBurstsSpawned < remoteBurstCount || state.b.enraged)
         {
             SpawnRemoteBurstWave();
             state.remoteBurstsSpawned++;
-            state.remoteSequenceTimer = state.remoteBurstsSpawned < remoteBurstCount
+            state.remoteSequenceTimer = (state.remoteBurstsSpawned < remoteBurstCount || state.b.enraged)
                 ? remoteBurstInterval
                 : remoteChargeTime;
         }
         else
         {
-            // Post-enrage, attackCooldownTimer was already armed immediately in FireSpikeBurst() instead
-            // of here — don't stomp it back to a fresh full duration now that it's had a head start.
-            if (!state.b.enraged) state.attackCooldownTimer = attackCooldown;
+            state.attackCooldownTimer = attackCooldown;
             state.remoteSequenceActive = false;
         }
     }
@@ -308,13 +313,12 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         }
 
         // Boss returns to Moving immediately (point 5) — the remote sequence keeps ticking independently
-        // via Simulate() above. attackCooldownTimer is deliberately NOT touched here (point 6) — except
-        // once enraged, where it arms immediately instead, racing the remote burst sequence rather than
-        // waiting for it (see Simulate()'s matching skip in the completed-sequence branch).
+        // via Simulate() above. attackCooldownTimer is deliberately NOT touched here (point 6) — the whole
+        // sequence has to actually finish before the boss can attack again, which post-enrage never
+        // happens (see Simulate()'s own comment).
         state.remoteSequenceActive = true;
         state.remoteBurstsSpawned  = 0;
         state.remoteSequenceTimer  = remoteBurstInterval;
-        if (state.b.enraged) state.attackCooldownTimer = attackCooldown;
         // Reprioritize now that the attack sequence is over — random, not closest, per this boss's own
         // design (see EnemyBasePD.FindRandomTarget's own doc comment for why).
         FindRandomTarget();
@@ -346,9 +350,18 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         if (chargeWindupFill != null) chargeWindupFill.ResetFill();
     }
 
-    // SpikeBurstWindup specifically is NOT interruptible (per design) — the actual spike burst/remote wave
-    // sequence can't be cancelled once committed. Charge/ChargeWindup/BetweenCharges are still fair game.
-    protected override bool CanBeInterrupted => GetSpikeState(ref currentState) != KingSpikeState.SpikeBurstWindup;
+    // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
+    // meant to be cancelable — CanBeInterrupted now defaults to false (see EnemyBasePD's own doc comment).
+    // SpikeBurstWindup stays excluded regardless (per design — the actual spike burst/remote wave sequence
+    // can't be cancelled once committed); Moving is isStunnable, so was never committed in the first place.
+    protected override bool CanBeInterrupted
+    {
+        get
+        {
+            var ss = GetSpikeState(ref currentState);
+            return ss == KingSpikeState.ChargeWindup || ss == KingSpikeState.Charging || ss == KingSpikeState.BetweenCharges;
+        }
+    }
 
     // ── Remote bursts ────────────────────────────────────────────────────────
 
@@ -422,11 +435,18 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
         // Live, every frame regardless of the _lastVisualState-gated block below — reacts immediately to
         // EffectiveAttackSpeed changing mid-windup (a slow landing/expiring), same reasoning as every other
-        // attack-speed-scaled enemy's own live fill. spikeBurstFill deliberately keeps the old self-timed
-        // StartFill below instead — SpikeBurstWindup's own timer is never attack-speed-scaled in the first
-        // place (see HandleActiveState's own comment), so a live progress calc here would be pointless.
+        // attack-speed-scaled enemy's own live fill.
         if (chargeWindupFill != null && ss == KingSpikeState.ChargeWindup)
             chargeWindupFill.SetProgress(1f - Mathf.Clamp01(viewState.stateTimer / chargeWindupDuration));
+
+        // Also live, every frame — see feedback_windupfill_self_timed_drift: SpikeBurstWindup's own timer is
+        // never attack-speed-scaled (see HandleActiveState's own comment), but a self-timed StartFill() still
+        // runs on its own Time.deltaTime clock, independent of the tick-based stateTimer that actually gates
+        // FireSpikeBurst() — the two can still drift out of sync even at a fixed duration. Reusing
+        // stateTimer/spikeBurstChargeTime here matches ChargeWindup's own live-SetProgress shape directly
+        // above, just for the other windup.
+        if (spikeBurstFill != null && ss == KingSpikeState.SpikeBurstWindup)
+            spikeBurstFill.SetProgress(1f - Mathf.Clamp01(viewState.stateTimer / spikeBurstChargeTime));
 
         if (ss == _lastVisualState) return;
         _lastVisualState = ss;
@@ -437,11 +457,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
         if (spikeBurstIndicator != null)
             spikeBurstIndicator.SetActive(ss == KingSpikeState.SpikeBurstWindup);
-        if (spikeBurstFill != null)
-        {
-            if (ss == KingSpikeState.SpikeBurstWindup) spikeBurstFill.StartFill(spikeBurstChargeTime);
-            else                                        spikeBurstFill.ResetFill();
-        }
+        if (spikeBurstFill != null && ss != KingSpikeState.SpikeBurstWindup) spikeBurstFill.ResetFill();
     }
 
     protected override void OnDeathStop()
@@ -456,7 +472,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     {
         currentState.stateId              = 0;
         currentState.stateTimer           = 0f;
-        currentState.attackCooldownTimer  = attackCooldown * 0.5f;
+        currentState.attackCooldownTimer  = attackCooldown; // full grace, matching LateAwake()'s own fix
         currentState.chargesRemaining     = 0;
         currentState.remoteSequenceActive = false;
         currentState.remoteBurstsSpawned  = 0;

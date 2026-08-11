@@ -52,23 +52,47 @@ namespace PurrLobby.Providers
         // Static, not instance — RunSteamCallbacks()'s loop is a free-floating async operation that outlives
         // this component's own Unity lifecycle entirely (see that method's own doc comment), so this needs
         // to be reachable from code that never held a live reference to this instance (e.g. a quit-time
-        // singleton that may run after this component's Lobby scene has long since unloaded). Deliberately
-        // just a flag, not something callers wait on — see RequestSteamShutdown()'s own doc comment for why
-        // a synchronous wait can't work here at all.
+        // singleton that may run after this component's Lobby scene has long since unloaded).
         private static volatile bool _stopSteamCallbackLoop;
 
+        // Guards ShutdownSteamApiOnce() below — see its own doc comment. _steamInitialized additionally
+        // guards against ever calling SteamAPI.Shutdown() when Init() never actually succeeded (e.g.
+        // handleSteamInit's own early-return above, Steam not running).
+        private static bool _steamInitialized;
+        private static bool _steamShutdownCalled;
+
         // The correct way for any other code (e.g. CharacterRegistry.OnApplicationQuit()) to trigger a real
-        // SteamAPI.Shutdown() — signals this loop to stop AND calls Shutdown() itself, from inside the loop,
-        // right after it stops. Deliberately NOT "signal the flag and let the caller call Shutdown()
-        // separately": the caller and this loop's own Task.Delay continuation both run on Unity's single
-        // main thread via UnitySynchronizationContext, so a caller trying to synchronously wait/block for
-        // confirmation the loop actually stopped would itself prevent that continuation from ever getting a
-        // chance to run — a real deadlock shape, not just a race. Only the loop itself can safely guarantee
-        // "stopped, then shut down" in the right order. A live crash (native access violation inside
-        // SteamAPI_ManualDispatch_GetNextCallback) is what this replaces — that happened when a separate
-        // codepath called Shutdown() while this loop's own in-flight cycle called RunCallbacks() again
-        // immediately after, with no synchronization between the two at all.
-        public static void RequestSteamShutdown() => _stopSteamCallbackLoop = true;
+        // SteamAPI.Shutdown(). Signals the loop to stop (so if it's still alive and its next Task.Delay
+        // continuation DOES get a chance to run, it exits cleanly without calling RunCallbacks() again) AND
+        // calls the real shutdown directly, right here, synchronously — NOT deferred to the loop noticing
+        // the flag on its own next continuation (2026-08-12 fix: confirmed live, exiting Play Mode in the
+        // Editor stops Unity from pumping UnitySynchronizationContext almost immediately after
+        // OnApplicationQuit() returns, so that pending `await Task.Delay(16)` frequently never resumes at
+        // all — the flag got set but SteamAPI.Shutdown() was never actually reached, leaving the Steam
+        // overlay/rich presence stuck "active" indefinitely after Stop). Calling Shutdown() here is safe
+        // even though RunSteamCallbacks()'s own loop might still be alive: Unity's message dispatch and
+        // SynchronizationContext-marshaled continuations are never nested inside each other on the single
+        // main thread, so this can't run WHILE a SteamAPI.RunCallbacks() call further up some other call
+        // stack is still executing — the original native crash this design replaced (RunCallbacks() called
+        // again immediately after a separate direct Shutdown() call) is prevented here by setting the stop
+        // flag FIRST, so if the loop's continuation does still fire later it sees "already stopping" and
+        // goes straight to its own (now-idempotent, see ShutdownSteamApiOnce) shutdown call instead of
+        // looping back into RunCallbacks().
+        public static void RequestSteamShutdown()
+        {
+            _stopSteamCallbackLoop = true;
+            ShutdownSteamApiOnce();
+        }
+
+        // Actual SteamAPI.Shutdown() call site — idempotent (both RequestSteamShutdown() and
+        // RunSteamCallbacks()'s own loop tail call this, see each's own doc comment for why both paths
+        // exist) and a no-op if Init() never succeeded in the first place.
+        private static void ShutdownSteamApiOnce()
+        {
+            if (!_steamInitialized || _steamShutdownCalled) return;
+            _steamShutdownCalled = true;
+            SteamAPI.Shutdown();
+        }
 
         private Steamworks.CallResult<Steamworks.LobbyCreated_t> _LobbyCreated;
         private Steamworks.CallResult<Steamworks.LobbyEnter_t> _LobbyEnter;
@@ -251,6 +275,13 @@ namespace PurrLobby.Providers
                     OnError?.Invoke("SteamAPI initialization failed.");
                     return;
                 }
+                // Reset — these are static, so they can survive across separate Editor Play sessions when
+                // Domain Reload is disabled. A fresh successful Init() here means a genuinely NEW Steam
+                // session, so any leftover stop/shutdown state a PREVIOUS session left behind must not block
+                // (or skip) this new session's own eventual shutdown.
+                _steamInitialized = true;
+                _steamShutdownCalled = false;
+                _stopSteamCallbackLoop = false;
                 RunSteamCallbacks();
             }
         }
@@ -260,10 +291,12 @@ namespace PurrLobby.Providers
         // transition into a match) — this loop is the ONLY thing in the whole project that pumps Steam's
         // callback dispatcher at all (confirmed: nothing under Assets/PurrNet calls SteamAPI.RunCallbacks()
         // itself), so it needs to keep running for the game's entire process lifetime, not just while the
-        // Lobby scene happens to be loaded. Only stops via RequestSteamShutdown() (see its own doc comment
-        // for why that's a fire-and-forget flag rather than something the caller waits on), and this loop is
-        // ALSO the one that calls the real SteamAPI.Shutdown() itself once it sees that flag — guarantees
-        // nothing can call RunCallbacks() again after Shutdown() runs, since this is the only caller.
+        // Lobby scene happens to be loaded. Stops via RequestSteamShutdown() setting _stopSteamCallbackLoop —
+        // that same call already handles the real ShutdownSteamApiOnce() call synchronously and directly
+        // (see its own doc comment for why this loop's own tail call below can no longer be relied on alone),
+        // this loop's tail is just a backstop for the case where this loop's own continuation DOES get a
+        // chance to run (a real build's normal quit sequence, not the Editor-stop case that motivated moving
+        // the primary call site) — ShutdownSteamApiOnce()'s own guard makes it a safe no-op either way.
         private async void RunSteamCallbacks()
         {
             while (!_stopSteamCallbackLoop)
@@ -274,16 +307,16 @@ namespace PurrLobby.Providers
                 }
                 catch (InvalidOperationException)
                 {
-                    // Belt and suspenders — shouldn't be reachable now that Shutdown() only ever happens
-                    // below, after this loop has already committed to stopping, but keeping this in case
-                    // something else ever calls SteamAPI.Shutdown() directly again in the future. Same
-                    // "ignore, we're already exiting" reasoning SteamServer.Stop()/SteamClient.Disconnect()
-                    // already use for their own teardown-time Steam calls.
+                    // Belt and suspenders — shouldn't be reachable now that shutdown only ever happens after
+                    // this loop has already committed to stopping, but keeping this in case something else
+                    // ever calls SteamAPI.Shutdown() directly again in the future. Same "ignore, we're
+                    // already exiting" reasoning SteamServer.Stop()/SteamClient.Disconnect() already use for
+                    // their own teardown-time Steam calls.
                     return;
                 }
                 await Task.Delay(16);
             }
-            SteamAPI.Shutdown();
+            ShutdownSteamApiOnce();
         }
 
         public Task InviteFriendAsync(FriendUser user)

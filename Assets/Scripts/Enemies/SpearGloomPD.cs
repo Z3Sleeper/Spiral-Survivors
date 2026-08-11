@@ -308,9 +308,20 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         SetSpearState(ref state, SpearState.Moving);
     }
 
-    // Every Spear phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
-    // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
-    // of spearAttacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
+    // meant to be cancelable — CanBeInterrupted now defaults to false (see EnemyBasePD's own doc comment),
+    // so this opts in precisely where interrupting this enemy actually cancels something committed.
+    protected override bool CanBeInterrupted
+    {
+        get
+        {
+            var ss = GetSpearState(ref currentState);
+            return ss == SpearState.Windup || ss == SpearState.Stabbing || ss == SpearState.DashingToTarget;
+        }
+    }
+
+    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
+    // it runs out of spearAttacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
     protected override void OnInterrupted()
     {
         EnterMoving(ref currentState);

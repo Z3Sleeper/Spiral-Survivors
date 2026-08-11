@@ -26,7 +26,7 @@ MonoBehaviour:
   - name: Attack Speed
     color: {r: 1, g: 0, b: 0.31372547, a: 0}
   - name: Crit
-    color: {r: 1, g: 0, b: 0, a: 0}
+    color: {r: 1, g: 0.5294118, b: 0, a: 0}
   - name: Energy
     color: {r: 1, g: 1, b: 0, a: 0}
   - name: Dash

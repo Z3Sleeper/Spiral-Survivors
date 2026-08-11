@@ -25,15 +25,38 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     private const float DashDuration = 0.2f;
     private const float DashSpeed    = 50f;
 
+    // Knockback() derives an approximate stun duration from the force it's given, same shape as
+    // EnemyBasePD.AddKnockbackVelocity's own formula (stunDuration = ln(force/threshold)/drag when force
+    // exceeds threshold, else 0) — these two SerializeFields exist purely to tune that estimate, not to
+    // actually apply drag themselves (that's the Rigidbody's own configured linear drag doing the real
+    // decay). Defaults match the enemy-side constants; retune here if the player's own Rigidbody drag is
+    // configured differently and the stun window ends up feeling too long/short relative to how long the
+    // knockback slide actually looks.
+    [SerializeField] private float knockbackStunDrag = 9f;
+    [SerializeField] private float knockbackStunThreshold = 1f;
+
     // Per-instance, not static — each player's dash events are its own, not a shared global channel.
     // Surge events live on CharacterStatsPD instead, since StartSurge()/TryEndSurge() are defined there.
     private PredictedEvent _onDashStarted;
+    // Fires only on a NATURAL dash end (timer ran out) — NOT on Interrupt(), see _onDashInterrupted below.
+    // "Reward on completion" listeners (DashExplosionAugment/DashHealAugment/PhantomBladeOnDashAugment) rely
+    // on this distinction: an interrupted dash shouldn't still pay out its on-end effect.
     private PredictedEvent _onDashEnded;
+    // Fires INSTEAD of _onDashEnded when Interrupt() cuts a dash short — for listeners that just need to know
+    // the dash's own WINDOW closed (for whatever reason), not "did it complete successfully"
+    // (DashThroughInterruptAugment's own sweep window is the one existing consumer — see its own comment).
+    private PredictedEvent _onDashInterrupted;
+    // Fired by Interrupt() only (never the natural/death end path) — see that method's own doc comment.
+    private PredictedEvent _onSpecialMovementInterrupted;
 
     public void AddDashStartedListener(System.Action listener) => _onDashStarted.AddListener(listener);
     public void RemoveDashStartedListener(System.Action listener) => _onDashStarted.RemoveListener(listener);
     public void AddDashEndedListener(System.Action listener) => _onDashEnded.AddListener(listener);
     public void RemoveDashEndedListener(System.Action listener) => _onDashEnded.RemoveListener(listener);
+    public void AddDashInterruptedListener(System.Action listener) => _onDashInterrupted.AddListener(listener);
+    public void RemoveDashInterruptedListener(System.Action listener) => _onDashInterrupted.RemoveListener(listener);
+    public void AddSpecialMovementInterruptedListener(System.Action listener) => _onSpecialMovementInterrupted.AddListener(listener);
+    public void RemoveSpecialMovementInterruptedListener(System.Action listener) => _onSpecialMovementInterrupted.RemoveListener(listener);
 
     // Lets an ability that functions like a dash (e.g. RogueSpinAbilityPD's leap) hook into the same
     // OnDashStarted/OnDashEnded listeners a real dash already fires (DashExplosionAugment, DashHealAugment,
@@ -83,9 +106,13 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // to show the on-cooldown BG even when the slot itself would otherwise read as ready, and matches the
     // exact same formula Simulate() gates starting a new dash/ability against — see that block's own doc
     // comment for the full three-rule spec this implements.
-    public bool IsLockedOut => currentState.isDashing || currentState.isSpecialMoving
+    public bool IsLockedOut => currentState.isDashing || currentState.isSpecialMoving || currentState.stunTimer > 0f
         || (_ability1 != null && _ability1.IsActive && _ability1.ForcesSpecialAction)
         || (_ability2 != null && _ability2.IsActive && _ability2.ForcesSpecialAction);
+    // Mirrors EnemyBasePD.IsStunned/IsTrueStunned — see State.stunTimer/trueStunTimer's own doc comments for
+    // the distinction.
+    public bool IsStunned => currentState.stunTimer > 0f;
+    public bool IsTrueStunned => currentState.trueStunTimer > 0f;
 
     // ── Structs ────────────────────────────────────────────────────────────
     public struct Input : IPredictedData
@@ -142,6 +169,18 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         public bool isSpecialMoving;
         public float specialMoveTimer;
         public Vector3 specialVelocity;
+        // Set by Stun()/Knockback() — while > 0, blocks starting a dash/ability (see lockedOut/IsLockedOut)
+        // and suppresses the normal movement AddForce (see Simulate()'s own Movement section), letting
+        // whatever velocity Knockback() applied decay on its own via the Rigidbody's own linear drag instead
+        // of fighting player input. Never touches isDashing/isSpecialMoving itself — Knockback() calls
+        // Interrupt() first to end those cleanly before applying its own velocity.
+        public float stunTimer;
+        // Separate from stunTimer above — stunTimer is the shared BEHAVIORAL gate (set by both a real Stun()
+        // call and Knockback()'s own derived micro-stun), trueStunTimer is set ONLY by a real Stun() call.
+        // Same distinction as EnemyBaseState.trueStunTimer (see its own doc comment) — kept here purely as a
+        // futureproofing hook (e.g. a future stun visual, or a "genuinely stunned vs just staggered by a hit"
+        // check) even though nothing currently reads it. Always <= stunTimer by construction.
+        public float trueStunTimer;
         public int currentCharges;
         public float chargeRegenTimer;
         public float orbSweepTimer;
@@ -182,6 +221,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     {
         _onDashStarted = new PredictedEvent(predictionManager, this);
         _onDashEnded   = new PredictedEvent(predictionManager, this);
+        _onDashInterrupted = new PredictedEvent(predictionManager, this);
+        _onSpecialMovementInterrupted = new PredictedEvent(predictionManager, this);
 
         if (!isOwner) return;
         _input = new InputSystem_Actions();
@@ -424,7 +465,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // never touches movement) does NOT set this while it's the one active, so it never blocks anything
         // else. Same formula as the public IsLockedOut property (that one reads currentState instead of
         // this tick's own `state` ref, otherwise identical) — see its own doc comment for the exact rule spec.
-        bool lockedOut = state.isDashing || state.isSpecialMoving
+        bool lockedOut = state.isDashing || state.isSpecialMoving || state.stunTimer > 0f
             || (_ability1 != null && _ability1.IsActive && _ability1.ForcesSpecialAction)
             || (_ability2 != null && _ability2.IsActive && _ability2.ForcesSpecialAction);
 
@@ -471,6 +512,18 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
                 EndSpecialMovement(ref state);
         }
 
+        // Stun timer — see State.stunTimer/trueStunTimer's own doc comments. trueStunTimer nested inside,
+        // same "always <= stunTimer" shape as EnemyBasePD's own tick-down. The Movement section below and
+        // lockedOut above just re-check state.stunTimer > 0f fresh every tick — the one falling-edge action
+        // needed is re-enabling _physicsCollider (see Knockback()'s own doc comment for why it's disabled in
+        // the first place), same immediate-revert-on-the-exiting-edge shape as EndDash/EndSpecialMovement.
+        if (state.stunTimer > 0f)
+        {
+            state.stunTimer -= delta;
+            if (state.trueStunTimer > 0f) state.trueStunTimer -= delta;
+            if (state.stunTimer <= 0f && _physicsCollider != null) _physicsCollider.enabled = true;
+        }
+
         // Surge — blocked from STARTING while weapons are disabled (e.g. a special action) or while any
         // active ability holds an explicit Surge block (IAbilityPD.ActiveSurgeBlock — see
         // CharacterStatsPD.IsSurgeBlocked's own doc comment for why this is a separate, orthogonal check
@@ -495,6 +548,11 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             _rigidbody.velocity = state.dashVelocity;
         else if (state.isSpecialMoving)
             _rigidbody.velocity = state.specialVelocity;
+        else if (state.stunTimer > 0f)
+        {
+            // Deliberately no AddForce/velocity write here — let whatever velocity Knockback() applied decay
+            // on its own via the Rigidbody's own configured linear drag, same as the enemy-side equivalent.
+        }
         else
             _rigidbody.AddForce(moveDir * (_stats.MoveSpeed * delta * 5f), ForceMode.VelocityChange);
 
@@ -555,23 +613,34 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (state.chargeRegenTimer <= 0f)
             state.chargeRegenTimer = _stats.DashCooldown;
 
-        _stats.GrantInvincibility(state.dashTimer);
+        // Committed channel, not the general GrantInvincibility pool — see CharacterStatsPD.
+        // GrantCommittedInvincibility's own doc comment. Lets Interrupt() revoke exactly this grant without
+        // touching any other overlapping invincibility source.
+        _stats.GrantCommittedInvincibility(state.dashTimer);
         if (_physicsCollider != null) _physicsCollider.enabled = false;
         _rigidbody.velocity = Vector3.zero;
         _onDashStarted.Invoke();
     }
 
-    private void EndDash(ref State state)
+    // interrupted: false for the natural end (Simulate()'s own dashTimer<=0 check) — fires _onDashEnded as
+    // always, invincibility left to expire on its own tiny remaining tail. true only from Interrupt(): fires
+    // _onDashInterrupted INSTEAD (never both — see that event's own doc comment for why "reward on
+    // completion" listeners need this distinction) and cancels the committed invincibility grant immediately
+    // rather than leaving it to run out.
+    private void EndDash(ref State state, bool interrupted = false)
     {
         state.isDashing = false;
-        // Deliberately NOT cancelling invincibility here anymore — GrantInvincibility no longer supports an
-        // explicit "turn it off" call from any one source (see its own doc comment). Dash's own contribution
-        // just expires naturally via the invincibleTimer countdown; if some other source (e.g.
-        // ShieldBreakBurstAugment) extended it further, that time is left intact instead of being wiped out
-        // by the dash ending.
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         _rigidbody.velocity = Vector3.zero;
-        _onDashEnded.Invoke();
+        if (interrupted)
+        {
+            _stats?.CancelCommittedInvincibility();
+            _onDashInterrupted.Invoke();
+        }
+        else
+        {
+            _onDashEnded.Invoke();
+        }
     }
 
     // ── Special movement helpers ─────────────────────────────────────────────
@@ -607,5 +676,118 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _rigidbody.velocity = Vector3.zero;
     }
 
+    // Player-side counterpart to IEnemyPD.Interrupt() — cancels whatever committed action (dash, or an
+    // ability using StartSpecialMovement, e.g. RogueSpinAbilityPD's leap) this player is currently mid-way
+    // through, reverting to normal movement. BWBlinkAbilityPD needs no exclusion here — its teleport is
+    // instantaneous and never sets isDashing/isSpecialMoving in the first place, so there's nothing for this
+    // to catch.
+    //
+    // Dash's own invincibility (GrantCommittedInvincibility, see StartDash) is cancelled directly here, since
+    // PlayerControllerPD owns that grant itself. An interrupted ABILITY's own invincibility (e.g.
+    // RogueSpinAbilityPD's leap) is instead the responsibility of that ability's own
+    // _onSpecialMovementInterrupted listener — same "small composable primitive, whoever owns the grant
+    // reverts it" convention as the enemy-side SetX(bool) primitives — since not every ForcesSpecialAction
+    // ability necessarily grants committed invincibility.
+    //
+    // Neither path fires its own "completed" event (_onDashEnded / IAbilityPD's NotifyAbilityEnd) — an
+    // interrupted dash fires _onDashInterrupted instead (see its own doc comment), and an interrupted ability
+    // is expected to skip its own NotifyDashEnded/NotifyAbilityEnd calls the same way RogueSpinAbilityPD's own
+    // EndActiveWindow does. Being interrupted is a punishment, not a "the action still counts" completion —
+    // "reward on completion" listeners (DashExplosionAugment, DashHealAugment, PhantomBladeOnDashAugment)
+    // must not still pay out for an action that got cut short. Listeners that only care about the WINDOW
+    // closing regardless of why (e.g. DashThroughInterruptAugment's own sweep) subscribe to both the normal
+    // end event AND the interrupted one.
+    //
+    // Returns whether this call actually cancelled something, matching IEnemyPD.Interrupt()'s own
+    // bool-return contract (so a caller — e.g. an upcoming enemy type — can tell a real interrupt from a
+    // no-op).
+    public bool Interrupt()
+    {
+        bool cancelledSomething = false;
 
+        if (currentState.isDashing)
+        {
+            EndDash(ref currentState, interrupted: true);
+            cancelledSomething = true;
+        }
+
+        if (currentState.isSpecialMoving)
+        {
+            EndSpecialMovement(ref currentState);
+            _onSpecialMovementInterrupted.Invoke();
+            cancelledSomething = true;
+        }
+
+        return cancelledSomething;
+    }
+
+    // Public entry point for a real, direct stun (not knockback-derived) — sets trueStunTimer as well as the
+    // shared stunTimer gate, same isTrueStun split as EnemyBasePD.Stun()/ApplyStun(). No crowd-control-resist
+    // scaling here (unlike the enemy-side Stun()) — players don't have a resist stat, not because they're
+    // deliberately meant to be immune-proof; add one here first if that's ever needed. Purely behavioral, no
+    // visual/tint side effect by design (unlike EnemyBasePD's own yellow trueStunTimer flash — players have
+    // no such indicator yet; IsTrueStunned is exposed above as the hook for one if that's ever added).
+    public void Stun(float duration) => ApplyStun(duration, isTrueStun: true);
+
+    // Shared behavioral gate for Stun() above and Knockback() below — Mathf.Max-based so it never shortens a
+    // longer stun already in progress, same convention as the enemy-side version. Doesn't check anything
+    // like the enemy-side isStunnable/stunResistant gate — not because players are deliberately meant to be
+    // immune-proof, just that nothing currently needs stun immunity/resistance; add that check here first if
+    // it's ever required. Doesn't touch isDashing/isSpecialMoving or call Interrupt() itself — Knockback()
+    // below composes that; a future standalone caller that also needs a committed action cancelled first is
+    // responsible for calling Interrupt() itself, same "small composable primitive, caller composes"
+    // convention as the SetX(bool) family.
+    private void ApplyStun(float duration, bool isTrueStun = false)
+    {
+        if (duration <= 0f || (_stats != null && _stats.IsDead)) return;
+        currentState.stunTimer = Mathf.Max(currentState.stunTimer, duration);
+        if (isTrueStun) currentState.trueStunTimer = Mathf.Max(currentState.trueStunTimer, duration);
+    }
+
+    // Player-side counterpart to EnemyBasePD.AddKnockbackVelocity — same Vector3 impulse shape (magnitude =
+    // force, direction = normalized) rather than separate force/direction params, for direct parity/easy
+    // diffing against that method. One-time direct rigidbody velocity assignment (not a stored/re-applied
+    // State field), left to decay on its own via the Rigidbody's own configured linear drag. No crowd-
+    // control-resist scaling (see ApplyStun's own doc comment) — impulse is applied at full value, unlike the
+    // enemy side's `impulse.normalized * effectiveSpeed` (which reduces to plain `impulse` once resist is
+    // dropped, so this assigns it directly).
+    //
+    // Calls Interrupt() first (per design — anything that knocks a player back needs to safely end whatever
+    // committed action they were mid-way through first, same reason Interrupt() itself exists), so by the
+    // time velocity is applied isDashing/isSpecialMoving are already false and won't fight this tick's write.
+    // Unlike the enemy side (where Interrupt() is a separate step the attacker composes explicitly — see
+    // IEnemyPD.Interrupt()'s own doc comment), it's baked in directly here rather than left for the caller to
+    // remember, since every current/planned player-knockback source wants it called first anyway.
+    //
+    // Derives an approximate stun duration from the impulse's magnitude via the same
+    // ln(magnitude/threshold)/drag formula as the enemy side and applies it as a knockback (non-true) stun.
+    //
+    // Also disables _physicsCollider for the duration — same push-collider-off convention as
+    // StartDash/StartSpecialMovement (re-enabled on the stun's own falling edge, see Simulate()'s own stun
+    // tick-down block), NOT the separate bounds collider that keeps players in the level, which is untouched
+    // and stays active throughout so a knocked-back player still can't get shoved out of bounds. Without
+    // this, the push collider could snag on terrain/other players mid-slide (cutting the knockback short
+    // unpredictably) or shove other players/enemies around involuntarily while sliding through them.
+    public void Knockback(Vector3 impulse)
+    {
+        if (_rigidbody == null || _stats == null || _stats.IsDead) return;
+
+        Interrupt();
+
+        if (_physicsCollider != null) _physicsCollider.enabled = false;
+
+        // Guarded by !isKinematic — no player script sets this rigidbody kinematic today, but
+        // PredictedRigidbody's velocity setter throws ("not supported") if ever attempted on a kinematic
+        // body, same reason every enemy-side velocity write (AddKnockbackVelocity included) guards itself
+        // the same way. Cheap defensive parity in case a future ability/effect ever kinematic-freezes a
+        // player (e.g. a grab-style enemy attack).
+        if (!_rigidbody.isKinematic)
+            _rigidbody.velocity = impulse;
+
+        float speed = impulse.magnitude;
+        float stunDuration = speed > knockbackStunThreshold
+            ? Mathf.Log(speed / knockbackStunThreshold) / knockbackStunDrag
+            : 0f;
+        ApplyStun(stunDuration);
+    }
 }

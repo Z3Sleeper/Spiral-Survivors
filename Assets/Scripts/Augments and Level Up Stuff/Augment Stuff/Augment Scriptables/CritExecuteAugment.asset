@@ -12,12 +12,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: CritExecuteAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FF0000>Critxecute</color>
-  description: '<color=#FF0000>Crits</color> <color=#FFA000>Execute</color> enemies
-    below <color=#FFA000>25% health (5% for bosses)</color>.
+  displayName: <color=#FF8700>Critxecute</color>
+  description: '<color=#FF8700>Crits</color> <color=#FFA000>Execute</color> enemies
+    below <color=#FFA000>25% health</color>.
 
-    <color=#FF0000>+10%
-    Crit Chance</color>'
+    <color=#FF8700>+10% Crit Chance</color>
+
+    <color=#FFBE50><i>Executes
+    are 20% effective vs Bosses</i></color>'
   icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
   effectPrefab: {fileID: 570090634512275699, guid: b7d9f1c9924162445bfe12cd7ebef9eb, type: 3}
   multiplayerOnly: 0

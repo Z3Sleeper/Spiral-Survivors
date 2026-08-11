@@ -26,7 +26,9 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     private float _halfWidth;
     private float _halfDepth;
     private float _damage;
-    private bool  _visualStarted;
+    // This life's own total charge duration, captured once at Launch() — the denominator for UpdateView's
+    // own live SetProgress() ratio (see its own doc comment for why this replaced a self-timed StartFill()).
+    private float _chargeDuration;
 
     // Called immediately after hierarchy.Create() returns — same "mutate currentState right after Create()"
     // pattern as RemoteSpikeBurstPD.Launch(). Takes full width/depth (not half-extents) — friendlier to tune
@@ -37,11 +39,10 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         _halfWidth = width * 0.5f;
         _halfDepth = depth * 0.5f;
         _damage    = damage;
+        _chargeDuration = chargeTime;
         currentState.chargeTimer = chargeTime;
 
-        // Pooled-reuse safety — same reasoning as RemoteSpikeBurstPD.Launch()'s own _visualStarted reset and
-        // explicit ResetFill() call.
-        _visualStarted = false;
+        // Pooled-reuse safety — same reasoning as RemoteSpikeBurstPD.Launch()'s own explicit ResetFill() call.
         if (_windupFill != null) _windupFill.ResetFill();
 
         // Scales this hazard's own root — DangerIndicator and WindupFill both live as children underneath it
@@ -88,13 +89,13 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
 
     protected override void UpdateView(State viewState, State? verified)
     {
-        // Same verified-snapshot reasoning as RemoteSpikeBurstPD.UpdateView — avoids starting the fill off a
-        // blended/pooled-reuse chargeTimer value.
-        if (!_visualStarted && _windupFill != null && verified.HasValue && verified.Value.chargeTimer > 0f)
-        {
-            _windupFill.StartFill(verified.Value.chargeTimer);
-            _visualStarted = true;
-        }
+        // Live, every frame — same feedback_windupfill_self_timed_drift fix as RemoteSpikeBurstPD.UpdateView.
+        // Gate reads verified (avoids a blended/pooled-reuse chargeTimer value reading as "almost done" right
+        // after a fresh Launch()); the actual ratio reads viewState once that gate is open, for smoother
+        // every-render-frame updates than verified alone would give — see RemoteSpikeBurstPD's own doc
+        // comment for the full reasoning on why that's safe.
+        if (_windupFill != null && verified.HasValue && verified.Value.chargeTimer > 0f)
+            _windupFill.SetProgress(1f - Mathf.Clamp01(viewState.chargeTimer / _chargeDuration));
 
         // State-critical — only act on server-confirmed expiry, same reasoning as every other spawned
         // one-shot effect's deletion. Covers both a real timeout and an early Cancel() the same way.

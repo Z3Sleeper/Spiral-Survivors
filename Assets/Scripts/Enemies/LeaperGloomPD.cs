@@ -381,11 +381,19 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         if (_windupFill != null) _windupFill.ResetFill();
     }
 
-    // Mid-Leaping specifically is NOT interruptible (per design) — the leaper is already mid-air on a fixed
-    // kinematic arc lerp with both its collider AND hurtbox disabled (see HandleActiveState's own comment),
-    // so there's no sensible "cancel and snap back to idle" here even if something did reach in. Windup
-    // (stationary, hittable) and every other phase are still fair game.
-    protected override bool CanBeInterrupted => GetLeapState(ref currentState) != LeapState.Leaping;
+    // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
+    // meant to be cancelable — CanBeInterrupted now defaults to false (see EnemyBasePD's own doc comment).
+    // Leaping stays excluded regardless (per design — already mid-air on a fixed kinematic arc lerp with
+    // both its collider AND hurtbox disabled, see HandleActiveState's own comment, so there's no sensible
+    // "cancel and snap back to idle" here even if something did reach in).
+    protected override bool CanBeInterrupted
+    {
+        get
+        {
+            var ss = GetLeapState(ref currentState);
+            return ss == LeapState.Windup || ss == LeapState.Landing || ss == LeapState.PostLeap;
+        }
+    }
 
 
     // ── View ───────────────────────────────────────────────────────────────

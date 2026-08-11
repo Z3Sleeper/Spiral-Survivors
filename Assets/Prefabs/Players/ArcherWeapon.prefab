@@ -152,10 +152,10 @@ MonoBehaviour:
   hitboxTipScalesWithY: 0
   hitboxTipScalesWithZ: 0
   _renderers: []
+  isRanged: 1
+  rangeMultiplier: 2.5
   visualHeightTarget: {fileID: 7983150946184223005}
   projectilePrefab: {fileID: 2942187867930129664, guid: 2d918d54e127e5444b6e0a0f3407f294, type: 3}
-  projectileSpeed: 20
-  fireRateMultiplier: 1
 --- !u!114 &4065948657444989573
 MonoBehaviour:
   m_ObjectHideFlags: 0

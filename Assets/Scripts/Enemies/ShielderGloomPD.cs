@@ -78,6 +78,19 @@ public class ShielderGloomPD : EnemyBasePD
         }
     }
 
+    // Interruptible exactly while the Shield is winding up — the Shield tells the Shielder its own commitment
+    // state (SpikeShieldPD.IsWindingUp) since the Shielder's body has no windup/attack state of its own to
+    // read (see class doc comment: the body never freezes for the Shield's attack, it's a fully separate
+    // system). Deliberately does NOT also flip isStunnable — the body stays independently stunnable/mobile
+    // regardless of what the Shield is doing, matching this enemy's whole "feels different from Spear"
+    // design (a plain Stun() should still be able to freeze the body's own movement during a Shield windup;
+    // only a real Interrupt() reaches in and cancels the Shield's own attack specifically).
+    protected override bool CanBeInterrupted => _shield != null && _shield.IsWindingUp;
+
+    // Tells the Shield it got interrupted so IT cancels its own windup — the Shielder's own state machine
+    // has nothing of its own to reset (see class doc comment), so this is the entire override.
+    protected override void OnInterrupted() => _shield?.CancelWindup();
+
     // Destroyed() fires on every removal path this identity can go through (real death via UpdateView's
     // verified-isDead delete, SilentDespawn/wipe, or scene teardown) — hooking Shield cleanup here instead
     // of some death-specific callback guarantees it never orphans regardless of WHY the Shielder went away.

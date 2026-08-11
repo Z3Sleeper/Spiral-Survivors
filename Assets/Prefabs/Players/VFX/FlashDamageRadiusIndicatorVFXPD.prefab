@@ -168,7 +168,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4e535d6b3a616ef43a15aa971ca8fd64, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RadiusIndicatorVFXPD
-  duration: 0.1
+  duration: 0.25
 --- !u!114 &3292467086006023227
 MonoBehaviour:
   m_ObjectHideFlags: 0

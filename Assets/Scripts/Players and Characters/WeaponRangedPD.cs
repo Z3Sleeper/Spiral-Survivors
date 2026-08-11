@@ -142,7 +142,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
             // back into range fires immediately instead of waiting out a fresh full interval. No per-target
             // hit cooldown bookkeeping either — there's no selected target to gate.
             if (!_stats.ContinuousFireHasTarget) return;
-            Fire(transform.position + transform.forward * _stats.WeaponRange);
+            Fire(transform.position + transform.forward * EffectiveWeaponRange);
             state.fireTimer = Mathf.RoundToInt(1f / Mathf.Max(0.01f, _stats.AttackSpeed * _stats.FireRate) / delta);
             return;
         }
@@ -171,7 +171,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         out IEnemyPD enemy, out Vector3 hurtboxCenter)
     {
         Vector3 origin = from - forward * 1f;
-        float   range  = _stats.WeaponRange + 1f;
+        float   range  = EffectiveWeaponRange + 1f;
 
         int   n        = Physics.RaycastNonAlloc(origin, forward, _rayResults, range, CombatLayerMasks.EnemyHurtboxMask);
         float bestDist = float.MaxValue;
@@ -262,7 +262,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
             var go = hierarchy.GetGameObject(id.Value);
             if (go != null && go.TryGetComponent(out WeaponRangedProjectilePD projectile))
-                projectile.Launch(_stats, dir, _stats.ProjectileSpeed, ricochet);
+                projectile.Launch(_stats, dir, _stats.ProjectileSpeed, ricochet, EffectiveWeaponRange);
         }
     }
 }

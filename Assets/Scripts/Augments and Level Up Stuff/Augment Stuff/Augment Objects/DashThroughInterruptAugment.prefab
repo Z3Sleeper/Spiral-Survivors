@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 778e50a0da49a0d449769870931adce6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DashThroughInterruptAugment
-  sweepRadius: 1.25
+  sweepRadius: 1.5

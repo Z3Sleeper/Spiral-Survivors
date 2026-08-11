@@ -140,6 +140,25 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         if (visuals != null) _visualsRestLocalPosition = visuals.localPosition;
     }
 
+    // _controller's own _onSpecialMovementInterrupted PredictedEvent isn't constructed until
+    // PlayerControllerPD's own LateAwake() runs — but PurrDiction's Setup() calls each sibling component's
+    // Awake()+LateAwake() pair sequentially (per-component, not as two separate global passes across every
+    // component first), so there's no reliable ordering between two DIFFERENT components' own LateAwake()
+    // calls on the same GameObject either — confirmed live (this exact NullReferenceException still hit
+    // from LateAwake(), just one component earlier in the crash than the original Awake()-based attempt).
+    // Subscribing lazily on first Activate() instead sidesteps the ordering question entirely: by the time a
+    // player can press this ability, the whole object graph has been through at least one full simulate
+    // tick, so PlayerControllerPD.LateAwake() is guaranteed to have already run regardless of component
+    // order. Safe to defer this long — OnSpecialMovementInterrupted only ever matters while currentState.
+    // isActive is true, which can't happen before Activate() runs anyway.
+    private bool _subscribedToSpecialMovementInterrupted;
+    private void EnsureSpecialMovementInterruptedSubscription()
+    {
+        if (_subscribedToSpecialMovementInterrupted || _controller == null) return;
+        _controller.AddSpecialMovementInterruptedListener(OnSpecialMovementInterrupted);
+        _subscribedToSpecialMovementInterrupted = true;
+    }
+
     public bool IsReady => !currentState.isActive && currentState.cooldownTimer <= 0f;
     public bool IsActive => currentState.isActive;
     // Moves the player (StartSpecialMovement), disables weapons, flips the orbit — this locks dash and the
@@ -218,6 +237,8 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     {
         if (!IsReady || _stats == null) return;
 
+        EnsureSpecialMovementInterruptedSubscription();
+
         currentState.isActive      = true;
         currentState.activeTimer   = duration;
         currentState.cooldownTimer = EffectiveCooldown;
@@ -275,8 +296,11 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         _stats.SetUseSpecialSpinRate(true);
 
         // Combined grant — covers the active window AND the post-active grace in one call, see
-        // postActiveInvincibilityGrace's own doc comment for why this isn't split into two calls.
-        _stats.GrantInvincibility(duration + postActiveInvincibilityGrace);
+        // postActiveInvincibilityGrace's own doc comment for why this isn't split into two calls. Committed
+        // channel, not the general GrantInvincibility pool — see CharacterStatsPD.GrantCommittedInvincibility's
+        // own doc comment. Lets an Interrupt() revoke exactly this grant without touching any other
+        // overlapping invincibility source — see OnSpecialMovementInterrupted below.
+        _stats.GrantCommittedInvincibility(duration + postActiveInvincibilityGrace);
         _stats.SetWeaponsDisabled(true);
         // Separate from SetWeaponsDisabled — this one only ever affects WeaponBasePD.OrbitalPosition's
         // orbit-plane shape (see its own doc comment), never damage. Kept distinct so a future effect can
@@ -332,22 +356,56 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         }
 
         if (state.activeTimer <= 0f || forceEndOnDeath)
+            EndActiveWindow(ref state, interrupted: false);
+    }
+
+    // Shared by the natural/death end above and OnSpecialMovementInterrupted below, so the two paths can
+    // never drift apart. Mechanical side effects (weapons/orbit/spin-rate/height/isActive) always revert
+    // regardless of why. interrupted additionally decides two things:
+    // - Invincibility: natural/death leaves the committed grant alone (the postActiveInvincibilityGrace tail
+    //   is meant to survive past the active window ending on its own — see that field's own doc comment);
+    //   interrupted cancels it immediately instead.
+    // - NotifyDashEnded/NotifyAbilityEnd: skipped entirely when interrupted — being interrupted is a
+    //   punishment, not a "the action still counts" completion, so "reward on completion" listeners
+    //   (DashExplosionAugment/DashHealAugment/PhantomBladeOnDashAugment) must not still pay out. Confirmed
+    //   safe to skip NotifyAbilityEnd — nothing in this codebase currently listens for it at all. Listeners
+    //   that only care about the WINDOW closing regardless of why (DashThroughInterruptAugment's own sweep)
+    //   instead subscribe to PlayerControllerPD's own _onDashInterrupted/_onSpecialMovementInterrupted
+    //   directly, not through this ability.
+    private void EndActiveWindow(ref State state, bool interrupted)
+    {
+        state.activeTimer = 0f;
+        state.isActive = false;
+        if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
+        _stats?.SetWeaponsDisabled(false);
+        _stats?.SetUseSpecialSpinRate(false);
+        _stats?.SetOrbitFlipped(false);
+        _stats?.SetOrbitFacingYaw(0f);
+        _stats?.SetSpecialHeightOffset(0f);
+
+        if (interrupted)
         {
-            state.activeTimer = 0f;
-            state.isActive = false;
-            if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
-            _stats?.SetWeaponsDisabled(false);
-            _stats?.SetUseSpecialSpinRate(false);
-            _stats?.SetOrbitFlipped(false);
-            _stats?.SetOrbitFacingYaw(0f);
-            _stats?.SetSpecialHeightOffset(0f);
+            _stats?.CancelCommittedInvincibility();
+        }
+        else
+        {
             _controller?.NotifyDashEnded();
-            // No separate GrantInvincibility call here — the combined duration + postActiveInvincibilityGrace
-            // grant already made at cast time (see Activate()) covers this tail on its own.
-            // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
-            // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.
+            // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc
+            // comment. See the matching NotifyAbilityStart call in Activate() for why this is gated on
+            // cooldown > 0 too.
             if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
         }
+    }
+
+    // Fires from PlayerControllerPD.Interrupt() — only meaningful while this ability's own leap is the thing
+    // currently occupying isSpecialMoving (PredictedEvent, not a targeted call, so every ForcesSpecialAction
+    // ability subscribes and each one no-ops if it wasn't the one active — see the guard below). Immediately
+    // reverts every side effect Activate() applied, same shared path the natural/death end already uses, so
+    // this and that can never drift apart.
+    private void OnSpecialMovementInterrupted()
+    {
+        if (!currentState.isActive) return;
+        EndActiveWindow(ref currentState, interrupted: true);
     }
 
     // Plain, self-contained AoE damage tick — every hit is built identically to a normal weapon hit (same

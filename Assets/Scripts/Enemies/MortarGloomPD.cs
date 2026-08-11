@@ -257,10 +257,18 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         SetMortarState(ref state, MortarState.Moving);
     }
 
-    // Only Fire/PostFire are committed — Windup/BetweenStrikes/Moving/DashingAway can all still be
-    // interrupted.
-    protected override bool CanBeInterrupted =>
-        GetMortarState(ref currentState) != MortarState.Fire && GetMortarState(ref currentState) != MortarState.PostFire;
+    // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
+    // meant to be cancelable — CanBeInterrupted now defaults to false (see EnemyBasePD's own doc comment).
+    // Fire stays excluded regardless (per design — "already launched," see class doc comment); BetweenStrikes/
+    // Moving/PostFire are isStunnable, so were never committed in the first place.
+    protected override bool CanBeInterrupted
+    {
+        get
+        {
+            var ms = GetMortarState(ref currentState);
+            return ms == MortarState.Windup || ms == MortarState.DashingAway;
+        }
+    }
 
     // Interrupting mid-Windup actively cancels that strike's already-spawned hazard (erases the indicator,
     // stops its pending damage) — the danger indicator hasn't "committed" yet at that point. CanBeInterrupted

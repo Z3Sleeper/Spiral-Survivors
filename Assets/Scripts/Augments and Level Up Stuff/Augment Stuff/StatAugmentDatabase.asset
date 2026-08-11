@@ -39,7 +39,7 @@ MonoBehaviour:
     appendText: '%'
   - statType: 9
     displayName: Crit Chance
-    color: {r: 1, g: 0, b: 0, a: 1}
+    color: {r: 1, g: 0.5294118, b: 0, a: 1}
     value: 5
     prependText: +
     appendText: '%'

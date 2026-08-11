@@ -349,6 +349,15 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
 
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
 
+        // Every hit interrupts — Executioner's own way of interacting with enemies beyond raw damage
+        // (Knight has interrupt+stun, Bladeweaver has range+dodge, Archer has a slow, Rogue has dodge+
+        // invisibility; AxeThrow had nothing until now). Called BEFORE AddKnockbackVelocity below, per
+        // IEnemyPD.Interrupt()'s own doc comment ("call this BEFORE a paired Stun()/AddKnockbackVelocity on
+        // the same hit, never after"). No-op on an enemy that's already !CanBeInterrupted this tick (e.g.
+        // Fire/Leaping/other "already committed" phases) — same as every other Interrupt() caller, nothing
+        // extra needed here to detect that.
+        enemy.Interrupt();
+
         // Unpenalized — CharacterStatsPD.Knockback alone, no OnHitPower multiply (unlike
         // WeaponRangedProjectilePD's own `_knockback * onHitPower`), per the user's own call.
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;

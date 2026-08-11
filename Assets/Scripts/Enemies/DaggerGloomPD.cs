@@ -186,15 +186,18 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
 
         ss = GetDaggerState(ref state);
 
-        // Same "block stun/knockback for the whole attack sequence" reasoning as SpearGloomPD — only
-        // Moving is interruptible.
-        isStunnable = ss == DaggerState.Moving ? !stunResistant : false;
-
         // Windup and Spinning are both stationary — Windup is the telegraph, Spinning is where the AoE
         // resolves instantly (see EnterSpin()) but the animation still needs to play out untouched, so
         // both go kinematic (Case 2). DashingToTarget is fast movement, handled by the base dash
         // primitives (collider-disabled instead, Case 1).
         bool isWindupOrSpin = ss == DaggerState.Windup || ss == DaggerState.Spinning;
+
+        // Fixed (2026-08-10) — this previously claimed Spear-parity in its own comment without actually
+        // delivering it (treated EVERY non-Moving state as committed, including BetweenSpins/PostSpin).
+        // Now genuinely matches SpearGloomPD's own shape: only Windup/Spinning/DashingToTarget block
+        // stun/knockback; BetweenSpins/PostSpin are stunnable/vulnerable like any other recovery beat.
+        isStunnable = !isWindupOrSpin && ss != DaggerState.DashingToTarget;
+
         if (_rigidbody != null)
         {
             if (isWindupOrSpin && !_rigidbody.isKinematic)
@@ -279,9 +282,21 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         SetDaggerState(ref state, DaggerState.Moving);
     }
 
-    // Every Dagger phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
-    // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
-    // of attacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above, fixed
+    // 2026-08-10 to genuinely match SpearGloomPD's shape) and meant to be cancelable — CanBeInterrupted now
+    // defaults to false (see EnemyBasePD's own doc comment). BetweenSpins/PostSpin are stunnable/vulnerable,
+    // so are correctly excluded here too — no longer "everything except Moving."
+    protected override bool CanBeInterrupted
+    {
+        get
+        {
+            var ss = GetDaggerState(ref currentState);
+            return ss == DaggerState.Windup || ss == DaggerState.Spinning || ss == DaggerState.DashingToTarget;
+        }
+    }
+
+    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
+    // it runs out of attacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
     protected override void OnInterrupted()
     {
         EnterMoving(ref currentState);

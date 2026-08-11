@@ -24,6 +24,13 @@ using UnityEngine;
 // (a separate isSpecialMoving flag). Gating on the event pair covers both a real dash and Rogue's leap
 // automatically, same as the rest of the family.
 //
+// ALSO listens to PlayerControllerPD's own DashInterrupted/SpecialMovementInterrupted events (2026-08-11),
+// pointed at the exact same OnDashEnded handler — an Interrupt()'d dash/leap (e.g. by an enemy) fires those
+// INSTEAD of the normal Ended event (see PlayerControllerPD.Interrupt()'s own doc comment: an interrupted
+// action shouldn't still fire "completed" events other Dash augments treat as a reward trigger). This
+// augment doesn't care WHY the window closed, only that it did — without this, an interrupt would leave
+// isSweeping stuck true forever, since nothing else would ever clear it.
+//
 // OnDashEnded ALSO runs one immediate catch-up sweep (not just flipping isSweeping off) — required for
 // BWBlinkAbilityPD's Blink specifically: its teleport is a direct, synchronous position write (not physics-
 // integrated), and it calls NotifyDashStarted() (at the OLD position) then teleports then NotifyDashEnded()
@@ -34,12 +41,12 @@ using UnityEngine;
 // applies dash velocity, so the last tick that actually moved the player was already fully swept by
 // LateSimulate() one tick earlier — there's nothing left for the catch-up to find.
 //
-// "Successful interrupt" (the refund gate) needs BOTH IsStunnable and Interrupt()'s own return value — neither
-// alone is enough. IsStunnable alone would false-positive on states that are non-stunnable but ALSO
-// explicitly excluded from CanBeInterrupted (e.g. KingSpikePD.SpikeBurstWindup — deliberately uncancelable,
-// confirmed via direct read of that class). Interrupt()'s own guard clause already returns false there, so
-// combining both catches exactly the case a single check would miss: genuinely committed to something
-// (!IsStunnable) AND the interrupt call actually took effect (Interrupt() returned true).
+// "Successful interrupt" (the refund gate) reworked (2026-08-10) to just be Interrupt()'s own return value
+// alone — IEnemyPD.CanBeInterrupted now defaults to false, and each enemy explicitly opts in only for the
+// specific states that are both committed (not just stunnable/CC-vulnerable) and meant to be cancelable (see
+// EnemyBasePD.CanBeInterrupted's own doc comment), so a true return already means exactly "this landed on
+// something real." The old design combined this with a separate IsStunnable check to work around
+// CanBeInterrupted previously defaulting to true almost everywhere — no longer needed.
 public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptAugment.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -83,6 +90,15 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         {
             _controller.AddDashStartedListener(OnDashStarted);
             _controller.AddDashEndedListener(OnDashEnded);
+            // A dash/leap that gets Interrupt()'d (e.g. by an enemy) never fires OnDashEnded — that event is
+            // reserved for "the action completed," which an interrupted one didn't (see
+            // PlayerControllerPD.Interrupt()'s own doc comment). Without also closing the sweep window here,
+            // isSweeping would stay stuck true forever after an interrupt, since only OnDashEnded (or the
+            // next OnDashStarted) ever clears it. OnDashEnded itself already does exactly the right thing
+            // regardless of WHY the window closed (final catch-up sweep + stop sweeping — nothing in it
+            // assumes a successful completion), so it's reused directly as the handler for both.
+            _controller.AddDashInterruptedListener(OnDashEnded);
+            _controller.AddSpecialMovementInterruptedListener(OnDashEnded);
         }
     }
 
@@ -93,6 +109,8 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         {
             _controller.RemoveDashStartedListener(OnDashStarted);
             _controller.RemoveDashEndedListener(OnDashEnded);
+            _controller.RemoveDashInterruptedListener(OnDashEnded);
+            _controller.RemoveSpecialMovementInterruptedListener(OnDashEnded);
         }
     }
 
@@ -149,13 +167,9 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
             if (state.touchedEnemies.Contains(enemy.ObjectId)) continue;
             state.touchedEnemies.Add(enemy.ObjectId);
 
-            // Read IsStunnable BEFORE calling Interrupt() — Interrupt() itself resets isStunnable as part of
-            // its own body. Both conditions required — see class doc comment for the SpikeBurstWindup case
-            // this specifically guards against (non-stunnable but explicitly non-interruptible).
-            bool wasCommitted        = !enemy.IsStunnable;
             bool actuallyInterrupted = enemy.Interrupt();
 
-            if (wasCommitted && actuallyInterrupted && !state.refundedThisActivation)
+            if (actuallyInterrupted && !state.refundedThisActivation)
             {
                 state.refundedThisActivation = true;
                 _controller.RefundDashCharge();

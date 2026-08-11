@@ -10,6 +10,14 @@ public class WindupFillPD : MonoBehaviour
     [SerializeField] private Axis fillAxis = Axis.Z;
     [SerializeField] private FillMode fillMode = FillMode.EdgeStart;
 
+    // 0-255 byte scale (matches Unity's own color-picker display), not 0-1 — divided by 255 when applied to
+    // Color.a. "Opaque" here means basically-opaque alpha-wise (255/255), NOT a material render-mode switch —
+    // this only ever lerps the alpha channel of the material's own authored color, never touches render
+    // queue/mode/anything else, so the material stays exactly as authored (Transparent) throughout.
+    [Header("Alpha (0-255)")]
+    [SerializeField] private float transparentAlpha = 50f;
+    [SerializeField] private float opaqueAlpha       = 255f;
+
     private Vector3 _baseLocalScale;
     private float _baseScale;
     private float _basePos;
@@ -18,6 +26,11 @@ public class WindupFillPD : MonoBehaviour
     private float _elapsed;
     private bool _filling;
     private bool _awoken;
+
+    private Renderer _renderer;
+    // The material's own authored RGB, captured once — only .a ever gets overridden per-frame below, so
+    // whatever color this fill was authored as (red/yellow/whatever) is always preserved.
+    private Color _baseColor;
 
     private void Awake()
     {
@@ -42,6 +55,13 @@ public class WindupFillPD : MonoBehaviour
         {
             _halfExtent = _baseScale * 0.5f;
         }
+
+        // .material (not sharedMaterial) auto-instances a per-renderer copy the FIRST time it's touched —
+        // same established convention as EnemyBasePD's own hit-flash color system (_renderers[i].material.
+        // color = ...) — so animating alpha here never mutates the shared material asset every other
+        // WindupFillPD instance also uses, without needing a MaterialPropertyBlock.
+        _renderer = GetComponent<Renderer>();
+        if (_renderer != null && _renderer.material != null) _baseColor = _renderer.material.color;
 
         Apply(0f);
     }
@@ -78,6 +98,16 @@ public class WindupFillPD : MonoBehaviour
     private void Apply(float t)
     {
         if (!_awoken) return;
+
+        // Alpha lerp applies regardless of fillType (Linear or Radial) — same progress value driving the
+        // scale/position fill below also drives how transparent-to-basically-opaque this looks.
+        if (_renderer != null && _renderer.material != null)
+        {
+            Color c = _baseColor;
+            c.a = Mathf.Lerp(transparentAlpha, opaqueAlpha, t) / 255f;
+            _renderer.material.color = c;
+        }
+
         if (fillType == FillType.Radial)
         {
             transform.localScale = _baseLocalScale * t;

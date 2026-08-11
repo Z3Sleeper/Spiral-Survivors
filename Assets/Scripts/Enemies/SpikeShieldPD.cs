@@ -65,24 +65,28 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     [Header("Visuals")]
     [SerializeField] private Transform _windupIndicator;
     [SerializeField] private WindupFillPD _windupFill;
-    // Whichever renderers should flash to shieldReadyMaterial the instant this Shield is actually able to
-    // trigger Shieldburst again, reverting to their own original material otherwise (on cooldown or mid-
-    // attack) — e.g. ShooterGloomPD's own projectileMaterial-style pass-down, just toggled live here instead
-    // of applied once. Original materials cached once per-renderer in Awake() (sharedMaterial, not .material
-    // — this is a pooled object reused across many Shielder lives, and .material would silently instantiate
-    // a new copy every single toggle, matching EnemyProjectilePD.SetRenderersMaterial's own precedent).
+    // Whichever renderers should tint red the instant this Shield is actually able to trigger Shieldburst
+    // again (reverting to their own original color otherwise — on cooldown or mid-attack), and yellow while
+    // a true stun is propagated from the owning Shielder's body (see LateSimulate()'s own doc comment) —
+    // EXACT same "instance .material once, tint .color, revert to a cached original" mechanism EnemyBasePD's
+    // own hit-flash/stun-tint system already uses for its own `renderers`/`_originalColors` (this class just
+    // can't literally inherit that code, being deliberately not IEnemyPD/EnemyBasePD — see class doc
+    // comment). Since this Shield has no health/death of its own, there's no hit-flash/dead-red state to
+    // reserve red for — that slot is repurposed here to mean "ready to attack" instead.
     [SerializeField] private Renderer[] readyMaterialRenderers;
     // Separate from readyMaterialRenderers above — these grab shieldReadyMaterial once (Configure()-time)
     // and never revert, for decorative pieces (e.g. the spike clusters) that should just permanently match
-    // the ready color rather than toggling with attack state. No original-material caching needed since
-    // there's nothing to revert to.
+    // the ready color rather than toggling with attack/stun state. Untouched by the tint system above — a
+    // plain one-time material swap, not a per-instance tint, since there's nothing here to ever revert to.
     [SerializeField] private Renderer[] permanentReadyMaterialRenderers;
 
-    private Material[] _originalMaterials;
+    private Color[] _originalColors;
     private Material _shieldReadyMaterial;
-    // Plain view-layer bookkeeping, not State — edge-detects the toggle so this only writes materials on an
-    // actual ready/not-ready transition, not every frame.
-    private bool _readyMaterialApplied;
+
+    private enum ShieldTintState { Original, Ready, Stunned }
+    // Plain view-layer bookkeeping, not State — edge-detects the toggle so this only writes colors on an
+    // actual state transition, not every frame.
+    private ShieldTintState _appliedTintState = ShieldTintState.Original;
 
     private PredictedRigidbody _rigidbody;
     private Collider _physicsCollider;
@@ -141,15 +145,18 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         if (contactChild != null) _contactDamageCollider = contactChild.GetComponent<Collider>();
 
         // Captured exactly once per real GameObject instance (Awake(), not LateAwake()/Configure(), neither
-        // of which are guaranteed to run before any pooled reuse might already have swapped these to
-        // shieldReadyMaterial) — same "cache the true prefab-authored value before anything can touch it"
-        // reasoning WeaponRangedProjectilePD's own _baseScale/EnemyBasePD's own _originalColors already use.
+        // of which are guaranteed to run before any pooled reuse might already have swapped these to a
+        // tinted color) — same "cache the true prefab-authored value before anything can touch it" reasoning
+        // WeaponRangedProjectilePD's own _baseScale/EnemyBasePD's own _originalColors already use. .material
+        // (not sharedMaterial) auto-instances a per-renderer copy the FIRST time it's touched, so tinting
+        // here never mutates the shared material asset every other Shield instance also uses — same
+        // established convention as EnemyBasePD's own hit-flash/stun-tint system.
         if (readyMaterialRenderers != null)
         {
-            _originalMaterials = new Material[readyMaterialRenderers.Length];
+            _originalColors = new Color[readyMaterialRenderers.Length];
             for (int i = 0; i < readyMaterialRenderers.Length; i++)
-                if (readyMaterialRenderers[i] != null)
-                    _originalMaterials[i] = readyMaterialRenderers[i].sharedMaterial;
+                if (readyMaterialRenderers[i] != null && readyMaterialRenderers[i].material != null)
+                    _originalColors[i] = readyMaterialRenderers[i].material.color;
         }
     }
 
@@ -219,9 +226,13 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         currentState.lockedAngle = initialAngle;
         currentState.phaseId = (int)ShieldPhase.FreeRotating;
         currentState.phaseTimer = 0f;
-        // Randomized initial offset so multiple Shielders don't all attack in lockstep — same pattern
-        // SpearGloomPD.LateAwake() already uses for its own spearAttackCooldownTimer.
-        currentState.attackCooldownTimer = GameRandom.instance.NextFloat(0f, attackCooldown);
+        // Guaranteed at least one full cooldown before the first attack (2026-08-12 fix — this used to be
+        // GameRandom.instance.NextFloat(0f, attackCooldown) alone, which could roll near-zero and attack
+        // almost immediately, despite the comment here claiming it matched SpearGloomPD's own pattern; it
+        // didn't, it was missing the base attackCooldown term), plus a randomized extra so multiple Shielders
+        // don't all attack in lockstep — actually matches SpearGloomPD.LateAwake()'s own
+        // spearAttackCooldownTimer pattern now.
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         // Reset, not left alone — this instance may be a pooled reuse carrying a previous life's stale
         // per-player cooldown entries (see GetInitialState()'s own comment).
         currentState.contactCooldowns.Clear();
@@ -229,10 +240,10 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         if (_windupFill != null) _windupFill.ResetFill();
         if (_windupIndicator != null) _windupIndicator.gameObject.SetActive(false);
 
-        // Force back to original materials immediately — avoids a one-frame stale "ready" flash on a pooled
-        // Shield whose PREVIOUS life ended mid-ready (UpdateView's own edge-detect would self-correct next
-        // frame regardless, this just skips that visible frame).
-        ApplyReadyMaterial(false);
+        // Force back to original materials immediately — avoids a one-frame stale "ready"/"stunned" flash on
+        // a pooled Shield whose PREVIOUS life ended mid-state (UpdateView's own edge-detect would
+        // self-correct next frame regardless, this just skips that visible frame).
+        ApplyRendererTint(ShieldTintState.Original);
 
         // Snap the transform immediately to the freshly-configured orbit position instead of waiting a tick
         // for LateSimulate() to first run — avoids a one-frame pop/flash at the old (pre-reuse) position for
@@ -282,32 +293,57 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         }
 
         var phase = (ShieldPhase)state.phaseId;
+
+        // True-stun propagation from the owning Shielder's own body (owner.IsTrueStunned — a live read,
+        // same "cross-identity Simulate()-context read" convention _owner.Target already relies on; safe
+        // because LateSimulate() is deterministic and runs identically on every machine, and by this point
+        // the owner's own Simulate() has already updated it for this same tick). Only true stuns propagate
+        // (owner.Stun() sets this; a knockback-derived micro-stun never does — see IEnemyPD.Stun/
+        // AddKnockbackVelocity's own ApplyStun(isTrueStun:...) split), only knocking the OWNER back doesn't
+        // freeze the Shield at all.
+        //
+        // Windup is excluded — this Shield's own committed state (matches CanBeInterrupted's IsWindingUp
+        // gate) — per explicit design the attack itself is NEVER stopped/paused by a stun, only a real
+        // Interrupt() (ShielderGloomPD.OnInterrupted -> CancelWindup()) can cut a windup short. A stun
+        // landing mid-Windup still shows the yellow tint (UpdateView, unconditional on phase) but doesn't
+        // freeze rotation or disable the contact collider until Windup ends.
+        bool stunFrozen = _owner.IsTrueStunned && phase != ShieldPhase.Windup;
+        if (_contactDamageCollider != null && _contactDamageCollider.enabled == stunFrozen)
+            _contactDamageCollider.enabled = !stunFrozen;
+
         float effectiveAngle;
 
         switch (phase)
         {
             case ShieldPhase.FreeRotating:
             {
-                Transform target = _owner.Target;
-                if (target != null)
+                // Frozen: skip both rotation-tracking and the attack-trigger check for this tick — holds
+                // whatever facingAngle it last had, and can't START a new windup while stunned (matches
+                // EnemyBasePD's own isStunnable-gated freeze blocking a new attack from beginning, even
+                // though — per the class-level design here — an ALREADY-committed one never gets paused).
+                if (!stunFrozen)
                 {
-                    Vector3 toTarget = target.position - origin;
-                    toTarget.y = 0f;
-                    if (toTarget != Vector3.zero)
+                    Transform target = _owner.Target;
+                    if (target != null)
                     {
-                        float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
-                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * delta));
+                        Vector3 toTarget = target.position - origin;
+                        toTarget.y = 0f;
+                        if (toTarget != Vector3.zero)
+                        {
+                            float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+                            state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * delta));
+                        }
                     }
-                }
 
-                if (state.attackCooldownTimer <= 0f && IsTargetValid(_owner.TargetStats))
-                {
-                    Vector3 forward = AngleToDir(state.facingAngle);
-                    if (InAttackRectangle(origin, forward, _owner.TargetStats.transform.position))
+                    if (state.attackCooldownTimer <= 0f && IsTargetValid(_owner.TargetStats))
                     {
-                        state.lockedAngle = state.facingAngle;
-                        state.phaseId = (int)ShieldPhase.Windup;
-                        state.phaseTimer = _windupDuration;
+                        Vector3 forward = AngleToDir(state.facingAngle);
+                        if (InAttackRectangle(origin, forward, _owner.TargetStats.transform.position))
+                        {
+                            state.lockedAngle = state.facingAngle;
+                            state.phaseId = (int)ShieldPhase.Windup;
+                            state.phaseTimer = _windupDuration;
+                        }
                     }
                 }
 
@@ -350,6 +386,30 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         }
 
         WriteTransform(origin, effectiveAngle);
+    }
+
+    // Lets ShielderGloomPD (a totally separate class hierarchy — this class isn't IEnemyPD) know whether it
+    // should currently be interruptible — see its own CanBeInterrupted override. Read directly off
+    // currentState, same as every other cross-identity live-state read in this codebase.
+    public bool IsWindingUp => (ShieldPhase)currentState.phaseId == ShieldPhase.Windup;
+
+    // Called by ShielderGloomPD.OnInterrupted() — cancels this Shield's own windup outright (no damage, no
+    // Releasing follow-through), same "reset straight back to idle" shape every other enemy's own
+    // OnInterrupted() uses. No-op if not currently winding up (defensive — CanBeInterrupted already gates
+    // Interrupt() itself on IsWindingUp, so this should never actually be called otherwise).
+    public void CancelWindup()
+    {
+        if ((ShieldPhase)currentState.phaseId != ShieldPhase.Windup) return;
+
+        currentState.phaseId = (int)ShieldPhase.FreeRotating;
+        currentState.attackCooldownTimer = _attackCooldown;
+
+        // Predicted-instant hide, not left for UpdateView's own phaseId-driven redraw to eventually catch up
+        // — this is invoked out-of-band from a DIFFERENT identity's own Simulate() (ShielderGloomPD's
+        // Interrupt() call), same reasoning EnemyBasePD.Interrupt()'s own doc comment gives for why every
+        // other enemy's own OnInterrupted() hides its windup indicator explicitly instead of waiting.
+        if (_windupIndicator != null) _windupIndicator.gameObject.SetActive(false);
+        if (_windupFill != null) _windupFill.ResetFill();
     }
 
     private static float WrapAngle(float angle) => ((angle % 360f) + 360f) % 360f;
@@ -454,9 +514,19 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // Windup/Releasing anyway, so checking the ONE case that should revert is simpler than checking the
         // three that shouldn't.
         bool onCooldown = phase == ShieldPhase.FreeRotating && viewState.attackCooldownTimer > 0f;
-        bool showReadyMaterial = !onCooldown;
-        if (showReadyMaterial != _readyMaterialApplied)
-            ApplyReadyMaterial(showReadyMaterial);
+        bool showReady = !onCooldown;
+
+        // Stunned tint takes priority over ready, and EXCLUDES Windup — matches LateSimulate()'s own
+        // stunFrozen exactly (per explicit design: a stun never pauses/interrupts the attack itself, and the
+        // tint doesn't show while it's mid-windup either, unlike a normal enemy's own always-unconditional
+        // trueStunTimer tint). owner.IsTrueStunned is a live read — see LateSimulate()'s own doc comment for
+        // why that's safe/consistent here.
+        bool isStunned = _owner != null && _owner.IsTrueStunned && phase != ShieldPhase.Windup;
+        ShieldTintState wantState = isStunned ? ShieldTintState.Stunned
+            : showReady ? ShieldTintState.Ready
+            : ShieldTintState.Original;
+        if (wantState != _appliedTintState)
+            ApplyRendererTint(wantState);
     }
 
     private void ApplyPermanentReadyMaterial()
@@ -466,17 +536,24 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             if (r != null) r.sharedMaterial = _shieldReadyMaterial;
     }
 
-    private void ApplyReadyMaterial(bool ready)
+    // Priority: Stunned (yellow) > Ready (red) > Original — see UpdateView's own doc comment for why. Same
+    // per-renderer .material.color tint EnemyBasePD's own hit-flash/stun-tint system uses, just with red
+    // repurposed to mean "ready" instead of "just took damage" (this Shield has neither health nor a hit-
+    // flash of its own — see class doc comment).
+    private void ApplyRendererTint(ShieldTintState wantState)
     {
-        _readyMaterialApplied = ready;
-        if (readyMaterialRenderers == null || _originalMaterials == null) return;
+        _appliedTintState = wantState;
+        if (readyMaterialRenderers == null || _originalColors == null) return;
 
         for (int i = 0; i < readyMaterialRenderers.Length; i++)
         {
-            if (readyMaterialRenderers[i] == null) continue;
-            readyMaterialRenderers[i].sharedMaterial = ready && _shieldReadyMaterial != null
-                ? _shieldReadyMaterial
-                : _originalMaterials[i];
+            if (readyMaterialRenderers[i] == null || readyMaterialRenderers[i].material == null) continue;
+            readyMaterialRenderers[i].material.color = wantState switch
+            {
+                ShieldTintState.Stunned => Color.yellow,
+                ShieldTintState.Ready   => Color.red,
+                _                       => _originalColors[i],
+            };
         }
     }
 }

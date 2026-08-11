@@ -11,7 +11,12 @@ using UnityEngine;
 //
 // "AoE Effects" tag (2026-07-25): heal amount scales with Stats.AreaEffectPower, radius (and the VFX
 // showing it) scale with Stats.AreaEffectSize, and the whole cast can repeat Stats.AreaEffectCount times
-// total via retriggerRate. See DashExplosionAugment's own doc comment for the full reasoning — identical
+// total via retriggerRate. Radius formula standardized (2026-08-10) across DashExplosionAugment/
+// DashHealAugment/ShieldBreakBurstAugment: Stats.RangeScalingAoEBase * radiusMultiplier — extracted onto
+// CharacterStatsPD itself on 2026-08-12 (single source of truth after the 0.5 -> 1 WeaponRange-coefficient
+// retune needed touching every family member by hand), same shape KnightAreaStunHealAbilityPD
+// already uses. See DashExplosionAugment's own doc comment for the full
+// reasoning — identical
 // shape here (every cast, including the common AreaEffectCount == 1 case, goes through a spawned AreaEffectPD
 // — pooled, so this costs a reactivate, not a real spawn — rather than a separate direct-cast path kept in
 // sync by hand). AreaEffectPD itself isn't Dash-specific — the same generic chain every "AoE Effects" caller
@@ -22,7 +27,10 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     public float healthRegenMultiplier = 5f;
-    [SerializeField] private float healRadius   = 10f;
+    // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
+    // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
+    // scaling itself.
+    [SerializeField] private float radiusMultiplier = 1f;
 
     // healthRegenMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
     // convention wouldn't apply to it directly — this alias exists so a description can reference
@@ -69,7 +77,7 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
         if (chainPrefab == null) return;
 
         Vector3 castPosition = Stats.transform.position;
-        float radius = healRadius * Stats.AreaEffectSize;
+        float radius = Stats.RangeScalingAoEBase * radiusMultiplier;
         int totalCasts = Mathf.Max(1, Stats.AreaEffectCount);
 
         var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);

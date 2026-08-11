@@ -122,10 +122,14 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         }
 
         ss = GetBlitzState(ref state);
-        // Blocks stun/knockback for the entire attack sequence (not just Windup) — matches old
-        // BlitzGloom.SetState's identical isStunnable assignment, a deliberate per-enemy choice rather
-        // than a universal rule (compare SpearGloomPD, which only blocks during its two kinematic states).
-        isStunnable = ss == BlitzState.Moving ? !stunResistant : false;
+
+        // Reworked (2026-08-10) — previously blocked stun/knockback for the ENTIRE non-Moving sequence
+        // (including PostBlitz) as a deliberate per-enemy choice; now matches every other multi-phase
+        // enemy's own convention instead (SpearGloomPD/DaggerGloomPD/ShooterGloomPD/MortarGloomPD): only the
+        // actual committed windup+attack blocks it, PostBlitz recovers to stunnable/vulnerable like any
+        // other Post/Between beat.
+        bool isWindupOrBlitzing = ss == BlitzState.Windup || ss == BlitzState.Blitzing;
+        isStunnable = !isWindupOrBlitzing;
 
         // Windup is a stationary telegraphed-attack window — kinematic (Case 2, immovable but still
         // physically present), matching SpearGloomPD/KingSpikePD's convention. Blitzing is fast movement
@@ -198,9 +202,21 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         SetBlitzState(ref state, BlitzState.Moving);
     }
 
-    // Every Blitz phase is interruptible (no override of CanBeInterrupted needed) — this just resets the
-    // state machine back to Moving, same terminal transition the attack chain already uses when it runs out
-    // of blitzesRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above, fixed
+    // 2026-08-10 to match the rest of the roster) and meant to be cancelable — CanBeInterrupted now defaults
+    // to false (see EnemyBasePD's own doc comment). PostBlitz is stunnable/vulnerable, so is correctly
+    // excluded here too — no longer "everything except Moving."
+    protected override bool CanBeInterrupted
+    {
+        get
+        {
+            var ss = GetBlitzState(ref currentState);
+            return ss == BlitzState.Windup || ss == BlitzState.Blitzing;
+        }
+    }
+
+    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
+    // it runs out of blitzesRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
     protected override void OnInterrupted()
     {
         EnterMoving(ref currentState);

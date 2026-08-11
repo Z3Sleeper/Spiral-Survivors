@@ -94,6 +94,7 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
 
     private CharacterStatsPD   _stats;
     private PlayerControllerPD _controller;
+    private WeaponManagerPD    _weaponManager;
 
     // Flat — fireRatePenaltyPercent itself is not AbilityPower-scaled (see class doc comment), so this is
     // just a plain snapshot of the field at cast time, reversed with the identical value at end.
@@ -110,8 +111,9 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
 
     private void Awake()
     {
-        _stats      = GetComponent<CharacterStatsPD>();
-        _controller = GetComponent<PlayerControllerPD>();
+        _stats         = GetComponent<CharacterStatsPD>();
+        _controller    = GetComponent<PlayerControllerPD>();
+        _weaponManager = GetComponent<WeaponManagerPD>();
     }
 
     public Sprite Icon => icon;
@@ -254,16 +256,23 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     }
 
     // Auto-aim version — what's actually called now (see class doc comment). Sources the direction from
-    // WeaponRangedPD.TryFindAutoAimDirection (closest living enemy within WeaponRange of this character)
-    // instead of cursor input, then converts it the same Atan2 way UpdateAimAngle() above does. Falls back
-    // to the character's current forward facing if no enemy is currently in range, same "always have SOME
-    // defined direction to freeze the ring at" fallback the free-aim version used for a zero cursorDir.
-    // Called every active tick (not just once at Activate()) so the aim keeps tracking the closest enemy —
-    // which can change — for the whole window.
+    // WeaponRangedPD.TryFindAutoAimDirection (closest living enemy within the caster's own true weapon reach —
+    // WeaponManagerPD.TryGetFarthestWeaponReach, same "inherit from the actual weapon" pattern
+    // RogueSpinAbilityPD/ExeAxeThrowAbilityPD/ArcherArrowRainAbilityPD/BWBladeDanceAbilityPD already use,
+    // falling back to the plain WeaponRange stat if no weapon is registered) instead of cursor input, then
+    // converts it the same Atan2 way UpdateAimAngle() above does. Automatically picks up a ranged weapon's own
+    // isRanged/rangeMultiplier this way (see WeaponBasePD.EffectiveWeaponRange's own doc comment) without
+    // needing a separate hand-tuned multiplier here. Falls back to the character's current forward facing if
+    // no enemy is currently in range, same "always have SOME defined direction to freeze the ring at"
+    // fallback the free-aim version used for a zero cursorDir. Called every active tick (not just once at
+    // Activate()) so the aim keeps tracking the closest enemy — which can change — for the whole window.
     private void UpdateAutoAimAngle()
     {
         if (_stats == null) return;
-        bool found = WeaponRangedPD.TryFindAutoAimDirection(_stats.transform.position, _stats.WeaponRange, out Vector3 aimDir);
+        float searchRange = _weaponManager != null && _weaponManager.TryGetFarthestWeaponReach(out float trueReach)
+            ? trueReach
+            : _stats.WeaponRange;
+        bool found = WeaponRangedPD.TryFindAutoAimDirection(_stats.transform.position, searchRange, out Vector3 aimDir);
         Vector3 dir = found ? aimDir : transform.forward;
         _stats.SetFocusFireAimAngle(Mathf.Atan2(dir.z, dir.x) * Mathf.Rad2Deg);
         // See CharacterStatsPD.ContinuousFireHasTarget's own doc comment — WeaponRangedPD.LateSimulate()

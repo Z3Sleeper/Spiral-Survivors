@@ -21,7 +21,9 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
 
     private float _radius;
     private float _damage;
-    private bool  _visualStarted;
+    // This life's own total charge duration, captured once at Launch() — the denominator for UpdateView's
+    // own live SetProgress() ratio (see its own doc comment for why this replaced a self-timed StartFill()).
+    private float _chargeDuration;
 
     // Called by KingSpikePD.SpawnRemoteBurstWave() immediately after hierarchy.Create() returns —
     // synchronous and deterministic, same "mutate currentState right after Create()" pattern as
@@ -30,18 +32,15 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
     {
         _radius = radius;
         _damage = damage;
+        _chargeDuration = chargeTime;
         currentState.chargeTimer = chargeTime;
-        // Reset here, not just declared false at the field — this GameObject can be a pooled instance
-        // reused from a previous life (same PurrNet.Pooling mechanism EnemyBasePD relies on), and Launch()
-        // is the one thing reliably called on every reuse, unlike a lifecycle hook.
-        _visualStarted = false;
 
         // A pooled instance's PREVIOUS life ends with the fill fully complete (that's what a finished
         // windup looks like right before detonation) — WindupFillPD's own Awake() (where it resets to
-        // empty) never re-fires on reuse, only on true first creation. StartFill() now waits on
-        // verified.HasValue (see UpdateView()) rather than firing near-instantly off viewState, so without
-        // this explicit reset a reused instance would visibly sit fully-filled for a moment before that
-        // first verified snapshot arrives and finally calls StartFill().
+        // empty) never re-fires on reuse, only on true first creation. UpdateView's own SetProgress() call
+        // waits on verified.HasValue (see its own doc comment) rather than firing near-instantly off
+        // viewState, so without this explicit reset a reused instance would visibly sit fully-filled for a
+        // moment before that first verified snapshot arrives and progress actually starts moving.
         if (_windupFill != null) _windupFill.ResetFill();
     }
 
@@ -75,29 +74,33 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
         // actual AoE damage radius.
         IndicatorMath.ApplyRadialTransform(transform, _radius);
 
-        // Purely cosmetic, render rate — start the fill exactly once per life (guards against re-starting
-        // it every frame, and against a pooled reuse inheriting a previous life's _visualStarted).
+        // Live, every frame — see feedback_windupfill_self_timed_drift: a self-timed StartFill() runs on its
+        // own Time.deltaTime clock, independent of the tick-based chargeTimer that actually gates the real
+        // detonation in LateSimulate(), and can drift out of sync with it. SetProgress() instead reads the
+        // live ratio directly, so it can't drift — it's a direct function of the same timer, not a second
+        // independent countdown aimed at the same starting number.
         //
-        // Sourced from verified, not viewState — same reason as KingSpikePD's chargeDirection fix:
-        // viewState linearly interpolates every STATE field by default, including plain floats like
-        // chargeTimer. Right after Launch() sets currentState.chargeTimer to the real duration, viewState
-        // can still be blending in from whatever this pooled instance's chargeTimer happened to be at the
-        // end of its PREVIOUS life (typically near 0, since that's how the previous life expired) —
-        // handing StartFill() a too-short blended duration, so the fill races to full almost immediately
-        // and then just sits there until the real (un-interpolated) detonation timer in LateSimulate()
-        // actually expires. verified is the exact, non-interpolated snapshot.
+        // Gate reads verified (not viewState) — same reason as KingSpikePD's chargeDirection fix: viewState
+        // linearly interpolates every STATE field by default, including plain floats like chargeTimer. Right
+        // after Launch() sets currentState.chargeTimer to the real duration, viewState can still be blending
+        // in from whatever this pooled instance's chargeTimer happened to be at the end of its PREVIOUS life
+        // (typically near 0, since that's how the previous life expired) — which would make this ratio read
+        // as "almost done" for a tick or two right after a fresh Launch(). verified is the exact,
+        // non-interpolated snapshot, so it doesn't have that blending problem.
         // Gated on chargeTimer > 0, not just verified.HasValue — verified can legitimately turn non-null
         // for a tick or two before Launch()'s synchronous currentState.chargeTimer write has actually
-        // propagated through to a verified snapshot, reading as the struct's default 0 in the meantime.
-        // The old fallback (starting a near-instant 0.01s fill whenever chargeTimer read <= 0) was meant
-        // for a genuine "already expired" edge case, but it was actually eating this default-0 transient
-        // every time, which is why the fill always looked instantly full instead of counting up — waiting
-        // for an actual positive value instead means it only ever starts against a real duration.
-        if (!_visualStarted && _windupFill != null && verified.HasValue && verified.Value.chargeTimer > 0f)
-        {
-            _windupFill.StartFill(verified.Value.chargeTimer);
-            _visualStarted = true;
-        }
+        // propagated through to a verified snapshot, reading as the struct's default 0 in the meantime;
+        // without this gate that transient would read as "already 100% done" instead of "not started yet".
+        //
+        // The actual RATIO, once gated open, reads viewState instead of verified — verified only updates as
+        // often as a new snapshot gets confirmed, which reads noticeably steppier than viewState's own
+        // every-render-frame interpolation. The blending risk above only exists in the brief window BEFORE
+        // this gate opens (which is exactly what the gate is for); by the time verified confirms a real
+        // positive chargeTimer, viewState's own interpolation has virtually always already caught up too
+        // (same order-of-magnitude window), and Mathf.Clamp01 below floors/ceilings the rare stray frame
+        // where it hasn't rather than showing something wildly wrong.
+        if (_windupFill != null && verified.HasValue && verified.Value.chargeTimer > 0f)
+            _windupFill.SetProgress(1f - Mathf.Clamp01(viewState.chargeTimer / _chargeDuration));
 
         // State-critical — only act on server-confirmed expiry, same reasoning as
         // WeaponRangedProjectilePD/EnemyBasePD's death handling.
