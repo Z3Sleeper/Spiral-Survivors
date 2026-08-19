@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SurgeInterruptAoEAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Surge Parry</color>
-  description: '<color=#FFA000>(Area Effect) On <color=#FFFF00>Surge</color> Start/End:</color>
+  description: '<color=#FFA000>(AoE) On <color=#FFFF00>Surge</color> Start/End:</color>
     Deal <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>50%
     Strength</color>) damage</color> and <color=#FFA000>Interrupt</color> enemies
     in a <color=#3278FF>1x Range</color> radius.

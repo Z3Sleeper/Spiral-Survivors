@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: ShieldBreakBurstAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF00FF>Break Burst</color>
-  description: <color=#FFA000>(AoE Effect) On <color=#FF00FF>Shield</color> Break:</color>
+  description: <color=#FFA000>(AoE) On <color=#FF00FF>Shield</color> Break:</color>
     Become <color=#FFA000>Invulnerable for 0.25 seconds</color>, <color=#FFA000>Knockback</color>
     enemies in <color=#3278FF>x1.25 Range</color> and deal <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
     Strength</color>) damage</color> to them.

@@ -146,9 +146,9 @@ public static class ProgressionManager
     private static readonly int[] LevelUpStatsUnlockDifficulty =
         { 2, 2, 3, 3, 4, 4, 5, 5, 6, 6 };
     private static readonly int[] LevelUpOptionsCosts =
-        { 10000, 15000 };
+        { 5000, 7500 };
     private static readonly int[] LevelUpOptionsUnlockDifficulty =
-        { 0, 0 };
+        { 3, 3 };
     private static readonly int[] TotalStrengthPercentCosts =
         { 10000, 15000, 22500, 33750, 75938, 113906, 384434, 576650, 2919293, 4378939 };
     private static readonly int[] TotalStrengthPercentUnlockDifficulty =

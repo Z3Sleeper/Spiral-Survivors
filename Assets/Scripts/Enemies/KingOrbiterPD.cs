@@ -96,6 +96,38 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // exclude yet", same as every other unguarded default-sentinel PlayerID field in this codebase (e.g.
         // EnemyBaseState.killerOwner).
         public PlayerID lastShotTargetId;
+        // Per-slot tracked bearing (degrees, Atan2(z,x) convention) during ShootFlight, one entry per
+        // physical indicator slot — same indexing/growth as _lineIndicators/_lineFills (grown alongside them,
+        // see EnsureShootBearingCapacity). float.NaN means "not currently tracking" (either this slot's own
+        // window hasn't opened yet this ring, or dispatch has moved past it) — the sentinel
+        // UpdateShootBearingTracking checks to know when to seed fresh instead of incrementing. Both the
+        // windup indicator's own aim (UpdateLineIndicators) AND the real LaunchAlong direction
+        // (FireShotRing) read this SAME tracked value, so what's shown is always exactly what fires — see
+        // UpdateShootBearingTracking's own doc comment for the full 2026-08-21 rate-cap reasoning. Plain
+        // float, not CompressedFloat — bandwidth optimization skipped here since only one King Orbiter is
+        // ever active at a time (boss-scale, not swarm-scale).
+        public DisposableList<float> shootBearingDeg;
+
+        // Persistent Pleb Shots (2026-08-19) — fires an independent volley at EVERY non-invisible alive
+        // player on a flat interval, entirely independent of phaseId above (runs regardless of what the
+        // boss's own FSM is currently doing — see Simulate()'s own UpdatePersistentPlebShots tail).
+        // persistentHeld/persistentTargetId/persistentBearingDeg are parallel lists, one entry per
+        // currently-targeted player this volley (rebuilt fresh every StartPersistentVolley call, unlike
+        // innerHeld/middleHeld/outerHeld's own fixed-per-tier sizing) — see StartPersistentVolley's own doc
+        // comment for the full grab/windup/fire/release flow.
+        public DisposableList<PredictedObjectID> persistentHeld;
+        public DisposableList<PlayerID>          persistentTargetId;
+        public DisposableList<float>             persistentBearingDeg;
+        public float persistentCooldownTimer;
+        public bool  persistentVolleyActive;
+        // Dual-purpose (same convention as `phaseTimer`/KingSpikePD.remoteSequenceTimer): true once
+        // FirePersistentVolley has actually launched this volley's plebs, so persistentVolleyTimer below
+        // switches from "elapsed windup time" to "elapsed flight time".
+        public bool  persistentShotFired;
+        // Counts UP from 0 to shotWindupDuration while winding up (persistentShotFired == false), then reset
+        // to 0 and counts UP again to shootingRange/shotSpeed once fired (persistentShotFired == true) — the
+        // wait-for-flight-to-land timer before FinishPersistentVolley() releases the held plebs back to normal.
+        public float persistentVolleyTimer;
 
         public void Dispose()
         {
@@ -104,6 +136,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             innerHeld.Dispose();
             middleHeld.Dispose();
             outerHeld.Dispose();
+            shootBearingDeg.Dispose();
+            persistentHeld.Dispose();
+            persistentTargetId.Dispose();
+            persistentBearingDeg.Dispose();
         }
 
         public State Duplicate()
@@ -113,6 +149,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             copy.innerHeld = innerHeld.Duplicate();
             copy.middleHeld = middleHeld.Duplicate();
             copy.outerHeld = outerHeld.Duplicate();
+            copy.shootBearingDeg = shootBearingDeg.Duplicate();
+            copy.persistentHeld = persistentHeld.Duplicate();
+            copy.persistentTargetId = persistentTargetId.Duplicate();
+            copy.persistentBearingDeg = persistentBearingDeg.Duplicate();
             return copy;
         }
     }
@@ -182,6 +222,42 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // launch a whole ring in one shot) — see FireShotRing's own doc comment. Independently tunable from
     // pullSequentialDelay (separate attack, separate feel), per explicit design.
     [SerializeField] private float shootSequentialDelay = 0.25f;
+    // Max bearing turn rate while a held pleb is tracking its own shot during ShootFlight (2026-08-21) —
+    // copied from ShielderGloomPD's own rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45
+    // base, 0.2 tier growth). Caps how fast a held pleb's tracked aim can swing so circling this boss during
+    // its Shoot windup is a real counterplay option — see UpdateShootBearingTracking's own doc comment.
+    [SerializeField] private float rotationRateDegPerSecond = 45f;
+    private float _authoredRotationRateDegPerSecond;
+
+    [Header("Persistent Pleb Shots")]
+    // Fires an independent volley at EVERY non-invisible alive player on a flat interval, entirely
+    // independent of this boss's own phaseId FSM (same tail-in-Simulate() shape as KingSpikePD's own
+    // Persistent Remote Spike Bursts) — grabs one nearby (to THAT player, within grabRadius)
+    // non-held pleb per qualifying player, winds it up, then launches it. Inherits shootingDamageMultiplier/
+    // shotWindupDuration/shotSpeed/rotationRateDegPerSecond (and their existing tier scaling) straight from
+    // the Shooting header's own fields above — deliberately no separate copies of any of those, per explicit
+    // design ("inherit the exact same shooting parameters as the real deal"). See StartPersistentVolley's own
+    // doc comment for the full grab/windup/fire/release flow.
+    [SerializeField] private float persistentShotInterval = 3f;
+    // Second, dedicated indicator pool (2026-08-19) — deliberately NOT sharing _lineIndicators/_lineFills:
+    // unlike Pulling/ShootFlight (which the class-level doc comment already notes are mutually exclusive),
+    // a Persistent Pleb Shot volley runs independent of phaseId and can be active AT THE SAME TIME as a real
+    // Shooting Phase, so the two pools would otherwise collide over the same slots.
+    [SerializeField] private Transform persistentLineIndicatorTemplate;
+    // Captured once in OnAwake(), reset back onto persistentShotInterval every pooled reuse in LateAwake(),
+    // scaled by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
+    // pattern as attackCooldown itself.
+    private float _authoredPersistentShotInterval;
+
+    private Transform[]    _persistentLineIndicators;
+    private WindupFillPD[] _persistentLineFills;
+
+    // Fixed pool size, not lazily grown like _lineIndicators (2026-08-19) — growing an indicator pool means
+    // Instantiate(), which has to happen OUTSIDE Simulate(); but StartPersistentVolley (which decides how
+    // many targets a given volley actually needs) runs INSIDE Simulate(), including during resimulation
+    // replay, where spawning extra GameObjects would be actively harmful. Sized to this game's own hard
+    // player cap instead of anything tier/ring-derived — see feedback_multiplayer_scale_reminder.
+    private const int MaxConcurrentPersistentTargets = 4;
 
     [Header("Attack Cadence")]
     [SerializeField] private float attackCooldown = 10f;
@@ -202,6 +278,9 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     [SerializeField] private int   outerCountTierGrowth          = 3;
     [SerializeField] private float knockbackChargeTimeTierGrowth = 0.2f;
     [SerializeField] private float shotSpeedTierGrowth            = 0.2f;
+    // Same linear-per-tier shape as every other *TierGrowth field — see ShielderGloomPD's own identical
+    // field for the precedent this was copied from.
+    [SerializeField] private float rotationRateDegPerSecondTierGrowth = 0.2f;
 
     // Captured once in OnAwake(), reset back onto these 6 fields every pooled reuse in LateAwake() — same
     // "_authoredX snapshot" pattern established for every other tier-scaled field on Blitz/Dagger/Mortar/
@@ -248,6 +327,8 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         _authoredKnockbackChargeTime = knockbackChargeTime;
         _authoredShotSpeed           = shotSpeed;
         _authoredAttackCooldown      = attackCooldown;
+        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
+        _authoredPersistentShotInterval = persistentShotInterval;
     }
 
     protected override void LateAwake()
@@ -263,10 +344,18 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         knockbackChargeTime = _authoredKnockbackChargeTime;
         shotSpeed           = _authoredShotSpeed;
         attackCooldown      = _authoredAttackCooldown;
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
+        persistentShotInterval = _authoredPersistentShotInterval;
         // Full cooldown on spawn, not KingSpikePD's own half-cooldown grace — per explicit design, this
         // boss's Pull Phase would otherwise fire almost immediately, before the field has had a chance to
         // spawn more than a handful of plebs to actually grab.
         currentState.attackCooldownTimer = attackCooldown;
+        // Same full-grace reasoning, and same "avoid the previous cooldown-starts-at-0-for-a-frame bug"
+        // requirement explicitly called out for this mechanic — a plain currentState assignment here, BEFORE
+        // OnConfigureSpawn scales persistentShotInterval for real, means the very first Simulate() tick this
+        // life ever runs already sees a full (if not yet correctly tier/difficulty-scaled) cooldown instead
+        // of the struct's own zero-value default, which would otherwise fire a volley on frame one.
+        currentState.persistentCooldownTimer = persistentShotInterval;
         // Indicator pool build moved to OnConfigureSpawn() (2026-08-20, same reasoning as
         // OrbiterGloomPD.EnsureIndicatorPoolCapacity) — ring counts are now tier-scaled there, and
         // ConfigureSpawn always runs AFTER LateAwake, so building here would lock the pool to the
@@ -287,12 +376,23 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         outerCount          += (spawnTier - 1) * outerCountTierGrowth;
         knockbackChargeTime *= 1f - (spawnTier - 1) * knockbackChargeTimeTierGrowth;
         shotSpeed            *= 1f + (spawnTier - 1) * shotSpeedTierGrowth;
-        EnsureIndicatorPoolCapacity(lineIndicatorTemplate, ref _lineIndicators, ref _lineFills);
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        EnsureIndicatorPoolCapacity(lineIndicatorTemplate, ref _lineIndicators, ref _lineFills,
+            Mathf.Max(innerCount, Mathf.Max(middleCount, outerCount)));
+        EnsureShootBearingCapacity(ref currentState, _lineIndicators?.Length ?? 0);
+        EnsureIndicatorPoolCapacity(persistentLineIndicatorTemplate, ref _persistentLineIndicators, ref _persistentLineFills,
+            MaxConcurrentPersistentTargets);
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
         attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
         currentState.attackCooldownTimer = attackCooldown;
+
+        // Same Threat Level 5 scaling, explicitly requested to apply to Boss Persistent Attacks too — re-set
+        // the placeholder persistentCooldownTimer LateAwake() already assigned above, using the now-scaled
+        // value.
+        persistentShotInterval = _authoredPersistentShotInterval * attackCooldownMultiplier;
+        currentState.persistentCooldownTimer = persistentShotInterval;
     }
 
     // Lazy + GROWABLE, not build-once (2026-08-20 — same fix OrbiterGloomPD.EnsureIndicatorPoolCapacity
@@ -302,10 +402,9 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // be reused across DIFFERENT tiers over its lifetime, so a fixed build-once array could come up short on
     // a LATER, higher-tier life even though it was correctly sized for whichever life built it first. Never
     // shrinks — a later lower-tier life just uses a prefix of the larger arrays.
-    private void EnsureIndicatorPoolCapacity(Transform template, ref Transform[] indicators, ref WindupFillPD[] fills)
+    private void EnsureIndicatorPoolCapacity(Transform template, ref Transform[] indicators, ref WindupFillPD[] fills, int maxCount)
     {
         if (template == null) return;
-        int maxCount = Mathf.Max(innerCount, Mathf.Max(middleCount, outerCount));
         int have = indicators?.Length ?? 0;
         if (have >= maxCount) return;
 
@@ -328,12 +427,27 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         template.gameObject.SetActive(false);
     }
 
+    // Grows state.shootBearingDeg to match _lineIndicators' own capacity (2026-08-21) — same "lazy, never
+    // shrinks, a later higher-tier life needs more slots than an earlier one built" reasoning as
+    // EnsureIndicatorPoolCapacity above, just for the predicted-State-backed bearing list instead of the
+    // plain indicator GameObjects. New entries seed to NaN — UpdateShootBearingTracking's own "not currently
+    // tracking" sentinel, see State.shootBearingDeg's own doc comment.
+    private void EnsureShootBearingCapacity(ref State state, int maxCount)
+    {
+        while (state.shootBearingDeg.Count < maxCount)
+            state.shootBearingDeg.Add(float.NaN);
+    }
+
     protected override State GetInitialState()
     {
         var s = base.GetInitialState();
+        s.shootBearingDeg = DisposableList<float>.Create(0);
         s.innerHeld  = DisposableList<PredictedObjectID>.Create(innerCount);
         s.middleHeld = DisposableList<PredictedObjectID>.Create(middleCount);
         s.outerHeld  = DisposableList<PredictedObjectID>.Create(outerCount);
+        s.persistentHeld = DisposableList<PredictedObjectID>.Create(0);
+        s.persistentTargetId = DisposableList<PlayerID>.Create(0);
+        s.persistentBearingDeg = DisposableList<float>.Create(0);
         return s;
     }
 
@@ -492,6 +606,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             case KingOrbiterPhase.ShootFlight:
             {
                 state.phaseTimer += delta;
+
+                // Updates every currently-open slot's own tracked bearing BEFORE dispatch below can consume
+                // it this same tick — see UpdateShootBearingTracking's own doc comment.
+                UpdateShootBearingTracking(ref state, delta);
 
                 while (state.shootDispatchRingIndex <= 2)
                 {
@@ -834,7 +952,14 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         if (state.shootDispatchRingIndex > 2) return false;
 
         int ring = ShootPhysicalRing(state.shootDispatchRingIndex);
-        if (RingHeldList(ref state, ring).Count == 0) return true;
+        int heldCount = RingHeldList(ref state, ring).Count;
+        // Resets this ring's own slot range to NaN (2026-08-21) — clears whatever the PREVIOUS ring left in
+        // these same physical slot indices, so this ring's own plebs seed their tracked bearing fresh from
+        // live direction the moment their own window opens, not a stale leftover angle. See
+        // UpdateShootBearingTracking's own doc comment.
+        for (int i = 0; i < heldCount && i < state.shootBearingDeg.Count; i++)
+            state.shootBearingDeg[i] = float.NaN;
+        if (heldCount == 0) return true;
 
         if (!CharacterStatsPD.AnyValidTargetExists)
         {
@@ -848,6 +973,47 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // EnrageDamageMultiplier multiplied in explicitly — see TryGrabRing's own identical comment.
         ApplyDamageOverrideToRing(ref state, ring, damage * shootingDamageMultiplier * EnrageDamageMultiplier);
         return true;
+    }
+
+    // Updates the tracked bearing (state.shootBearingDeg) of every pleb currently inside its OWN windup
+    // window in the CURRENT dispatch ring — called once per tick, before dispatch itself, from
+    // HandleActiveState's ShootFlight case (2026-08-21). Seeds a slot fresh from the LIVE target direction
+    // the instant its own window opens (float.NaN sentinel — see State.shootBearingDeg's own doc comment),
+    // then rate-caps every subsequent tick via Mathf.MoveTowardsAngle at rotationRateDegPerSecond. This is
+    // what makes circling this boss (or timing a dash to arrive late in a pleb's own windup) a real
+    // counterplay option — an unbounded instant snap (the old behavior, computed fresh at the literal
+    // instant of launch) meant no amount of player movement could ever throw off where a shot actually
+    // fired. Both FireShotRing (the real launch) and UpdateLineIndicators (the windup indicator's own aim)
+    // read this SAME tracked value, so what's shown during the windup is always exactly what fires — never a
+    // cosmetic-only lag that the real shot ignores.
+    private void UpdateShootBearingTracking(ref State state, float delta)
+    {
+        if (state.shootDispatchRingIndex > 2) return; // dispatch already fully done, nothing pending to track
+        if (_shotTargetSnapshot == null) return;
+
+        int physicalDispatchRing = ShootPhysicalRing(state.shootDispatchRingIndex);
+        var held = RingHeldList(ref state, physicalDispatchRing);
+        int dispatchCount = held.Count;
+        int ringGlobalStart = ShootRingGlobalStart(ref state, state.shootDispatchRingIndex);
+
+        for (int i = state.shootRingLocalIndex; i < dispatchCount && i < state.shootBearingDeg.Count; i++)
+        {
+            float localElapsed = state.phaseTimer - (ringGlobalStart + i) * shootSequentialDelay;
+            if (localElapsed < 0f || localElapsed >= shotWindupDuration) continue; // not this slot's window yet, or already past it (about to dispatch this same tick)
+
+            var go = hierarchy.GetGameObject(held[i]);
+            if (go == null) continue;
+
+            Vector3 toTarget = _shotTargetSnapshot.transform.position - go.transform.position;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude < 0.0001f) continue;
+            float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+
+            float current = state.shootBearingDeg[i];
+            state.shootBearingDeg[i] = float.IsNaN(current)
+                ? targetAngle
+                : Mathf.MoveTowardsAngle(current, targetAngle, rotationRateDegPerSecond * delta);
+        }
     }
 
     // Global dispatch index the given shoot-order ring's own FIRST pleb occupies — ShootRingGlobalStart's
@@ -921,28 +1087,40 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         }
     }
 
-    // Fires the launch for exactly held index i of the given ring toward _shotTargetSnapshot, individually
-    // aimed from that pleb's own current position (all converging on the one shared target, still picked
-    // once per ring — see PickShotTarget), travelling the full shootingRange regardless of what it hits
-    // along the way. Called by ShootFlight's own case handler in HandleActiveState the instant that pleb's
-    // windup window closes (see its own comment for the full timing model) — exactly BeginPull's own
-    // sequencing shape, just LaunchAlong instead of OrbitTarget. ring is passed explicitly now (2026-08-18,
-    // used to read state.shootRingIndex directly) — dispatch and release now track separate ring indices
-    // (shootDispatchRingIndex vs. shootRingIndex), so this needs the CALLER's own dispatch-side ring. Order
-    // within the ring doesn't matter (per explicit design).
+    // Fires the launch for exactly held index i of the given ring, using its own tracked bearing
+    // (state.shootBearingDeg[i] — see UpdateShootBearingTracking's own doc comment) rather than a fresh live
+    // read (2026-08-21 rework) — this is what makes the rate cap actually bite on the real shot, not just
+    // the windup indicator's own cosmetic aim. Falls back to a fresh live direction only if the tracked
+    // bearing was somehow never seeded (shouldn't normally happen — UpdateShootBearingTracking runs every
+    // tick this slot's window is open, before dispatch can ever consume it the same tick). Travels the full
+    // shootingRange regardless of what it hits along the way. Called by ShootFlight's own case handler in
+    // HandleActiveState the instant that pleb's windup window closes (see its own comment for the full
+    // timing model) — exactly BeginPull's own sequencing shape, just LaunchAlong instead of OrbitTarget.
+    // ring is passed explicitly (2026-08-18, used to read state.shootRingIndex directly) — dispatch and
+    // release now track separate ring indices (shootDispatchRingIndex vs. shootRingIndex), so this needs the
+    // CALLER's own dispatch-side ring. Order within the ring doesn't matter (per explicit design).
     private void FireShotRing(ref State state, int ring, int i)
     {
         var list = RingHeldList(ref state, ring);
-        Vector3 targetPos = _shotTargetSnapshot != null ? _shotTargetSnapshot.transform.position : transform.position;
-
         var go = hierarchy.GetGameObject(list[i]);
-        if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
+        if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) return;
+
+        Vector3 dir;
+        float tracked = i < state.shootBearingDeg.Count ? state.shootBearingDeg[i] : float.NaN;
+        if (!float.IsNaN(tracked))
         {
-            Vector3 dir = targetPos - go.transform.position;
-            dir.y = 0f;
-            dir = dir.sqrMagnitude > 0.0001f ? dir.normalized : transform.forward;
-            enemy.LaunchAlong(dir, shootingRange, shotSpeed);
+            float rad = tracked * Mathf.Deg2Rad;
+            dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
         }
+        else
+        {
+            Vector3 targetPos = _shotTargetSnapshot != null ? _shotTargetSnapshot.transform.position : transform.position;
+            Vector3 toTarget = targetPos - go.transform.position;
+            toTarget.y = 0f;
+            dir = toTarget.sqrMagnitude > 0.0001f ? toTarget.normalized : transform.forward;
+        }
+
+        enemy.LaunchAlong(dir, shootingRange, shotSpeed);
     }
 
     // Called once every held pleb in ring state.shootRingIndex has been dispatched (FireShotRing) AND the
@@ -990,6 +1168,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     {
         base.Die();
         ReleaseAllHeld(ref currentState);
+        ReleasePersistentHeld(ref currentState);
     }
 
     // Only Orbit is interruptible, per explicit design.
@@ -997,7 +1176,204 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
     // Unlike OrbiterGloomPD, interrupting this boss does NOT drop the held plebs — it just fast-forwards
     // straight into the Knockback Phase (same freeze-in-place entry as a natural Orbit timer expiry).
+    // Persistent Pleb Shots are untouched by this — they run entirely independent of phaseId/interrupts.
     protected override void OnInterrupted() => EnterKnockbackWindup(ref currentState);
+
+    // ── Persistent Pleb Shots ────────────────────────────────────────────────
+
+    // Entirely independent of HandleActiveState's phaseId FSM — same shape as KingSpikePD's own persistent
+    // Remote Spike Bursts. See persistentShotInterval's own doc comment.
+    protected override void Simulate(ref State state, float delta)
+    {
+        base.Simulate(ref state, delta);
+
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+        if (B.isDead || B.wiped) return;
+
+        UpdatePersistentPlebShots(ref state, delta);
+    }
+
+    private void UpdatePersistentPlebShots(ref State state, float delta)
+    {
+        if (!state.persistentVolleyActive)
+        {
+            state.persistentCooldownTimer -= delta;
+            if (state.persistentCooldownTimer > 0f) return;
+
+            // Reset BEFORE the grab attempt, not after a successful one — matches "every N seconds, period"
+            // (KingSpikePD's own persistent bursts use the identical shape): a volley that finds zero
+            // grabbable plebs this cycle (e.g. nothing currently near any player) still consumes its own
+            // interval rather than retrying every tick until one appears.
+            state.persistentCooldownTimer = persistentShotInterval;
+            StartPersistentVolley(ref state);
+            return;
+        }
+
+        state.persistentVolleyTimer += delta;
+
+        if (!state.persistentShotFired)
+        {
+            UpdatePersistentBearingTracking(ref state, delta);
+            if (state.persistentVolleyTimer >= shotWindupDuration)
+                FirePersistentVolley(ref state);
+        }
+        else
+        {
+            float flightDuration = shootingRange / Mathf.Max(0.0001f, shotSpeed);
+            if (state.persistentVolleyTimer >= flightDuration)
+                FinishPersistentVolley(ref state);
+        }
+    }
+
+    // Grabs one nearby (to THAT player, within grabRadius — see FindNearestUnheldPleb's own doc comment) non-held pleb per
+    // non-invisible alive player, claims it (same kinematic/movement/physics/hurtbox + damage-override +
+    // ClaimForOrbit treatment TryGrabRing already uses for the real Pull Phase — Claimed-state plebs are a
+    // no-op for EnemyBasePD's own per-tick orbit-position update, and LaunchAlong is independent of
+    // orbitPhase entirely, so never actually entering OrbitTarget/BeginOrbiting here is safe), and seeds its
+    // initial tracked bearing — same "seed instantly, rate-cap from then on" shape as MortarHazardPD.Launch's
+    // own initial-bearing seeding. A player with no grabbable pleb within range this cycle simply gets
+    // skipped — no persistent shot for them this volley. Capped at MaxConcurrentPersistentTargets, matching
+    // the fixed indicator pool size.
+    private void StartPersistentVolley(ref State state)
+    {
+        state.persistentHeld.Clear();
+        state.persistentTargetId.Clear();
+        state.persistentBearingDeg.Clear();
+        if (EnemySpawnerPD.instance == null) return;
+
+        foreach (var kvp in CharacterStatsPD.All)
+        {
+            if (state.persistentHeld.Count >= MaxConcurrentPersistentTargets) break;
+
+            var p = kvp.Value;
+            // Same invisible-exclusion shape as KingSpikePD.SpawnPersistentRemoteBurst/
+            // KingOrbiterPD.BuildShotCandidates.
+            if (p.IsDead || (p.IsInvisible && !p.IsTaunting)) continue;
+
+            var chosen = FindNearestUnheldPleb(p.transform.position);
+            if (chosen == null) continue;
+
+            chosen.SetKinematic(true);
+            chosen.SetMovementDisabled(true);
+            chosen.SetPhysicsColliderDisabled(true);
+            chosen.SetHurtboxDisabled(true);
+            // EnrageDamageMultiplier multiplied in explicitly — see TryGrabRing's own identical comment.
+            chosen.SetDamageOverride(true, damage * shootingDamageMultiplier * EnrageDamageMultiplier);
+            chosen.ClaimForOrbit(ObjectId);
+
+            state.persistentHeld.Add(chosen.ObjectId);
+            state.persistentTargetId.Add(kvp.Key);
+
+            Vector3 toTarget = p.transform.position - chosen.transform.position;
+            toTarget.y = 0f;
+            state.persistentBearingDeg.Add(toTarget.sqrMagnitude > 0.0001f
+                ? Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg
+                : 0f);
+        }
+
+        state.persistentVolleyActive = state.persistentHeld.Count > 0;
+        state.persistentShotFired    = false;
+        state.persistentVolleyTimer  = 0f;
+    }
+
+    // Closest-first (opposite of TryGrabRing's own furthest-first — different mechanic; "a pleb near THIS
+    // player" reads more sensibly as the nearest one), ObjectId tiebreaker for determinism. IsBeingHeld
+    // already excludes anything this same volley already claimed for an earlier player in the same
+    // StartPersistentVolley pass (ClaimForOrbit flips it immediately, same as TryGrabRing's own cross-ring
+    // exclusion). Reuses grabRadius (the Pull Phase's own search radius) rather than a separate tunable — per
+    // explicit design, one shared "how far this boss's grabs can reach" knob covers both.
+    private IEnemyPD FindNearestUnheldPleb(Vector3 origin)
+    {
+        IEnemyPD best = null;
+        float bestDist = float.MaxValue;
+        foreach (var enemy in EnemySpawnerPD.instance.ActiveEnemies)
+        {
+            if (enemy.SpawnCategory != EnemySpawnCategory.Pleb) continue;
+            if (enemy._isDead || enemy.IsBeingHeld) continue;
+            if (!enemy.HasInitialized) continue; // see TryGrabRing's own identical guard/doc comment
+            float dist = Vector3.Distance(origin, enemy.transform.position);
+            if (dist > grabRadius) continue;
+            if (best == null || dist < bestDist ||
+                (dist == bestDist && enemy.ObjectId.instanceId.value < best.ObjectId.instanceId.value))
+            {
+                bestDist = dist;
+                best = enemy;
+            }
+        }
+        return best;
+    }
+
+    // Rate-capped bearing tracking toward each slot's OWN assigned target player — same MoveTowardsAngle
+    // shape as UpdateShootBearingTracking above, just against a fixed per-slot PlayerID instead of the
+    // Shooting Phase's one shared _shotTargetSnapshot. A target that dies/vanishes mid-windup just stops
+    // updating that slot's bearing — it still fires along its last tracked direction rather than aborting.
+    private void UpdatePersistentBearingTracking(ref State state, float delta)
+    {
+        for (int i = 0; i < state.persistentHeld.Count; i++)
+        {
+            if (!CharacterStatsPD.All.TryGetValue(state.persistentTargetId[i], out var target)) continue;
+            if (target.IsDead || (target.IsInvisible && !target.IsTaunting)) continue;
+
+            var go = hierarchy.GetGameObject(state.persistentHeld[i]);
+            if (go == null) continue;
+
+            Vector3 toTarget = target.transform.position - go.transform.position;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude < 0.0001f) continue;
+            float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+
+            state.persistentBearingDeg[i] = Mathf.MoveTowardsAngle(state.persistentBearingDeg[i], targetAngle, rotationRateDegPerSecond * delta);
+        }
+    }
+
+    // Reads each slot's own tracked bearing (rate-capped by UpdatePersistentBearingTracking above) — same
+    // "indicator and real shot read the identical value" contract FireShotRing's own doc comment establishes
+    // for the real Shooting Phase (see UpdatePersistentLineIndicators below).
+    private void FirePersistentVolley(ref State state)
+    {
+        for (int i = 0; i < state.persistentHeld.Count; i++)
+        {
+            var go = hierarchy.GetGameObject(state.persistentHeld[i]);
+            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+
+            float rad = state.persistentBearingDeg[i] * Mathf.Deg2Rad;
+            Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+            enemy.LaunchAlong(dir, shootingRange, shotSpeed);
+        }
+        state.persistentShotFired   = true;
+        state.persistentVolleyTimer = 0f;
+    }
+
+    private void FinishPersistentVolley(ref State state)
+    {
+        ReleasePersistentHeld(ref state);
+        state.persistentVolleyActive = false;
+        state.persistentShotFired    = false;
+    }
+
+    // Un-flags every currently-held persistent slot and clears the lists — same 6-call release shape as
+    // ReleaseRing's own body. Called both from normal post-flight completion (FinishPersistentVolley) and
+    // from Die() (immediate release on death, same reasoning as ReleaseAllHeld's own Die() call). Safe to
+    // call with an empty list (e.g. no volley currently active).
+    private void ReleasePersistentHeld(ref State state)
+    {
+        for (int i = 0; i < state.persistentHeld.Count; i++)
+        {
+            var go = hierarchy.GetGameObject(state.persistentHeld[i]);
+            if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+            {
+                enemy.StopOrbiting();
+                enemy.SetKinematic(false);
+                enemy.SetMovementDisabled(false);
+                enemy.SetPhysicsColliderDisabled(false);
+                enemy.SetHurtboxDisabled(false);
+                enemy.SetDamageOverride(false);
+            }
+        }
+        state.persistentHeld.Clear();
+        state.persistentTargetId.Clear();
+        state.persistentBearingDeg.Clear();
+    }
 
     // ── View ─────────────────────────────────────────────────────────────────
 
@@ -1012,6 +1388,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
         var phase = GetPhase(ref viewState);
         UpdateLineIndicators(viewState, phase);
+        // Independent of `phase`/`active` above — Persistent Pleb Shots run regardless of phaseId, and can
+        // be visible at the same time as a real Shooting Phase's own indicators (separate pool, see
+        // persistentLineIndicatorTemplate's own doc comment).
+        UpdatePersistentLineIndicators(viewState);
 
         // Live, every frame regardless of the _lastVisualState-gated block below — reads the exact same
         // phaseTimer field that gates the real knockback trigger (HandleActiveState's own
@@ -1123,12 +1503,26 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             }
             else
             {
-                Vector3 toTarget = shotTargetPos - plebPos;
-                toTarget.y = 0f;
-                float distance = toTarget.magnitude;
+                // Reads the SAME tracked bearing FireShotRing's own real launch reads (2026-08-21 —
+                // UpdateShootBearingTracking, see its own doc comment) rather than recomputing a fresh live
+                // direction here — so what this indicator shows is always exactly what fires, never a
+                // cosmetic-only preview the rate cap doesn't actually apply to. Falls back to a fresh live
+                // direction only if the tracked bearing was somehow never seeded yet (matches FireShotRing's
+                // own identical fallback).
                 nearEdge = plebPos;
-                aim      = distance > 0.001f ? toTarget / distance : transform.forward;
-                span     = shootingRange;
+                float tracked = i < viewState.shootBearingDeg.Count ? viewState.shootBearingDeg[i] : float.NaN;
+                if (!float.IsNaN(tracked))
+                {
+                    float rad = tracked * Mathf.Deg2Rad;
+                    aim = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+                }
+                else
+                {
+                    Vector3 toTarget = shotTargetPos - plebPos;
+                    toTarget.y = 0f;
+                    aim = toTarget.sqrMagnitude > 0.0001f ? toTarget.normalized : transform.forward;
+                }
+                span = shootingRange;
             }
 
             indicator.SetPositionAndRotation(nearEdge + aim * (span * 0.5f), Quaternion.LookRotation(aim));
@@ -1138,9 +1532,59 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         }
     }
 
+    // Own dedicated pool (see persistentLineIndicatorTemplate's own doc comment) — active only during a
+    // volley's own windup (persistentVolleyActive && !persistentShotFired); hides once fired (the flight
+    // itself has no indicator, matching the real Shooting Phase's own "indicator only during windup" shape).
+    // Near edge = each grabbed pleb's own live position, far edge = a fixed shootingRange span along its
+    // tracked bearing — same math as UpdateLineIndicators' own ShootFlight branch, just reading
+    // persistentBearingDeg instead of shootBearingDeg (no NaN fallback needed here — StartPersistentVolley
+    // always seeds a real bearing the instant a slot is populated, never leaves it unset while held).
+    private void UpdatePersistentLineIndicators(State viewState)
+    {
+        if (_persistentLineIndicators == null) return;
+
+        bool windingUp = viewState.persistentVolleyActive && !viewState.persistentShotFired;
+
+        for (int i = 0; i < _persistentLineIndicators.Length; i++)
+        {
+            var indicator = _persistentLineIndicators[i];
+            if (indicator == null) continue;
+
+            bool slotFilled = windingUp && i < viewState.persistentHeld.Count;
+            Vector3 plebPos = default;
+            if (slotFilled)
+            {
+                var go = hierarchy.GetGameObject(viewState.persistentHeld[i]);
+                slotFilled = go != null;
+                if (slotFilled) plebPos = go.transform.position;
+            }
+
+            var fill = _persistentLineFills != null && i < _persistentLineFills.Length ? _persistentLineFills[i] : null;
+            if (indicator.gameObject.activeSelf != slotFilled)
+            {
+                indicator.gameObject.SetActive(slotFilled);
+                if (fill != null && !slotFilled) fill.ResetFill();
+            }
+            if (!slotFilled) continue;
+
+            if (fill != null)
+                fill.SetProgress(Mathf.Clamp01(viewState.persistentVolleyTimer / shotWindupDuration));
+
+            float rad = i < viewState.persistentBearingDeg.Count ? viewState.persistentBearingDeg[i] * Mathf.Deg2Rad : 0f;
+            Vector3 aim = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+            float span = shootingRange;
+
+            indicator.SetPositionAndRotation(plebPos + aim * (span * 0.5f), Quaternion.LookRotation(aim));
+            var scale = indicator.localScale;
+            scale.z = span * 0.1f;
+            indicator.localScale = scale;
+        }
+    }
+
     protected override void OnDeathStop()
     {
         HideIndicatorPool(_lineIndicators, _lineFills);
+        HideIndicatorPool(_persistentLineIndicators, _persistentLineFills);
         if (knockbackIndicator != null) knockbackIndicator.SetActive(false);
         if (knockbackFill != null) knockbackFill.ResetFill();
     }
@@ -1173,6 +1617,17 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         currentState.innerHeld.Clear();
         currentState.middleHeld.Clear();
         currentState.outerHeld.Clear();
+        // Full grace, matching LateAwake()'s own reasoning for persistentCooldownTimer. persistentHeld/
+        // persistentTargetId/persistentBearingDeg cleared directly (not via ReleasePersistentHeld) — same
+        // reasoning as innerHeld/middleHeld/outerHeld above: Die() already released anything actually held
+        // before this pooled reuse could happen.
+        currentState.persistentCooldownTimer = persistentShotInterval;
+        currentState.persistentVolleyActive  = false;
+        currentState.persistentShotFired     = false;
+        currentState.persistentVolleyTimer   = 0f;
+        currentState.persistentHeld.Clear();
+        currentState.persistentTargetId.Clear();
+        currentState.persistentBearingDeg.Clear();
         OnDeathStop();
         // In case death/pooling happened mid-windup, while kinematic was on — HandleActiveState would
         // correct this on the next tick anyway (phaseId resets to Moving above), but resetting explicitly

@@ -4,6 +4,15 @@ using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
+// Terminology (2026-08-24, established ahead of the upcoming mid-cycle events system): the span of time from
+// one tier's enemies starting to spawn through that tier's boss actually dying (spawn time + the boss's own
+// alive time, not just spawn time alone) is a "Tier Cycle" — currently 4 of them, one per tier, each ending
+// in that tier's own boss fight. The pre-boss PORTION of a Tier Cycle (everything before the boss spawns) is
+// itself split into 4 "Quarters" (Quarter 1 through Quarter 4 — see spawnIntervalQ1-Q4/plebSpawnIntervalQ1-Q4
+// below, and the "Quarter escalation" block in Simulate()), each one signaling a new "Wave" of enemy types to
+// start spawning (see RollNewSet — the currently-rolled 3 enemy types ARE that Quarter's Wave). Quarters/
+// Waves do NOT include the boss's own alive time — a Tier Cycle is Quarters 1-4 (four Waves) PLUS the boss
+// phase that follows them.
 public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 {
     public static EnemySpawnerPD instance;
@@ -40,7 +49,14 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         public float spawnTimer;
         public float plebSpawnInterval;
         public float plebSpawnTimer;
+        // Counts down across a whole Tier Cycle (see this file's own class-level "Tier Cycle"/"Quarter"/
+        // "Wave" terminology comment) — resets to cycleInterval the moment a new Tier Cycle begins (a boss
+        // spawning), and pauses (stops decrementing) entirely while that boss stays alive, matching a Tier
+        // Cycle's own definition as "spawn time + the boss's own alive time until death".
         public float cycleTimer;
+        // Which Quarter of the current Tier Cycle's pre-boss spawn window is active — 0=Quarter 1 through
+        // 3=Quarter 4 (see the "Quarter escalation" block in Simulate() for the actual thresholds). Reset to
+        // 0 the instant a boss spawns, since Quarters only cover the pre-boss portion of a Tier Cycle.
         public int spawnPhase;
         public int nextEliteIndex;
         public int bossesDefeated;
@@ -103,6 +119,9 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private float spawnMaxDistance = 40f;
 
     [Header("Spawn Scaling")]
+    // Q1-Q4 = Quarter 1 through Quarter 4 — see this file's own class-level "Tier Cycle"/"Quarter"/"Wave"
+    // terminology comment. cycleInterval is the full length of a Tier Cycle's pre-boss window (all 4
+    // Quarters combined), not any single Quarter's own duration.
     [SerializeField] private float spawnIntervalQ1 = 6f;
     [SerializeField] private float spawnIntervalQ2 = 3f;
     [SerializeField] private float spawnIntervalQ3 = 1.5f;
@@ -459,10 +478,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         _difficultyMoveSpeedScalar = 1f + (difficulty - 1) * difficultyMoveSpeedGrowthPerLevel;
         _currentDifficulty         = difficulty;
 
-        // ── Phase escalation ───────────────────────────────────────────────
-        // Tightens the interval settings (without cutting short a countdown already in flight — only the
-        // NEXT countdown picks up the new interval) and rerolls the active set, at 75%/50%/25% of the
-        // cycle — same three thresholds as old EnemySpawner.SpawnLoop().
+        // ── Quarter escalation ────────────────────────────────────────────
+        // Advances into Quarter 2/3/4 (Quarter 1 needs no threshold — it's just wherever cycleTimer starts,
+        // the instant a Tier Cycle's pre-boss window begins) at 75%/50%/25% of the Tier Cycle remaining —
+        // same three thresholds as old EnemySpawner.SpawnLoop(). Each transition tightens the interval
+        // settings (without cutting short a countdown already in flight — only the NEXT countdown picks up
+        // the new interval) and rerolls a fresh Wave via RollNewSet().
         if (state.spawnPhase < 1 && state.cycleTimer < cycleInterval * 0.75f)
         {
             state.spawnPhase = 1;
@@ -521,10 +542,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             }
         }
 
-        // ── Elites + cycle countdown ───────────────────────────────────────
-        // Cycle timer only advances while no boss is alive — once a boss spawns it resets to
-        // cycleInterval and stays there (never decrementing) until the boss dies, which is what stops
-        // this from immediately trying to spawn a second boss on top of the first.
+        // ── Elites + Tier Cycle countdown ───────────────────────────────────
+        // cycleTimer only advances while no boss is alive — once a boss spawns it resets to cycleInterval
+        // and stays there (never decrementing) until the boss dies, which is what stops this from
+        // immediately trying to spawn a second boss on top of the first. This pause is also exactly what
+        // makes a Tier Cycle's own definition true by construction: "spawn time + the boss's alive time
+        // until death", not just the pre-boss spawn window alone.
         if (!bossAlive)
         {
             state.cycleTimer -= delta;
@@ -537,6 +560,10 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
         if (state.cycleTimer > 0f) return;
 
+        // Quarter 4 has fully elapsed — pre-arm cycleTimer/spawnPhase back to Quarter 1 for the NEXT Tier
+        // Cycle's own pre-boss window now, even though it won't actually start counting down until the boss
+        // about to spawn below dies (see the "Elites + Tier Cycle countdown" block's own bossAlive-pause
+        // comment) — this Tier Cycle itself doesn't truly end until then.
         state.cycleTimer = cycleInterval;
         state.spawnPhase = 0;
         state.nextEliteIndex = 0;
@@ -582,7 +609,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
     }
 
-    // Shared by both boss-cycle transitions — right before a boss spawns, and right after one dies (see
+    // Shared by both Tier Cycle transitions — right before a boss spawns, and right after one dies (see
     // each call site's own comment for why). See IEnemyPD.SilentDespawn's own doc comment for why this is a
     // clean vanish, not a real kill: no XP, no on-kill augment reactions, no death-flash. _activeEnemies
     // (the same set OnPlayerTauntChanged/OnPlayerInvisibleChanged already fan out through) is every enemy
@@ -668,6 +695,10 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
     }
 
+    // Rolls this Quarter's own Wave — the 3 enemy types (state.currentSetIndices) actually spawning as
+    // "normal" enemies until the next Quarter escalation rerolls it. Called once per Quarter transition (see
+    // the "Quarter escalation" block in Simulate()), plus once at Tier Cycle start/RollNewSet's own two other
+    // call sites.
     private void RollNewSet(ref State state)
     {
         var tier = GetCurrentTier(state.bossesDefeated);
@@ -675,8 +706,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
         int pickCount = Mathf.Min(3, tier.normal.Length);
 
-        // Prefer an exclusive pick (no repeats from last cycle) when there are enough fresh indices to
-        // fill pickCount; otherwise fall back to picking from the full pool — same two-step shape as old
+        // Prefer an exclusive pick (no repeats from the previous Wave) when there are enough fresh indices
+        // to fill pickCount; otherwise fall back to picking from the full pool — same two-step shape as old
         // EnemySpawner.RollNewSet(), just index-based (State can't hold GameObject references) and
         // without LINQ.
         _pool.Clear();

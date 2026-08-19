@@ -406,7 +406,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BlitzGloomPD
   _rigidbody: {fileID: 3081874023962065944}
   enemyName: Blitz
-  moveSpeed: 12
+  moveSpeed: 10
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
   maxHealth: 75

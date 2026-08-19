@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: DashExplosionAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Explosive Entrance</color>
-  description: <color=#FFA000>(AoE Effect) On <color=#00FFFF>Dash</color> End:</color>
-    Deal <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
+  description: <color=#FFA000>(AoE) On <color=#00FFFF>Dash</color> End:</color> Deal
+    <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
     Strength</color>) damage</color> and trigger <color=#FFA000>On Hit Effects</color>
     at <color=#FFA000>{LiveOnHitPowerRatio}({onHitPowerPercent}% On Hit Power)</color>
     on all enemies in <color=#3278FF>x1.25 Range</color>.

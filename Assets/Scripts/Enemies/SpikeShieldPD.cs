@@ -448,7 +448,11 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
 
     // Direct adaptation of EnemyBasePD.OnContactTrigger's body — a deliberately separate, always-on "anyone
     // touching me" mechanism, fully independent of the single-target windup/release attack above. No
-    // isDead/isStunnable gating (none of that exists for this class).
+    // isDead/isStunnable gating (none of that exists for this class). isPassiveContact: false, always — per
+    // explicit design this Shield's contact IS a real attack (the Shielder's whole kit revolves around it),
+    // unlike a generic EnemyBasePD's own default ambient body-touch — see
+    // EnemyBasePD.ContactDamageIsPassive's own doc comment for the full "purely ambient contact
+    // shouldn't count as Dodge" reasoning this is the deliberate exception to.
     private void OnShieldContactTrigger(GameObject other)
     {
         var stats = other.GetComponent<CharacterStatsPD>();
@@ -463,12 +467,12 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             if (!cooldowns[i].player.Equals(player)) continue;
             if (cooldowns[i].remaining > 0) return;
             cooldowns[i] = new ContactCooldown { player = player, remaining = ticks };
-            stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, _owner.SpawnCategory == EnemySpawnCategory.Pleb);
+            stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, _owner.SpawnCategory == EnemySpawnCategory.Pleb, isPassiveContact: false);
             return;
         }
 
         cooldowns.Add(new ContactCooldown { player = player, remaining = ticks });
-        stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, _owner.SpawnCategory == EnemySpawnCategory.Pleb);
+        stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, _owner.SpawnCategory == EnemySpawnCategory.Pleb, isPassiveContact: false);
     }
 
     protected override void UpdateView(State viewState, State? verified)

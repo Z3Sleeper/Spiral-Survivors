@@ -555,3 +555,11 @@ MonoBehaviour:
     pooling:
       usePooling: 0
       initialSize: 0
+  - prefab: {fileID: 5099702347322302446, guid: f93604916ca9af647a319aaf3e3fa2fb, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 3393632970448064457, guid: 7860b51b79d5bd443918335ad74a2bfc, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0

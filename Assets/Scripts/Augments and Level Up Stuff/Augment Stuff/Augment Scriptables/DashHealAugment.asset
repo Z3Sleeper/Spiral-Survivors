@@ -13,11 +13,10 @@ MonoBehaviour:
   m_Name: DashHealAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Emergency Response</color>
-  description: <color=#FFA000>(AoE Effect) On <color=#00FFFF>Dash</color> End:</color>
-    <color=#7DFF00>Heal</color> <color=#FFA000>{LiveHealthRegenRatio}</color><color=#FFA000>(5
-    + <color=#7DFF00>{HealthRegenMultiplierPercent}% Health Regen</color>)</color>
-    <color=#7DFF00>Health</color> for yourself and nearby allies in <color=#3278FF>x1.25
-    Range</color>.
+  description: <color=#FFA000>(AoE) On <color=#00FFFF>Dash</color> End:</color> <color=#7DFF00>Heal</color>
+    <color=#FFA000>{LiveHealthRegenRatio}</color><color=#FFA000>(5 + <color=#7DFF00>{HealthRegenMultiplierPercent}%
+    Health Regen</color>)</color> <color=#7DFF00>Health</color> for yourself and
+    nearby allies in <color=#3278FF>x1.25 Range</color>.
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   effectPrefab: {fileID: 5018902914309057986, guid: 608a1a1c7753c0f4f8f363a15955b060, type: 3}
   multiplayerOnly: 0
@@ -31,3 +30,4 @@ MonoBehaviour:
   - Dash Effect
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

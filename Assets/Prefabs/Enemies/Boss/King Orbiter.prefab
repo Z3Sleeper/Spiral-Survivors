@@ -394,6 +394,9 @@ MonoBehaviour:
   shotWindupDuration: 1
   shotSpeed: 50
   shootSequentialDelay: 0.25
+  rotationRateDegPerSecond: 45
+  persistentShotInterval: 3
+  persistentLineIndicatorTemplate: {fileID: 2918981062249959320}
   attackCooldown: 5
   pullSequentialDelayTierGrowth: 0.2
   innerCountTierGrowth: 1
@@ -401,6 +404,7 @@ MonoBehaviour:
   outerCountTierGrowth: 3
   knockbackChargeTimeTierGrowth: 0.2
   shotSpeedTierGrowth: 0.2
+  rotationRateDegPerSecondTierGrowth: 0.2
   lineIndicatorTemplate: {fileID: 2918981062249959320}
 --- !u!135 &2131989495178621505
 SphereCollider:

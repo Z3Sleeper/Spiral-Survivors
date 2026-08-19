@@ -128,9 +128,8 @@ MonoBehaviour:
   abilityName: <color=#FFB4FF>Arrow Rain</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    <color=#FFA000>(AoE
-    Effect)</color> Fire a rain of arrows within <color=#3278FF>2x Bow Range</color>,
-    dealing <color=#FF5000>{LiveDamageRatio}</color><color=#FFA000>(<color=#FF5000>{TotalDamagePercent}%
+    <color=#FFA000>(AoE)</color>
+    Fire a rain of arrows within <color=#3278FF>2x Bow Range</color>, dealing <color=#FF5000>{LiveDamageRatio}</color><color=#FFA000>(<color=#FF5000>{TotalDamagePercent}%
     Strength</color>) damage</color> over <color=#FFA000>5 seconds</color> and <color=#FFA000>Slowing</color>
     enemies by <color=#FFA000>{LiveSlowRatio}%</color>.'
   cooldown: 10

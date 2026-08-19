@@ -1744,8 +1744,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // 3. Actually hit — TakeDamage() was called at all. Every player-facing TakeDamage() call in this
     //    codebase originates from an enemy source (contact damage, projectiles, hazards — confirmed no
     //    self-damage/environmental caller exists), so reaching this point already satisfies this condition.
-    //    EXCLUDES Pleb-tier attackers specifically (2026-08-21, explicit design) — TakeDamage's own isPleb
-    //    parameter gates the call to this method entirely, not a condition checked in here.
+    //    EXCLUDES Pleb-tier attackers (2026-08-21) and purely passive/ambient contact damage (2026-08-21,
+    //    later same day — see EnemyBasePD.ContactDamageIsPassive's own doc comment) — TakeDamage's own
+    //    isPleb/isPassiveContact parameters gate the call to this method entirely, not a condition checked
+    //    in here.
     //
     // Fires Dodge (D) unconditionally, FirstDodge (FD) only the first time within this dash-movement's own
     // activation window — same SI/FSI shape NotifyInterrupted uses above, just owned entirely internally
@@ -3442,18 +3444,21 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     }
 
     // isPleb: true excludes this hit from Dodge credit (see NotifyDodge's own doc comment) — every caller
-    // should pass whether ITS OWN attacker is EnemySpawnCategory.Pleb; every other TakeDamage() branch
-    // (damage/shield/health/death) is completely unaffected by this flag.
-    public void TakeDamage(float damage, bool isPleb = false)
+    // should pass whether ITS OWN attacker is EnemySpawnCategory.Pleb. isPassiveContact: true ALSO excludes
+    // this hit from Dodge credit — for purely ambient/passive contact damage (most enemies' generic body-
+    // touch) as opposed to contact damage that IS a real attack (see EnemyBasePD.ContactDamageIsPassive's
+    // own doc comment) — every non-contact-damage caller can safely leave this at its default. Every other
+    // TakeDamage() branch (damage/shield/health/death) is completely unaffected by either flag.
+    public void TakeDamage(float damage, bool isPleb = false, bool isPassiveContact = false)
     {
         if (currentState.isDead) return;
         // See IsInvincible's own doc comment for why forcedSurge/committedInvincibleTimer are ORed in too.
         if (currentState.invincible || currentState.forcedSurge || currentState.committedInvincibleTimer > 0)
         {
             // "Dodge" — see NotifyDodge's own doc comment for the exact 3-condition contract. isPleb
-            // (2026-08-21) explicitly excludes Pleb-tier attackers — every TakeDamage call site threads its
-            // own attacker's EnemySpawnCategory.Pleb check through here.
-            if (currentState.inDashMovement && !isPleb) NotifyDodge();
+            // (2026-08-21) explicitly excludes Pleb-tier attackers; isPassiveContact (2026-08-21) explicitly
+            // excludes purely ambient contact damage — see this method's own doc comment for both.
+            if (currentState.inDashMovement && !isPleb && !isPassiveContact) NotifyDodge();
             return;
         }
 

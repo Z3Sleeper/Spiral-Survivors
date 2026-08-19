@@ -822,6 +822,16 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     }
     public virtual bool CanContactDamage => true;
 
+    // Whether contact damage from THIS enemy, right now, is purely passive/ambient body-touch damage rather
+    // than a genuine attack — see CharacterStatsPD.NotifyDodge's own doc comment for what this drives (a
+    // player dashing/leaping/teleporting through invincibility only registers a "Dodge" for hits where this
+    // is false; passive contact never counts). Default true — most enemies' contact damage is just "the
+    // player walked into something," not a real attack, so it shouldn't feel like dodging a telegraphed hit.
+    // Override false (optionally phase-gated, independent of CanContactDamage's own gating — see
+    // KingSpikePD's own override for why those two can legitimately differ) for enemies whose actual attack
+    // mechanism IS contact damage (BlitzGloomPD's Blitz dash, KingSpikePD's Charge).
+    protected virtual bool ContactDamageIsPassive => true;
+
     // Cached at the very top of Simulate() every tick (before the paused early-return, since
     // OnContactTrigger can fire from the physics pass regardless of pause state) — OnContactTrigger itself
     // doesn't receive delta as a parameter (it's a PredictedPhysicsCallbacks event, not Simulate() itself),
@@ -1116,12 +1126,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             if (!cooldowns[i].player.Equals(player)) continue;
             if (cooldowns[i].remaining > 0) return;
             cooldowns[i] = new ContactCooldown { player = player, remaining = ticks };
-            stats.TakeDamage(GetDamage(), spawnCategory == EnemySpawnCategory.Pleb);
+            stats.TakeDamage(GetDamage(), spawnCategory == EnemySpawnCategory.Pleb, isPassiveContact: ContactDamageIsPassive);
             return;
         }
 
         cooldowns.Add(new ContactCooldown { player = player, remaining = ticks });
-        stats.TakeDamage(GetDamage(), spawnCategory == EnemySpawnCategory.Pleb);
+        stats.TakeDamage(GetDamage(), spawnCategory == EnemySpawnCategory.Pleb, isPassiveContact: ContactDamageIsPassive);
     }
 
     protected override void Destroyed()

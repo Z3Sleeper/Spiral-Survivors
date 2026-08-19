@@ -50,6 +50,11 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     // Only the dash itself deals contact damage — matches old's identical CanContactDamage override.
     public override bool CanContactDamage => (BlitzState)currentState.stateId == BlitzState.Blitzing;
 
+    // Contact damage IS this enemy's whole attack (the Blitz dash itself), never passive — since
+    // CanContactDamage above already gates it to exactly the Blitzing state, every contact hit that can even
+    // happen is a real attack, so this is unconditionally false whenever contact damage is possible at all.
+    protected override bool ContactDamageIsPassive => false;
+
     [Header("Blitz Settings")]
     [SerializeField] private float windupDuration       = 0.5f;
     [SerializeField] private float postBlitzPause       = 0.5f;
@@ -66,6 +71,15 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     // xpValue/enemyName already use.
     private int _authoredBlitzesPerAttack;
 
+    // Max turn rate while tracking a target during Windup (2026-08-21) — copied from ShielderGloomPD's own
+    // rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45 base, 0.2 tier growth), same tier1-
+    // authored-baseline treatment as blitzesPerAttack above. Caps how fast this enemy can re-aim mid-windup
+    // so circling it (or timing a dash to arrive late in the windup) is a real counterplay option — an
+    // unbounded instant snap (the old behavior) meant no amount of player movement could ever throw off the
+    // eventual dash direction.
+    [SerializeField] private float rotationRateDegPerSecond = 45f;
+    private float _authoredRotationRateDegPerSecond;
+
     [Header("Attack Cooldown")]
     [SerializeField] private float attackCooldown = 5f;
     // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
@@ -77,6 +91,9 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     [Header("Tier Scaling")]
     // Added onto blitzesPerAttack per tier above 1 — see OnConfigureSpawn().
     [SerializeField] private int blitzesPerAttackTierGrowth = 1;
+    // Same linear-per-tier shape as every other *TierGrowth field — see ShielderGloomPD's own identical
+    // field for the precedent this was copied from.
+    [SerializeField] private float rotationRateDegPerSecondTierGrowth = 0.2f;
 
     [Header("Indicators")]
     [SerializeField] private GameObject   windupIndicator;
@@ -95,6 +112,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         base.OnAwake();
         _authoredBlitzesPerAttack = blitzesPerAttack;
         _authoredAttackCooldown = attackCooldown;
+        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
     }
 
     protected override void LateAwake()
@@ -105,6 +123,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         // own doc comment.
         blitzesPerAttack = _authoredBlitzesPerAttack;
         attackCooldown = _authoredAttackCooldown;
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
         // Randomized initial cooldown (1x-2x attackCooldown), matching old BlitzGloom.OnSpawned — spreads
         // out multiple simultaneously-spawned Blitzers so they don't all windup in lockstep. GameRandom,
         // not UnityEngine.Random, for determinism (old system's UnityEngine.Random.Range wasn't
@@ -124,6 +143,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         base.OnConfigureSpawn();
         blitzesPerAttack += (spawnTier - 1) * blitzesPerAttackTierGrowth;
         currentState.blitzesRemaining = blitzesPerAttack;
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
 
         // Threat Level 5 — halves attackCooldown (attackCooldownMultiplier is 0.5f once difficulty >= 5,
         // else 1f — see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set the placeholder
@@ -154,7 +174,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
             if (state.blitzesRemaining > 0 && _target != null && IsTargetStillValid && !IsCrowdControlled)
             {
                 CaptureAttackAnchor(ref state);
-                EnterWindup(ref state);
+                EnterWindup(ref state, delta);
             }
             else EnterPostBlitz(ref state);
         }
@@ -181,12 +201,12 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
                     // blitzesRemaining itself is handled by EnterWindup now, not here — see its own comment.
                     // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
                     CaptureAttackAnchor(ref state);
-                    EnterWindup(ref state);
+                    EnterWindup(ref state, delta);
                 }
                 break;
 
             case BlitzState.Windup:
-                TrackWindupTarget(ref state);
+                TrackWindupTarget(ref state, delta);
                 if (state.stateTimer <= 0f) EnterBlitz(ref state);
                 break;
 
@@ -228,7 +248,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 
     // ── State transitions ────────────────────────────────────────────────────
 
-    private void EnterWindup(ref State state)
+    private void EnterWindup(ref State state, float delta)
     {
         // Decrement lives HERE — the actual START of one blitz attempt — not at the dash's own completion
         // (dashJustEnded, above, where it used to live). A blitz cancelled mid-windup or mid-dash via
@@ -251,18 +271,24 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         SetBlitzState(ref state, BlitzState.Windup);
         // Immediate first-tick orientation, same reasoning HandleActiveState's own Windup case calls this
         // every subsequent tick for — without this, the body would keep whatever rotation Moving left it at
-        // for a full tick before tracking visibly started.
-        TrackWindupTarget(ref state);
+        // for a full tick before tracking visibly started. Still rate-limited by this same tick's own delta
+        // (not an instant snap) — see TrackWindupTarget's own doc comment.
+        TrackWindupTarget(ref state, delta);
     }
 
-    // Re-faces the body toward _windupTrackedTarget's LIVE position every Windup tick (instant snap, not
-    // smoothed — matches the old one-time SnapFaceAnchor's own instant nature, just now called continuously)
-    // and keeps state.blitzDirection updated to match, so whatever EnterBlitz reads the instant Windup ends
-    // is always the freshest possible direction — see class doc comment for why that alone is enough to make
-    // this "lock" automatically. No-op (holds last direction) if the target's died/gone invisible-without-
-    // taunting mid-Windup, or if the computed direction is degenerate (target exactly on top of this enemy)
-    // — same "freeze on invalid, don't stomp with zero" convention the old SnapFaceAnchor call already had.
-    private void TrackWindupTarget(ref State state)
+    // Re-faces the body toward _windupTrackedTarget's LIVE position every Windup tick, capped at
+    // rotationRateDegPerSecond (2026-08-21 — was an instant snap; see that field's own doc comment for why
+    // this is now rate-limited) via Quaternion.RotateTowards off the body's own CURRENT live rotation — same
+    // "read transform.rotation as the incremental base" pattern EnemyBasePD.FaceAnchorSmooth/FaceTargetSmooth
+    // already establish for a rigidbody-driven enemy (safe/deterministic without needing its own predicted-
+    // State angle field, unlike SpikeShieldPD/MortarHazardPD's plain-transform equivalents — see
+    // MortarHazardPD's own doc comment for why THOSE need one and this doesn't). Keeps state.blitzDirection
+    // updated to match every tick, so whatever EnterBlitz reads the instant Windup ends is always the
+    // freshest reachable direction — see class doc comment for why that alone is enough to make this "lock"
+    // automatically. No-op (holds last direction) if the target's died/gone invisible-without-taunting
+    // mid-Windup, or if the computed direction is degenerate (target exactly on top of this enemy) — same
+    // "freeze on invalid, don't stomp with zero" convention the old SnapFaceAnchor call already had.
+    private void TrackWindupTarget(ref State state, float delta)
     {
         if (_windupTrackedTarget == null || _windupTrackedTarget.IsDead ||
             (_windupTrackedTarget.IsInvisible && !_windupTrackedTarget.IsTaunting)) return;
@@ -271,8 +297,11 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         dir.y = 0f;
         if (dir == Vector3.zero) return;
         dir.Normalize();
-        _rigidbody.MoveRotation(Quaternion.LookRotation(dir));
-        state.blitzDirection = dir;
+
+        Quaternion targetRot = Quaternion.LookRotation(dir);
+        Quaternion newRot = Quaternion.RotateTowards(transform.rotation, targetRot, rotationRateDegPerSecond * delta);
+        _rigidbody.MoveRotation(newRot);
+        state.blitzDirection = newRot * Vector3.forward;
     }
 
     private void EnterBlitz(ref State state)

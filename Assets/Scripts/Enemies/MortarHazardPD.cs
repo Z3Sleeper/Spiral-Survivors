@@ -1,3 +1,4 @@
+using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -42,6 +43,15 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         // early, no damage" from a normal timer-reaches-0 expiry, both of which route through the same
         // `expired` flag for UpdateView()'s existing delete-on-expiry path.
         public bool  cancelled;
+        // Current tracked bearing (degrees, Atan2(z,x) convention — 0 = +X, counter-clockwise), only ever
+        // meaningful while !locked. CompressedFloat since this changes virtually every tick during the
+        // "attached" phase — same bandwidth reasoning SpikeShieldPD.State.facingAngle already uses for its
+        // own identical continuously-changing angle. Needs to live in predicted State (unlike this hazard's
+        // OWN transform, which is safely NOT State-backed) specifically because the 2026-08-21 rate cap makes
+        // this genuinely incremental — MoveTowardsAngle reads its own PREVIOUS value every tick, which a
+        // rollback replay must restore correctly, unlike the old snap-straight-to-target write (a pure
+        // function of only currently-live inputs, safe without State).
+        public CompressedFloat facingAngleDeg;
         public void Dispose() { }
     }
 
@@ -60,6 +70,14 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     // One-time snapshot of the firer's own EffectiveAttackSpeed at Launch() — see class doc comment for why
     // this is scaled-once, not read live.
     private float _windupAttackSpeed = 1f;
+    // Max bearing turn rate while tracking (2026-08-21) — a one-time snapshot of MortarGloomPD's own already
+    // tier-scaled rotationRateDegPerSecond (itself copied from ShielderGloomPD's identical field, 45 base /
+    // 0.2 tier growth), passed in at Launch() same as windupAttackSpeed and for the identical "firer could
+    // die/get pooled-and-reused mid-track" reason. Caps how fast the tracked bearing can swing so circling
+    // the Mortar (or timing a dash to arrive late in the windup) is a real counterplay option — an unbounded
+    // instant snap (the old behavior) meant no amount of player movement could ever throw off where the
+    // shell eventually lands.
+    private float _rotationRateDegPerSecond = 45f;
 
     // Live-tracking inputs (2026-08-21) — see class doc comment. _trackedTarget is the SPECIFIC player this
     // strike committed to (captured by the caller at spawn time, immune to MortarGloomPD's own _targetStats
@@ -76,7 +94,8 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     // wants. trackedTarget/firerPosition/windupAttackSpeed drive the live-tracking-then-lock behavior — see
     // class doc comment; trackedTarget may be null (no live tracking, stays exactly where spawned).
     public void Launch(float windupDuration, float fireDuration, float width, float depth, float damage,
-        CharacterStatsPD trackedTarget = null, Vector3 firerPosition = default, float windupAttackSpeed = 1f)
+        CharacterStatsPD trackedTarget = null, Vector3 firerPosition = default, float windupAttackSpeed = 1f,
+        float rotationRateDegPerSecond = 45f)
     {
         _halfWidth = width * 0.5f;
         _halfDepth = depth * 0.5f;
@@ -84,6 +103,7 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         _windupDuration = windupDuration;
         _fireDuration   = fireDuration;
         _windupAttackSpeed = Mathf.Max(0.0001f, windupAttackSpeed);
+        _rotationRateDegPerSecond = rotationRateDegPerSecond;
 
         currentState.windupTimer = windupDuration;
         currentState.fireTimer   = fireDuration;
@@ -91,6 +111,20 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
 
         _trackedTarget = trackedTarget;
         _firerPosition = firerPosition;
+
+        // Seeds the tracked bearing to match wherever the caller already placed this hazard for its first
+        // frame (SpawnHazard's own hierarchy.Create() call) — same Atan2(z,x) convention LateSimulate's own
+        // tracking uses, so the first real tick's MoveTowardsAngle starts from the correct current bearing
+        // instead of a spurious jump from 0.
+        if (trackedTarget != null)
+        {
+            Vector3 initialTargetPos = trackedTarget.transform.position;
+            initialTargetPos.y = 0f;
+            Vector3 toTarget = initialTargetPos - firerPosition;
+            toTarget.y = 0f;
+            if (toTarget.sqrMagnitude > 0.0001f)
+                currentState.facingAngleDeg = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+        }
 
         // Pooled-reuse safety — same reasoning as RemoteSpikeBurstPD.Launch()'s own explicit ResetFill() call.
         if (_windupFill != null) _windupFill.ResetFill();
@@ -126,18 +160,32 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
 
         if (!state.locked)
         {
-            // "Attached" phase — keep tracking the committed target's live position. Holds its last position
-            // (no teleport-to-stale-null) if the target's died/gone invisible-without-taunting mid-Windup —
-            // same "freeze on invalid" convention EnemyBasePD.IsTargetStillValid's own callers already use.
+            // "Attached" phase — keep tracking the committed target's live BEARING (angle from the firer),
+            // capped at _rotationRateDegPerSecond (2026-08-21 — was an instant snap straight to the target's
+            // position; see that field's own doc comment for why this is now rate-limited). Range (distance
+            // from the firer) still snaps instantly — only the angular swing is capped, mirroring
+            // BlitzGloomPD/KingSpikePD's own identical rate-capped facing, just reinterpreted for a
+            // firer-relative ground hazard instead of a body's own facing direction. Holds its last
+            // position/bearing (no teleport-to-stale-null) if the target's died/gone invisible-without-
+            // taunting mid-Windup — same "freeze on invalid" convention EnemyBasePD.IsTargetStillValid's own
+            // callers already use.
             if (_trackedTarget != null && !_trackedTarget.IsDead &&
                 (!_trackedTarget.IsInvisible || _trackedTarget.IsTaunting))
             {
                 Vector3 targetPos = _trackedTarget.transform.position;
                 targetPos.y = 0f;
-                Vector3 fireDir = targetPos - _firerPosition;
-                fireDir.y = 0f;
-                if (fireDir.sqrMagnitude > 0.0001f)
-                    transform.SetPositionAndRotation(targetPos, Quaternion.LookRotation(fireDir.normalized));
+                Vector3 toTarget = targetPos - _firerPosition;
+                toTarget.y = 0f;
+                float distance = toTarget.magnitude;
+                if (distance > 0.0001f)
+                {
+                    float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+                    state.facingAngleDeg = Mathf.MoveTowardsAngle(state.facingAngleDeg, targetAngle, _rotationRateDegPerSecond * delta);
+
+                    float rad = state.facingAngleDeg * Mathf.Deg2Rad;
+                    Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+                    transform.SetPositionAndRotation(_firerPosition + dir * distance, Quaternion.LookRotation(dir));
+                }
             }
 
             state.windupTimer -= delta * _windupAttackSpeed;

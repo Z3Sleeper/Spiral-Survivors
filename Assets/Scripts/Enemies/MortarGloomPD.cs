@@ -80,6 +80,13 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     // fireDuration/postFireDuration, which are pure animation beats with no bearing on when the hazard
     // actually resolves (see class doc comment — explicit user correction).
     [SerializeField] private float projectileTravelDuration = 0.5f;
+    // Max bearing turn rate for the hazard's own live-tracking during Windup (2026-08-21) — copied from
+    // ShielderGloomPD's own rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45 base, 0.2 tier
+    // growth), same tier1-authored-baseline treatment as strikesPerAttack above. Tier-scaled here (the
+    // hazard itself has no tier concept of its own) and passed into MortarHazardPD.Launch() as a one-time
+    // snapshot, same as windupAttackSpeed — see MortarHazardPD's own doc comment for why.
+    [SerializeField] private float rotationRateDegPerSecond = 45f;
+    private float _authoredRotationRateDegPerSecond;
 
     [Header("Projectile VFX (cosmetic only — zero gameplay effect)")]
     [SerializeField] private GameObject projectileVfxPrefab; // carries MortarProjectileVFXPD
@@ -99,6 +106,9 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     [Header("Tier Scaling")]
     // Added onto strikesPerAttack per tier above 1 — see OnConfigureSpawn().
     [SerializeField] private int strikesPerAttackTierGrowth = 1;
+    // Same linear-per-tier shape as every other *TierGrowth field — see ShielderGloomPD's own identical
+    // field for the precedent this was copied from.
+    [SerializeField] private float rotationRateDegPerSecondTierGrowth = 0.2f;
 
     // Baseline "clip length / baseline duration" ratios — same reasoning as ShooterGloomPD's own
     // _windupClipRate/_shootClipRate/_postShotClipRate.
@@ -114,6 +124,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         base.OnAwake();
         _authoredStrikesPerAttack = strikesPerAttack;
         _authoredAttackCooldown = attackCooldown;
+        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
     }
 
     protected override void LateAwake()
@@ -124,6 +135,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         // own doc comment.
         strikesPerAttack = _authoredStrikesPerAttack;
         attackCooldown = _authoredAttackCooldown;
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         // Re-set again in OnRespawnReset() once strikesPerAttack is actually tier-scaled (that always runs
         // AFTER OnConfigureSpawn, on this life's first Simulate() tick) — this LateAwake() assignment is
@@ -138,6 +150,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     {
         base.OnConfigureSpawn();
         strikesPerAttack += (spawnTier - 1) * strikesPerAttackTierGrowth;
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
@@ -373,7 +386,8 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out MortarHazardPD hazard))
             hazard.Launch(windupDuration, projectileTravelDuration, hazardWidth * size, hazardDepth * size,
-                damage * strikeDamageMultiplier, _targetStats, transform.position, EffectiveAttackSpeed);
+                damage * strikeDamageMultiplier, _targetStats, transform.position, EffectiveAttackSpeed,
+                rotationRateDegPerSecond);
     }
 
     // Aims at wherever the hazard itself actually locked (2026-08-21 — reads the hazard's own live transform,

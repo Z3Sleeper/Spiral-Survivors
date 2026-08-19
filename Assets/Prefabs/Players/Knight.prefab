@@ -128,8 +128,8 @@ MonoBehaviour:
   abilityName: <color=#FFFF00>Battle Shout</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    <color=#FFA000>(AoE
-    Effect) Interrupt, Stun and Knockback</color> all nearby enemies in a <color=#3278FF>1.25x
+    <color=#FFA000>(AoE)
+    Interrupt, Stun and Knockback</color> all nearby enemies in a <color=#3278FF>1.25x
     Range radius</color> for <color=#FFA000>{LiveStunDurationRatio}seconds</color>
     and <color=#7DFF00>Heal {LiveHealPercentRatio}%</color> <color=#00FF00>Max Health</color>
     per enemy hit.'

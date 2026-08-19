@@ -667,7 +667,7 @@ MonoBehaviour:
   invulnerableShell: {fileID: 3453602238434079299}
   spinDamageMultiplier: 1
   spinRadius: 3
-  windupDuration: 0.75
+  windupDuration: 0.5
   spinDuration: 0.1
   betweenSpinPause: 0.25
   postSpinPause: 0.5
