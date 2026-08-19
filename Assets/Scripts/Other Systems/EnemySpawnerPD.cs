@@ -58,6 +58,14 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         // 3=Quarter 4 (see the "Quarter escalation" block in Simulate() for the actual thresholds). Reset to
         // 0 the instant a boss spawns, since Quarters only cover the pre-boss portion of a Tier Cycle.
         public int spawnPhase;
+        // Mid-cycle event scaffolding (2026-08-24) — see the "Mid-cycle event trigger" block in Simulate()
+        // for the full flow. eventStartedThisCycle is a one-shot guard so the 50%-of-Tier-Cycle trigger only
+        // ever fires once per Tier Cycle; eventActive is true from StartEvent() until ResolveEvent() fires;
+        // eventResolveTimer counts down while eventActive (flat eventDuration for now — see that field's own
+        // doc comment for why this is a placeholder, not real event-driven resolution).
+        public bool  eventStartedThisCycle;
+        public bool  eventActive;
+        public float eventResolveTimer;
         public int nextEliteIndex;
         public int bossesDefeated;
         // Indices into the current tier's normal[] — GameObject references can't live in predicted State,
@@ -116,17 +124,25 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // Falls back to a ring around a random living player when fewer than 2 points are assigned.
     [SerializeField] private Transform[] spawnPoints;
     [SerializeField] private float spawnMinDistance = 25f;
-    [SerializeField] private float spawnMaxDistance = 40f;
+    [SerializeField] private float spawnMaxDistance = 30f;
 
     [Header("Spawn Scaling")]
     // Q1-Q4 = Quarter 1 through Quarter 4 — see this file's own class-level "Tier Cycle"/"Quarter"/"Wave"
     // terminology comment. cycleInterval is the full length of a Tier Cycle's pre-boss window (all 4
     // Quarters combined), not any single Quarter's own duration.
-    [SerializeField] private float spawnIntervalQ1 = 6f;
+    [SerializeField] private float spawnIntervalQ1 = 4f;
     [SerializeField] private float spawnIntervalQ2 = 3f;
-    [SerializeField] private float spawnIntervalQ3 = 1.5f;
-    [SerializeField] private float spawnIntervalQ4 = 0.75f;
+    [SerializeField] private float spawnIntervalQ3 = 2f;
+    [SerializeField] private float spawnIntervalQ4 = 1f;
     [SerializeField] private float cycleInterval = 180f;
+
+    [Header("Mid-cycle Events")]
+    // Flat placeholder duration between StartEvent() and ResolveEvent() (see the "Mid-cycle event trigger"
+    // block in Simulate()) — a real event will eventually decide its own resolution instead of this fixed 1
+    // minute, once actual event TYPES exist (see EventManagerPD's own doc comment). Trigger point itself
+    // (50% of a Tier Cycle's pre-boss window) is NOT a separate tunable — deliberately hardcoded against
+    // cycleInterval directly in Simulate(), same as the Quarter escalation thresholds right above it.
+    [SerializeField] private float eventDuration = 60f;
 
     [Header("Elite Scaling")]
     // First/last elite of the cycle fire this far INTO the cycle, as a percent of cycleInterval (0.25 =
@@ -178,18 +194,19 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // tier1-baseline 5-health enemy) but switched to linear on 2026-08-20 — that curve assumed player damage
     // output scaled roughly as aggressively per tier as it was tuned for, which turned out not to hold up in
     // practice, leaving high-tier enemies dramatically overtanky relative to what players could actually put
-    // out. healthTierGrowth = 4 reproduces the same tier1/tier2 value (5x) the exponential curve already had
-    // validated, then tapers to 9x/13x for tier3/4 instead of continuing to 25x/125x — retune directly here
-    // if that taper still isn't matching live player damage output. xp was ALSO exponential originally
-    // (xpExponentialTierBase = 5, i.e. 5/25/125/625 for a tier1-baseline 5xp enemy) but switched to linear on
-    // 2026-08-12 after live T4 testing showed it snowballing the player's level curve — a single T3/T4 kill's
-    // xp vastly outstripped GameManagerPD.xpToNextLevel's own much slower (roughly arithmetic-step) growth.
-    // xpTierGrowth = 4 reproduces the same 5/25 (tier1/tier2) values the exponential curve already had
-    // validated, then tapers to 45/65 for tier3/4 instead of continuing to 125/625.
+    // out. healthTierGrowth originally launched at 4 (tier1/tier2/tier3/tier4 = 1x/5x/9x/13x, matching the
+    // old exponential curve's own already-validated tier1/tier2 value before tapering off instead of
+    // continuing to 25x/125x) but has since been retuned further, off further live testing, to 8
+    // (1x/9x/17x/25x) — retune directly here if that still isn't matching live player damage output. xp was
+    // ALSO exponential originally (xpExponentialTierBase = 5, i.e. 5/25/125/625 for a tier1-baseline 5xp
+    // enemy) but switched to linear on 2026-08-12 after live T4 testing showed it snowballing the player's
+    // level curve — a single T3/T4 kill's xp vastly outstripped GameManagerPD.xpToNextLevel's own much slower
+    // (roughly arithmetic-step) growth. xpTierGrowth originally launched at 4 (5/25/45/65 for that same
+    // tier1-baseline 5xp enemy) but has since been retuned to 3 (5/20/35/50).
     [SerializeField] private float moveSpeedTierGrowth = 0.25f;
     [SerializeField] private float damageTierGrowth = 0.5f;
-    [SerializeField] private float healthTierGrowth = 4f;
-    [SerializeField] private float xpTierGrowth = 4f;
+    [SerializeField] private float healthTierGrowth = 8f;
+    [SerializeField] private float xpTierGrowth = 3f;
 
     [Header("Difficulty Scaling")]
     // Linear per difficulty level off GamePresets.instance.Difficulty (1-6), same "multiply base, no
@@ -202,10 +219,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // patterns. XP deliberately has no difficulty scalar at all — the game isn't harder if players are also
     // leveling up faster to match, per explicit design. Three INDEPENDENT growth rates now (2026-08-20,
     // replaced the original single shared 20%-across-the-board rate) — damage/health/move speed each scale
-    // at a different pace per difficulty level (level 6 = +250% damage, +500% health, +100% move speed).
+    // at a different pace per difficulty level. Originally launched at 0.5/1/0.2 (level 6 = +250% damage,
+    // +500% health, +100% move speed); move speed has since been retuned down to 0.1 (level 6 = +50% move
+    // speed instead).
     [SerializeField] private float difficultyDamageGrowthPerLevel    = 0.5f;
     [SerializeField] private float difficultyHealthGrowthPerLevel    = 1f;
-    [SerializeField] private float difficultyMoveSpeedGrowthPerLevel = 0.2f;
+    [SerializeField] private float difficultyMoveSpeedGrowthPerLevel = 0.1f;
 
     // Cached once per Simulate() tick (see that method's own comment for exactly where) — plain fields, not
     // State, since they're fully re-derived from GamePresets.instance.Difficulty/state.bossesDefeated every
@@ -231,17 +250,17 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // needs the raw number to gate on (>= 4), not a multiplier.
     private int _currentDifficulty = 1;
 
-    [SerializeField] private int bossesToDefeatForWin = 1;
+    [SerializeField] private int bossesToDefeatForWin = 4;
 
     [Header("Spawn Limits")]
     [SerializeField] private int maxNormalEnemies = 100;
     [SerializeField] private int maxEliteEnemies = 100;
-    [SerializeField] private int maxPlebEnemies = 300;
+    [SerializeField] private int maxPlebEnemies = 500;
     [SerializeField] private int plebSpawnAmount = 5;
-    [SerializeField] private float plebSpawnIntervalQ1 = 1f;
-    [SerializeField] private float plebSpawnIntervalQ2 = 0.75f;
-    [SerializeField] private float plebSpawnIntervalQ3 = 0.5f;
-    [SerializeField] private float plebSpawnIntervalQ4 = 0.25f;
+    [SerializeField] private float plebSpawnIntervalQ1 = 1.75f;
+    [SerializeField] private float plebSpawnIntervalQ2 = 1.5f;
+    [SerializeField] private float plebSpawnIntervalQ3 = 1.25f;
+    [SerializeField] private float plebSpawnIntervalQ4 = 1f;
 
     // Reused scratch buffer for RollNewSet()'s pool-and-remove pick — avoids a per-call allocation.
     private readonly List<int> _pool = new();
@@ -447,6 +466,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
                 return;
             }
             state.spawnPhase = 0;
+            // New Tier Cycle's own pre-boss window truly begins here (cycleTimer starts decrementing again
+            // right below) — re-arm the mid-cycle event trigger so it can fire again this cycle. Deliberately
+            // NOT touching eventActive/eventResolveTimer here — an event still resolving right as the
+            // previous boss died just keeps counting down undisturbed (no defined interaction with a fresh
+            // Tier Cycle starting yet — scaffolding only, see EventManagerPD's own doc comment).
+            state.eventStartedThisCycle = false;
             state.nextEliteIndex = 0;
             state.spawnInterval = spawnIntervalQ1;
             state.plebSpawnInterval = plebSpawnIntervalQ1;
@@ -504,6 +529,30 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             state.spawnInterval = Mathf.Min(state.spawnInterval, spawnIntervalQ4);
             state.plebSpawnInterval = Mathf.Min(state.plebSpawnInterval, plebSpawnIntervalQ4);
             RollNewSet(ref state);
+        }
+
+        // ── Mid-cycle event trigger ──────────────────────────────────────────
+        // Fires once per Tier Cycle, at the same 50% threshold Quarter 3 escalates on above — scaffolding
+        // only for now (see EventManagerPD's own doc comment): no event-specific start/resolve logic, no
+        // success/failure, exists yet. Called as a plain direct method call, not through any event/broadcast
+        // system — Simulate() already runs identically and deterministically on every machine, so a direct
+        // call here is exactly as resimulation-safe as any other cross-identity call in this codebase (e.g.
+        // PausePD.SetPlayerReady).
+        if (!state.eventStartedThisCycle && state.cycleTimer < cycleInterval * 0.5f)
+        {
+            state.eventStartedThisCycle = true;
+            state.eventActive = true;
+            state.eventResolveTimer = eventDuration;
+            if (EventManagerPD.instance != null) EventManagerPD.instance.StartEvent();
+        }
+        if (state.eventActive)
+        {
+            state.eventResolveTimer -= delta;
+            if (state.eventResolveTimer <= 0f)
+            {
+                state.eventActive = false;
+                if (EventManagerPD.instance != null) EventManagerPD.instance.ResolveEvent();
+            }
         }
 
         // ── Normal enemies ─────────────────────────────────────────────────
@@ -566,6 +615,9 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         // comment) — this Tier Cycle itself doesn't truly end until then.
         state.cycleTimer = cycleInterval;
         state.spawnPhase = 0;
+        // Same pre-arm-ahead-of-time reasoning as spawnPhase above — harmless even though the actual reset
+        // that matters for THIS boss fight already happened back when it died.
+        state.eventStartedThisCycle = false;
         state.nextEliteIndex = 0;
 
         if (tier.boss != null && tier.boss.Length > 0)

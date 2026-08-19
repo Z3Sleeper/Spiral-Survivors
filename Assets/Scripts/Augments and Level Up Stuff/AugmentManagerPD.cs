@@ -61,6 +61,21 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         public int levelBeingProcessed;
         public bool isPresenting;
         public float presentingTimer;
+        // Mid-cycle event scaffolding (2026-08-24) — which round (levelBeingProcessed for a real level-up,
+        // or a negative nextBonusRoundId-issued value for an event-triggered bonus round) is actually being
+        // presented right now. Every pick-bookkeeping site (SubmitPick/AutoPick/HasPlayerPicked/
+        // CountPicksThisRound/CountExpectedPickEffects) keys off THIS instead of levelBeingProcessed
+        // directly, so a bonus round's own picks can never collide with a real round's — real round ids are
+        // always >= 1 (see GetInitialState's own levelBeingProcessed = 1), bonus round ids are always <= -1,
+        // disjoint by construction. Deliberately NOT used by the "Level <= levelBeingProcessed" trigger gate
+        // in Simulate() or UpdateView's per-level OnLevelUp() stat-bonus loop — those two keep reading
+        // levelBeingProcessed directly, completely untouched by bonus rounds. That's the whole point of this
+        // split: a bonus round must never advance real progression or grant the passive per-level stat bonus,
+        // only the pick itself — see TriggerBonusAugmentRound's own doc comment.
+        public int activeRoundId;
+        // Next id a bonus round will be issued — starts at -1, decrements every bonus round. Never touched
+        // by real rounds.
+        public int nextBonusRoundId;
         // Whole-run record of every pick ever submitted (augment AND stat), never cleared — same
         // reasoning as pickedAugments below. Used to be cleared at the start of every round, which broke a
         // freshly-spawned local replica's ability to rebuild historical state (a reconnecting player's own
@@ -143,7 +158,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     // Real augments are offered every Nth level; every other level is stat-only. If the augment pool
     // doesn't have enough available augments to fill every option slot (prerequisites unmet, already
     // picked, class-restricted, etc.), remaining slots fall back to stat pairs instead of coming up short.
-    [SerializeField] private int augmentLevelInterval = 5;
+    [SerializeField] private int augmentLevelInterval = 3;
 
     // Once this round's screen has been up this long, any player who still hasn't picked gets a random
     // one auto-selected for them (see AutoPick) — same reasoning as PausePD's ready-up fallback: nobody
@@ -247,6 +262,10 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     protected override State GetInitialState() => new()
     {
         levelBeingProcessed = 1,
+        // Matches levelBeingProcessed — meaningless until a round actually starts (nothing reads this while
+        // !isPresenting), but kept in sync for tidiness.
+        activeRoundId = 1,
+        nextBonusRoundId = -1,
         picks = DisposableList<PlayerPick>.Create(4),
         pickedAugments = DisposableList<PlayerAugmentRecord>.Create(8),
     };
@@ -273,6 +292,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             if (GameManagerPD.instance.Level <= state.levelBeingProcessed) return;
 
             state.levelBeingProcessed++;
+            state.activeRoundId = state.levelBeingProcessed;
             state.isPresenting = true;
             state.presentingTimer = presentingDuration;
             _confirmedPickEffectsThisRound = 0;
@@ -280,7 +300,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             return;
         }
 
-        if (CountPicksThisRound(state.picks, state.levelBeingProcessed) < CharacterStatsPD.All.Count)
+        if (CountPicksThisRound(state.picks, state.activeRoundId) < CharacterStatsPD.All.Count)
         {
             // Doesn't decrement at all in single player — HasPresentingTimerExpired also independently
             // refuses to report expired while solo, but leaving the actual number frozen (not just ignored)
@@ -297,7 +317,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         // class-passive fix addressed, just for level-ups instead of game start. Re-derived fresh every
         // tick (cheap — a handful of picks at most) rather than cached, so there's nothing to get out of
         // sync with _confirmedPickEffectsThisRound.
-        if (_confirmedPickEffectsThisRound < CountExpectedPickEffects(state.picks, state.levelBeingProcessed)) return;
+        if (_confirmedPickEffectsThisRound < CountExpectedPickEffects(state.picks, state.activeRoundId)) return;
 
         state.isPresenting = false;
     }
@@ -399,7 +419,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         if (!currentState.isPresenting) return;
 
         for (int i = 0; i < currentState.picks.Count; i++)
-            if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.levelBeingProcessed) return;
+            if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.activeRoundId) return;
 
         if (!_currentOptions.TryGetValue(player, out var options)) return;
         if (cardIndex < 0 || cardIndex >= options.Count) return;
@@ -407,7 +427,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         var option = options[cardIndex];
         if (option.isAugment)
         {
-            currentState.picks.Add(new PlayerPick { player = player, isAugment = true, augmentIndex = option.augmentIndex, roundLevel = currentState.levelBeingProcessed });
+            currentState.picks.Add(new PlayerPick { player = player, isAugment = true, augmentIndex = option.augmentIndex, roundLevel = currentState.activeRoundId });
             // Recorded here, not in ApplyPick()/UpdateView() — this runs from Simulate(), the only place
             // predicted State can be safely mutated, atomically with the pick itself.
             currentState.pickedAugments.Add(new PlayerAugmentRecord { player = player, augmentIndex = option.augmentIndex });
@@ -424,7 +444,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
                 multiplier = multiplier,
                 luckMultiplierA = luckMultiplierA,
                 luckMultiplierB = luckMultiplierB,
-                roundLevel = currentState.levelBeingProcessed
+                roundLevel = currentState.activeRoundId
             });
         }
     }
@@ -441,7 +461,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         if (!_currentOptions.TryGetValue(player, out var options) || options.Count == 0) return;
 
         for (int i = 0; i < currentState.picks.Count; i++)
-            if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.levelBeingProcessed) return;
+            if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.activeRoundId) return;
 
         int randomIndex = GameRandom.instance.Next(options.Count);
 
@@ -457,6 +477,32 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             : 1f;
 
         SubmitPick(player, randomIndex, multiplier, luckMultiplier, luckMultiplier);
+    }
+
+    // Mid-cycle event scaffolding (2026-08-24) — called by EventManagerPD.ResolveEvent() when an event's
+    // own Succeeded flag reads true. Reuses the exact same isPresenting/presentingTimer/picks-list/UI
+    // machinery a real augment-level level-up round uses, but through activeRoundId's own separate
+    // negative-id space (see its own doc comment) instead of levelBeingProcessed — genuinely additive, not a
+    // real level-up: doesn't touch GameManagerPD.Level, doesn't pre-empt a future real round, doesn't grant
+    // UpdateView's per-level OnLevelUp() stat bonus. forceAugmentLevel: true guarantees this always offers
+    // real augment picks (never falls back to a stat-only round), matching "shows augment options like a
+    // normal level up on an augment level would" per explicit design.
+    //
+    // Skips entirely (no queueing) if a round — real or bonus — is already presenting. Under current tuning
+    // this can only happen from an astronomically unlikely same-tick collision (event resolution is timed
+    // off EnemySpawnerPD's own Tier Cycle clock, real level-ups off XP — no structural reason they'd ever
+    // land on the same tick), so a dropped bonus round in that case is an accepted gap, not something this
+    // scaffolding builds a queue to prevent.
+    public void TriggerBonusAugmentRound()
+    {
+        if (currentState.isPresenting) return;
+
+        currentState.activeRoundId = currentState.nextBonusRoundId;
+        currentState.nextBonusRoundId--;
+        currentState.isPresenting = true;
+        currentState.presentingTimer = presentingDuration;
+        _confirmedPickEffectsThisRound = 0;
+        GenerateOptionsForAllPlayers(forceAugmentLevel: true);
     }
 
     // hierarchy.Create() (not plain Instantiate()) — deterministic and idempotent under replay (resolves
@@ -500,7 +546,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         // picks is whole-run now (see State.picks' own doc comment) — has to filter by the CURRENT round,
         // otherwise this would report "already picked" forever after a player's very first pick ever.
         for (int i = 0; i < v.Value.picks.Count; i++)
-            if (v.Value.picks[i].player == player && v.Value.picks[i].roundLevel == v.Value.levelBeingProcessed) return true;
+            if (v.Value.picks[i].player == player && v.Value.picks[i].roundLevel == v.Value.activeRoundId) return true;
         return false;
     }
 
@@ -526,11 +572,14 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         return result;
     }
 
-    private void GenerateOptionsForAllPlayers()
+    // forceAugmentLevel (2026-08-24) — TriggerBonusAugmentRound's own way of guaranteeing a bonus round
+    // always offers real augment picks, bypassing the % augmentLevelInterval gate entirely (which only makes
+    // sense for real, levelBeingProcessed-driven rounds).
+    private void GenerateOptionsForAllPlayers(bool forceAugmentLevel = false)
     {
         _currentOptions.Clear();
 
-        bool isAugmentLevel = currentState.levelBeingProcessed % augmentLevelInterval == 0;
+        bool isAugmentLevel = forceAugmentLevel || currentState.levelBeingProcessed % augmentLevelInterval == 0;
 
         // Sorted rather than iterating CharacterStatsPD.All directly — Dictionary iteration order isn't
         // guaranteed identical across machines, and GameRandom draws are order-sensitive (a different
