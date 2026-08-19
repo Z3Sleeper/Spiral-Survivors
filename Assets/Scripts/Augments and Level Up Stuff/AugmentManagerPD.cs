@@ -23,6 +23,16 @@ public struct PlayerPick
     // PlayerControllerPD.Input at pick time — never recomputed locally, since a remote machine's own
     // ProgressionManager save data would give a different (wrong) answer for another player's pick.
     public float multiplier;
+    // LuckRolledLevelUpStatsAugment's own roll (2026-08-19) — same "captured client-side at pick time, never
+    // recomputed here" trust as multiplier, but for a genuinely random roll. Both stats on a card always
+    // share ONE roll (not independent per-stat rolls) — these two fields carry the identical value, kept
+    // separate only to mirror ApplyStatAugmentPick's existing entryA/entryB split. Manual picks:
+    // AugmentCardUI rolls once at card-display time via UnityEngine.Random (not the shared GameRandom
+    // stream) and caches it, so what's captured here is exactly what the card showed. Auto-picks: AutoPick
+    // rolls once via GameRandom instead, since that runs from Simulate()-context. Both default to 1f
+    // (neutral) for a player without the augment.
+    public float luckMultiplierA;
+    public float luckMultiplierB;
     // Which round (State.levelBeingProcessed) this pick was submitted during — picks are whole-run, never
     // cleared (see State.picks' own doc comment for why), so anything that used to rely on the list being
     // freshly empty each round instead filters by this.
@@ -107,8 +117,25 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
 
     public static AugmentManagerPD instance;
 
+    // Live spawned effect instances, keyed by (player, augment) — populated the moment SpawnAugmentEffect
+    // actually creates one (2026-08-19). Lets AugmentDescriptionFormatter resolve a description token
+    // against the real per-player instance instead of always falling back to the dead effectPrefab template
+    // — see that class's own Format() doc comment for why that matters (a token method reading its own
+    // instance state, e.g. a stacking augment's current stack count, would otherwise always see the
+    // prefab's zeroed default, never the real player's). Plain, not predicted State — a cache mirroring
+    // hierarchy.Create()'s own already-deterministic/idempotent spawn (see AugmentEffectPD's own doc
+    // comment), not new gameplay state itself. Never pruned — augment effects are never despawned mid-match
+    // (nothing anywhere calls hierarchy.Delete on one), so this only ever grows, same non-pruning already
+    // accepted elsewhere for other whole-match-lifetime caches.
+    private readonly Dictionary<(PlayerID, AugmentData), IAugmentEffectDescribable> _spawnedEffects = new();
+
     [SerializeField] private StatAugmentDatabase statDatabase;
     [SerializeField] private AugmentDatabase augmentDatabase;
+    // Scaffolding for the unlockable-augment-sets system — see AugmentData.unlockTag/AugmentUnlockTagDatabase's
+    // own doc comments. Public accessor so CharacterStatsPD.ComputeUnlockedAugmentTagMask (a static method,
+    // can't reach this Inspector-wired field any other way) can resolve tag->bit at Input-compute time.
+    [SerializeField] private AugmentUnlockTagDatabase unlockTagDatabase;
+    public AugmentUnlockTagDatabase UnlockTagDatabase => unlockTagDatabase;
 
     [Header("SFX")]
     [SerializeField] private AudioClip levelUpSfx;
@@ -367,7 +394,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     }
 
     // Called from PlayerControllerPD.Simulate() when that player's pickPressed input fires.
-    public void SubmitPick(PlayerID player, int cardIndex, float multiplier)
+    public void SubmitPick(PlayerID player, int cardIndex, float multiplier, float luckMultiplierA = 1f, float luckMultiplierB = 1f)
     {
         if (!currentState.isPresenting) return;
 
@@ -395,6 +422,8 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
                 statIndexA = option.statIdxA,
                 statIndexB = option.statIdxB,
                 multiplier = multiplier,
+                luckMultiplierA = luckMultiplierA,
+                luckMultiplierB = luckMultiplierB,
                 roundLevel = currentState.levelBeingProcessed
             });
         }
@@ -415,7 +444,19 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.levelBeingProcessed) return;
 
         int randomIndex = GameRandom.instance.Next(options.Count);
-        SubmitPick(player, randomIndex, multiplier);
+
+        // Same "one shared roll per card" luck-roll shape as AugmentCardUI's manual-pick path, but sourced
+        // from GameRandom instead of UnityEngine.Random — this runs from Simulate()-context (called from
+        // PlayerControllerPD.Simulate()), so it must draw from the shared, deterministic, order-sensitive PD
+        // stream like any other Simulate()-context random roll, not the local-only stream a client-side UI
+        // preview needs.
+        // HighrollBonus is scaled down (not passed raw) — see AugmentCardUI's own identical comment on why.
+        var option = options[randomIndex];
+        float luckMultiplier = (!option.isAugment && CharacterStatsPD.All.TryGetValue(player, out var stats) && stats.luckRolledLevelUpStats)
+            ? WeaponDamageMath.RollLuckMultiplier(stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.HighrollBonus * stats.luckRolledLevelUpStatsHighrollScale, GameRandom.instance.NextFloat, out _)
+            : 1f;
+
+        SubmitPick(player, randomIndex, multiplier, luckMultiplier, luckMultiplier);
     }
 
     // hierarchy.Create() (not plain Instantiate()) — deterministic and idempotent under replay (resolves
@@ -433,8 +474,23 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         if (!CharacterStatsPD.All.TryGetValue(player, out var stats)) return false;
 
         var id = hierarchy.Create(augment.effectPrefab, stats.transform.position, stats.transform.rotation, player);
-        return id.HasValue;
+        if (!id.HasValue) return false;
+
+        // Registers the real spawned instance for AugmentDescriptionFormatter — see _spawnedEffects' own
+        // doc comment. Same "mutate right after Create()" synchronous pattern every other spawned effect in
+        // this codebase already uses.
+        var go = hierarchy.GetGameObject(id.Value);
+        if (go != null && go.TryGetComponent(out IAugmentEffectDescribable describable))
+            _spawnedEffects[(player, augment)] = describable;
+
+        return true;
     }
+
+    // Read by AugmentDescriptionFormatter — see _spawnedEffects' own doc comment. Returns null if this
+    // player hasn't actually picked/spawned this augment yet (a not-yet-picked level-up preview card), which
+    // the formatter treats as "fall back to the prefab template" — exactly the right behavior for a preview.
+    public IAugmentEffectDescribable GetSpawnedEffect(PlayerID player, AugmentData augment) =>
+        _spawnedEffects.TryGetValue((player, augment), out var effect) ? effect : null;
 
     public bool HasPlayerPicked(PlayerID player)
     {
@@ -549,6 +605,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             if (augment == null) continue;
             if (augment.multiplayerOnly && !isMultiplayer) continue;
             if (!augment.IsAvailableForClass(classId)) continue;
+            if (!IsAugmentTagUnlocked(augment.unlockTag, player)) continue;
             if (HasPickedAugment(player, i)) continue;
             if (!ArePrerequisitesMet(augment, player)) continue;
             if (IsIncompatibleWithPicked(augment, player)) continue;
@@ -593,6 +650,23 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
 
         int needed = Mathf.Clamp(requiredCount, 0, requiredAugments.Length);
         return metCount >= needed;
+    }
+
+    // Scaffolding for the unlockable-augment-sets system — see AugmentData.unlockTag's own doc comment.
+    // Empty/null tag (every augment today) is always eligible. A set tag requires the resolved bit to
+    // actually be present in that player's own CharacterStatsPD.UnlockedAugmentTagMask — fails CLOSED
+    // (ineligible) if the player's Stats aren't found, the tag isn't registered in unlockTagDatabase, or the
+    // database itself isn't wired up, rather than risking a plumbing gap silently exposing deliberately-
+    // gated content to everyone.
+    private bool IsAugmentTagUnlocked(string tag, PlayerID player)
+    {
+        if (string.IsNullOrEmpty(tag)) return true;
+        if (unlockTagDatabase == null) return false;
+        if (!CharacterStatsPD.All.TryGetValue(player, out var stats)) return false;
+
+        int bit = unlockTagDatabase.GetTagBit(tag);
+        if (bit < 0 || bit >= 64) return false;
+        return (stats.UnlockedAugmentTagMask & (1L << bit)) != 0L;
     }
 
     // Every tag must be carried by either an already-picked augment, or the player's own class ability
@@ -741,7 +815,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         if (pick.statIndexA < 0 || pick.statIndexA >= statDatabase.stats.Count) return;
         if (pick.statIndexB < 0 || pick.statIndexB >= statDatabase.stats.Count) return;
 
-        var delta = stats.ApplyStatAugmentPick(statDatabase.stats[pick.statIndexA], statDatabase.stats[pick.statIndexB], pick.multiplier);
+        var delta = stats.ApplyStatAugmentPick(statDatabase.stats[pick.statIndexA], statDatabase.stats[pick.statIndexB], pick.multiplier, pick.luckMultiplierA, pick.luckMultiplierB);
 
         _statTotals.TryGetValue(pick.player, out var totals);
         _statTotals[pick.player] = totals + delta;

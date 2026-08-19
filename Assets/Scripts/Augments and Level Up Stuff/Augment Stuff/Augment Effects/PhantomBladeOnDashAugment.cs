@@ -18,7 +18,7 @@ public class PhantomBladeOnDashAugment : AugmentEffectPD<PhantomBladeOnDashAugme
 
     [SerializeField] private GameObject phantomBladePrefab;
     public int bladeCount = 3;
-    public float damageMultiplier = 1f;
+    public float damageMultiplier = 0.6f;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
 
     // damageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100 convention

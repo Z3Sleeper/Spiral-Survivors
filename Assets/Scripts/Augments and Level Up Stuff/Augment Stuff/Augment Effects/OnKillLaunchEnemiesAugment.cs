@@ -19,15 +19,15 @@ public class OnKillLaunchEnemiesAugment : AugmentEffectPD<OnKillLaunchEnemiesAug
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float launchSpeed    = 10f;
+    [SerializeField] private float launchSpeed    = 20f;
     [SerializeField] private float launchDistance = 10f;
-    public float damagePercent   = 1f;
+    public float damagePercent   = 0.3f;
 
     // Baseline (unrolled) damage for AugmentDescriptionFormatter's {LiveStrengthRatio} token — see
     // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention.
     public string LiveStrengthRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(damagePercent * stats.UnpenalizedStrength)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(damagePercent * stats.Strength)} "
             : "";
 
     protected override void OnApply()
@@ -59,9 +59,8 @@ public class OnKillLaunchEnemiesAugment : AugmentEffectPD<OnKillLaunchEnemiesAug
         // flight" reasoning PhantomBladeSummonHelper.SummonAtTarget uses, just with crit status inherited
         // instead of independently rolled.
         float rolled = WeaponDamageMath.RollDamage(damagePercent, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
-        if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
-        if (isCrit) rolled *= Stats.CritDamage;
-        float damage = rolled * Stats.UnpenalizedStrength;
+        rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, isCrit, Stats.HighrollBonus, Stats.CritDamage);
+        float damage = rolled * Stats.Strength;
 
         Vector3 direction = enemy.transform.position - Stats.transform.position;
         direction.y = 0f;

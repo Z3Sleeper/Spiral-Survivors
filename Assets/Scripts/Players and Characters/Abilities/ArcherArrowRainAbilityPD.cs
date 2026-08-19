@@ -64,6 +64,9 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // nothing for a Surge block to actually bracket. Still exposed for interface consistency — see
     // IAbilityPD.ActiveSurgeBlock's own doc comment.
     [SerializeField] private bool activeSurgeBlock = false;
+    // Action — spawns real projectile/hazard damage over its own duration. Exposed for live playtesting —
+    // see IAbilityPD.IsActionAbility's own doc comment.
+    [SerializeField] private bool isActionAbility = true;
 
     [Header("Effect")]
     // Cast range = true weapon reach * this — 2x by default, so the rain can be dropped well past actual
@@ -89,7 +92,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // — baseline preview, not a randomly-sampled one, same convention as every augment's own Live*Ratio.
     public string LiveDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(tickCount * strengthPercentPerTick * stats.UnpenalizedStrength * (stats.AreaEffectPower + stats.AbilityPower - 1f))} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(tickCount * strengthPercentPerTick * stats.Strength * (stats.AreaEffectPower + stats.AbilityPower - 1f))} "
             : "";
 
     // Mirrors SpawnChain's own scaledSlowAmount formula exactly (see its own doc comment). Outside a live
@@ -148,6 +151,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // Never forces a special action — doesn't touch movement at all, and IsActive is always false anyway.
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
+    public bool IsActionAbility => isActionAbility;
     public bool AbilityIsActive => false;
     // No active window at all — instantaneous cast, see class doc comment.
     public bool HasActiveWindow => false;
@@ -294,7 +298,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(_stats, position, tickCount, tickInterval, radius, radiusVFXPrefab,
                 dealDamage: true, damagePercent: strengthPercentPerTick, notifyOnHit: false,
-                abilityPower: _stats.AbilityPower, source: DamageSource.ArcherArrowRain,
+                abilityPower: _stats.AbilityPower,
                 onEnemyHit: enemy => enemy.Slow(scaledSlowMultiplier, slowDuration),
                 overrideHitSfx: true);
     }

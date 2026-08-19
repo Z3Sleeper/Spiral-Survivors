@@ -63,19 +63,39 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     [Header("Leap Settings")]
     public float landDamageMultiplier = 1f;
     [SerializeField] private float landRadius       = 3f;
-    [SerializeField] private float windupDuration   = 0.8f;
-    [SerializeField] private float leapDuration     = 0.5f;
+    [SerializeField] private float windupDuration   = 0.4f;
+    [SerializeField] private float leapDuration     = 0.4f;
     [SerializeField] private float leapArcHeight    = 3f;
     [SerializeField] private float postLeapPause    = 0.5f;
-    [SerializeField] private float attackCooldown   = 4f;
     [SerializeField] private float landingDuration  = 0.1f;
+    // Tier1-authored baseline, scaled per tier by leapsPerAttackTierGrowth below (applied in
+    // OnConfigureSpawn()). See _authoredLeapsPerAttack's own doc comment for why this needs the
+    // snapshot-and-reset treatment instead of just incrementing this field directly.
     [SerializeField] private int   leapsPerAttack   = 1;
-    [SerializeField] private float leapOffsetRadius = 1f;
+    [SerializeField] private float leapOffsetRadius = 2f;
+
+    [Header("Attack Cooldown")]
+    [SerializeField] private float attackCooldown = 5f;
+    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
+    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
+    // pattern as _authoredLeapsPerAttack below.
+    private float _authoredAttackCooldown;
+
+    [Header("Tier Scaling")]
+    // Added onto leapsPerAttack per tier above 1 — see OnConfigureSpawn().
+    [SerializeField] private int leapsPerAttackTierGrowth = 1;
+
+    // Captured once in OnAwake(), reset back onto leapsPerAttack every pooled reuse in LateAwake() —
+    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
+    // pattern established for the identical attack-count fields on Blitz/Dagger/Mortar/Spear.
+    private int _authoredLeapsPerAttack;
+
     // Bobbed vertically (cosmetic only) during Leaping — deliberately a dedicated wrapper (YAxisMovers),
     // not the raw model mesh transform directly: PurrDiction's PredictedTransform tracks a hurtbox/root
     // structure of its own, and driving a transform it also touches fights it (same "YAxisMovers, not
     // Visuals" fix RogueSpinAbilityPD's leap needed for the player). Everything that should visually rise with
     // the leap (model, shell, indicators, etc.) lives under this one wrapper instead.
+    [Header("Indicators")]
     [SerializeField] private Transform _yAxisMovers;
     [SerializeField] private GameObject   _windupIndicator;
     [SerializeField] private WindupFillPD _windupFill;
@@ -97,9 +117,22 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
     private Transform _windupIndicatorParent;
 
+    protected override void OnAwake()
+    {
+        base.OnAwake();
+        _authoredLeapsPerAttack = leapsPerAttack;
+        _authoredAttackCooldown = attackCooldown;
+    }
+
     protected override void LateAwake()
     {
         base.LateAwake();
+
+        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
+        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredLeapsPerAttack's own
+        // doc comment.
+        leapsPerAttack = _authoredLeapsPerAttack;
+        attackCooldown = _authoredAttackCooldown;
 
         // Null-coalesced, not unconditional — LateAwake() re-fires on every pooled reuse, but by that
         // point the indicator could already be unparented from a previous life interrupted mid-leap (e.g.
@@ -125,7 +158,24 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         }
 
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        // Re-set again in OnRespawnReset() once leapsPerAttack is actually tier-scaled (that always runs
+        // AFTER OnConfigureSpawn, on this life's first Simulate() tick) — this LateAwake() assignment is
+        // only ever a placeholder until then.
         currentState.leapsRemaining      = leapsPerAttack;
+    }
+
+    // Tier1-authored leapsPerAttack, scaled by leapsPerAttackTierGrowth per tier above 1 (see that field's
+    // own doc comment). spawnTier is already final by the time this runs (set earlier in the same
+    // ConfigureSpawn() call).
+    protected override void OnConfigureSpawn()
+    {
+        base.OnConfigureSpawn();
+        leapsPerAttack += (spawnTier - 1) * leapsPerAttackTierGrowth;
+
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
+        // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
+        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
     }
 
     // Sets the WindupSpeed/LeapSpeed Animator float parameters so each clip's actual playback duration
@@ -152,14 +202,16 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
-        // attackCooldownTimer: untouched — pacing between attack sequences, not execution speed.
-        // stateTimer: scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own comment on
-        // the identical pattern. This is also what drives the Leaping arc lerp below, so the leap's own
-        // traversal speed scales for free too.
-        state.attackCooldownTimer -= delta;
-        state.stateTimer          -= delta * EffectiveAttackSpeed;
-
         var ss = GetLeapState(ref state);
+
+        // attackCooldownTimer: only ticks while actually in Moving (2026-08-19 — uniform across every
+        // multi-phase enemy's own attack-cadence cooldown now, see OrbiterGloomPD's own fix). stateTimer:
+        // scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own comment on the identical
+        // pattern. This is also what drives the Leaping arc lerp below, so the leap's own traversal speed
+        // scales for free too.
+        if (ss == LeapState.Moving)
+            state.attackCooldownTimer -= delta;
+        state.stateTimer -= delta * EffectiveAttackSpeed;
 
         switch (ss)
         {
@@ -278,9 +330,11 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
         // Fixed-radius, random-angle offset — matches KingSpikePD's remote-burst offset (a uniform random
         // angle at a FIXED distance, not old's Random.insideUnitCircle.normalized equivalent, ported to
-        // GameRandom for determinism).
+        // GameRandom for determinism). * size (2026-08-20) — raw world-space math, bypasses the scaled
+        // transform hierarchy entirely, so needs this explicit multiply to scale proportionally with an
+        // Elite's bigger size, same "* size" precedent landRadius's own hit-check already uses below.
         float   angle  = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
-        Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * leapOffsetRadius;
+        Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * leapOffsetRadius * size;
         state.leapTarget = _target.position + offset;
         _leapTargetSnapshot = state.leapTarget;
 
@@ -332,9 +386,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // IsTargetStillValid — a target that went invisible-and-non-taunting since the LAST leap in this
         // chain landed shouldn't get chained into another one against them; see that property's own doc
         // comment. The leap that already resolved above is untouched either way.
-        // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the leap
-        // that's already resolved above, but stops the chain from continuing into another one, falling
-        // through to PostLeap instead (see IsCrowdControlled's own doc comment).
+        // !IsCrowdControlled — a true Stun() landing mid-sequence never interrupts the leap that's already
+        // resolved above, but stops the chain from continuing into another one, falling through to PostLeap
+        // instead (a Slow does NOT stop the chain — see IsCrowdControlled's own doc comment, hard CC only).
         if (state.leapsRemaining > 0 && _target != null && IsTargetStillValid && !IsCrowdControlled)
         {
             EnterWindup(ref state);
@@ -349,19 +403,28 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
     private void EnterMoving(ref State state)
     {
-        // leapsRemaining deliberately left untouched here — EnterWindup now owns resetting it
-        // (refill-if-exhausted, not unconditional), so an attempt cancelled via Interrupt() (which funnels
-        // through here) keeps whatever count it already had instead of getting silently topped back up.
+        // leapsRemaining deliberately left untouched here — EnterWindup owns resetting it for the natural
+        // target-lost/crowd-controlled early-exit path (refill-if-exhausted, not unconditional).
+        // OnInterrupted() now zeroes it explicitly itself, BEFORE calling this, for the Interrupt()-driven
+        // path — see its own doc comment.
         // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
         // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
         FindClosestTarget();
         SetLeapState(ref state, LeapState.Moving);
     }
 
-    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
-    // it runs out of leapsRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    // Fully aborts the attack chain (2026-08-12, reworked from "leave leapsRemaining untouched") — an
+    // interrupted attack no longer retries with whatever leaps it had left; it zeroes the counter AND puts
+    // the whole sequence on a full fresh cooldown (same formula EnterPostLand's own natural chain-end
+    // already uses), so the very next Moving-state check can't immediately refill-and-restart. Moving itself
+    // is stunnable (see isStunnable's own per-tick assignment above), so a Stun() paired with the same hit as
+    // this Interrupt() (always called BEFORE a paired Stun(), see IEnemyPD.Interrupt()'s own doc comment)
+    // freezes this enemy here via EnemyBasePD.Simulate()'s own isStunnable-gated freeze for the stun's whole
+    // duration before it's ever able to attack again — no extra handling needed for that here.
     protected override void OnInterrupted()
     {
+        currentState.leapsRemaining      = 0;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch

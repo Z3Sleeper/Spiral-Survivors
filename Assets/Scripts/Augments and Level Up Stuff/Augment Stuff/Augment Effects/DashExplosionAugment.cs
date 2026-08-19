@@ -38,7 +38,7 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
     // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
     // scaling itself.
-    [SerializeField] private float radiusMultiplier    = 1f;
+    [SerializeField] private float radiusMultiplier    = 1.25f;
     // Multiplies Stats.Knockback (unpenalized — no onHitPower multiply, same convention
     // ShieldBreakBurstAugment's own knockbackMultiplier uses). 1 preserves this augment's previous
     // behavior (raw Stats.Knockback, unscaled) now that it's exposed for tuning.
@@ -53,7 +53,7 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
     // AugmentDescriptionFormatter's {LiveStrengthRatio} token.
     public string LiveStrengthRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.UnpenalizedStrength * damagePercent * stats.AreaEffectPower)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * damagePercent * stats.AreaEffectPower)} "
             : "";
 
     // Mirrors the onHitPower half of the same Cast() formula, for AugmentDescriptionFormatter's
@@ -105,7 +105,6 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
         // own knockback uses (per the "AoE Effects" default rules).
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, knockback: knockback, vfxPerCast: true,
-                source: DamageSource.DashExplosion);
+                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, knockback: knockback, vfxPerCast: true);
     }
 }

@@ -7,7 +7,7 @@ public class LuckHighRollAugment : AugmentEffectPD<LuckHighRollAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float highrollPenalty = 0.05f;
+    [SerializeField] private float highrollPenalty = 0.1f;
 
     protected override void OnApply()
     {

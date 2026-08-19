@@ -36,6 +36,9 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // in-progress one from being force-ended AND immediately re-blocked at the counter level — see
     // IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract this now goes through instead).
     [SerializeField] private bool activeSurgeBlock = true;
+    // Action — a committed leap-dash dealing real damage. Exposed for live playtesting — see
+    // IAbilityPD.IsActionAbility's own doc comment.
+    [SerializeField] private bool isActionAbility = true;
 
     [Header("Movement")]
     // Overall active window for the whole ability — movement, invincibility, weapons-disabled, damage
@@ -92,9 +95,13 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // (mirrors _effectiveHitCount's own Activate()-time formula, just read live off CURRENT weapon count
     // rather than a cast-time snapshot, since this previews "what would happen if cast right now") times
     // BaseDamage()'s own per-hit formula. Baseline (unrolled), same convention as every other Live*Ratio.
+    // Deliberately still uses stats.WeaponStrength (see BaseDamage()'s own doc comment for why) — the
+    // TotalWeaponCount multiply here cancels exactly that portion of WeaponStrength's own divide, leaving
+    // Multishot's own portion correctly un-offset (this ability's hit count scales with weapon COUNT, not
+    // Multishot).
     public string LiveDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * stats.Strength * stats.AttackSpeed * spinAbilityDamageMultiplier * stats.AbilityPower)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * stats.WeaponStrength * stats.AttackSpeed * spinAbilityDamageMultiplier * stats.AbilityPower)} "
             : "";
 
     private CharacterStatsPD    _stats;
@@ -165,6 +172,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // other ability slot out for its whole active window (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => true;
     public bool ActiveSurgeBlock => activeSurgeBlock;
+    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole leap) — see IAbilityPD.AbilityIsActive's
     // own doc comment for why these are separate interface members even though they agree here.
     public bool AbilityIsActive => currentState.isActive;
@@ -310,6 +318,10 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         // This leap functions like a dash — fires the same OnDashStarted listeners a real dash would
         // (DashExplosionAugment, DashHealAugment, etc.), matched by NotifyDashEnded below.
         _controller?.NotifyDashStarted();
+        // Also opens the movement-window pair (DashThroughInterruptAugment's sweep consumes this, not
+        // Started/Ended) — matched by NotifyDashMovementEnded in EndActiveWindow below, on EVERY end path
+        // including an interrupted one (unlike NotifyDashEnded, which an interrupt skips).
+        _controller?.NotifyDashMovementStarted();
     }
 
     public void NotifyActivationBlocked() { }
@@ -368,10 +380,10 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // - NotifyDashEnded/NotifyAbilityEnd: skipped entirely when interrupted — being interrupted is a
     //   punishment, not a "the action still counts" completion, so "reward on completion" listeners
     //   (DashExplosionAugment/DashHealAugment/PhantomBladeOnDashAugment) must not still pay out. Confirmed
-    //   safe to skip NotifyAbilityEnd — nothing in this codebase currently listens for it at all. Listeners
-    //   that only care about the WINDOW closing regardless of why (DashThroughInterruptAugment's own sweep)
-    //   instead subscribe to PlayerControllerPD's own _onDashInterrupted/_onSpecialMovementInterrupted
-    //   directly, not through this ability.
+    //   safe to skip NotifyAbilityEnd — nothing in this codebase currently listens for it at all.
+    //   NotifyDashMovementEnded is NOT skipped, though (see below) — listeners that only care about the
+    //   WINDOW closing regardless of why (DashThroughInterruptAugment's own sweep) need a matching End for
+    //   every Start this ability fires, interrupted or not.
     private void EndActiveWindow(ref State state, bool interrupted)
     {
         state.activeTimer = 0f;
@@ -395,6 +407,9 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
             // cooldown > 0 too.
             if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
         }
+        // Closes the movement window unconditionally (interrupted or not) — see NotifyDashMovementStarted's
+        // own comment in Activate() above.
+        _controller?.NotifyDashMovementEnded();
     }
 
     // Fires from PlayerControllerPD.Interrupt() — only meaningful while this ability's own leap is the thing
@@ -449,24 +464,27 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
             HitAlly(ally);
     }
 
-    // Base damage per hit, shared by both HitEnemy/HitAlly — plain (penalized) Strength, not
-    // UnpenalizedStrength: this ability already scales its own HIT COUNT with weapon count
-    // (hitCountPerWeapon/_effectiveHitCount), so per-hit damage should use the same weapon-count-divided
-    // stat every normal weapon hit uses too, rather than manually re-deriving an equivalent division here —
-    // Strength already divides by TotalWeaponCount * (1 + Multishot) internally, which is the exact
-    // "penalized" formula this used to hand-roll (weapon count only, no Multishot) via UnpenalizedStrength /
-    // _weaponCountAtCast. Times the LIVE AttackSpeed (unrelated to spinRate, which is a flat,
-    // AttackSpeed-independent value now) times spinAbilityDamageMultiplier times the live
-    // CharacterStatsPD.AbilityPower (this ability's own interpretation of that stat: scales both damage
-    // sources below). Deliberately reads Strength/AttackSpeed/AbilityPower live, not snapshotted at cast
-    // time — unlike _facingYaw/_damageReach/_weaponCountAtcast above, none of these need to stay fixed for
-    // the whole active window.
-    private float BaseDamage() => _stats.Strength * _stats.AttackSpeed * spinAbilityDamageMultiplier * _stats.AbilityPower;
+    // Base damage per hit, shared by both HitEnemy/HitAlly — deliberately reads Stats.WeaponStrength, NOT
+    // the general undivided Strength (2026-08-19 rework made Strength the general-purpose stat and split
+    // the weapon-count/Multishot divide out to WeaponStrength, read only by the 4 literal weapon classes —
+    // see CharacterStatsPD.WeaponStrength's own doc comment; this ability is an explicit, deliberate
+    // EXCEPTION to that "only weapons" rule, added back the same day after review: it's meant to feel like
+    // it's actually striking with weapons, same as PhantomBladeOnCritAugment's own synergy-point exception
+    // is the opposite deliberate choice for a different augment). This ability already independently scales
+    // its own HIT COUNT with weapon count (hitCountPerWeapon/_effectiveHitCount) — pairing that with
+    // WeaponStrength's own divide is exactly what a real multi-weapon setup already does (more instances,
+    // each smaller, total roughly constant), not a double-penalty. Times the LIVE AttackSpeed (unrelated to
+    // spinRate, which is a flat, AttackSpeed-independent value now) times spinAbilityDamageMultiplier times
+    // the live CharacterStatsPD.AbilityPower (this ability's own interpretation of that stat: scales both
+    // damage sources below). Deliberately reads WeaponStrength/AttackSpeed/AbilityPower live, not
+    // snapshotted at cast time — unlike _facingYaw/_damageReach/_weaponCountAtcast above, none of these need
+    // to stay fixed for the whole active window.
+    private float BaseDamage() => _stats.WeaponStrength * _stats.AttackSpeed * spinAbilityDamageMultiplier * _stats.AbilityPower;
 
-    // Same shape as BaseDamage() (same reasoning), but OnHitPower instead of Strength — the onHitPower this
-    // hit reports to onhit-triggered effects (via WeaponHitData/AllyStrikeData below), not the damage the
-    // hit itself deals.
-    private float OnHitPowerForEffects() => _stats.OnHitPower * _stats.AttackSpeed * spinAbilityDamageMultiplier * _stats.AbilityPower;
+    // Same shape as BaseDamage() (same reasoning/exception), but WeaponOnHitPower instead of WeaponStrength
+    // — the onHitPower this hit reports to onhit-triggered effects (via WeaponHitData/AllyStrikeData below),
+    // not the damage the hit itself deals.
+    private float OnHitPowerForEffects() => _stats.WeaponOnHitPower * _stats.AttackSpeed * spinAbilityDamageMultiplier * _stats.AbilityPower;
 
     // Mirrors WeaponMeleePD.Hit() exactly, baseDamage swapped from Strength to BaseDamage().
     private void HitEnemy(IEnemyPD enemy)
@@ -474,10 +492,9 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         if (enemy._isDead) return;
         float baseDamage = BaseDamage();
         float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
-        if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
-        if (isCrit) damage *= _stats.CritDamage;
-        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
+        damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage, OnHitPowerForEffects());
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = OnHitPowerForEffects(), isCrit = isCrit };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
@@ -485,7 +502,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * hitData.onHitPower);
-        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
+        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
     }
 
     // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been

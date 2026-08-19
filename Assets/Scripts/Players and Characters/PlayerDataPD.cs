@@ -90,6 +90,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
     private bool _bonusesApplied;
     private bool _registeredInAll;
     private bool _classPassivesApplied;
+    private bool _difficultyModifiersApplied;
     private bool _statTotalsApplied;
     private bool _allReady;
     private bool _inputEnabled;
@@ -152,6 +153,21 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
                 _classPassivesApplied = true;
             }
 
+            // Not owner-gated, same reasoning as class passives above — GameManagerPD.Difficulty is
+            // server-authoritative State (2026-08-21 fix, see its own doc comment), only actually
+            // resolved/replicated the same tick GameManagerPD.GameStarted itself flips true (see
+            // GameManagerPD.Simulate()'s own difficulty-capture, which only runs once EVERY player's own
+            // MarkPlayerReady has already landed — see readyPlayers). Plain one-shot latch, safe specifically
+            // BECAUSE _allReady/_localSetupComplete (which drive MarkPlayerReady, further down) do NOT
+            // depend on this — a player's own readiness signal always completes independently of, and
+            // strictly before, GameStarted/Difficulty ever resolves, so there's no risk of this waiting on a
+            // value that's itself waiting on this player's own readiness.
+            if (_registeredInAll && !_difficultyModifiersApplied && GameManagerPD.instance != null && GameManagerPD.instance.GameStarted)
+            {
+                stats.ActivateDifficultyModifiers(GameManagerPD.instance.Difficulty);
+                _difficultyModifiersApplied = true;
+            }
+
             // Reapplies whatever stat-augment totals AugmentManagerPD has on record for this player (see
             // CharacterStatsPD.ApplyStatBoostTotals' own doc comment) — all-zero and a no-op on a normal
             // game start, restores prior gains for a reconnecting player. Gated on _classPassivesApplied
@@ -170,7 +186,11 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
             // and asynchronously through AugmentManagerPD, and defaults to "not ready" (-1 sentinel) until
             // that system has actually registered a real count — see ClassPassiveAugmentsReady's own doc
             // comment. Without this, the loading screen could drop a frame or two before those stats are
-            // actually live, producing a visible "stat pops in after load" flash.
+            // actually live, producing a visible "stat pops in after load" flash. Deliberately NOT also
+            // gated on _difficultyModifiersApplied (removed 2026-08-21) — see that block's own doc comment
+            // for why readiness must never wait on it (real deadlock risk: GameStarted itself waits on
+            // every player's own readiness, but the real Difficulty value only resolves once GameStarted
+            // is already true).
             if (!_allReady && _classPassivesApplied && stats.ClassPassiveAugmentsReady)
             {
                 _allReady = true;

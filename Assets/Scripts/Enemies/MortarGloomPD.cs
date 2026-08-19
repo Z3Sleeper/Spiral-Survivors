@@ -52,37 +52,53 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
 
     [Header("Mortar Settings")]
     // Same "too close" trigger threshold reasoning as ShooterGloomPD.minAttackRange.
-    [SerializeField] private float minAttackRange       = 3f;
-    [SerializeField] private float attackCooldown       = 5f;
+    [SerializeField] private float minAttackRange       = 8f;
     [SerializeField] private float windupDuration       = 0.5f;
     // Pure Mortar-side animation beats — deliberately uncorrelated with projectileTravelDuration below (see
     // that field's own comment and the class's own doc comment).
     [SerializeField] private float fireDuration         = 0.1f;
-    [SerializeField] private float betweenStrikePause   = 0.3f;
-    [SerializeField] private float postFireDuration     = 0.3f;
+    [SerializeField] private float betweenStrikePause   = 0.25f;
+    [SerializeField] private float postFireDuration     = 0.5f;
+    // Tier1-authored baseline, scaled per tier by strikesPerAttackTierGrowth below (applied in
+    // OnConfigureSpawn()). See _authoredStrikesPerAttack's own doc comment for why this needs the
+    // snapshot-and-reset treatment instead of just incrementing this field directly.
     [SerializeField] private int   strikesPerAttack     = 1;
     [SerializeField] private float strikeDamageMultiplier = 1f;
-    [SerializeField] private float dashSpeedMultiplier  = 3f;
+    [SerializeField] private float dashSpeedMultiplier  = 4f;
     [SerializeField] private float dashDistanceBuffer   = 0.5f;
+    // Captured once in OnAwake(), reset back onto strikesPerAttack every pooled reuse in LateAwake() —
+    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
+    // pattern established for BlitzGloomPD/DaggerGloomPD's own identical attack-count fields.
+    private int _authoredStrikesPerAttack;
 
     [Header("Hazard (danger indicator + damage, independent once spawned)")]
     [SerializeField] private GameObject hazardPrefab; // carries MortarHazardPD
-    [SerializeField] private float hazardWidth = 4f; // perpendicular to firing direction
-    [SerializeField] private float hazardDepth = 1f; // thickness along firing direction
+    [SerializeField] private float hazardWidth = 8f; // perpendicular to firing direction
+    [SerializeField] private float hazardDepth = 2f; // thickness along firing direction
     // Shared by BOTH the hazard's own fill duration (windupDuration + this) AND the cosmetic shell's flight
     // time — this is the ONLY place travel time and the hazard are linked. Deliberately NOT linked to
     // fireDuration/postFireDuration, which are pure animation beats with no bearing on when the hazard
     // actually resolves (see class doc comment — explicit user correction).
-    [SerializeField] private float projectileTravelDuration = 0.6f;
+    [SerializeField] private float projectileTravelDuration = 0.5f;
 
     [Header("Projectile VFX (cosmetic only — zero gameplay effect)")]
     [SerializeField] private GameObject projectileVfxPrefab; // carries MortarProjectileVFXPD
     [SerializeField] private float projectileArcHeight = 3f;
     // "Slight yz firing offset" — spawns slightly up and forward from the mortar's own root, never sideways.
     // Both scale with `size` (Elite scaling) — see SpawnProjectileVfx.
-    [SerializeField] private float projectileSpawnHeightOffset  = 0.5f;
-    [SerializeField] private float projectileSpawnForwardOffset = 0.5f;
-    [SerializeField] private Material projectileMaterial;
+    [SerializeField] private float projectileSpawnHeightOffset  = 1f;
+    [SerializeField] private float projectileSpawnForwardOffset = 0f;
+
+    [Header("Attack Cooldown")]
+    [SerializeField] private float attackCooldown = 5f;
+    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
+    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
+    // pattern as _authoredStrikesPerAttack above.
+    private float _authoredAttackCooldown;
+
+    [Header("Tier Scaling")]
+    // Added onto strikesPerAttack per tier above 1 — see OnConfigureSpawn().
+    [SerializeField] private int strikesPerAttackTierGrowth = 1;
 
     // Baseline "clip length / baseline duration" ratios — same reasoning as ShooterGloomPD's own
     // _windupClipRate/_shootClipRate/_postShotClipRate.
@@ -93,11 +109,40 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     private MortarState GetMortarState(ref State s) => (MortarState)s.mortarStateId;
     private void SetMortarState(ref State s, MortarState st) => s.mortarStateId = (int)st;
 
+    protected override void OnAwake()
+    {
+        base.OnAwake();
+        _authoredStrikesPerAttack = strikesPerAttack;
+        _authoredAttackCooldown = attackCooldown;
+    }
+
     protected override void LateAwake()
     {
         base.LateAwake();
+        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
+        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredStrikesPerAttack's
+        // own doc comment.
+        strikesPerAttack = _authoredStrikesPerAttack;
+        attackCooldown = _authoredAttackCooldown;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        // Re-set again in OnRespawnReset() once strikesPerAttack is actually tier-scaled (that always runs
+        // AFTER OnConfigureSpawn, on this life's first Simulate() tick) — this LateAwake() assignment is
+        // only ever a placeholder until then.
         currentState.strikesRemaining    = strikesPerAttack;
+    }
+
+    // Tier1-authored strikesPerAttack, scaled by strikesPerAttackTierGrowth per tier above 1 (see that
+    // field's own doc comment). spawnTier is already final by the time this runs (set earlier in the same
+    // ConfigureSpawn() call).
+    protected override void OnConfigureSpawn()
+    {
+        base.OnConfigureSpawn();
+        strikesPerAttack += (spawnTier - 1) * strikesPerAttackTierGrowth;
+
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
+        // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
+        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
     }
 
     // See ShooterGloomPD.ApplyAnimatorClipSpeeds's own doc comment for why this lives here (not LateAwake())
@@ -120,10 +165,15 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     {
         if (dashJustEnded) EnterWindup(ref state);
 
-        state.attackCooldownTimer -= delta;
-        state.mortarStateTimer    -= delta * EffectiveAttackSpeed;
-
         var ms = GetMortarState(ref state);
+
+        // attackCooldownTimer: only ticks while actually in Moving (2026-08-19 — uniform across every
+        // multi-phase enemy's own attack-cadence cooldown now, see OrbiterGloomPD's own fix). mortarStateTimer:
+        // scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own comment on the identical
+        // pattern.
+        if (ms == MortarState.Moving)
+            state.attackCooldownTimer -= delta;
+        state.mortarStateTimer -= delta * EffectiveAttackSpeed;
 
         switch (ms)
         {
@@ -218,7 +268,8 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         float dashDistance = (minAttackRange - currentDistance) + dashDistanceBuffer;
         Vector3 destination = transform.position + awayDir * dashDistance;
 
-        StartDashToPoint(ref state, baseMoveSpeed * dashSpeedMultiplier, destination);
+        // EffectiveMoveSpeed, not baseMoveSpeed (2026-08-13) — see BlitzGloomPD.EnterBlitz's own comment.
+        StartDashToPoint(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, destination);
     }
 
     private void EnterWindup(ref State state)
@@ -275,6 +326,12 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     // above already guarantees this can never fire during Fire/PostFire, where the hazard is permanent (see
     // MortarHazardPD's own class doc comment). No-op during BetweenStrikes/Moving/DashingAway — nothing
     // currently pending to cancel there (the previous strike's hazard, if any, already passed Fire).
+    //
+    // strikesRemaining/attackCooldownTimer explicitly reset here (2026-08-19 fix, same bug class as
+    // Spear/Dagger/Blitz/Shooter/Leaper/Orbiter's own OnInterrupted()) — an interrupted strike fully aborts
+    // the whole multi-strike chain (zero the remaining count) and goes on a full, freshly-randomized
+    // cooldown (matching EnterPostFire's own formula, this enemy's natural chain-end), rather than leaving
+    // both untouched and letting the very next tick immediately re-windup with whatever strikes were left.
     protected override void OnInterrupted()
     {
         if (GetMortarState(ref currentState) == MortarState.Windup)
@@ -282,13 +339,21 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
             var go = hierarchy.GetGameObject(currentState.pendingHazardId);
             if (go != null && go.TryGetComponent(out MortarHazardPD hazard)) hazard.Cancel();
         }
+        currentState.strikesRemaining    = 0;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         EnterMoving(ref currentState);
     }
 
     // ── Hazard + VFX spawn ──────────────────────────────────────────────────
 
-    // Aims at the captured attackAnchorPosition (see CaptureAttackAnchor's own doc comment), not live
-    // _target — same reasoning as ShooterGloomPD.FireShots.
+    // Initial placement only, at the captured attackAnchorPosition (see CaptureAttackAnchor's own doc
+    // comment) — the hazard then LIVE-TRACKS _targetStats (read here, at spawn, which IS the commit moment
+    // for this strike — see MortarHazardPD's own class doc comment for why passing the reference itself,
+    // rather than re-deriving it later, is what keeps this immune to _targetStats getting reassigned to
+    // someone else mid-Windup) for the rest of its own "attached" phase, then locks automatically once its
+    // own "fired" phase begins. EffectiveAttackSpeed passed in as a one-time snapshot (not a live reference —
+    // see MortarHazardPD's own class doc comment for why) so the hazard's tracking phase paces itself in
+    // lockstep with THIS strike's own attack-speed-scaled Windup duration.
     private void SpawnHazard(ref State state)
     {
         if (hazardPrefab == null) return;
@@ -307,15 +372,23 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
 
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out MortarHazardPD hazard))
-            hazard.Launch(windupDuration + projectileTravelDuration, hazardWidth * size, hazardDepth * size,
-                damage * strikeDamageMultiplier);
+            hazard.Launch(windupDuration, projectileTravelDuration, hazardWidth * size, hazardDepth * size,
+                damage * strikeDamageMultiplier, _targetStats, transform.position, EffectiveAttackSpeed);
     }
 
+    // Aims at wherever the hazard itself actually locked (2026-08-21 — reads the hazard's own live transform,
+    // NOT state.b.attackAnchorPosition, which is only ever the STALE pre-Windup snapshot now that the hazard
+    // live-tracks and locks independently — see MortarHazardPD's own class doc comment). By the time this
+    // runs (EnterFire, right as Windup ends) the hazard has already locked, so this always matches exactly
+    // where the visible danger zone ended up, with zero risk of drifting out of sync with it. Falls back to
+    // the stale anchor only if the hazard object itself can't be resolved (e.g. hazardPrefab was never set).
     private void SpawnProjectileVfx(ref State state)
     {
         if (projectileVfxPrefab == null) return;
 
         Vector3 targetPos = state.b.attackAnchorPosition;
+        var hazardGo = hierarchy.GetGameObject(state.pendingHazardId);
+        if (hazardGo != null) targetPos = hazardGo.transform.position;
         targetPos.y = 0f;
         Vector3 fireDir = targetPos - transform.position;
         fireDir.y = 0f;
@@ -328,7 +401,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
 
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out MortarProjectileVFXPD vfx))
-            vfx.Launch(spawnPos, targetPos, projectileTravelDuration, projectileArcHeight, size, projectileMaterial);
+            vfx.Launch(spawnPos, targetPos, projectileTravelDuration, projectileArcHeight, size, TierAccentMaterial);
     }
 
     // ── View ──────────────────────────────────────────────────────────────────

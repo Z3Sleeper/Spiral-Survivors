@@ -133,7 +133,10 @@ public class ClassPassiveData : ScriptableObject
 
     [Header("Surge")]
     public float bonusSurgeCostFlat = 0f;
-    public float bonusSurgeCostPercent = 0f;
+    // Renamed from bonusSurgeCostPercent (2026-08-19) — reduction-only now, multiplicative diminishing-
+    // returns at the CharacterStatsPD sweep (see its own comment there). Confirmed 0 on every existing class
+    // passive asset at rename time, so nothing tuned was lost.
+    public float surgeCostReductionPercent = 0f;
     public float surgeAttackSpeedPenalty = 0f;
 
     // dashHaste plays the "base+flat" role by itself (no separate base field — see CharacterStatsPD's own

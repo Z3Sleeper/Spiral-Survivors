@@ -44,4 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a5423b97184bef343854ddc8e47795a3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnAbilityStartRefillEnergyAugment
-  energyRegenPercentPerCooldownSecond: 0.25
+  energyRegenPercentPerCooldownSecond: 0.1
+  baseAmountPerCooldownSecond: 10

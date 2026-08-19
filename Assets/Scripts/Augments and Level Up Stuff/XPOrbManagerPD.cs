@@ -1,72 +1,81 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
+// Fanfare-scatter model (replaced the old "currency change" denomination system 2026-08-16): every kill
+// spawns a FIXED count of orbs for its category (1 for Pleb/Normal, eliteOrbCount for Elite, bossOrbCount
+// for Boss), each carrying an even split of the kill's total xpValue — no remainder/leftover handling
+// needed at all (a plain float division, unlike the old fixed-denomination prefabs which had to fold
+// leftovers into an extra orb). WHICH prefab spawns is looked up per (tier, category) from tier1-4 below,
+// mirroring EnemySpawnerPD's own TierEnemies/tier1-4 shape exactly. Scatter itself (each orb's own little
+// random-direction impulse on spawn) already lives on XPOrbPD — this class only decides count/value/prefab.
 public class XPOrbManagerPD : MonoBehaviour
 {
     public static XPOrbManagerPD instance;
 
     [System.Serializable]
-    private struct OrbTier
+    private struct TierOrbs
     {
-        public int value;
-        public GameObject prefab;
+        public GameObject pleb;
+        public GameObject normal;
+        public GameObject elite;
+        public GameObject boss;
     }
 
-    [SerializeField] private OrbTier[] _tiers;
+    [SerializeField] private TierOrbs tier1;
+    [SerializeField] private TierOrbs tier2;
+    [SerializeField] private TierOrbs tier3;
+    [SerializeField] private TierOrbs tier4;
+
+    // How many orbs an Elite/Boss kill's xpValue gets split evenly across — Pleb/Normal are always exactly
+    // 1 (the enemy's full xpValue, no split needed), not separately tunable fields since neither category
+    // has ever needed one.
+    [SerializeField] private int eliteOrbCount = 5;
+    [SerializeField] private int bossOrbCount = 20;
 
     private void Awake()
     {
         if (instance != null) { Destroy(gameObject); return; }
         instance = this;
-
-        System.Array.Sort(_tiers, (a, b) => b.value.CompareTo(a.value));
     }
 
-    public void SpawnOrbs(PredictedHierarchy hierarchy, Vector3 position, float xpValue)
+    // tier is the enemy's own EnemyBasePD.spawnTier (1-based) — mirrors EnemySpawnerPD.GetCurrentTier's own
+    // bossesDefeated->tier mapping (tier1=1, tier2=2, tier3=3, tier4=4+), clamping anything beyond 4 down
+    // to tier4 the same way.
+    public void SpawnOrbs(PredictedHierarchy hierarchy, Vector3 position, float xpValue, EnemySpawnCategory category, int tier)
     {
-        if (_tiers.Length == 0 || xpValue <= 0f) return;
+        if (xpValue <= 0f) return;
 
-        // Tiers are sorted descending in Awake(), so index 0 is the highest tier. Past 5x that value,
-        // per-tier splitting would balloon the orb count unboundedly (no tier above it to carry into),
-        // so just represent the whole amount as a single orb instead of spawning dozens/hundreds. Passed
-        // through as the raw float (not rounded) — an orb's value was always a float (XPOrbPD.SetValue),
-        // only this call site was throwing precision away.
-        var highestTier = _tiers[0];
-        if (highestTier.value > 0 && xpValue > highestTier.value * 5)
+        var tierOrbs = tier switch
         {
-            SpawnOrb(hierarchy, highestTier.prefab, position, xpValue);
-            return;
-        }
+            1 => tier1,
+            2 => tier2,
+            3 => tier3,
+            _ => tier4,
+        };
 
-        float remaining = xpValue;
-
-        for (int i = 0; i < _tiers.Length; i++)
+        GameObject prefab = category switch
         {
-            if (_tiers[i].value <= 0) continue;
-            int count = Mathf.FloorToInt(remaining / _tiers[i].value);
-            remaining -= count * _tiers[i].value;
-            for (int j = 0; j < count; j++)
-                SpawnOrb(hierarchy, _tiers[i].prefab, position, _tiers[i].value);
-        }
+            EnemySpawnCategory.Pleb => tierOrbs.pleb,
+            EnemySpawnCategory.Elite => tierOrbs.elite,
+            EnemySpawnCategory.Boss => tierOrbs.boss,
+            _ => tierOrbs.normal,
+        };
+        if (prefab == null) return;
 
-        // Whatever's left is smaller than the lowest tier's value (e.g. a co-op/elite xpMultiplier didn't
-        // land on a clean multiple of every denomination) — rather than silently drop it, fold it into one
-        // extra orb using the lowest tier's prefab but the leftover's exact (fractional) value, so no XP
-        // is ever lost to rounding. Epsilon guards against spawning a near-zero orb from float error.
-        if (remaining > 0.001f)
+        int count = category switch
         {
-            for (int i = _tiers.Length - 1; i >= 0; i--)
-            {
-                if (_tiers[i].value <= 0) continue;
-                SpawnOrb(hierarchy, _tiers[i].prefab, position, remaining);
-                break;
-            }
-        }
+            EnemySpawnCategory.Elite => Mathf.Max(1, eliteOrbCount),
+            EnemySpawnCategory.Boss => Mathf.Max(1, bossOrbCount),
+            _ => 1,
+        };
+
+        float perOrb = xpValue / count;
+        for (int i = 0; i < count; i++)
+            SpawnOrb(hierarchy, prefab, position, perOrb);
     }
 
     private void SpawnOrb(PredictedHierarchy hierarchy, GameObject prefab, Vector3 position, float value)
     {
-        if (prefab == null) return;
         var id = hierarchy.Create(prefab, position, Quaternion.identity);
         if (!id.HasValue) return;
 

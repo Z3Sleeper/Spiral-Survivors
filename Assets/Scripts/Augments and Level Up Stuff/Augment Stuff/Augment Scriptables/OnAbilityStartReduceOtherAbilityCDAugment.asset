@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: OnAbilityStartReduceOtherAbilityCDAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFB4FF>Spellweaver</color>
-  description: <color=#FFA000>On <color=#FFB4FF>Ability</color> Cast:</color> Reduce
+  description: <color=#FFA000>On <color=#FFB4FF>Ability</color> Cast:</color> <color=#FFA000>Reduce</color>
     your other <color=#FFB4FF>Ability's</color> <color=#FFA000>cooldown</color> by
-    <color=#FFA000>{LiveCooldownReduction}</color><color=#FFA000>(50% of the casted
+    <color=#FFB4FF>{LiveCooldownReduction}</color><color=#FFA000>(30% of the casted
     <color=#FFB4FF>Ablity's</color> cooldown) seconds</color>.
   icon: {fileID: 21300000, guid: 23366daf0e8cd88499305548a92eb295, type: 3}
   effectPrefab: {fileID: 875073728208257461, guid: 7249b10af64328243a161d7788add208, type: 3}
@@ -28,3 +28,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

@@ -3,12 +3,25 @@ using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Dashing through an enemy interrupts it (cancels whatever attack sequence it's mid-way through, same as any
-// other IEnemyPD.Interrupt() caller). No damage, no knockback — purely a disruption tool. If at least one of
-// the enemies interrupted during that dash was genuinely mid dash/windup/attack (not just idly walking) when
-// the interrupt landed, refunds ONE dash charge — capped at exactly one refund per dash activation regardless
-// of how many enemies get interrupted during it.
+// Two parts, both on this one augment:
+// 1. Dashing through an enemy interrupts it (cancels whatever attack sequence it's mid-way through, same as
+//    any other IEnemyPD.Interrupt() caller). No damage, no knockback — purely a disruption tool. Every
+//    successful interrupt during the sweep invokes CharacterStatsPD's generic SuccessfulInterrupt (SI)
+//    event; the FIRST successful interrupt of a given dash also invokes FirstSuccessfulInterrupt (FSI) —
+//    see CharacterStatsPD.NotifyInterrupted. This lets any OTHER "on first successful interrupt" passive
+//    react correctly when triggered via a dash, not just this augment's own refund below.
+// 2. This same augment also subscribes to the generic SI event (2026-08-21 — was FSI; switched to SI so
+//    EVERY successful interrupt grants a stack, not just the first one per dash) and grants
+//    dashHastePerStack (default 1) permanent, stacking Dash Haste every time it fires — from ITS OWN sweep
+//    (one hop: sweep fires SI, this augment's own listener reacts, potentially several times per dash if
+//    multiple enemies get interrupted in one sweep) or from any OTHER interrupt source (AxeThrow, Knight
+//    StunHeal) while this augment is active. Scales with Stats.StackPower, same "recompute fully, reapply
+//    fresh" shape SurgeInterruptAoEAugment's own stacking Energy Regen passive uses (see its own doc
+//    comment) — remove exactly what was last applied, reapply against the CURRENT StackPower, so a later
+//    StackPowerAugment pick retroactively boosts every stack already earned, not just future ones. No cap,
+//    never resets — permanent stacking for the rest of this run.
 //
+
 // Detection is a swept sphere-cast following the player each tick while dashing — same pattern
 // EnemyBasePD.HandleKillLaunch already uses for its own corpse-launch hit detection (prevPos -> currentPos
 // segment, SphereCastNonAlloc against CombatLayerMasks.EnemyHurtboxMask), adapted for a DIFFERENT identity's
@@ -18,46 +31,56 @@ using UnityEngine;
 // EnemyBaseState.killLaunchHitIds) dedupes repeat hits on an enemy that stays overlapped across several ticks
 // of the same dash.
 //
-// Driven by OnDashStarted/OnDashEnded (not IsDashing directly) — RogueSpinAbilityPD's own leap explicitly
-// calls NotifyDashStarted()/NotifyDashEnded() to hook into this same shared event pair every "Dash...Augment"
-// already reacts to (DashExplosionAugment, DashHealAugment), even though it never sets isDashing itself
-// (a separate isSpecialMoving flag). Gating on the event pair covers both a real dash and Rogue's leap
-// automatically, same as the rest of the family.
+// Driven by PlayerControllerPD's DashMovementStarted/DashMovementEnded (2026-08-13 — previously
+// DashStarted/DashEnded, see below), NOT IsDashing directly — RogueSpinAbilityPD's own leap and
+// BWBlinkAbilityPD's teleport both explicitly fire this pair alongside their own NotifyDashStarted/
+// NotifyDashEnded calls to hook into it, even though neither ever sets isDashing itself. Gating on the event
+// pair covers a real dash, Rogue's leap, and Blink's teleport automatically, same as the rest of the family.
 //
-// ALSO listens to PlayerControllerPD's own DashInterrupted/SpecialMovementInterrupted events (2026-08-11),
-// pointed at the exact same OnDashEnded handler — an Interrupt()'d dash/leap (e.g. by an enemy) fires those
-// INSTEAD of the normal Ended event (see PlayerControllerPD.Interrupt()'s own doc comment: an interrupted
-// action shouldn't still fire "completed" events other Dash augments treat as a reward trigger). This
-// augment doesn't care WHY the window closed, only that it did — without this, an interrupt would leave
-// isSweeping stuck true forever, since nothing else would ever clear it.
+// Uses the MOVEMENT pair specifically, not Started/Ended (the reward pair every other "Dash...Augment"
+// reacts to), for two reasons: (1) DashMovementEnded fires unconditionally, on an interrupted close as well
+// as a natural one, so this single subscription replaces what used to be a three-way DashEnded/
+// DashInterrupted/SpecialMovementInterrupted subscription needed to catch every way the window could close
+// (missing any one of those three used to leave isSweeping stuck true forever after that specific kind of
+// interrupt); (2) a "trigger this dash's effects again" augment (DashEffectDoubleTriggerAugment) only
+// retriggers the REWARD pair, so it can double up DashHealAugment/DashExplosionAugment payouts without also
+// re-arming this augment's stateful sweep window a second time from a stale position.
 //
-// OnDashEnded ALSO runs one immediate catch-up sweep (not just flipping isSweeping off) — required for
+// OnMovementEnded ALSO runs one immediate catch-up sweep (not just flipping isSweeping off) — required for
 // BWBlinkAbilityPD's Blink specifically: its teleport is a direct, synchronous position write (not physics-
-// integrated), and it calls NotifyDashStarted() (at the OLD position) then teleports then NotifyDashEnded()
-// (at the NEW position) all within one Activate() call, entirely inside a single Simulate()-phase call —
-// isSweeping flips true then false again before LateSimulate() ever runs that tick, so the per-tick sweep
-// below would never see it at all otherwise. For a REAL dash this catch-up is a harmless zero-length no-op:
-// PlayerControllerPD.EndDash() zeroes velocity and fires OnDashEnded BEFORE that tick's movement block ever
+// integrated), and it fires MovementStarted (at the OLD position) then teleports then MovementEnded (at the
+// NEW position) all within one Activate() call, entirely inside a single Simulate()-phase call — isSweeping
+// flips true then false again before LateSimulate() ever runs that tick, so the per-tick sweep below would
+// never see it at all otherwise. For a REAL dash this catch-up is a harmless zero-length no-op:
+// PlayerControllerPD.EndDash() zeroes velocity and fires MovementEnded BEFORE that tick's movement block ever
 // applies dash velocity, so the last tick that actually moved the player was already fully swept by
 // LateSimulate() one tick earlier — there's nothing left for the catch-up to find.
 //
-// "Successful interrupt" (the refund gate) reworked (2026-08-10) to just be Interrupt()'s own return value
-// alone — IEnemyPD.CanBeInterrupted now defaults to false, and each enemy explicitly opts in only for the
-// specific states that are both committed (not just stunnable/CC-vulnerable) and meant to be cancelable (see
-// EnemyBasePD.CanBeInterrupted's own doc comment), so a true return already means exactly "this landed on
-// something real." The old design combined this with a separate IsStunnable check to work around
-// CanBeInterrupted previously defaulting to true almost everywhere — no longer needed.
+// "Successful interrupt" is just Interrupt()'s own return value — IEnemyPD.CanBeInterrupted defaults to
+// false, and each enemy explicitly opts in only for the specific states that are both committed (not just
+// stunnable/CC-vulnerable) and meant to be cancelable (see EnemyBasePD.CanBeInterrupted's own doc comment),
+// so a true return already means exactly "this landed on something real."
+//
+// Split into the two generic SI/FSI parts described above (2026-08-11) — previously this augment tracked
+// its own local refundedThisActivation guard and called PlayerControllerPD.RefundDashCharge() directly from
+// inside the sweep; that direct call is now CharacterStatsPD.NotifyInterrupted (SI/FSI) from the sweep, plus
+// a separate SI subscription (see OnApply/OnSuccessfulInterrupt) that performs the actual stacking grant.
 public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptAugment.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
     {
-        // True between OnDashStarted and OnDashEnded — the active sweep window.
+        // True between OnMovementStarted and OnMovementEnded — the active sweep window.
         public bool isSweeping;
         public Vector3 sweepPrevPos;
-        public bool refundedThisActivation;
+        // Guards FirstSuccessfulInterrupt (FSI) for this dash's own sweep — reset at OnMovementStarted, no
+        // longer refund-specific itself (see class doc comment).
+        public bool interruptedThisActivation;
         // Dedupes repeat Interrupt() calls on the same enemy across multiple ticks of one dash — same
         // convention as EnemyBaseState.killLaunchHitIds.
         public DisposableList<PredictedObjectID> touchedEnemies;
+        // Permanent — never reset, unlike interruptedThisActivation above. See OnSuccessfulInterrupt's own
+        // doc comment for the stacking Dash Haste grant this drives.
+        public int stackCount;
         public void Dispose() { touchedEnemies.Dispose(); }
 
         public State Duplicate()
@@ -68,13 +91,26 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         }
     }
 
-    // Player radius-effect convention: 1f player sphere + 0.25 generous extra.
-    [SerializeField] private float sweepRadius = 1.25f;
+    // "Dash Through"/contact-on-dash sweep radius convention: 1.5f (2026-08-19 — bumped from the general
+    // Player radius-effect convention's 1.25f specifically for this family, since a dash's own speed makes a
+    // too-tight sweep feel unreliable at connecting). Every "Dash Through" augment should use this same 1.5f.
+    [SerializeField] private float sweepRadius = 1.5f;
+
+    [Header("On Successful Interrupt — Stacking Permanent Dash Haste")]
+    // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
+    // {dashHastePerStack} directly in the description text — see its own doc comment (only public
+    // fields/properties/methods are checked).
+    public float dashHastePerStack = 1f;
 
     private PlayerControllerPD _controller;
     // Matches EnemyBasePD's own _killLaunchSweepResults buffer size — this is the exact same kind of
     // short-lived, per-tick swept-hitbox query.
     private readonly RaycastHit[] _sweepResults = new RaycastHit[16];
+
+    // Plain view-layer bookkeeping, not State — tracks what this effect has ACTUALLY applied to
+    // CharacterStatsPD so it can be reversed exactly, same role as SurgeInterruptAoEAugment's own
+    // _lastAppliedEnergyRegen.
+    private float _lastAppliedDashHaste;
 
     protected override State GetInitialState()
     {
@@ -88,18 +124,13 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         _controller = Stats.GetComponent<PlayerControllerPD>();
         if (_controller != null)
         {
-            _controller.AddDashStartedListener(OnDashStarted);
-            _controller.AddDashEndedListener(OnDashEnded);
-            // A dash/leap that gets Interrupt()'d (e.g. by an enemy) never fires OnDashEnded — that event is
-            // reserved for "the action completed," which an interrupted one didn't (see
-            // PlayerControllerPD.Interrupt()'s own doc comment). Without also closing the sweep window here,
-            // isSweeping would stay stuck true forever after an interrupt, since only OnDashEnded (or the
-            // next OnDashStarted) ever clears it. OnDashEnded itself already does exactly the right thing
-            // regardless of WHY the window closed (final catch-up sweep + stop sweeping — nothing in it
-            // assumes a successful completion), so it's reused directly as the handler for both.
-            _controller.AddDashInterruptedListener(OnDashEnded);
-            _controller.AddSpecialMovementInterruptedListener(OnDashEnded);
+            _controller.AddDashMovementStartedListener(OnMovementStarted);
+            _controller.AddDashMovementEndedListener(OnMovementEnded);
         }
+
+        // Second part of this augment — reacts to SuccessfulInterrupt from ANY source (see class doc
+        // comment), not just this augment's own sweep below.
+        Stats.AddSuccessfulInterruptListener(OnSuccessfulInterrupt);
     }
 
     protected override void OnDestroy()
@@ -107,22 +138,49 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         base.OnDestroy();
         if (_controller != null)
         {
-            _controller.RemoveDashStartedListener(OnDashStarted);
-            _controller.RemoveDashEndedListener(OnDashEnded);
-            _controller.RemoveDashInterruptedListener(OnDashEnded);
-            _controller.RemoveSpecialMovementInterruptedListener(OnDashEnded);
+            _controller.RemoveDashMovementStartedListener(OnMovementStarted);
+            _controller.RemoveDashMovementEndedListener(OnMovementEnded);
         }
+        if (Stats != null) Stats.RemoveSuccessfulInterruptListener(OnSuccessfulInterrupt);
     }
 
-    private void OnDashStarted()
+    // Current total Dash Haste this passive has actually granted so far (dashHastePerStack * current stack
+    // count * StackPower) for AugmentDescriptionFormatter's {LiveStackedDashHaste} token — same shape/
+    // reasoning as SurgeInterruptAoEAugment.LiveStackedEnergyRegen's own identical token. Falls back to the
+    // prefab's own untouched 0 default for a not-yet-picked level-up option, which is exactly the "0 stacks"
+    // state we want to show there anyway.
+    public string LiveStackedDashHaste(CharacterStatsPD stats) =>
+        AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(dashHastePerStack * stats.StackPower * currentState.stackCount)} "
+            : "0 ";
+
+    // Fires on EVERY successful interrupt (SI), any source (2026-08-21 — was FSI-gated, see class doc
+    // comment). Recomputes its OWN total contribution from scratch on every new stack (remove exactly what
+    // was last applied, reapply fresh against the CURRENT StackPower) rather than incrementally adding per
+    // stack — same "re-derive fully" principle SurgeInterruptAoEAugment's own identically-named
+    // OnSuccessfulInterrupt already uses, so a later StackPowerAugment pick retroactively boosts every stack
+    // already earned, not just future ones. No cap, never resets — permanent stacking for the rest of this
+    // run.
+    private void OnSuccessfulInterrupt()
+    {
+        if (Stats == null || Stats.IsDead) return;
+
+        currentState.stackCount++;
+
+        Stats.AddDashHaste(-_lastAppliedDashHaste);
+        _lastAppliedDashHaste = dashHastePerStack * currentState.stackCount * Stats.StackPower;
+        Stats.AddDashHaste(_lastAppliedDashHaste);
+    }
+
+    private void OnMovementStarted()
     {
         currentState.isSweeping = true;
         currentState.sweepPrevPos = Stats.transform.position;
-        currentState.refundedThisActivation = false;
+        currentState.interruptedThisActivation = false;
         currentState.touchedEnemies.Clear();
     }
 
-    private void OnDashEnded()
+    private void OnMovementEnded()
     {
         currentState.isSweeping = false;
         if (Stats == null || _controller == null) return;
@@ -149,7 +207,7 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         SweepSegment(ref state, prevPos, currentPos);
     }
 
-    // Shared by LateSimulate()'s own per-tick sweep and OnDashEnded()'s catch-up sweep — see class doc
+    // Shared by LateSimulate()'s own per-tick sweep and OnMovementEnded()'s catch-up sweep — see class doc
     // comment for why both call sites exist.
     private void SweepSegment(ref State state, Vector3 fromPos, Vector3 toPos)
     {
@@ -167,13 +225,8 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
             if (state.touchedEnemies.Contains(enemy.ObjectId)) continue;
             state.touchedEnemies.Add(enemy.ObjectId);
 
-            bool actuallyInterrupted = enemy.Interrupt();
-
-            if (actuallyInterrupted && !state.refundedThisActivation)
-            {
-                state.refundedThisActivation = true;
-                _controller.RefundDashCharge();
-            }
+            if (enemy.Interrupt())
+                Stats.NotifyInterrupted(enemy, ref state.interruptedThisActivation);
         }
     }
 }

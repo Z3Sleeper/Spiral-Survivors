@@ -9,8 +9,8 @@ public class LuckAugment : AugmentEffectPD<LuckAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusLuckFlat    = 25f;
-    [SerializeField] private float bonusLuckPercent = 0.15f;
+    [SerializeField] private float bonusLuckFlat    = 60f;
+    [SerializeField] private float bonusLuckPercent = 0f;
 
     protected override void OnApply()
     {

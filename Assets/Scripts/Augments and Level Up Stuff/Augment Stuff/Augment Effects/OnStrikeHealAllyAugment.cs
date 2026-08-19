@@ -12,7 +12,12 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    public float healthRegenMultiplier       = 2f; // 200%
+    public float healthRegenMultiplier       = 1f; // 100%
+    // Flat floor added to the scaled portion below (2026-08-12, playtesting: this augment did literally
+    // nothing for a build with zero HealthRegen investment) — added BEFORE the onHitPower multiply (see
+    // OnAllyStrike()), so it still scales with onHitPower same as the rest of the heal, just guarantees a
+    // non-zero base even at zero HealthRegen investment.
+    [SerializeField] private float baseHeal = 2f;
 
     // healthRegenMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
     // convention wouldn't apply to it directly — this alias exists so a description can reference
@@ -23,10 +28,11 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
 
     // Baseline heal at 100% OnHitPower (varies hit-to-hit, so not baked into the preview — see
     // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention) for
-    // AugmentDescriptionFormatter's {LiveHealthRegenRatio} token.
+    // AugmentDescriptionFormatter's {LiveHealthRegenRatio} token. Includes baseHeal so the preview matches
+    // what OnAllyStrike actually heals.
     public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.HealthRegen * healthRegenMultiplier)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseHeal + stats.HealthRegen * healthRegenMultiplier)} "
             : "";
 
     protected override void OnApply()
@@ -40,20 +46,19 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
         if (Stats != null) Stats.RemoveAllyStrikeListener(OnAllyStrike);
     }
 
-    // baseHeal is passed RAW (un-rolled) to both — Heal()/HealFromAlly() each roll their own luck variance
-    // now (see their own doc comments), so this is two independent rolls off the same base amount rather
-    // than one shared roll reused for both. Each side also scales differently from there: the caster's own
+    // baseHeal is passed RAW to both (no luck roll on either side anymore — 2026-08-12, see
+    // CharacterStatsPD.Heal's own doc comment). The two sides still scale differently: the caster's own
     // portion goes through the normal Heal() (scales with the CASTER's own HealPower/CritHealPower, same as
-    // any other self-heal, and rolls against the CASTER's own Luck), the ally's portion goes through
-    // HealFromAlly() instead (rolls against the CASTER's Luck too — "the healer rolls for the healee" — but
-    // is NOT scaled by the ally's own HealPower — see that method's own doc comment for why: letting a
-    // receiving ally's stacked HealPower also amplify every ally-sourced heal they receive, on top of their
-    // own self-heals, risks compounding well past intended value once multiple players are all stacking
-    // HealPower and running heal-ally effects at once).
+    // any other self-heal), the ally's portion goes through HealFromAlly() instead (NOT scaled by the ally's
+    // own HealPower — see that method's own doc comment for why: letting a receiving ally's stacked
+    // HealPower also amplify every ally-sourced heal they receive, on top of their own self-heals, risks
+    // compounding well past intended value once multiple players are all stacking HealPower and running
+    // heal-ally effects at once).
     private void OnAllyStrike(AllyStrikeData data)
     {
-        float baseHeal = Stats.HealthRegen * healthRegenMultiplier * data.onHitPower;
-        data.ally.HealFromAlly(baseHeal, Stats);
-        Stats.Heal(baseHeal);
+        // baseHeal joins the scaled portion INSIDE the onHitPower multiply — see its own field comment.
+        float totalHeal = (baseHeal + Stats.HealthRegen * healthRegenMultiplier) * data.onHitPower;
+        data.ally.HealFromAlly(totalHeal, Stats);
+        Stats.Heal(totalHeal);
     }
 }

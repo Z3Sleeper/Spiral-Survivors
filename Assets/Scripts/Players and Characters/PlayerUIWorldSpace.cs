@@ -9,6 +9,14 @@ public class PlayerUIWorldSpace : MonoBehaviour
     // Inspector reference on the prefab — the camera lives in the scene, not the prefab asset).
     [SerializeField] private Canvas worldspaceCanvas;
     [SerializeField] private Slider healthBar;
+    // The health bar Slider's own Fill Image — Slider itself has no color to tint, so this is a separate
+    // reference to whichever child Image actually renders the fill, wired up in the Inspector.
+    [SerializeField] private Image healthBarFillImage;
+    // Extra "hey, you're invincible" heads-up (visible to everyone, not just the owner — allies should see
+    // it too) — tints the health bar this color for as long as CharacterStatsPD.UIIsInvincible reads true,
+    // reverting to whatever color the fill was authored with (captured once in Start()) the instant
+    // invincibility ends. Exposed so it can be tuned/reused for a different tint without touching code.
+    [SerializeField] private Color invincibleHealthBarColor = Color.white;
     [SerializeField] private Slider shieldBar;
     [SerializeField] private GameObject dashUI;
     [SerializeField] private Image dashChargeCooldownImage;
@@ -51,6 +59,10 @@ public class PlayerUIWorldSpace : MonoBehaviour
     private IAbilityPD _ability1;
     private IAbilityPD _ability2;
     private Camera _camera;
+    // Captured once, before anything can tint it — same "cache the true authored value before anything can
+    // touch it" reasoning EnemyBasePD's own _originalColors uses.
+    private Color _healthBarDefaultColor;
+    private bool  _healthBarInvincibleTintShown;
 
     private void Start()
     {
@@ -68,6 +80,8 @@ public class PlayerUIWorldSpace : MonoBehaviour
             }
         }
         _camera = Camera.main;
+
+        if (healthBarFillImage != null) _healthBarDefaultColor = healthBarFillImage.color;
 
         // See worldspaceCanvas/WorldSpaceUICameraPD's own doc comments for why this has to be assigned here
         // rather than in the Inspector.
@@ -89,6 +103,12 @@ public class PlayerUIWorldSpace : MonoBehaviour
         {
             float value = _stats.MaxHealth > 0f ? _stats.UIHealth / _stats.MaxHealth : 0f;
             if (!Mathf.Approximately(healthBar.value, value)) healthBar.value = value;
+        }
+        // Extra "you're invincible" heads-up — see invincibleHealthBarColor's own doc comment.
+        if (healthBarFillImage != null && _stats.UIIsInvincible != _healthBarInvincibleTintShown)
+        {
+            _healthBarInvincibleTintShown = _stats.UIIsInvincible;
+            healthBarFillImage.color = _healthBarInvincibleTintShown ? invincibleHealthBarColor : _healthBarDefaultColor;
         }
         if (shieldBar != null)
         {
@@ -142,11 +162,14 @@ public class PlayerUIWorldSpace : MonoBehaviour
         }
 
         // Shown more broadly than the fill above — any not-ready reason (real cooldown OR e.g.
-        // BWBlinkAbilityPD's Blade-Dance gate) OR merely locked out (dashing, or a locking ability elsewhere
-        // is active — see PlayerControllerPD.IsLockedOut's own doc comment), even though the ability itself
-        // may otherwise be fully ready. _controller can still be null here (this runs before Update()'s own
-        // _controller == null check further down).
-        bool onCooldown = !_ability1.IsReady || (_controller != null && _controller.IsLockedOut);
+        // BWBlinkAbilityPD's Blade-Dance gate), a hard lockout (a locking ability elsewhere is active, or
+        // isSpecialMoving/stunned — see PlayerControllerPD.IsLockedOut's own doc comment), or blocked by
+        // actively dashing OR a Berserk-Surge-style forced Surge (only for an action ability — see
+        // IAbilityPD.IsActionAbility's own doc comment, same condition PlayerControllerPD.Simulate() itself
+        // gates Activate() on) — even though the ability itself may otherwise be fully ready. _controller can
+        // still be null here (this runs before Update()'s own _controller == null check further down).
+        bool onCooldown = !_ability1.IsReady || (_controller != null && _controller.IsLockedOut)
+            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability1.IsActionAbility);
         if (onCooldown != _ability1CooldownUIShown)
         {
             _ability1CooldownUIShown = onCooldown;
@@ -192,7 +215,9 @@ public class PlayerUIWorldSpace : MonoBehaviour
             }
         }
 
-        bool onCooldown = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut);
+        // See UpdateAbility1's own identical comment for the full visibility reasoning.
+        bool onCooldown = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut)
+            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability2.IsActionAbility);
         if (onCooldown != _ability2CooldownUIShown)
         {
             _ability2CooldownUIShown = onCooldown;

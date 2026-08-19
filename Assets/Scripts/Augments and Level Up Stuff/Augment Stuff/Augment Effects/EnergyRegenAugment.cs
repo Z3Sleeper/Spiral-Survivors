@@ -9,8 +9,8 @@ public class EnergyRegenAugment : AugmentEffectPD<EnergyRegenAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusEnergyRegenFlat    = 5f;
-    [SerializeField] private float bonusEnergyRegenPercent = 0.15f;
+    [SerializeField] private float bonusEnergyRegenFlat    = 10f;
+    [SerializeField] private float bonusEnergyRegenPercent = 0f;
 
     protected override void OnApply()
     {

@@ -44,3 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 36b7eedd5ea7c784a8876aca78fd362d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnAbilityStartReduceOtherAbilityCDAugment
+  reductionPercent: 0.3

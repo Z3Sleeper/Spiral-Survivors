@@ -13,15 +13,7 @@ MonoBehaviour:
   m_Name: WeaponCountAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFA000>Another Fine Addition</color>
-  description: '<color=#FFA000>+1 Weapon</color>
-
-    <color=#FF5000>+20% Total Strength</color>
-
-    <color=#FF0050>+20%
-    On-Hit Power</color>
-
-    <color=#FFBE50><i>Strength & On-Hit Power are divided
-    by Weapon Count</i></color>'
+  description: <color=#FFA000>+1 Weapon</color>
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 8002396800846999366, guid: d51af4136374b1c41bb2557d696a41b8, type: 3}
   multiplayerOnly: 0
@@ -33,3 +25,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

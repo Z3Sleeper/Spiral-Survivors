@@ -9,6 +9,7 @@ public class AugmentDataEditor : Editor
 {
     private RichTextColorPalette _palette;
     private AbilityTagDatabase _tagDatabase;
+    private AugmentUnlockTagDatabase _unlockTagDatabase;
     private SerializedProperty _displayNameProp;
     private SerializedProperty _descriptionProp;
 
@@ -21,6 +22,7 @@ public class AugmentDataEditor : Editor
         _descriptionProp = serializedObject.FindProperty("description");
         _palette = ColoredTextFieldGUI.FindPalette();
         _tagDatabase = TagPickerGUI.FindTagDatabase();
+        _unlockTagDatabase = UnlockTagPickerGUI.FindTagDatabase();
     }
 
     public override void OnInspectorGUI()
@@ -35,11 +37,12 @@ public class AugmentDataEditor : Editor
         ColoredTextFieldGUI.Draw(serializedObject, _palette, "Description", _descriptionProp, DescriptionControl, 200f);
         EditorGUILayout.Space();
 
-        // requiredCount/requiredAugments/tags/requiredTags excluded here and drawn manually right after, so
-        // the clamped count field lands directly above the list it's clamped against, and the tag pickers
-        // get their toggle-button rows, instead of wherever the default draw order would otherwise put them.
+        // requiredCount/requiredAugments/tags/requiredTags/incompatibleTags/unlockTag excluded here and
+        // drawn manually right after, so the clamped count field lands directly above the list it's clamped
+        // against, and the tag pickers get their toggle-button rows, instead of wherever the default draw
+        // order would otherwise put them.
         DrawPropertiesExcluding(serializedObject, "m_Script", "displayName", "description",
-            "requiredCount", "requiredAugments", "tags", "requiredTags", "incompatibleTags");
+            "requiredCount", "requiredAugments", "tags", "requiredTags", "incompatibleTags", "unlockTag");
 
         var requiredAugmentsProp = serializedObject.FindProperty("requiredAugments");
         DrawRequiredCount(serializedObject.FindProperty("requiredCount"), requiredAugmentsProp);
@@ -51,6 +54,9 @@ public class AugmentDataEditor : Editor
         TagPickerGUI.Draw(serializedObject, "Required Tags", serializedObject.FindProperty("requiredTags"), _tagDatabase);
         EditorGUILayout.Space();
         TagPickerGUI.Draw(serializedObject, "Incompatible Tags", serializedObject.FindProperty("incompatibleTags"), _tagDatabase);
+
+        EditorGUILayout.Space();
+        UnlockTagPickerGUI.Draw(serializedObject, "Unlock Tag", serializedObject.FindProperty("unlockTag"), _unlockTagDatabase);
 
         serializedObject.ApplyModifiedProperties();
     }

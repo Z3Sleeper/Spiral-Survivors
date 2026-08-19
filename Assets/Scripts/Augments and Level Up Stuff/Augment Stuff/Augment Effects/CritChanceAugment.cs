@@ -13,8 +13,8 @@ public class CritChanceAugment : AugmentEffectPD<CritChanceAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusCritChanceFlat   = 0.25f;
-    [SerializeField] private float bonusCritChancePercent = 0.15f;
+    [SerializeField] private float bonusCritChanceFlat   = 0.3f;
+    [SerializeField] private float bonusCritChancePercent = 0f;
 
     protected override void OnApply()
     {

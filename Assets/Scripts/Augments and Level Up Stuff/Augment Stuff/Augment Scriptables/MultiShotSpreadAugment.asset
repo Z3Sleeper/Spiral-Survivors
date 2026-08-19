@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: MultiShotSpreadAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#3278FF>Focus Fire</color>
+  displayName: <color=#3278FF>Choke</color>
   description: '<color=#3278FF>Multishot Projectile Spread</color> is <color=#FFA000>reduced</color>
     by <color=#3278FF>80%</color>.
 
@@ -30,3 +30,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

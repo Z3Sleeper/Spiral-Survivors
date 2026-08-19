@@ -43,8 +43,8 @@ public interface IWeaponPD
 // Shared payload for both the OnHit (every weapon hit) and OnCrit (the subset of hits that also crit)
 // event chains — a crit is still a hit, so it carries the same hit data rather than just a bare target id.
 // weaponDamage is the pre-luck-roll, pre-crit-multiplier damage baseline for THIS specific hit, not a
-// flat re-read of CharacterStatsPD.Strength — WeaponRangedProjectilePD passes its own already
-// ricochet-decayed State.currentDamage, and WeaponAxePD passes Strength * innerDamageMultiplier for
+// flat re-read of CharacterStatsPD.WeaponStrength — WeaponRangedProjectilePD passes its own already
+// ricochet-decayed State.currentDamage, and WeaponAxePD passes WeaponStrength * innerDamageMultiplier for
 // handle (inner) hits, so downstream on-hit effects see the damage that hit actually represented rather
 // than re-deriving it themselves per weapon type.
 public struct WeaponHitData
@@ -82,25 +82,6 @@ public struct AllyStrikeData
 // the right guard built in (skips notifying listeners entirely while the owner is mid-replay, only fires
 // on the one live execution), so invoking this directly from Hit()/OnHit() and letting the listener call
 // TriggerHitFeedback needs no queue at all.
-// Groups HitFeedbackData for DamageNumberManager's stacking system — see that class's own doc comment for
-// the full stacking rule. Every weapon-like source (melee/axe/ranged projectile/thrown-axe ability/spin
-// ability) folds into one Weapon bucket; every Phantom Blade trigger (crit/passive/dash/onhit/ability-start/
-// carnival) funnels through PhantomBladePD's own single construction site, so it's naturally already one
-// bucket without needing its own collapsing logic here. Everything else gets its own dedicated value so it
-// only stacks with itself, never with a different effect that happens to land in the same tight window.
-public enum DamageSource
-{
-    Weapon,
-    PhantomBlade,
-    OnHitDamageAugment,
-    OnHitDamageHealthAugment,
-    OnHitDamageHealthRegenAugment,
-    KillLaunch,
-    ShieldBreakBurst,
-    DashExplosion,
-    ArcherArrowRain,
-}
-
 public struct HitFeedbackData
 {
     public PredictedObjectID target;
@@ -108,9 +89,10 @@ public struct HitFeedbackData
     public bool isCrit;
     public bool isHighroll;
     public CharacterStatsPD attacker;
+    // Which DamageNumberManager stacking bucket this hit belongs to on the enemy it hit — true for real
+    // weapon-shaped hits (Weapon, PhantomBlade, AoE Effects casts, etc.), false for onhit-effect "noise"
+    // (OnHitDamageAugment/Health/HealthRegen, KillLaunch). See DamageNumberManager's own class doc comment.
     public bool isPriority;
-    // Which stacking bucket this hit belongs to — see DamageSource's own doc comment.
-    public DamageSource source;
 
     // Lets a hit source override the default per-attacker hitSfx entirely — false (default) means "play
     // attacker.hitSfx as normal," exactly what every existing call site already gets for free without
@@ -154,6 +136,42 @@ public static class WeaponDamageMath
 
         isHighroll = roll >= highrollThreshold;
         return isHighroll ? max : roll;
+    }
+
+    // Same luck-roll shape as RollDamage above, but with damage fixed at 1 (so the result is a plain
+    // multiplier) and the random source passed in rather than hardcoded to GameRandom — callers that need
+    // this roll from a purely local, non-deterministic context (e.g. AugmentCardUI's card-display preview,
+    // which must NOT touch the shared/order-sensitive GameRandom stream) pass UnityEngine.Random.Range;
+    // callers rolling from Simulate()-context (e.g. AugmentManagerPD.AutoPick) pass GameRandom.instance.NextFloat.
+    public static float RollLuckMultiplier(float luckChance, float luckFloor, float luckCeiling, float highroll, float highrollBonus, System.Func<float, float, float> rollRange, out bool isHighroll)
+    {
+        float max = luckCeiling;
+        float rawMin = luckFloor;
+        float highrollThreshold = Mathf.Lerp(rawMin, max, highroll);
+        float min = Mathf.Lerp(rawMin, max, luckChance);
+        float roll = rollRange(min, max);
+        isHighroll = roll >= highrollThreshold;
+        float result = isHighroll ? max : roll;
+        if (isHighroll) result *= 1f + highrollBonus;
+        return result;
+    }
+
+    // Highroll and Crit ADDITIVELY stack now (2026-08-19 rework) — replaces the old shape where each was
+    // applied as its own separate multiplicative step (rolled *= (1 + HighrollBonus); rolled *= CritDamage;),
+    // which let the two compound into each other and blow up once HighrollBonus got buffed (0.5 -> 3f, see
+    // baseHighrollBonus's own doc comment). HighrollBonus/CritDamage are both now "the full multiplier this
+    // roll gets IF THIS IS THE ONLY THING THAT PROCS" (e.g. base 3f each = a highroll-only or crit-only hit
+    // does 300% damage), not a "+X on top of 1" bonus anymore — so when only one procs, the roll is
+    // multiplied by that stat directly (no baseline "1 +" added on top). When BOTH proc on the same hit, the
+    // two full values are summed together (e.g. 3f + 3f = 600% damage), which is what "additively stack"
+    // means here — literally adding the two multipliers rather than multiplying them together. Neither
+    // procs: unmodified (implicit x1).
+    public static float ApplyCritAndHighroll(float rolled, bool isHighroll, bool isCrit, float highrollBonus, float critDamage)
+    {
+        if (isHighroll && isCrit) return rolled * (highrollBonus + critDamage);
+        if (isHighroll) return rolled * highrollBonus;
+        if (isCrit) return rolled * critDamage;
+        return rolled;
     }
 }
 

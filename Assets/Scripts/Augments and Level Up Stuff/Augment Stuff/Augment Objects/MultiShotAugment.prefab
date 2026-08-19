@@ -45,5 +45,3 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MultiShotAugment
   bonusMultishotFlat: 2
-  totalStrengthPercent: 0.2
-  totalOnHitPowerPercent: 0.2

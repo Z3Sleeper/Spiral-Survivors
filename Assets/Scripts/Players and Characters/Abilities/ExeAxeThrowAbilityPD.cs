@@ -40,16 +40,19 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // nothing for a Surge block to actually bracket. Still exposed for interface consistency — see
     // IAbilityPD.ActiveSurgeBlock's own doc comment.
     [SerializeField] private bool activeSurgeBlock = false;
+    // Action — spawns a real damage-dealing projectile. Exposed for live playtesting — see
+    // IAbilityPD.IsActionAbility's own doc comment.
+    [SerializeField] private bool isActionAbility = true;
 
     [Header("Effect")]
     public float strengthPercent    = 2f;
 
     // Baseline (unrolled) damage — this ability has no AbilityPower/AreaEffectPower scaling at all (see
-    // class doc comment), so this is a straight preview of strengthPercent * UnpenalizedStrength, same
-    // "baseline, not a randomly-sampled roll" convention every other Live*Ratio in this codebase uses.
+    // class doc comment), so this is a straight preview of strengthPercent * Strength, same "baseline, not
+    // a randomly-sampled roll" convention every other Live*Ratio in this codebase uses.
     public string LiveStrengthRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(strengthPercent * stats.UnpenalizedStrength)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(strengthPercent * stats.Strength)} "
             : "";
     // How far the throw can fly before expiring = true weapon reach * this — see class doc comment.
     [SerializeField] private float maxRangeMultiplier = 3f;
@@ -104,6 +107,7 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // Never forces a special action — doesn't touch movement at all, and IsActive is always false anyway.
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
+    public bool IsActionAbility => isActionAbility;
     public bool AbilityIsActive => false;
     // No active window at all — see class doc comment.
     public bool HasActiveWindow => false;

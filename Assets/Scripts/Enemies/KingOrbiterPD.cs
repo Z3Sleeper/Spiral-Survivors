@@ -6,35 +6,88 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Boss. Extends OrbiterGloomPD's grab-and-orbit mechanic into a 5-phase cycle: Moving -> Pull -> Orbit ->
-// Knockback -> Shooting -> repeat. Pull grabs 3 separate rings of Pleb-tier enemies (inner/middle/outer,
-// sequential sub-pulls — grab+pull inner to completion, then middle, then outer, each shaped exactly like
-// OrbiterGloomPD's own single Windup->Pulling sequence), each ring orbiting at its own radius/speed. Orbit
-// chases players with the held rings spinning (the only stunnable+interruptible phase). Knockback freezes
-// every held ring in place (SetOrbitAngularSpeed(0), doesn't drop them) and radially knocks back nearby
-// players — same shape as KingSpikePD's own SpikeBurst, just knockback instead of damage. Shooting then
-// launches each ring's plebs (outer first, then middle, then inner) at one shared random target per ring
-// (individually aimed from each pleb's own position, converging on that target) via the new generic
-// IEnemyPD.LaunchAlong primitive — released once they travel the full shootingRange regardless of what they
-// hit along the way (damage during flight comes from each pleb's own ordinary, untouched contact-damage
-// collider, not any hit-detection code here).
+// Knockback -> Shooting -> repeat. Pull grabs 3 separate rings of Pleb-tier enemies (inner/middle/outer),
+// each ring's own plebs pulled in ONE AT A TIME with a staggered windup (see the Pulling case's own doc
+// comment in HandleActiveState for the full timing model — exactly OrbiterGloomPD.DispatchPull's own shape,
+// per-ring instead of a single group), each ring orbiting at its own radius/speed. Orbit chases players with
+// the held rings spinning (the only stunnable+interruptible phase). Knockback freezes every held ring in
+// place (SetOrbitAngularSpeed(0), doesn't drop them) and radially knocks back nearby players — same shape as
+// KingSpikePD's own SpikeBurst, just knockback instead of damage. Shooting then launches each ring's plebs
+// (outer first, then middle, then inner) at one shared random target per ring, ALSO one at a time with a
+// staggered windup, each individually aimed from its own position (all converging on that shared target) via
+// the new generic IEnemyPD.LaunchAlong primitive — released once they travel the full shootingRange
+// regardless of what they hit along the way (damage during flight comes from each pleb's own ordinary,
+// untouched contact-damage collider, not any hit-detection code here).
+//
+// DISPATCH across a phase's own 3 rings is one continuous, uninterrupted sequence, for BOTH Pull and
+// Shooting (2026-08-18, same rework for both — used to wait for a ring's own last pleb to fully finish
+// pulling-in/flying before even selecting the next ring's candidates/target, which made this boss invincible
+// (Pull) or take far longer than necessary (Shooting)): the moment a ring's last pleb has its own windup
+// dispatched, the NEXT ring's own selection+first windup fires exactly pullSequentialDelay/
+// shootSequentialDelay later, no gap, all the way through. RELEASE (Pull: the damage-multiplier switch +
+// actually starting to orbit; Shooting: ReleaseRing once flight completes), by contrast, stays fully
+// independent per ring in both phases — inner/middle/outer (or outer/middle/inner for Shooting) each release
+// the instant their OWN last pleb has actually finished, never gated on how far dispatch has already moved
+// on to later rings. See EnterPullWindup/AdvanceDispatchRing (Pull) and
+// EnterShootWindupOrAdvance/AdvanceShootDispatchRing (Shoot) for the exact mechanics — identical shape,
+// mirrored field-for-field.
 //
 // No size/elite scaling in this script beyond whatever EnemyBasePD already provides by default — hand-tuned
 // boss, prefab is a scaled-up copy of the Orbiter prefab (per explicit design).
 public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 {
-    public enum KingOrbiterPhase { Moving, PullWindup, Pulling, Orbit, KnockbackWindup, ShootWindup, ShootFlight }
+    // PullWindup/ShootWindup no longer exist as distinct phases (2026-08-17) — each held pleb now gets its
+    // OWN windup, staggered by pullSequentialDelay/shootSequentialDelay off Pulling/ShootFlight's own
+    // elapsed timer, rather than one shared windup for the whole ring up front. See Pulling's own comment
+    // in HandleActiveState for the full timing model (identical shape for ShootFlight, just LaunchAlong
+    // instead of OrbitTarget).
+    public enum KingOrbiterPhase { Moving, Pulling, Orbit, KnockbackWindup, ShootFlight }
 
     public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         public int   phaseId;
+        // Dual-purpose, per phase (same convention KingSpikePD's own remoteSequenceTimer already uses):
+        // while phaseId == Pulling, elapsed time since the WHOLE Pull Phase began; while phaseId ==
+        // ShootFlight, elapsed since the WHOLE Shooting Phase began — BOTH count UP continuously across all
+        // 3 rings now (2026-08-18 — used to reset per ring for both). Every other phase (Moving/Orbit/
+        // KnockbackWindup) still counts it DOWN as a plain remaining-time countdown. See the Pulling/
+        // ShootFlight cases' own doc comments in HandleActiveState for the full continuous-dispatch/
+        // independent-release timing model this drives (identical shape for both, just OrbitTarget vs.
+        // LaunchAlong and pull order vs. shoot order).
         public float phaseTimer;
         public float attackCooldownTimer;
-        // 0=inner,1=middle,2=outer — drives PullWindup/Pulling.
+        // Which ring's own RELEASE (Pull: damage multiplier switch + BeginOrbiting, see EndPullingRing.
+        // Shoot: ReleaseRing, see EndShotRing) is next pending — 0=inner,1=middle,2=outer for Pull;
+        // 0=outer,1=middle,2=inner (shoot order, see ShootPhysicalRing) for Shoot. Deliberately INDEPENDENT
+        // of pullDispatchRingIndex/shootDispatchRingIndex below (2026-08-18) — dispatch can run ahead of
+        // release, since a ring only releases once its own last pleb has actually finished
+        // pulling-in/flying, regardless of how far dispatch has already moved on.
         public int pullRingIndex;
-        // 0=outer,1=middle,2=inner (opposite order from pull) — drives ShootWindup/ShootFlight, see
-        // ShootPhysicalRing.
+        // Which ring DISPATCH (BeginPull/OrbitTarget calls) is currently filling — 2026-08-18, new field.
+        // Always >= pullRingIndex. Advances the instant the current ring's own plebs have ALL been
+        // dispatched (see AdvanceDispatchRing) — never waits for them to actually finish arriving.
+        public int pullDispatchRingIndex;
+        // How many of pullDispatchRingIndex's own held plebs have had BeginPull called on them so far —
+        // 2026-08-18, new field (used to be pullSequenceIndex's own job when it was scoped per-ring; that
+        // field is now the GLOBAL dispatch count across the whole Pull Phase instead — see its own comment).
+        // Reset to 0 whenever pullDispatchRingIndex advances (AdvanceDispatchRing).
+        public int pullRingLocalIndex;
+        // shootRingIndex/shootDispatchRingIndex/shootRingLocalIndex are Shoot's own exact mirror of
+        // pullRingIndex/pullDispatchRingIndex/pullRingLocalIndex above (2026-08-18) — same
+        // dispatch-vs-release split, just walking shoot order (ShootPhysicalRing: 0=outer,1=middle,2=inner)
+        // instead of pull order. See AdvanceShootDispatchRing/EndShotRing.
         public int shootRingIndex;
+        public int shootDispatchRingIndex;
+        public int shootRingLocalIndex;
+        // Pull: GLOBAL count of plebs dispatched so far across the WHOLE Pull Phase (inner+middle+outer
+        // combined, 2026-08-18 — used to be scoped per-ring) — drives dispatch TIMING only; see
+        // pullRingLocalIndex above for which pleb/slot within its own ring a given dispatch maps to. Reset
+        // to 0 once, at the start of the whole Pull Phase (EnterPullWindup), never per-ring.
+        // Shoot: shootSequenceIndex's own exact mirror, GLOBAL across the whole Shooting Phase (2026-08-18 —
+        // used to be scoped per-ring) — reset to 0 once, at EnterShootWindupOrAdvance, never per-ring.
+        public int pullSequenceIndex;
+        public int shootSequenceIndex;
         public DisposableList<PredictedObjectID> innerHeld;
         public DisposableList<PredictedObjectID> middleHeld;
         public DisposableList<PredictedObjectID> outerHeld;
@@ -69,60 +122,103 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     private KingOrbiterPhase GetPhase(ref State s) => (KingOrbiterPhase)s.phaseId;
 
     [Header("Damage")]
-    // Applied the instant a pleb is selected (PullWindup entry) — see orbitDamageMultiplier/
+    // Applied the instant a pleb is selected (TryGrabRing, at Pulling entry) — see orbitDamageMultiplier/
     // shootingDamageMultiplier for the other two phases' own overrides.
-    [SerializeField] private float pullDamageMultiplier     = 1f;
+    [SerializeField] private float pullDamageMultiplier     = 2f;
     // Applied once a ring's own Pulling completes; stays applied through Orbit AND KnockbackWindup (held
     // plebs keep this multiplier while frozen for the knockback, per explicit design).
     [SerializeField] private float orbitDamageMultiplier    = 1f;
-    // Applied at each ring's own ShootWindup entry.
+    // Applied at each ring's own ShootFlight entry (EnterShootWindupOrAdvance).
     [SerializeField] private float shootingDamageMultiplier = 1f;
 
     [Header("Pull - Shared")]
-    [SerializeField] private float grabRadius     = 14f;
-    [SerializeField] private float windupDuration = 0.5f;
+    [SerializeField] private float grabRadius     = 25f;
+    [SerializeField] private float windupDuration = 1f;
     [SerializeField] private float pullDuration   = 0.25f;
+    // Gap between each held pleb's own OrbitTarget() dispatch during Pulling (2026-08-17 — used to pull a
+    // whole ring in one shot) — see BeginPull's own doc comment. Tier1-authored baseline, scaled per tier by
+    // pullSequentialDelayTierGrowth below (applied in OnConfigureSpawn()) — SHRINKS per tier ("20% faster"),
+    // see that field's own doc comment for the exact formula shape.
+    [SerializeField] private float pullSequentialDelay = 0.25f;
 
     [Header("Pull - Inner Ring")]
-    [SerializeField] private int   innerCount             = 3;
-    [SerializeField] private float innerOrbitRadius        = 5f;
-    [SerializeField] private float innerOrbitAngularSpeed  = 180f;
+    // Tier1-authored baseline, scaled per tier by innerCountTierGrowth below (applied in OnConfigureSpawn()).
+    [SerializeField] private int   innerCount             = 2;
+    [SerializeField] private float innerOrbitRadius        = 2f;
+    [SerializeField] private float innerOrbitAngularSpeed  = 120f;
 
     [Header("Pull - Middle Ring")]
-    [SerializeField] private int   middleCount             = 5;
-    [SerializeField] private float middleOrbitRadius        = 7.5f;
-    [SerializeField] private float middleOrbitAngularSpeed  = 120f;
+    // Tier1-authored baseline, scaled per tier by middleCountTierGrowth below (applied in OnConfigureSpawn()).
+    [SerializeField] private int   middleCount             = 3;
+    [SerializeField] private float middleOrbitRadius        = 5.5f;
+    [SerializeField] private float middleOrbitAngularSpeed  = 60f;
 
     [Header("Pull - Outer Ring")]
-    [SerializeField] private int   outerCount             = 7;
-    [SerializeField] private float outerOrbitRadius        = 10f;
-    [SerializeField] private float outerOrbitAngularSpeed  = 60f;
+    // Tier1-authored baseline, scaled per tier by outerCountTierGrowth below (applied in OnConfigureSpawn()).
+    [SerializeField] private int   outerCount             = 4;
+    [SerializeField] private float outerOrbitRadius        = 9f;
+    [SerializeField] private float outerOrbitAngularSpeed  = 30f;
 
     [Header("Orbit")]
-    [SerializeField] private float orbitDuration            = 4f;
-    // Same EffectiveMoveSpeed-override shape as OrbiterGloomPD.holdMoveSpeedMultiplier.
-    [SerializeField] private float orbitMoveSpeedMultiplier = 1.5f;
+    [SerializeField] private float orbitDuration            = 10f;
 
     [Header("Knockback")]
+    // Tier1-authored baseline, scaled per tier by knockbackChargeTimeTierGrowth below (applied in
+    // OnConfigureSpawn()) — SHRINKS per tier ("20% faster"), same shape as pullSequentialDelay above.
     [SerializeField] private float        knockbackChargeTime = 1.5f;
-    [SerializeField] private float        knockbackRadius     = 10f;
-    [SerializeField] private float        knockbackForce      = 10f;
+    [SerializeField] private float        knockbackRadius     = 12f;
+    [SerializeField] private float        knockbackForce      = 150f;
     [SerializeField] private GameObject   knockbackIndicator;
     [SerializeField] private WindupFillPD knockbackFill;
 
     [Header("Shooting")]
-    [SerializeField] private float shootingRange     = 20f;
-    [SerializeField] private float shotWindupDuration = 0.5f;
-    [SerializeField] private float shotSpeed          = 25f;
+    [SerializeField] private float shootingRange     = 40f;
+    [SerializeField] private float shotWindupDuration = 1f;
+    // Tier1-authored baseline, scaled per tier by shotSpeedTierGrowth below (applied in OnConfigureSpawn())
+    // — GROWS per tier ("20% faster", a rate, not a duration — see that field's own doc comment for the
+    // exact formula shape, opposite direction from pullSequentialDelay/knockbackChargeTime above).
+    [SerializeField] private float shotSpeed          = 50f;
+    // Gap between each held pleb's own LaunchAlong() dispatch during ShootFlight (2026-08-17 — used to
+    // launch a whole ring in one shot) — see FireShotRing's own doc comment. Independently tunable from
+    // pullSequentialDelay (separate attack, separate feel), per explicit design.
+    [SerializeField] private float shootSequentialDelay = 0.25f;
 
     [Header("Attack Cadence")]
     [SerializeField] private float attackCooldown = 10f;
+    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
+    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
+    // pattern as the 6 tier-scaled fields below.
+    private float _authoredAttackCooldown;
 
-    // Single shared line-indicator pool, cloned to outerCount (the largest ring) in LateAwake() — same
-    // Instantiate-N-times convention as OrbiterGloomPD.windupIndicatorTemplate. Reused for BOTH the Pull
-    // Phase's per-ring windup and the Shooting Phase's per-ring aim lines — PullWindup and ShootWindup are
-    // mutually exclusive phases (never active at the same time), so one pool safely covers both; only the
-    // near/far-edge math and fill duration differ per phase (see UpdateLineIndicators).
+    [Header("Tier Scaling")]
+    // Duration fields SHRINK per tier (base * (1 - (tier-1)*growth)) — "X% faster" means less time, not more.
+    // Rate/count fields GROW per tier — see each field's own default/comment for which shape it uses. Linear
+    // per tier off the tier1-authored base in all cases, never compounding/exponential (user's explicit
+    // "multiplicative fields multiply base, no exponential tier scaling" rule) — same shape
+    // EnemySpawnerPD/ShielderGloomPD's own *TierGrowth fields already establish.
+    [SerializeField] private float pullSequentialDelayTierGrowth = 0.2f;
+    [SerializeField] private int   innerCountTierGrowth          = 1;
+    [SerializeField] private int   middleCountTierGrowth         = 2;
+    [SerializeField] private int   outerCountTierGrowth          = 3;
+    [SerializeField] private float knockbackChargeTimeTierGrowth = 0.2f;
+    [SerializeField] private float shotSpeedTierGrowth            = 0.2f;
+
+    // Captured once in OnAwake(), reset back onto these 6 fields every pooled reuse in LateAwake() — same
+    // "_authoredX snapshot" pattern established for every other tier-scaled field on Blitz/Dagger/Mortar/
+    // Spear/Orbiter/Shielder/Shooter. All 6 are read directly (not mirrored into predicted State) at their
+    // own use sites — see OnConfigureSpawn() for where the actual scaling happens.
+    private float _authoredPullSequentialDelay;
+    private int   _authoredInnerCount;
+    private int   _authoredMiddleCount;
+    private int   _authoredOuterCount;
+    private float _authoredKnockbackChargeTime;
+    private float _authoredShotSpeed;
+
+    // Single shared line-indicator pool, cloned to the largest ring's own ENRAGED capacity in LateAwake()
+    // (see BuildIndicatorPool) — same Instantiate-N-times convention as OrbiterGloomPD.windupIndicatorTemplate.
+    // Reused for BOTH the Pull Phase's per-ring windup and the Shooting Phase's per-ring aim lines — Pulling
+    // and ShootFlight are mutually exclusive phases (never active at the same time), so one pool safely
+    // covers both; only the near/far-edge math and fill duration differ per phase (see UpdateLineIndicators).
     [Header("Indicators")]
     [SerializeField] private Transform lineIndicatorTemplate;
 
@@ -142,30 +238,93 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // not this snapshot.
     private CharacterStatsPD _shotTargetSnapshot;
 
+    protected override void OnAwake()
+    {
+        base.OnAwake();
+        _authoredPullSequentialDelay = pullSequentialDelay;
+        _authoredInnerCount          = innerCount;
+        _authoredMiddleCount         = middleCount;
+        _authoredOuterCount          = outerCount;
+        _authoredKnockbackChargeTime = knockbackChargeTime;
+        _authoredShotSpeed           = shotSpeed;
+        _authoredAttackCooldown      = attackCooldown;
+    }
+
     protected override void LateAwake()
     {
         base.LateAwake();
+        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
+        // once hierarchy.Create() returns) scales these fresh for this life — see
+        // _authoredPullSequentialDelay's own doc comment.
+        pullSequentialDelay = _authoredPullSequentialDelay;
+        innerCount          = _authoredInnerCount;
+        middleCount         = _authoredMiddleCount;
+        outerCount          = _authoredOuterCount;
+        knockbackChargeTime = _authoredKnockbackChargeTime;
+        shotSpeed           = _authoredShotSpeed;
+        attackCooldown      = _authoredAttackCooldown;
         // Full cooldown on spawn, not KingSpikePD's own half-cooldown grace — per explicit design, this
         // boss's Pull Phase would otherwise fire almost immediately, before the field has had a chance to
         // spawn more than a handful of plebs to actually grab.
         currentState.attackCooldownTimer = attackCooldown;
-        BuildIndicatorPool(lineIndicatorTemplate, ref _lineIndicators, ref _lineFills);
+        // Indicator pool build moved to OnConfigureSpawn() (2026-08-20, same reasoning as
+        // OrbiterGloomPD.EnsureIndicatorPoolCapacity) — ring counts are now tier-scaled there, and
+        // ConfigureSpawn always runs AFTER LateAwake, so building here would lock the pool to the
+        // PRE-scaling counts.
     }
 
-    // Guarded to a single real build per instance (LateAwake() re-fires on every pooled reuse) — see
-    // OrbiterGloomPD.LateAwake's own identical guard for why.
-    private void BuildIndicatorPool(Transform template, ref Transform[] indicators, ref WindupFillPD[] fills)
+    // Tier1-authored innerCount/middleCount/outerCount/pullSequentialDelay/knockbackChargeTime/shotSpeed,
+    // scaled by each field's own *TierGrowth (see the "Tier Scaling" header's own doc comment for the
+    // duration-shrinks/rate-grows formula shapes). spawnTier is already final by the time this runs (set
+    // earlier in the same ConfigureSpawn() call) — ring counts scaled BEFORE EnsureIndicatorPoolCapacity()
+    // so the pool always sizes to this life's FINAL counts.
+    protected override void OnConfigureSpawn()
     {
-        if (indicators != null || template == null) return;
-        indicators = new Transform[outerCount];
-        fills      = new WindupFillPD[outerCount];
-        for (int i = 0; i < outerCount; i++)
+        base.OnConfigureSpawn();
+        pullSequentialDelay *= 1f - (spawnTier - 1) * pullSequentialDelayTierGrowth;
+        innerCount          += (spawnTier - 1) * innerCountTierGrowth;
+        middleCount         += (spawnTier - 1) * middleCountTierGrowth;
+        outerCount          += (spawnTier - 1) * outerCountTierGrowth;
+        knockbackChargeTime *= 1f - (spawnTier - 1) * knockbackChargeTimeTierGrowth;
+        shotSpeed            *= 1f + (spawnTier - 1) * shotSpeedTierGrowth;
+        EnsureIndicatorPoolCapacity(lineIndicatorTemplate, ref _lineIndicators, ref _lineFills);
+
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
+        // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
+        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = attackCooldown;
+    }
+
+    // Lazy + GROWABLE, not build-once (2026-08-20 — same fix OrbiterGloomPD.EnsureIndicatorPoolCapacity
+    // already established for the identical problem) — called from OnConfigureSpawn(), after tier scaling
+    // has already been applied to innerCount/middleCount/outerCount, so this always sees the FINAL counts
+    // for whichever life is currently spawning. Growable specifically because a single pooled instance can
+    // be reused across DIFFERENT tiers over its lifetime, so a fixed build-once array could come up short on
+    // a LATER, higher-tier life even though it was correctly sized for whichever life built it first. Never
+    // shrinks — a later lower-tier life just uses a prefix of the larger arrays.
+    private void EnsureIndicatorPoolCapacity(Transform template, ref Transform[] indicators, ref WindupFillPD[] fills)
+    {
+        if (template == null) return;
+        int maxCount = Mathf.Max(innerCount, Mathf.Max(middleCount, outerCount));
+        int have = indicators?.Length ?? 0;
+        if (have >= maxCount) return;
+
+        var newIndicators = new Transform[maxCount];
+        var newFills = new WindupFillPD[maxCount];
+        for (int i = 0; i < have; i++)
+        {
+            newIndicators[i] = indicators[i];
+            newFills[i] = fills[i];
+        }
+        for (int i = have; i < maxCount; i++)
         {
             var clone = Instantiate(template, template.parent);
             clone.gameObject.SetActive(false);
-            indicators[i] = clone;
-            fills[i]      = clone.GetComponentInChildren<WindupFillPD>(true);
+            newIndicators[i] = clone;
+            newFills[i] = clone.GetComponentInChildren<WindupFillPD>(true);
         }
+        indicators = newIndicators;
+        fills      = newFills;
         template.gameObject.SetActive(false);
     }
 
@@ -178,22 +337,12 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         return s;
     }
 
-    public override float EffectiveMoveSpeed =>
-        base.EffectiveMoveSpeed * (GetPhase(ref currentState) == KingOrbiterPhase.Orbit ? orbitMoveSpeedMultiplier : 1f);
-
     // ── Ring helpers ─────────────────────────────────────────────────────────
-    // Doubles once enraged (EnemyBasePD's own generic enrageTimer/b.enraged system — see the inherited
-    // "Enrage" Inspector header; enrageTimer <= 0 leaves this a permanent no-op, matching every other
-    // enemy that doesn't configure it) — a one-time, permanent-for-the-rest-of-this-life buff per explicit
-    // design, since b.enraged only ever gets set once and never reverts. No OnEnrage() override needed —
-    // B.enraged is just read directly here, same convention KingSpikePD's own enrage rework already uses.
-    // Only affects the CAP used by future Pull Phases (TryGrabRing) — an already-completed pull's held
-    // count doesn't retroactively grow if enrage lands mid-Orbit/Knockback/Shooting.
-    private int RingCount(int ring)
-    {
-        int baseCount = ring switch { 0 => innerCount, 1 => middleCount, _ => outerCount };
-        return B.enraged ? baseCount * 2 : baseCount;
-    }
+    // No boss-specific enrage behavior anymore (2026-08-20) — this boss just uses EnemyBasePD's fully
+    // generic Move Speed + Damage enrage system as-is (see that class's own "Enrage" Inspector header),
+    // same as every other boss. Held-pleb damage overrides multiply by EnrageDamageMultiplier explicitly
+    // wherever they compute damage separately from GetOwnDamage().
+    private int RingCount(int ring) => ring switch { 0 => innerCount, 1 => middleCount, _ => outerCount };
     private float RingRadius(int ring)       => ring switch { 0 => innerOrbitRadius, 1 => middleOrbitRadius, _ => outerOrbitRadius };
     // Middle ring runs counter to inner/outer — negated here (not on the Inspector field itself, which stays
     // a plain positive "how fast" value like its siblings) so every caller automatically gets the correctly
@@ -222,8 +371,13 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // ── Active state ─────────────────────────────────────────────────────────
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
-        state.attackCooldownTimer -= delta;
         var phase = GetPhase(ref state);
+        // Only ticks while actually in Moving (2026-08-19 — uniform across every multi-phase enemy's own
+        // attack-cadence cooldown now, see OrbiterGloomPD's own fix) — frozen through the whole
+        // Pulling/Orbit/KnockbackWindup/ShootFlight sequence rather than ticking (and going increasingly
+        // negative) throughout it.
+        if (phase == KingOrbiterPhase.Moving)
+            state.attackCooldownTimer -= delta;
 
         switch (phase)
         {
@@ -231,24 +385,89 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                 if (_target != null) HandleMovement(ref state, delta);
                 if (state.attackCooldownTimer <= 0f)
                 {
-                    state.pullRingIndex = 0;
                     // Turtles up for the WHOLE Pull Phase — one continuous invincibility window spanning
                     // every ring's windup+pulling (not per-ring flickering, per explicit design). Reverted
-                    // once the entire Pull Phase resolves — see AdvancePullRingOrFinish's own doc comment.
+                    // once the entire Pull Phase resolves — see FinishPullPhase's own doc comment.
                     SetHurtboxDisabled(true);
                     EnterPullWindup(ref state);
                 }
                 break;
 
-            case KingOrbiterPhase.PullWindup:
-                state.phaseTimer -= delta;
-                if (state.phaseTimer <= 0f) BeginPull(ref state);
-                break;
-
+            // phaseTimer counts UP here — elapsed since the WHOLE Pull Phase began (2026-08-18: used to
+            // reset per ring; now counts up continuously across all 3 rings, never reset until the phase
+            // ends). Two fully independent halves:
+            //
+            // DISPATCH (pullDispatchRingIndex/pullRingLocalIndex/pullSequenceIndex) walks inner -> middle
+            // -> outer as ONE continuous global sequence — held pleb i's own windup window is
+            // [globalIndex*pullSequentialDelay, globalIndex*pullSequentialDelay+windupDuration), and its
+            // actual OrbitTarget() dispatch (BeginPull) lands the instant that window closes, exactly
+            // OrbiterGloomPD's own per-slot timing model. The moment the CURRENT ring's own last pleb is
+            // dispatched, dispatch immediately advances into the NEXT ring — selecting its candidates
+            // (AdvanceDispatchRing) right then, so that ring's own first dispatch still lands right on the
+            // very next scheduled slot, no gap at all between rings. With windupDuration >
+            // pullSequentialDelay (the common case) several plebs — even from different rings — can sit
+            // mid-windup simultaneously.
+            //
+            // RELEASE (pullRingIndex) is the damage-multiplier switch + actually starting to orbit
+            // (EndPullingRing) — fully decoupled from dispatch progress above: ring R releases the instant
+            // ITS OWN last dispatched pleb has had time to finish pulling in (RingGlobalStart(R) + that
+            // ring's own count - 1 slots' worth of windup, then pullDuration on top), regardless of how far
+            // dispatch has already moved on to later rings. Inner/middle/outer each release independently on
+            // their own schedule — never gated on the other two.
+            //
+            // See BeginPull/EndPullingRing/AdvanceDispatchRing for the exact mechanics, and
+            // UpdateLineIndicators for how the same per-slot window math drives each indicator independently.
             case KingOrbiterPhase.Pulling:
-                state.phaseTimer -= delta;
-                if (state.phaseTimer <= 0f) EndPullingRing(ref state);
+            {
+                state.phaseTimer += delta;
+
+                // Dispatch — while loop, not if, at each level: guards against a single tick's delta
+                // covering more than one scheduled dispatch (a brief stall), so a pull can never be silently
+                // skipped, same convention RogueSpinAbilityPD's own hit-scheduling loop uses. The OUTER while
+                // is what lets dispatch cascade straight through an empty ring (0 held) or across a ring
+                // boundary within the very same tick, with no wasted frame.
+                while (state.pullDispatchRingIndex <= 2)
+                {
+                    int dispatchCount = RingHeldList(ref state, state.pullDispatchRingIndex).Count;
+
+                    while (state.pullRingLocalIndex < dispatchCount &&
+                           state.phaseTimer >= state.pullSequenceIndex * pullSequentialDelay + windupDuration)
+                    {
+                        BeginPull(ref state, state.pullDispatchRingIndex, state.pullRingLocalIndex);
+                        state.pullRingLocalIndex++;
+                        state.pullSequenceIndex++;
+                    }
+
+                    if (state.pullRingLocalIndex < dispatchCount) break; // this ring still has plebs waiting their own turn
+                    if (!AdvanceDispatchRing(ref state)) break;          // ring 2 (outer) just finished dispatching too
+                }
+
+                // Release — independent of dispatch above; only ever looks at rings dispatch has already
+                // reached (pullRingIndex <= pullDispatchRingIndex), since an unreached ring's held list may
+                // still hold stale data from a previous life.
+                while (state.pullRingIndex <= 2 && state.pullRingIndex <= state.pullDispatchRingIndex)
+                {
+                    int ring = state.pullRingIndex;
+                    int ringCount = RingHeldList(ref state, ring).Count;
+
+                    if (ringCount == 0)
+                    {
+                        // Whiffed selection (no candidates in range) — nothing to release, advance immediately.
+                        state.pullRingIndex++;
+                        continue;
+                    }
+
+                    int ringLastGlobalIndex = RingGlobalStart(ref state, ring) + ringCount - 1;
+                    float ringReleaseTime = ringLastGlobalIndex * pullSequentialDelay + windupDuration + pullDuration;
+                    if (state.phaseTimer < ringReleaseTime) break;
+
+                    EndPullingRing(ref state);
+                    state.pullRingIndex++;
+                }
+
+                if (state.pullRingIndex > 2) FinishPullPhase(ref state);
                 break;
+            }
 
             case KingOrbiterPhase.Orbit:
                 if (_target != null) HandleMovement(ref state, delta);
@@ -261,15 +480,61 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                 if (state.phaseTimer <= 0f) FireKnockback(ref state);
                 break;
 
-            case KingOrbiterPhase.ShootWindup:
-                state.phaseTimer -= delta;
-                if (state.phaseTimer <= 0f) FireShotRing(ref state);
-                break;
-
+            // Same continuous-dispatch/independent-release shape as Pulling above (2026-08-18 rework —
+            // used to wait for a ring's own plebs to fully finish their flight before even picking the
+            // next ring's target), just LaunchAlong instead of OrbitTarget, and shoot ORDER instead of
+            // pull order (outer -> middle -> inner, via ShootPhysicalRing). phaseTimer counts up
+            // continuously across the WHOLE Shooting Phase now. DISPATCH (shootDispatchRingIndex/
+            // shootRingLocalIndex/shootSequenceIndex) advances into the next ring — picking its target,
+            // AdvanceShootDispatchRing — the instant the current ring's own last pleb is launched, no gap.
+            // RELEASE (shootRingIndex) stays fully independent per ring, same as Pull's own release loop —
+            // see EndShotRing/AdvanceShootDispatchRing/ShootRingGlobalStart for the exact mechanics.
             case KingOrbiterPhase.ShootFlight:
-                state.phaseTimer -= delta;
-                if (state.phaseTimer <= 0f) EndShotRing(ref state);
+            {
+                state.phaseTimer += delta;
+
+                while (state.shootDispatchRingIndex <= 2)
+                {
+                    int physicalDispatchRing = ShootPhysicalRing(state.shootDispatchRingIndex);
+                    int dispatchCount = RingHeldList(ref state, physicalDispatchRing).Count;
+
+                    while (state.shootRingLocalIndex < dispatchCount &&
+                           state.phaseTimer >= state.shootSequenceIndex * shootSequentialDelay + shotWindupDuration)
+                    {
+                        FireShotRing(ref state, physicalDispatchRing, state.shootRingLocalIndex);
+                        state.shootRingLocalIndex++;
+                        state.shootSequenceIndex++;
+                    }
+
+                    if (state.shootRingLocalIndex < dispatchCount) break; // this ring still has plebs waiting their own turn
+                    if (!AdvanceShootDispatchRing(ref state)) break;      // ring 2 (inner, last in shoot order) just finished too
+                }
+
+                while (state.shootRingIndex <= 2 && state.shootRingIndex <= state.shootDispatchRingIndex)
+                {
+                    int shootOrderIdx = state.shootRingIndex;
+                    int physicalRing = ShootPhysicalRing(shootOrderIdx);
+                    int ringCount = RingHeldList(ref state, physicalRing).Count;
+
+                    if (ringCount == 0)
+                    {
+                        // Whiffed/aborted/never-held ring — nothing to release, advance immediately.
+                        state.shootRingIndex++;
+                        continue;
+                    }
+
+                    int ringLastGlobalIndex = ShootRingGlobalStart(ref state, shootOrderIdx) + ringCount - 1;
+                    float ringReleaseTime = ringLastGlobalIndex * shootSequentialDelay + shotWindupDuration
+                        + shootingRange / Mathf.Max(0.0001f, shotSpeed);
+                    if (state.phaseTimer < ringReleaseTime) break;
+
+                    EndShotRing(ref state);
+                    state.shootRingIndex++;
+                }
+
+                if (state.shootRingIndex > 2) FinishShootPhase(ref state);
                 break;
+            }
         }
 
         // Per explicit design: only Moving and Orbit are stunnable; only Orbit is interruptible (see
@@ -293,19 +558,57 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
     // ── Pull ─────────────────────────────────────────────────────────────────
 
-    // Selects this ring's candidates immediately (matches OrbiterGloomPD.TryStartGrab's own "lock in at
-    // Windup entry, not at pull start" design — indicators/invulnerability need to be live for the whole
-    // windup). Empty ring skips straight past without entering PullWindup at all.
+    // Begins the WHOLE Pull Phase (called once, from HandleActiveState's Moving case only — 2026-08-18, used
+    // to also be called recursively per-ring; ring-to-ring advancement now lives entirely in
+    // AdvanceDispatchRing instead). Selects ring 0 (inner)'s candidates immediately (matches
+    // OrbiterGloomPD.TryStartGrab's own "lock in at Pulling entry, not deferred to each pleb's own
+    // individual windup" design — invulnerability needs to be live for the whole sequence, and a targeted
+    // pleb shouldn't keep wandering while waiting for its own turn) — an empty inner ring is handled for
+    // free by the Pulling case's own dispatch loop cascading straight through it, same as any other empty
+    // ring encountered mid-sequence, no special case needed here.
     private void EnterPullWindup(ref State state)
     {
-        int ring = state.pullRingIndex;
-        if (!TryGrabRing(ref state, ring))
-        {
-            AdvancePullRingOrFinish(ref state);
-            return;
-        }
-        state.phaseId    = (int)KingOrbiterPhase.PullWindup;
-        state.phaseTimer = windupDuration;
+        state.phaseId    = (int)KingOrbiterPhase.Pulling;
+        state.phaseTimer = 0f;
+        state.pullSequenceIndex     = 0;
+        state.pullDispatchRingIndex = 0;
+        state.pullRingLocalIndex    = 0;
+        state.pullRingIndex         = 0;
+        TryGrabRing(ref state, 0);
+    }
+
+    // Called inline from the Pulling case's dispatch loop the instant the CURRENT ring
+    // (state.pullDispatchRingIndex) has had every one of its own plebs dispatched — advances to the next
+    // ring and immediately selects its candidates (TryGrabRing), so THAT ring's own first dispatch can still
+    // land right on the very next scheduled slot, no gap at all (see the Pulling case's own doc comment for
+    // why this "just in time" selection, rather than selecting every ring upfront, matters: selecting far in
+    // advance would freeze/untarget outer-ring plebs many seconds before they're actually touched). An empty
+    // ring (TryGrabRing finds nothing) isn't specially handled here — the dispatch loop's own inner condition
+    // just evaluates to "nothing to dispatch" and the outer loop calls back in immediately, cascading through
+    // any number of consecutive empty rings within the same tick. Returns false once ring 2 (outer) is also
+    // fully dispatched — nothing left to advance into.
+    private bool AdvanceDispatchRing(ref State state)
+    {
+        state.pullDispatchRingIndex++;
+        state.pullRingLocalIndex = 0;
+        if (state.pullDispatchRingIndex > 2) return false;
+        TryGrabRing(ref state, state.pullDispatchRingIndex);
+        return true;
+    }
+
+    // Global dispatch index the given ring's own FIRST pleb occupies — the sum of every earlier ring's own
+    // held count. Rings dispatch strictly in order (inner, then middle, then outer), so this is always
+    // accurate for any ring dispatch has already reached (see the Pulling case's own
+    // "pullRingIndex <= pullDispatchRingIndex" guard, which is what guarantees rings 0..ring-1 have already
+    // been selected/populated by the time this is called). Used to compute exactly when a given ring's own
+    // LAST pleb had its windup dispatched, and therefore when its own pullDuration finishes — see the
+    // release loop in HandleActiveState's Pulling case.
+    private int RingGlobalStart(ref State state, int ring)
+    {
+        int start = 0;
+        for (int r = 0; r < ring; r++)
+            start += RingHeldList(ref state, r).Count;
+        return start;
     }
 
     // Exactly OrbiterGloomPD.TryStartGrab's body, generalized per-ring/per-multiplier. IsBeingHeld already
@@ -354,56 +657,69 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             chosen.SetMovementDisabled(true);
             chosen.SetPhysicsColliderDisabled(true);
             chosen.SetHurtboxDisabled(true);
-            chosen.SetDamageOverride(true, damage * pullDamageMultiplier);
+            // EnrageDamageMultiplier multiplied in explicitly (2026-08-19) — SetDamageOverride hands the
+            // held pleb a raw damage value computed straight off this boss's own `damage` field, entirely
+            // bypassing this boss's own GetOwnDamage()/GetDamage(), so it doesn't pick the bonus up for free.
+            chosen.SetDamageOverride(true, damage * pullDamageMultiplier * EnrageDamageMultiplier);
             chosen.ClaimForOrbit(ObjectId);
         }
         return true;
     }
 
-    // Windup finished — starts the actual pull motion (kinematic/invulnerable/etc. already applied back in
-    // TryGrabRing), matches OrbiterGloomPD.BeginPull.
-    private void BeginPull(ref State state)
+    // Fires the actual pull motion for exactly held index i of the given ring (kinematic/invulnerable/etc.
+    // already applied back in TryGrabRing) — called by Pulling's own case handler in HandleActiveState the
+    // instant that pleb's windup window closes (see its own comment for the full timing model), matches
+    // OrbiterGloomPD.DispatchPull's own identical shape, per-ring instead of a single group. ring is passed
+    // explicitly now (2026-08-18, used to read state.pullRingIndex directly) — dispatch and release now
+    // track separate ring indices (pullDispatchRingIndex vs. pullRingIndex), so this needs the CALLER's own
+    // dispatch-side ring, not whichever ring release happens to be waiting on. Order within the ring doesn't
+    // matter (per explicit design); the index just walks the ring's held list in whatever order TryGrabRing
+    // already sorted it into (furthest-first).
+    private void BeginPull(ref State state, int ring, int i)
     {
-        int ring  = state.pullRingIndex;
         var held  = RingHeldList(ref state, ring);
         int count = held.Count;
-        for (int i = 0; i < count; i++)
-        {
-            var go = hierarchy.GetGameObject(held[i]);
-            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+
+        var go = hierarchy.GetGameObject(held[i]);
+        if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
             enemy.OrbitTarget(ObjectId, transform.position, RingRadius(ring), pullDuration, RingAngularSpeed(ring), SlotAngleDeg(i, count));
-        }
-        state.phaseId    = (int)KingOrbiterPhase.Pulling;
-        state.phaseTimer = pullDuration;
     }
 
-    // Pull duration elapsed (lands the same tick each held pleb's own internal pull-lerp completes, since
-    // both derive from the same pullDuration) — pull -> orbit damage multiplier switch, mirrors
-    // OrbiterGloomPD's own Pulling->Holding transition.
+    // Called once every held pleb in ring state.pullRingIndex has been dispatched (BeginPull) AND the last
+    // one's own pullDuration has elapsed — pull -> orbit damage multiplier switch, mirrors OrbiterGloomPD's
+    // own Pulling->Holding transition. Caller (HandleActiveState's Pulling case) advances state.pullRingIndex
+    // itself afterward — this no longer does that, or the old "advance to next ring/finish" tail, itself
+    // (2026-08-18, see AdvanceDispatchRing/FinishPullPhase for where those now live) — dispatch and release
+    // advance completely independently now, so there's no single shared "did we just finish the LAST ring"
+    // question this method could answer on its own anymore.
     private void EndPullingRing(ref State state)
     {
         int ring = state.pullRingIndex;
-        ApplyDamageOverrideToRing(ref state, ring, damage * orbitDamageMultiplier);
-        AdvancePullRingOrFinish(ref state);
+        // EnrageDamageMultiplier multiplied in explicitly — see TryGrabRing's own identical comment.
+        ApplyDamageOverrideToRing(ref state, ring, damage * orbitDamageMultiplier * EnrageDamageMultiplier);
+
+        // Releases every held pleb in THIS ring into actually orbiting (BeginOrbiting) — each one has been
+        // frozen at its own slot (WaitingToOrbit) since finishing its own staggered pull-in; releasing them
+        // all in this SAME tick is what keeps their angular spacing exactly even instead of drifting (see
+        // EnemyOrbitPhase's own doc comment). Only this ring's own plebs — inner/middle/outer each get
+        // released independently, on their own ring's own schedule, not gated behind the other two rings.
+        var held = RingHeldList(ref state, ring);
+        for (int i = 0; i < held.Count; i++)
+        {
+            var go = hierarchy.GetGameObject(held[i]);
+            if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+                enemy.BeginOrbiting();
+        }
     }
 
-    // Shared tail for both "this ring found nobody" (EnterPullWindup) and "this ring finished pulling"
-    // (EndPullingRing) — advances to the next ring's windup, or — once ring 2 (outer) is resolved either way
-    // — runs the total-held safety check (2026-08-11 gap fix): an entirely-whiffed pull (e.g. a near-empty
-    // field) must NOT enter Orbit holding nothing; falls back to Moving at FULL cooldown instead of an
-    // immediate retry.
-    private void AdvancePullRingOrFinish(ref State state)
+    // Called once the release loop in HandleActiveState's Pulling case confirms every ring (0..2) has been
+    // released (or skipped, if whiffed) — runs the total-held safety check (2026-08-11 gap fix): an
+    // entirely-whiffed pull (e.g. a near-empty field) must NOT enter Orbit holding nothing; falls back to
+    // Moving at FULL cooldown instead of an immediate retry.
+    private void FinishPullPhase(ref State state)
     {
-        if (state.pullRingIndex < 2)
-        {
-            state.pullRingIndex++;
-            EnterPullWindup(ref state);
-            return;
-        }
-
-        // All 3 rings resolved either way — the Pull Phase's own continuous invincibility window (see
-        // HandleActiveState's Moving case for where it began) ends here, regardless of which branch below
-        // this falls into.
+        // The Pull Phase's own continuous invincibility window (see HandleActiveState's Moving case for
+        // where it began) ends here, regardless of which branch below this falls into.
         SetHurtboxDisabled(false);
 
         int totalHeld = state.innerHeld.Count + state.middleHeld.Count + state.outerHeld.Count;
@@ -473,49 +789,94 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             controller.Knockback(dir * knockbackForce);
         }
 
-        state.shootRingIndex = 0;
         EnterShootWindupOrAdvance(ref state);
     }
 
     // ── Shooting ─────────────────────────────────────────────────────────────
 
-    // Entry for the current shootRingIndex — skips empty rings, aborts the whole phase if no valid targets
-    // remain anywhere, otherwise picks this ring's shared target and starts its windup. Shared entry point
-    // for the Knockback->Shooting transition and every ShootFlight->next-ring transition, so all the
-    // "skip/abort" edge cases only need handling in one place.
+    // Begins the WHOLE Shooting Phase (called once, from FireKnockback only — 2026-08-18, used to also be
+    // called recursively per-ring; ring-to-ring advancement now lives entirely in AdvanceShootDispatchRing
+    // instead, same split as Pull's EnterPullWindup/AdvanceDispatchRing). Picks ring 0 (outer, shoot order)'s
+    // target immediately via the same -1-then-advance trick AdvanceShootDispatchRing already needs anyway
+    // for its own "no valid targets"/"empty ring" handling — no separate special-case logic needed here for
+    // ring 0 specifically.
     private void EnterShootWindupOrAdvance(ref State state)
     {
-        while (state.shootRingIndex <= 2)
+        state.phaseId    = (int)KingOrbiterPhase.ShootFlight;
+        state.phaseTimer = 0f;
+        state.shootSequenceIndex     = 0;
+        state.shootRingLocalIndex    = 0;
+        state.shootRingIndex         = 0;
+        state.shootDispatchRingIndex = -1;
+        AdvanceShootDispatchRing(ref state);
+    }
+
+    // Called inline from the ShootFlight case's dispatch loop the instant the CURRENT ring
+    // (state.shootDispatchRingIndex) has had every one of its own held plebs launched — advances to the
+    // next ring (shoot order: outer -> middle -> inner) and immediately picks its shared target, so THAT
+    // ring's own first launch can still land right on the very next scheduled slot, no gap. An empty ring
+    // (nothing held — e.g. its own Pull Phase found nobody) isn't specially handled here — the dispatch
+    // loop's own inner condition just evaluates to "nothing to dispatch" and the outer loop calls back in
+    // immediately, cascading through any number of consecutive empty rings within the same tick, same as
+    // Pull's AdvanceDispatchRing. Returns false once ring 2 (inner, last in shoot order) is also fully
+    // dispatched, OR the phase aborts because no valid targets remain anywhere.
+    //
+    // Abort ("if no valid targets remain, release held spikies and skip the rest of this phase" — read as
+    // the whole Shooting Phase, not just this ring) only ever releases rings that HAVEN'T been dispatched
+    // into yet (this one, plus every remaining one) — safe, since none of them have launched anything yet to
+    // interrupt mid-flight. A ring that's ALREADY dispatched (possibly still flying from an earlier tick)
+    // is left completely alone and keeps releasing on its own normal schedule via the release loop, same as
+    // any other ring — the abort only stops FUTURE ring selection, it doesn't reach backward.
+    private bool AdvanceShootDispatchRing(ref State state)
+    {
+        state.shootDispatchRingIndex++;
+        state.shootRingLocalIndex = 0;
+        if (state.shootDispatchRingIndex > 2) return false;
+
+        int ring = ShootPhysicalRing(state.shootDispatchRingIndex);
+        if (RingHeldList(ref state, ring).Count == 0) return true;
+
+        if (!CharacterStatsPD.AnyValidTargetExists)
         {
-            int ring = ShootPhysicalRing(state.shootRingIndex);
-            if (RingHeldList(ref state, ring).Count == 0)
-            {
-                state.shootRingIndex++;
-                continue;
-            }
-
-            // "if no valid targets remain, release held spikies and skip the rest of this phase" — read as
-            // the whole Shooting Phase, not just this ring.
-            if (!CharacterStatsPD.AnyValidTargetExists)
-            {
-                ReleaseAllHeld(ref state);
-                state.attackCooldownTimer = attackCooldown;
-                FindRandomTarget();
-                state.phaseId = (int)KingOrbiterPhase.Moving;
-                return;
-            }
-
-            PickShotTarget(ref state);
-            ApplyDamageOverrideToRing(ref state, ring, damage * shootingDamageMultiplier);
-            state.phaseId    = (int)KingOrbiterPhase.ShootWindup;
-            state.phaseTimer = shotWindupDuration;
-            return;
+            for (int r = state.shootDispatchRingIndex; r <= 2; r++)
+                ReleaseRing(ref state, ShootPhysicalRing(r));
+            state.shootDispatchRingIndex = 3;
+            return false;
         }
 
-        // All 3 rings resolved (shot or skipped-empty) — full attack cycle complete.
+        PickShotTarget(ref state);
+        // EnrageDamageMultiplier multiplied in explicitly — see TryGrabRing's own identical comment.
+        ApplyDamageOverrideToRing(ref state, ring, damage * shootingDamageMultiplier * EnrageDamageMultiplier);
+        return true;
+    }
+
+    // Global dispatch index the given shoot-order ring's own FIRST pleb occupies — ShootRingGlobalStart's
+    // own Pull-side equivalent (RingGlobalStart), just walking shoot order (ShootPhysicalRing) instead of
+    // pull order. See RingGlobalStart's own doc comment for the full reasoning.
+    private int ShootRingGlobalStart(ref State state, int shootOrderIndex)
+    {
+        int start = 0;
+        for (int r = 0; r < shootOrderIndex; r++)
+            start += RingHeldList(ref state, ShootPhysicalRing(r)).Count;
+        return start;
+    }
+
+    // Called once the release loop in HandleActiveState's ShootFlight case confirms every ring (0..2, shoot
+    // order) has been released (or skipped/aborted) — full attack cycle complete.
+    private void FinishShootPhase(ref State state)
+    {
         state.attackCooldownTimer = attackCooldown;
         FindRandomTarget();
         state.phaseId = (int)KingOrbiterPhase.Moving;
+
+        // Was only ever cleared on a full respawn/death reset, never at the natural end of an ordinary
+        // Shoot Phase — left a stale CharacterStatsPD reference sitting in this plain (non-State) field for
+        // the rest of Moving/Pulling/Orbit/KnockbackWindup, until the NEXT Shoot Phase's own PickShotTarget
+        // call overwrote it. Harmless on its own (UpdateLineIndicators' shotActive gate also requires
+        // phase == ShootFlight), but a real gap if a FUTURE Shoot Phase ever whiffs on every ring (no held
+        // plebs anywhere, so PickShotTarget never fires) — this would otherwise let that cycle silently reuse
+        // whichever player was targeted several attack cycles ago instead of correctly having no target.
+        _shotTargetSnapshot = null;
     }
 
     // Picks one random currently-valid player, excluding state.lastShotTargetId when more than one candidate
@@ -560,39 +921,39 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         }
     }
 
-    // Windup finished — launches every pleb in this ring toward _shotTargetSnapshot, individually aimed from
-    // each pleb's own current position (all converging on the one shared target), each travelling the full
-    // shootingRange regardless of what it hits along the way.
-    private void FireShotRing(ref State state)
+    // Fires the launch for exactly held index i of the given ring toward _shotTargetSnapshot, individually
+    // aimed from that pleb's own current position (all converging on the one shared target, still picked
+    // once per ring — see PickShotTarget), travelling the full shootingRange regardless of what it hits
+    // along the way. Called by ShootFlight's own case handler in HandleActiveState the instant that pleb's
+    // windup window closes (see its own comment for the full timing model) — exactly BeginPull's own
+    // sequencing shape, just LaunchAlong instead of OrbitTarget. ring is passed explicitly now (2026-08-18,
+    // used to read state.shootRingIndex directly) — dispatch and release now track separate ring indices
+    // (shootDispatchRingIndex vs. shootRingIndex), so this needs the CALLER's own dispatch-side ring. Order
+    // within the ring doesn't matter (per explicit design).
+    private void FireShotRing(ref State state, int ring, int i)
     {
-        int ring = ShootPhysicalRing(state.shootRingIndex);
         var list = RingHeldList(ref state, ring);
         Vector3 targetPos = _shotTargetSnapshot != null ? _shotTargetSnapshot.transform.position : transform.position;
 
-        for (int i = 0; i < list.Count; i++)
+        var go = hierarchy.GetGameObject(list[i]);
+        if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
         {
-            var go = hierarchy.GetGameObject(list[i]);
-            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
-
             Vector3 dir = targetPos - go.transform.position;
             dir.y = 0f;
             dir = dir.sqrMagnitude > 0.0001f ? dir.normalized : transform.forward;
             enemy.LaunchAlong(dir, shootingRange, shotSpeed);
         }
-
-        state.phaseId    = (int)KingOrbiterPhase.ShootFlight;
-        state.phaseTimer = shootingRange / Mathf.Max(0.0001f, shotSpeed);
     }
 
-    // Flight duration elapsed (self-tracked, lands the same tick each pleb's own LaunchAlong finishes since
-    // both derive from the same shootingRange/shotSpeed) — full release, mirrors
-    // OrbiterGloomPD.ReleaseAllHeld's per-pleb body, then moves on to the next ring.
+    // Called once every held pleb in ring state.shootRingIndex has been dispatched (FireShotRing) AND the
+    // last one's own flight time has elapsed — full release, mirrors OrbiterGloomPD.ReleaseAllHeld's
+    // per-pleb body. Caller (HandleActiveState's ShootFlight case) advances state.shootRingIndex itself
+    // afterward — this no longer does that, or the old "advance to next ring/finish" tail, itself
+    // (2026-08-18, see AdvanceShootDispatchRing/FinishShootPhase for where those now live).
     private void EndShotRing(ref State state)
     {
         int ring = ShootPhysicalRing(state.shootRingIndex);
         ReleaseRing(ref state, ring);
-        state.shootRingIndex++;
-        EnterShootWindupOrAdvance(ref state);
     }
 
     // ── Release ──────────────────────────────────────────────────────────────
@@ -670,32 +1031,58 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         if (knockbackFill != null && phase != KingOrbiterPhase.KnockbackWindup) knockbackFill.ResetFill();
     }
 
-    // Shared pool for both windups (see _lineIndicators' own doc comment — PullWindup/ShootWindup never
+    // Shared pool for both windups (see _lineIndicators' own doc comment — Pulling/ShootFlight never
     // overlap). Pull: near edge = this ring's orbit slot (radius/SlotAngleDeg offset), far edge = the live
     // pleb position — same math/reasoning as OrbiterGloomPD.UpdateView's own windup indicators. Shoot: near
     // edge = each pleb's own LIVE position (not a slot — they're not being pulled anywhere), far edge = that
     // position + a FIXED shootingRange span in the aimed direction (unlike the pull shape's live-distance
     // span) — individually aimed per pleb, all converging on the one shared _shotTargetSnapshot.
+    //
+    // Per-slot windup window, not phase-level (2026-08-17 — used to be one shared windup for the whole
+    // ring) — slot i shows its own indicator only while viewState.phaseTimer (elapsed since Pulling/
+    // ShootFlight began — see each phase's own comment in HandleActiveState) falls within ITS OWN
+    // [i*delay, i*delay+fillDuration) window, independent of every other slot's own window (they overlap).
     private void UpdateLineIndicators(State viewState, KingOrbiterPhase phase)
     {
         if (_lineIndicators == null) return;
 
-        bool pullActive = phase == KingOrbiterPhase.PullWindup;
-        bool shotActive = phase == KingOrbiterPhase.ShootWindup && _shotTargetSnapshot != null;
+        // Dispatch (pullDispatchRingIndex/shootDispatchRingIndex) can fully finish — reaching 3, one past the
+        // last real ring index 2 — several ticks before Release actually catches up and ends the phase (see
+        // this method's own class-level doc comment: dispatch always runs ahead of release). RingHeldList has
+        // no `case 3`, so ring=3 (Pull) silently fell through to its `default` branch and reused outerHeld a
+        // SECOND time, and ShootPhysicalRing(3) == -1 hit that exact same `default` branch for Shoot — so
+        // during that gap this used to compute a phantom extra "ring" off the real outer ring's already-held
+        // plebs, replaying a fake staggered wind-up sequence. That's the confirmed (2026-08-21, reproduces in
+        // solo — not a misprediction artifact) root cause of the reported "flash of indicators right after
+        // Pull/right as Orbit starts" bug. Fix: only treat a phase as actively dispatching while its own
+        // dispatch ring index is still in the real [0,2] range.
+        bool pullActive = phase == KingOrbiterPhase.Pulling && viewState.pullDispatchRingIndex <= 2;
+        bool shotActive = phase == KingOrbiterPhase.ShootFlight && viewState.shootDispatchRingIndex <= 2 && _shotTargetSnapshot != null;
         bool active     = pullActive || shotActive;
 
-        int     ring          = pullActive ? viewState.pullRingIndex : ShootPhysicalRing(viewState.shootRingIndex);
+        // Both track DISPATCH progress (pullDispatchRingIndex/shootDispatchRingIndex), not release progress
+        // (pullRingIndex/shootRingIndex) — 2026-08-18, these can now differ (dispatch runs ahead of
+        // release) for both phases. ringGlobalStart converts a slot's own LOCAL index (i, matching its
+        // position in `held`) into the GLOBAL dispatch index phaseTimer is actually measured against, since
+        // phaseTimer no longer resets per ring for EITHER phase (see the Pulling/ShootFlight cases' own doc
+        // comments in HandleActiveState).
+        int     shootDispatchOrderIdx = viewState.shootDispatchRingIndex;
+        int     ring          = pullActive ? viewState.pullDispatchRingIndex : ShootPhysicalRing(shootDispatchOrderIdx);
         var     held          = active ? RingHeldList(ref viewState, ring) : default;
         int     heldCount     = active ? held.Count : 0;
         Vector3 shotTargetPos = shotActive ? _shotTargetSnapshot.transform.position : default;
         float   fillDuration  = pullActive ? windupDuration : shotWindupDuration;
+        float   slotDelay     = pullActive ? pullSequentialDelay : shootSequentialDelay;
+        int     ringGlobalStart = pullActive ? RingGlobalStart(ref viewState, ring)
+            : shotActive ? ShootRingGlobalStart(ref viewState, shootDispatchOrderIdx) : 0;
 
         for (int i = 0; i < _lineIndicators.Length; i++)
         {
             var indicator = _lineIndicators[i];
             if (indicator == null) continue;
 
-            bool slotFilled = active && i < heldCount;
+            float localElapsed = viewState.phaseTimer - (ringGlobalStart + i) * slotDelay;
+            bool slotFilled = active && i < heldCount && localElapsed >= 0f && localElapsed < fillDuration;
             Vector3 plebPos = default;
             if (slotFilled)
             {
@@ -712,13 +1099,11 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             }
             if (!slotFilled) continue;
 
-            // Live, every frame — see feedback_windupfill_self_timed_drift: a self-timed StartFill() runs on
-            // its own Time.deltaTime clock, independent of the tick-based phaseTimer that actually gates
-            // BeginPull()/FireShotRing(), and can drift out of sync with it. viewState.phaseTimer is shared
-            // across every phase, but this method only ever runs while pullActive/shotActive is true, so it
-            // always reflects whichever windup (Pull or Shoot) is currently live.
+            // Live, every frame, off this slot's own localElapsed — see feedback_windupfill_self_timed_drift:
+            // a self-timed StartFill() runs on its own Time.deltaTime clock, independent of the tick-based
+            // phaseTimer that actually gates BeginPull()/FireShotRing(), and can drift out of sync with it.
             if (fill != null)
-                fill.SetProgress(1f - Mathf.Clamp01(viewState.phaseTimer / fillDuration));
+                fill.SetProgress(Mathf.Clamp01(localElapsed / fillDuration));
 
             Vector3 nearEdge, aim;
             float span;
@@ -776,8 +1161,14 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // applies to a respawn (e.g. a difficulty-pacing wipe right before this boss spawns) as to a fresh
         // spawn.
         currentState.attackCooldownTimer = attackCooldown;
-        currentState.pullRingIndex       = 0;
-        currentState.shootRingIndex      = 0;
+        currentState.pullRingIndex          = 0;
+        currentState.pullDispatchRingIndex  = 0;
+        currentState.pullRingLocalIndex     = 0;
+        currentState.shootRingIndex         = 0;
+        currentState.shootDispatchRingIndex = 0;
+        currentState.shootRingLocalIndex    = 0;
+        currentState.pullSequenceIndex      = 0;
+        currentState.shootSequenceIndex     = 0;
         currentState.lastShotTargetId    = default;
         currentState.innerHeld.Clear();
         currentState.middleHeld.Clear();

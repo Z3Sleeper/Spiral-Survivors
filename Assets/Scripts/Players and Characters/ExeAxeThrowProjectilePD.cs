@@ -43,6 +43,10 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // Deferred hierarchy.Delete() to UpdateView() off verified state, same pattern as
         // WeaponRangedProjectilePD/EnemyProjectilePD's own death handling.
         public bool    expired;
+        // Guards FirstSuccessfulInterrupt (FSI) — reset both at Launch() (outbound leg's own window) and at
+        // the outbound->return turnaround below (return leg's own independent window), so each leg gets one
+        // FSI opportunity. See ProcessHit/CharacterStatsPD.NotifyInterrupted.
+        public bool    firedFsiThisLeg;
         public void Dispose() { }
     }
 
@@ -152,6 +156,7 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         currentState.returning = false;
         currentState.spinAngle = 0f;
         currentState.expired = false;
+        currentState.firedFsiThisLeg = false;
 
         transform.rotation = Quaternion.LookRotation(direction);
         // Uniform — scales with WeaponRange (not the caster's Size/bonusSizePercent — this was always meant
@@ -298,7 +303,7 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // Always pierces — see class doc comment — so a hit never expires the projectile here; only
         // the return-trip logic below does.
         if (hitEnemy != null)
-            ProcessHit(hitEnemy);
+            ProcessHit(ref state, hitEnemy);
 
         if (state.returning)
         {
@@ -317,6 +322,7 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
             state.distanceTravelled = 0f;
             state.returning = true;
             _hitTargets.Clear();
+            state.firedFsiThisLeg = false;
         }
     }
 
@@ -324,7 +330,7 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     // knockback deliberately left unpenalized (no OnHitPower multiply) — see class doc comment. No longer
     // returns whether the hit crit — always pierces now regardless (see class doc comment), so there's
     // nothing left for a caller to gate on.
-    private void ProcessHit(IEnemyPD enemy)
+    private void ProcessHit(ref State state, IEnemyPD enemy)
     {
         _hitTargets.Add(enemy);
 
@@ -334,13 +340,14 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // should reflect AbilityPower at the moment it actually lands.
         //
         // Anything that deals damage rolls luck variance — no exceptions.
-        float baseDamage = _stats.UnpenalizedStrength * _strengthPercent * _stats.AbilityPower;
+        float baseDamage = _stats.Strength * _strengthPercent * _stats.AbilityPower;
         float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
-        if (isHighroll) damage *= 1f + _stats.HighrollBonus;
-
         bool isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
-        if (isCrit) damage *= _stats.CritDamage * critDamageMultiplier;
-        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
+        // critDamageMultiplier only ever scales the CRIT contribution (this weapon's own extra crit-damage
+        // tuning knob), never the Highroll one — folded into the critDamage argument passed to
+        // ApplyCritAndHighroll so it still only affects the crit half of an additive highroll+crit stack.
+        damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage * critDamageMultiplier);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage, _stats.OnHitPower);
 
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = damage, onHitPower = _stats.OnHitPower, isCrit = isCrit };
         _stats.NotifyHit(hitData);
@@ -355,15 +362,17 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // IEnemyPD.Interrupt()'s own doc comment ("call this BEFORE a paired Stun()/AddKnockbackVelocity on
         // the same hit, never after"). No-op on an enemy that's already !CanBeInterrupted this tick (e.g.
         // Fire/Leaping/other "already committed" phases) — same as every other Interrupt() caller, nothing
-        // extra needed here to detect that.
-        enemy.Interrupt();
+        // extra needed here to detect that. A successful interrupt feeds the generic SI/FSI events — FSI
+        // fires at most once per leg (outbound/return each get their own window, see State.firedFsiThisLeg).
+        if (enemy.Interrupt())
+            _stats.NotifyInterrupted(enemy, ref state.firedFsiThisLeg);
 
         // Unpenalized — CharacterStatsPD.Knockback alone, no OnHitPower multiply (unlike
         // WeaponRangedProjectilePD's own `_knockback * onHitPower`), per the user's own call.
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback);
 
-        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
+        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
     }
 
     private void SetRenderersEnabled(bool value)

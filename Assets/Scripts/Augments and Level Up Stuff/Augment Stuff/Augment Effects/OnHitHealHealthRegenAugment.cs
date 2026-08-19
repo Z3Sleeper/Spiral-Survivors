@@ -12,14 +12,20 @@ public class OnHitHealHealthRegenAugment : AugmentEffectPD<OnHitHealHealthRegenA
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // 0.1f = 10% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
-    public float onHitHealPercent = 0.1f;
+    public float onHitHealPercent = 0.05f;
+    // Flat floor added to the scaled portion below (2026-08-12, playtesting: this augment did literally
+    // nothing for a build with zero HealthRegen investment) — added BEFORE the onHitPower multiply (see
+    // OnHit()), so it still scales with onHitPower same as the rest of the heal, just guarantees a non-zero
+    // base even at zero HealthRegen investment.
+    [SerializeField] private float baseHeal = 0.2f;
 
     // Baseline heal at 100% OnHitPower (the per-hit multiplier itself isn't included since it varies
     // hit-to-hit) for AugmentDescriptionFormatter's {LiveHealthRegenRatio} token — see
-    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention.
+    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention. Includes
+    // baseHeal so the preview matches what OnHit actually heals.
     public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.HealthRegen * onHitHealPercent)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseHeal + stats.HealthRegen * onHitHealPercent)} "
             : "";
 
     protected override void OnApply()
@@ -35,8 +41,9 @@ public class OnHitHealHealthRegenAugment : AugmentEffectPD<OnHitHealHealthRegenA
 
     private void OnHit(WeaponHitData data)
     {
-        // Anything that deals/restores an amount rolls luck variance — no exceptions. Heal() itself rolls it
-        // now, so this just passes the raw amount through.
-        Stats.Heal(Stats.HealthRegen * onHitHealPercent * data.onHitPower);
+        // No luck roll — heals don't roll luck at all anymore (see CharacterStatsPD.Heal's own doc comment),
+        // so this just passes the raw amount through. baseHeal joins the scaled portion INSIDE the
+        // onHitPower multiply — see its own field comment.
+        Stats.Heal((baseHeal + Stats.HealthRegen * onHitHealPercent) * data.onHitPower);
     }
 }

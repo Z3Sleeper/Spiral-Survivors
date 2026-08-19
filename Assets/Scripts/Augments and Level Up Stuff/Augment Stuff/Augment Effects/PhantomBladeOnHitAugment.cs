@@ -16,7 +16,7 @@ public class PhantomBladeOnHitAugment : AugmentEffectPD<PhantomBladeOnHitAugment
     }
 
     [SerializeField] private float phantomBladeDamageBonus       = 0.1f;
-    public float phantomBladeOnHitPowerPercent = 0.5f;
+    public float phantomBladeOnHitPowerPercent = 0.3f;
 
     protected override void OnApply()
     {

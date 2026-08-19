@@ -17,6 +17,22 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         public GameObject[] pleb;
     }
 
+    // One shared color identity per tier (Gloom/Doom/Despair/Dread — red/blue/yellow/purple), applied
+    // uniformly across every category/enemy type spawned at that tier — not per-category, unlike TierEnemies
+    // above. Covers only the accent parts + Invincible Shell; every enemy's black body renderers
+    // (EnemyBasePD._renderers) are deliberately NEVER touched by this, they stay black at every tier and are
+    // only ever flash/stun-tinted. Scaffolding for consolidating every enemy type down to a single
+    // tier1-authored prefab that gets reused at every tier (see EnemyBasePD.ApplyTierMaterials) instead of
+    // each tier needing its own hand-authored, separately-colored prefab copy. Either field left null on a
+    // tier is a no-op for that slot (ApplyTierMaterials leaves the renderer's existing material alone rather
+    // than assigning null) — lets this be filled in incrementally, tier by tier, material by material.
+    [System.Serializable]
+    public struct TierMaterials
+    {
+        public Material accentMaterial;
+        public Material shellMaterial;
+    }
+
     public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public bool isActive;
@@ -63,6 +79,23 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private TierEnemies tier3;
     [SerializeField] private TierEnemies tier4;
 
+    [Header("Tier Colors")]
+    [SerializeField] private TierMaterials tier1Materials;
+    [SerializeField] private TierMaterials tier2Materials;
+    [SerializeField] private TierMaterials tier3Materials;
+    [SerializeField] private TierMaterials tier4Materials;
+
+    [Header("Tier Name Prefixes")]
+    // Prepended (plus a separating space) to enemyName at spawn time — see EnemyBasePD.ApplyTierNamePrefix.
+    // Scaffolding for the same tier1-authored-prefab-reused-at-every-tier consolidation TierMaterials above
+    // is for: a base prefab is just authored with its plain name ("Blitz"), and the tier it happens to spawn
+    // at supplies the rest ("Gloom Blitz" at tier1, "Doom Blitz" at tier2, etc.) instead of each tier needing
+    // its own separately-named prefab copy.
+    [SerializeField] private string tier1NamePrefix = "Gloom";
+    [SerializeField] private string tier2NamePrefix = "Doom";
+    [SerializeField] private string tier3NamePrefix = "Despair";
+    [SerializeField] private string tier4NamePrefix = "Dread";
+
     [Header("Spawn Points")]
     // Falls back to a ring around a random living player when fewer than 2 points are assigned.
     [SerializeField] private Transform[] spawnPoints;
@@ -91,8 +124,29 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // approaches its boss spawn.
     [SerializeField] private float eliteSpawnRampRatio = 0.8f;
     // Total elites spawned across the whole cycle (not per-burst — deliberately NOT player-count-scaled;
-    // see GameManagerPD.CoopToughnessScalar below for how co-op difficulty is handled instead).
+    // see GameManagerPD.CoopToughnessScalar below for how co-op difficulty is handled instead). Tier1/threat-
+    // level1-authored baseline — see threatLevel3EliteCountMultiplier below for the Threat Level 3+ scale-up
+    // applied on top at BuildEliteSchedule()-time; this field itself is never mutated.
     [SerializeField] private int baseEliteCount = 10;
+    // Threat Level 3's own unique modifier ("Elite Spawns are doubled") — stacks with every HIGHER difficulty
+    // too, same cumulative-not-standalone convention every other threat modifier uses, so this stays active
+    // at every difficulty from 3 up. Simple flat multiplier (2x = doubled), not a per-level growth curve like
+    // the generic stat scalars — explicit design, this is a standalone tier-3-specific bump, not a formula.
+    private float threatLevel3EliteCountMultiplier = 2f;
+    // Threat Level 4's own unique modifier ("Spikies are 50% faster") — Pleb category specifically, see
+    // SpawnEnemy's own doc comment for the exact composition (multiplies on top of the generic difficulty
+    // move-speed scalar, doesn't replace it). Same cumulative-from-this-level-up convention.
+    private float threatLevel4PlebMoveSpeedMultiplier = 1.5f;
+    // Threat Level 5's own unique modifier ("Enemies attack twice as often") — a flat halving of every
+    // enemy's own attack-cooldown field, passed through ConfigureSpawn's new attackCooldownMultiplier
+    // parameter (see IEnemyPD.ConfigureSpawn's own doc comment for why this can't be applied generically on
+    // EnemyBasePD itself). Same cumulative-from-this-level-up convention as every other threat modifier.
+    private float threatLevel5AttackCooldownMultiplier = 0.5f;
+    // Threat Level 6's own unique modifier ("Double Boss spawns") — how many bosses SpawnBosses() spawns
+    // per boss cycle once difficulty >= 6, instead of the default 1. Plain int, not itself threat-level-
+    // specific — SpawnBosses() just takes a count parameter, same "N-simultaneous-boss design" state.
+    // activeBosses' own doc comment already anticipated. Same cumulative-from-this-level-up convention.
+    private int threatLevel6BossCount = 2;
 
     [Header("Tier Stat Scaling")]
     // Applied at spawn time, generically, to every category (normal/pleb/elite/boss) on top of whatever
@@ -100,31 +154,67 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // an enemy TYPE only ever needs ONE authored (tier1-baseline) stat set on its prefab. Reusing the same
     // prefabs across a different "level" with a different tier progression means retuning these growth
     // curves once here, not re-tuning every individual tier's own hand-authored numbers on every prefab.
-    // Move speed, damage, AND xp grow LINEARLY (tier1 + this fraction of tier1 per tier step above 1);
-    // health grows on its OWN independent EXPONENTIAL curve (this many multiplier steps compounded per tier
-    // step above 1) — shape confirmed against the project's own current T1/T2/T3 numbers before this was
-    // built. xp was ALSO exponential originally (xpExponentialTierBase = 5, i.e. 5/25/125/625 for a
-    // tier1-baseline 5xp enemy) but switched to linear on 2026-08-12 after live T4 testing showed it
-    // snowballing the player's level curve — a single T3/T4 kill's xp vastly outstripped
-    // GameManagerPD.xpToNextLevel's own much slower (roughly arithmetic-step) growth. xpTierGrowth = 4
-    // reproduces the same 5/25 (tier1/tier2) values the exponential curve already had validated, then tapers
-    // to 45/65 for tier3/4 instead of continuing to 125/625.
+    // Move speed, damage, health, AND xp all grow LINEARLY (tier1 + this fraction of tier1 per tier step
+    // above 1). Health was ALSO exponential originally (healthExponentialTierBase = 5, i.e. 5/25/125 for a
+    // tier1-baseline 5-health enemy) but switched to linear on 2026-08-20 — that curve assumed player damage
+    // output scaled roughly as aggressively per tier as it was tuned for, which turned out not to hold up in
+    // practice, leaving high-tier enemies dramatically overtanky relative to what players could actually put
+    // out. healthTierGrowth = 4 reproduces the same tier1/tier2 value (5x) the exponential curve already had
+    // validated, then tapers to 9x/13x for tier3/4 instead of continuing to 25x/125x — retune directly here
+    // if that taper still isn't matching live player damage output. xp was ALSO exponential originally
+    // (xpExponentialTierBase = 5, i.e. 5/25/125/625 for a tier1-baseline 5xp enemy) but switched to linear on
+    // 2026-08-12 after live T4 testing showed it snowballing the player's level curve — a single T3/T4 kill's
+    // xp vastly outstripped GameManagerPD.xpToNextLevel's own much slower (roughly arithmetic-step) growth.
+    // xpTierGrowth = 4 reproduces the same 5/25 (tier1/tier2) values the exponential curve already had
+    // validated, then tapers to 45/65 for tier3/4 instead of continuing to 125/625.
     [SerializeField] private float moveSpeedTierGrowth = 0.25f;
     [SerializeField] private float damageTierGrowth = 0.5f;
-    [SerializeField] private float healthExponentialTierBase = 5f;
+    [SerializeField] private float healthTierGrowth = 4f;
     [SerializeField] private float xpTierGrowth = 4f;
 
+    [Header("Difficulty Scaling")]
+    // Linear per difficulty level off GamePresets.instance.Difficulty (1-6), same "multiply base, no
+    // exponential" convention every tier-growth field in this codebase already uses — level 1 = 1f (no-op
+    // baseline) for all three, level 6 = 1f + 5*growth each. Applied as a flat multiplier on top of
+    // everything else (tier scaling, elite/coop scaling) — this is deliberately the ONLY thing difficulty is
+    // meant to touch on the generic side. Per-enemy BEHAVIORAL tier scaling (blitzesPerAttack, Shielder's
+    // rotationRateDegPerSecond, etc.) stays purely tier-driven and is never touched by difficulty, by
+    // explicit design — difficulty only reshapes how tanky/hard-hitting/fast enemies are, never their attack
+    // patterns. XP deliberately has no difficulty scalar at all — the game isn't harder if players are also
+    // leveling up faster to match, per explicit design. Three INDEPENDENT growth rates now (2026-08-20,
+    // replaced the original single shared 20%-across-the-board rate) — damage/health/move speed each scale
+    // at a different pace per difficulty level (level 6 = +250% damage, +500% health, +100% move speed).
+    [SerializeField] private float difficultyDamageGrowthPerLevel    = 0.5f;
+    [SerializeField] private float difficultyHealthGrowthPerLevel    = 1f;
+    [SerializeField] private float difficultyMoveSpeedGrowthPerLevel = 0.2f;
+
     // Cached once per Simulate() tick (see that method's own comment for exactly where) — plain fields, not
-    // State, since they're fully re-derived from state.bossesDefeated every tick regardless, same "compute
-    // once at the top, read by same-tick logic further down" convention _currentDelta already establishes
-    // elsewhere in this codebase. SpawnEnemy is the only reader, and only ever runs from within this same
-    // Simulate() call (directly or via SpawnElite), so these are always fresh by the time it's called.
+    // State, since they're fully re-derived from GamePresets.instance.Difficulty/state.bossesDefeated every
+    // tick regardless, same "compute once at the top, read by same-tick logic further down" convention
+    // _currentDelta already establishes elsewhere in this codebase. SpawnEnemy is the only reader, and only
+    // ever runs from within this same Simulate() call (directly or via SpawnElite), so these are always
+    // fresh by the time it's called.
     private float _tierMoveSpeedMultiplier = 1f;
     private float _tierDamageMultiplier = 1f;
     private float _tierHealthMultiplier = 1f;
     private float _tierXpMultiplier = 1f;
+    private float _difficultyMoveSpeedScalar = 1f;
+    private float _difficultyDamageScalar = 1f;
+    private float _difficultyHealthScalar = 1f;
+    // The raw tier number itself (not a multiplier) — passed through to ConfigureSpawn so each enemy can
+    // remember which tier it was actually spawned at (EnemyBasePD.spawnTier), since by the time it dies
+    // (possibly much later) the spawner may already be on a later tier — XPOrbManagerPD needs the tier it
+    // was SPAWNED at, not whatever's current, to pick the right orb prefab.
+    private int _currentTierNumber = 1;
+    // The raw difficulty number itself — same "cache once at the top of Simulate(), read by SpawnEnemy
+    // further down" convention as _currentTierNumber above. SpawnEnemy uses this directly (not just the
+    // pre-multiplied _difficultyMoveSpeedScalar) for Threat Level 4's own Pleb-only speed bump, since that
+    // needs the raw number to gate on (>= 4), not a multiplier.
+    private int _currentDifficulty = 1;
 
     [SerializeField] private int bossesToDefeatForWin = 1;
+
+    [Header("Spawn Limits")]
     [SerializeField] private int maxNormalEnemies = 100;
     [SerializeField] private int maxEliteEnemies = 100;
     [SerializeField] private int maxPlebEnemies = 300;
@@ -136,6 +226,9 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
     // Reused scratch buffer for RollNewSet()'s pool-and-remove pick — avoids a per-call allocation.
     private readonly List<int> _pool = new();
+    // Reused scratch buffer for SpawnBosses()'s own pool-and-remove pick — same shape as _pool above, kept
+    // separate since the two could in principle both be mid-use within the same Simulate() tick.
+    private readonly List<int> _bossPool = new();
 
     // Computed once from eliteSpawnTimeFirst/Last/RampRatio/baseEliteCount — pure config-derived math, no
     // RNG or per-client state involved, so it's identical on every machine without needing to live in
@@ -196,7 +289,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         instance = this;
 
         EnemyBasePD.ResetActiveCounts();
-        BuildEliteSchedule();
+        // No longer built here — see BuildEliteSchedule's own doc comment for why it moved to Simulate()'s
+        // own state.isActive activation point instead.
     }
 
     // Predicted, not verified — matches the XP bar and other continuously-updating numeric displays
@@ -216,7 +310,21 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         float firstRemaining = cycleInterval * (1f - eliteSpawnTimeFirstPercent);
         float lastRemaining  = cycleInterval * (1f - eliteSpawnTimeLastPercent);
 
-        int n = Mathf.Max(1, baseEliteCount);
+        // Read off GameManagerPD.Difficulty, NOT GamePresets directly (2026-08-21 fix) — GamePresets is a
+        // purely local, per-machine DDOL value (whatever THIS machine's own last-hosted difficulty was),
+        // never network-agreed. GameManagerPD.Difficulty is the actual single source of truth (the HOST's
+        // own GamePresets value, captured once server-side into replicated State — see its own doc
+        // comment), so every machine builds the exact same elite schedule instead of a client silently
+        // sizing its own _eliteSchedule array differently from everyone else. Called from Simulate()'s own
+        // state.isActive activation point (not Awake(), where it used to live) specifically because
+        // GameManagerPD's replicated value isn't meaningfully resolved that early — by the time
+        // LoadingScreenRevealed is true, it's long since settled on every machine.
+        int difficulty = GameManagerPD.instance != null ? GameManagerPD.instance.Difficulty : 1;
+        int effectiveEliteCount = difficulty >= 3
+            ? Mathf.RoundToInt(baseEliteCount * threatLevel3EliteCountMultiplier)
+            : baseEliteCount;
+
+        int n = Mathf.Max(1, effectiveEliteCount);
         _eliteSchedule = new float[n];
         if (n == 1) { _eliteSchedule[0] = lastRemaining; return; }
 
@@ -248,8 +356,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     {
         spawnInterval = spawnIntervalQ1,
         // 0, not spawnIntervalQ1/plebSpawnIntervalQ1 — Simulate() early-returns entirely while
-        // !state.isActive, so these sit untouched at 0 until GameManagerPD confirms GameStarted. The very
-        // first active tick's countdown then immediately finds spawnTimer/plebSpawnTimer <= 0f, triggering
+        // !state.isActive, so these sit untouched at 0 until GameManagerPD confirms LoadingScreenRevealed.
+        // The very first active tick's countdown then immediately finds spawnTimer/plebSpawnTimer <= 0f, triggering
         // the first normal enemy + pleb batch right away instead of waiting out a full interval first.
         // Every SUBSEQUENT spawn still waits the full interval as normal, since it gets re-added
         // (state.spawnTimer += state.spawnInterval) after firing.
@@ -270,8 +378,18 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
         if (!state.isActive)
         {
-            if (GameManagerPD.instance == null || !GameManagerPD.instance.GameStarted) return;
+            // LoadingScreenRevealed, not GameStarted (2026-08-18) — see its own doc comment. Spawning (and
+            // the boss-spawn countdown display, which just reads this identity's own cycleTimer) used to
+            // start the instant GameStarted flipped true, well before the loading screen actually cleared,
+            // so a player's first real look at the game already had enemies closing in and the timer
+            // already several seconds spent.
+            if (GameManagerPD.instance == null || !GameManagerPD.instance.LoadingScreenRevealed) return;
             state.isActive = true;
+            // Built here, not Awake() — see BuildEliteSchedule's own doc comment for why it needs
+            // GameManagerPD.Difficulty, which isn't meaningfully resolved yet at Awake()-time (GameManagerPD
+            // itself hasn't replicated the server's authoritative value that early). By this point
+            // (LoadingScreenRevealed already true) it's long since settled on every machine.
+            BuildEliteSchedule();
             RollNewSet(ref state);
             return;
         }
@@ -324,8 +442,22 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         int tierNumber = GetCurrentTierNumber(state.bossesDefeated);
         _tierMoveSpeedMultiplier = 1f + (tierNumber - 1) * moveSpeedTierGrowth;
         _tierDamageMultiplier    = 1f + (tierNumber - 1) * damageTierGrowth;
-        _tierHealthMultiplier    = Mathf.Pow(healthExponentialTierBase, tierNumber - 1);
+        _tierHealthMultiplier    = 1f + (tierNumber - 1) * healthTierGrowth;
         _tierXpMultiplier        = 1f + (tierNumber - 1) * xpTierGrowth;
+        _currentTierNumber       = tierNumber;
+
+        // Read off GameManagerPD.Difficulty, NOT GamePresets directly (2026-08-21 fix) — see
+        // BuildEliteSchedule's own doc comment for the full reasoning (GamePresets is local-per-machine,
+        // never network-agreed; GameManagerPD.Difficulty is the actual server-authoritative single source
+        // of truth). Falls back to difficulty 1 (1f, no-op) if GameManagerPD doesn't exist yet — same
+        // "missing optional cross-scene singleton is a harmless no-op" precedent TierAccentMaterial's own
+        // EnemySpawnerPD.instance null-check already establishes; harmless here too since this whole block
+        // only runs once state.isActive (well after both GameManagerPD and its replicated Difficulty exist).
+        int difficulty = GameManagerPD.instance != null ? GameManagerPD.instance.Difficulty : 1;
+        _difficultyDamageScalar    = 1f + (difficulty - 1) * difficultyDamageGrowthPerLevel;
+        _difficultyHealthScalar    = 1f + (difficulty - 1) * difficultyHealthGrowthPerLevel;
+        _difficultyMoveSpeedScalar = 1f + (difficulty - 1) * difficultyMoveSpeedGrowthPerLevel;
+        _currentDifficulty         = difficulty;
 
         // ── Phase escalation ───────────────────────────────────────────────
         // Tightens the interval settings (without cutting short a countdown already in flight — only the
@@ -417,7 +549,34 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             // swarm instead of a clean arena.
             WipeAllEnemies();
 
-            var prefab = tier.boss[GameRandom.instance.Next(tier.boss.Length)];
+            // Threat Level 6's own unique modifier ("Double Boss spawns") — see threatLevel6BossCount's own
+            // doc comment. Stacks at every difficulty from 6 up, same cumulative convention every other
+            // threat modifier uses.
+            int bossSpawnCount = _currentDifficulty >= 6 ? threatLevel6BossCount : 1;
+            SpawnBosses(ref state, tier, coopScale, bossSpawnCount);
+        }
+    }
+
+    // Spawns `count` bosses from tier.boss, preferring DISTINCT prefabs — same "pool-and-swap-remove,
+    // refill only once exhausted" shape RollNewSet() already uses for normal enemies (see its own doc
+    // comment), just applied to tier.boss instead of tier.normal. Only ever repeats a prefab once count
+    // exceeds how many distinct boss prefabs this tier actually has (e.g. count=2 against a 1-boss tier) —
+    // "prefer non-duplicates, duplicate only if forced," per explicit design. Not itself threat-level-
+    // specific — count is just a plain parameter, so any future N-simultaneous-boss design reuses this
+    // unchanged (see state.activeBosses' own doc comment).
+    private void SpawnBosses(ref State state, TierEnemies tier, float coopScale, int count)
+    {
+        _bossPool.Clear();
+        for (int i = 0; i < count; i++)
+        {
+            if (_bossPool.Count == 0)
+                for (int j = 0; j < tier.boss.Length; j++) _bossPool.Add(j);
+
+            int roll = GameRandom.instance.Next(_bossPool.Count);
+            var prefab = tier.boss[_bossPool[roll]];
+            _bossPool[roll] = _bossPool[_bossPool.Count - 1];
+            _bossPool.RemoveAt(_bossPool.Count - 1);
+
             var id = SpawnEnemy(prefab, EnemySpawnCategory.Boss, coopScale, 1f, coopScale);
             if (id.HasValue) state.activeBosses.Add(id.Value);
         }
@@ -557,6 +716,27 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // whatever comes out of it hits.
     private static int GetCurrentTierNumber(int bossesDefeated) => Mathf.Min(bossesDefeated, 3) + 1;
 
+    // Public — called by EnemyBasePD.ApplyTierMaterials at spawn time (tierNumber there is the same
+    // ConfigureSpawn tier argument this class already hands out via _currentTierNumber). tierNumber <= 1
+    // falls to tier1Materials, same clamp-to-1-based-indexing shape as GetCurrentTier's own switch.
+    public TierMaterials GetTierMaterials(int tierNumber) => tierNumber switch
+    {
+        <= 1 => tier1Materials,
+        2 => tier2Materials,
+        3 => tier3Materials,
+        _ => tier4Materials
+    };
+
+    // Public — called by EnemyBasePD.ApplyTierNamePrefix at spawn time. Same clamp-to-tier4 shape as
+    // GetTierMaterials above.
+    public string GetTierNamePrefix(int tierNumber) => tierNumber switch
+    {
+        <= 1 => tier1NamePrefix,
+        2 => tier2NamePrefix,
+        3 => tier3NamePrefix,
+        _ => tier4NamePrefix
+    };
+
     // healthMultiplier/damageMultiplier/xpMultiplier arriving here are each category's own existing elite/
     // co-op scalar (e.g. coopScale) — tier scaling multiplies on top of that, not the other way around (per
     // explicit design: tier is the base transformation every category shares, elite/co-op is layered on top
@@ -570,7 +750,28 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out IEnemyPD enemy))
-            enemy.ConfigureSpawn(category, _tierHealthMultiplier * healthMultiplier, _tierDamageMultiplier * damageMultiplier, _tierXpMultiplier * xpMultiplier, _tierMoveSpeedMultiplier);
+        {
+            // Threat Level 4's own unique modifier ("Spikies are 50% faster") — Pleb category specifically
+            // (Spike Gloom is the only pleb enemy type today, but this is a category-wide bump, not a
+            // per-prefab one, per explicit design), multiplying ON TOP of the generic difficulty move-speed
+            // scalar rather than replacing/being independent of it. Stacks with every HIGHER difficulty too,
+            // same cumulative convention every other threat modifier uses.
+            float moveSpeedMultiplier = _tierMoveSpeedMultiplier * _difficultyMoveSpeedScalar;
+            if (category == EnemySpawnCategory.Pleb && _currentDifficulty >= 4)
+                moveSpeedMultiplier *= threatLevel4PlebMoveSpeedMultiplier;
+
+            // Threat Level 5's own unique modifier — see threatLevel5AttackCooldownMultiplier's own doc
+            // comment. Not category-gated (applies to every enemy, unlike Threat Level 4's Pleb-only bump).
+            float attackCooldownMultiplier = _currentDifficulty >= 5 ? threatLevel5AttackCooldownMultiplier : 1f;
+
+            enemy.ConfigureSpawn(category,
+                _tierHealthMultiplier * healthMultiplier * _difficultyHealthScalar,
+                _tierDamageMultiplier * damageMultiplier * _difficultyDamageScalar,
+                _tierXpMultiplier * xpMultiplier,
+                moveSpeedMultiplier,
+                attackCooldownMultiplier,
+                _currentTierNumber);
+        }
 
         return id;
     }

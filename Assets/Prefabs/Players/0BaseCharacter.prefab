@@ -657,7 +657,7 @@ MonoBehaviour:
   characterClass: 0
   classPassive: {fileID: 0}
   baseMoveSpeed: 10
-  baseStrength: 15
+  baseStrength: 10
   baseWeaponRadius: 0
   baseAttackSpeed: 0.5
   baseWeaponCount: 1
@@ -675,7 +675,7 @@ MonoBehaviour:
   baseHealthRegen: 0
   baseMaxShieldPercent: 0.05
   baseDeathPreventionTime: 30
-  deathPreventionInvincibilityDuration: 1
+  deathPreventionInvincibilityDuration: 2
   deathPreventionRepeatReductionMultiplier: 0.75
   baseMaxEnergy: 50
   baseEnergyRegen: 4
@@ -687,7 +687,7 @@ MonoBehaviour:
   baseLuckFloor: 0.5
   baseLuckCeiling: 1.5
   baseHighroll: 0.95
-  baseHighrollBonus: 0.5
+  baseHighrollBonus: 3
   baseKnockback: 5
   baseOnHitPower: 1
   baseXPRadius: 5
@@ -703,6 +703,7 @@ MonoBehaviour:
   - {fileID: 5925581709578661190}
   - {fileID: 7530299037405727771}
   - {fileID: 6880755517913024946}
+  yAxisMovers: {fileID: 6013572356293349534}
 --- !u!114 &-3762473324914141039
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -733,6 +734,8 @@ MonoBehaviour:
   _extrapolateInput: 1
   _rigidbody: {fileID: 2030771590138127021}
   _cameraTarget: {fileID: 7508126291795954218}
+  knockbackStunDrag: 9
+  knockbackStunThreshold: 1
 --- !u!114 &-182972361784634336
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1936,6 +1939,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PlayerUIWorldSpace
   worldspaceCanvas: {fileID: 7400062420861314861}
   healthBar: {fileID: 3933464473374717423}
+  healthBarFillImage: {fileID: 5260309632540681251}
+  invincibleHealthBarColor: {r: 0.8627451, g: 0.8627451, b: 0.8627451, a: 1}
   shieldBar: {fileID: 1302228547604071240}
   dashUI: {fileID: 7903088238848282226}
   dashChargeCooldownImage: {fileID: 4815664800866002644}

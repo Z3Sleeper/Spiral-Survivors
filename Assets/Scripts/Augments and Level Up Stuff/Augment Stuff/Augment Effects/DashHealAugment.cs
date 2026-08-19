@@ -2,9 +2,9 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Ported from _OldSystemArchive/Augment Effects/DashHealAugment.cs — On Dash End, heals self and all nearby
-// allies for a percent of HealthRegen. Rolls luck variance per ally independently (the "*" annotation),
-// same as every other healing/damage effect (see OnStrikeHealAllyAugment's own RollDamage call). No longer
-// grants a flat dashHaste bonus (removed per the "no training wheels" balance pass — augments granting
+// allies for a percent of HealthRegen. No longer rolls luck variance (2026-08-12: heals stopped rolling luck
+// entirely — see CharacterStatsPD.Heal's own doc comment; drop any "*" annotation from this augment's own
+// description if it still has one). No longer grants a flat dashHaste bonus (removed per the "no training wheels" balance pass — augments granting
 // unique effects shouldn't hand out the stats needed to build around them). Subscribes directly to this
 // player's own PlayerControllerPD._onDashEnded, same per-owner-instance cross-player-safety reasoning as
 // PhantomBladeOnDashAugment (no shared/static channel for another player's dash to leak through).
@@ -26,11 +26,16 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    public float healthRegenMultiplier = 5f;
+    public float healthRegenMultiplier = 2.5f;
+    // Flat floor added to the scaled portion below (2026-08-12, playtesting: this augment did literally
+    // nothing for a build with zero HealthRegen investment) — added BEFORE the AreaEffectPower multiply (see
+    // RollAndHeal()), so it still scales with AreaEffectPower same as the rest of the heal, just guarantees
+    // a non-zero base even at zero HealthRegen investment.
+    [SerializeField] private float baseHeal = 10f;
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
     // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
     // scaling itself.
-    [SerializeField] private float radiusMultiplier = 1f;
+    [SerializeField] private float radiusMultiplier = 1.25f;
 
     // healthRegenMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
     // convention wouldn't apply to it directly — this alias exists so a description can reference
@@ -43,7 +48,7 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
     // {LiveHealthRegenRatio} token.
     public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.HealthRegen * healthRegenMultiplier * stats.AreaEffectPower)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseHeal + stats.HealthRegen * healthRegenMultiplier * stats.AreaEffectPower)} "
             : "";
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate = 0.5f;
@@ -96,18 +101,15 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
     // exclusion there — so this fires for Stats too, not just genuinely other players.
     private void RollAndHeal(CharacterStatsPD ally)
     {
-        // baseHeal is passed RAW (un-rolled) — Heal()/HealFromAlly() each roll their own luck variance now
-        // (see their own doc comments on CharacterStatsPD), independently per target rather than one shared
-        // roll reused across everyone hit.
-        float baseHeal = Stats.HealthRegen * healthRegenMultiplier * Stats.AreaEffectPower;
+        // baseHeal joins the scaled portion INSIDE the AreaEffectPower multiply — see its own field comment.
+        float totalHeal = (baseHeal + Stats.HealthRegen * healthRegenMultiplier) * Stats.AreaEffectPower;
 
-        // Self heals through the normal, HealPower-scaled Heal() (same as any other self-heal source, rolls
-        // against Stats' own Luck) — a genuinely different ally goes through HealFromAlly() instead (rolls
-        // against the CASTER's Luck too — "the healer rolls for the healee" — but NOT scaled by the ally's
-        // own HealPower), same "don't let a receiving ally's own stacked HealPower also amplify heals they
+        // Self heals through the normal, HealPower-scaled Heal() (same as any other self-heal source) — a
+        // genuinely different ally goes through HealFromAlly() instead (NOT scaled by the ally's own
+        // HealPower), same "don't let a receiving ally's own stacked HealPower also amplify heals they
         // receive from someone else" reasoning OnStrikeHealAllyAugment's own identical swap uses (see
         // CharacterStatsPD.HealFromAlly's own doc comment).
-        if (ally == Stats) ally.Heal(baseHeal);
-        else ally.HealFromAlly(baseHeal, Stats);
+        if (ally == Stats) ally.Heal(totalHeal);
+        else ally.HealFromAlly(totalHeal, Stats);
     }
 }

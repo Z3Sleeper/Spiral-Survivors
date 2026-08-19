@@ -13,7 +13,7 @@ public class GremlinAugment : AugmentEffectPD<GremlinAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusSizePercent        = -0.2f;
+    [SerializeField] private float bonusSizePercent        = -0.1f;
     [SerializeField] private float attackSpeedTotalPercent = 0.1f;
     [SerializeField] private float bonusMoveSpeedTotalPercent   = 0.1f;
 

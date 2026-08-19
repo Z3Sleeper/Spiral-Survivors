@@ -42,12 +42,19 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // "Reward on completion" listeners (DashExplosionAugment/DashHealAugment/PhantomBladeOnDashAugment) rely
     // on this distinction: an interrupted dash shouldn't still pay out its on-end effect.
     private PredictedEvent _onDashEnded;
-    // Fires INSTEAD of _onDashEnded when Interrupt() cuts a dash short — for listeners that just need to know
-    // the dash's own WINDOW closed (for whatever reason), not "did it complete successfully"
-    // (DashThroughInterruptAugment's own sweep window is the one existing consumer — see its own comment).
+    // Fires INSTEAD of _onDashEnded when Interrupt() cuts a dash short — for listeners that care specifically
+    // whether the dash was cut short vs. completed naturally. Listeners that just need to know the movement
+    // WINDOW closed (for whatever reason) want _onDashMovementEnded below instead.
     private PredictedEvent _onDashInterrupted;
     // Fired by Interrupt() only (never the natural/death end path) — see that method's own doc comment.
     private PredictedEvent _onSpecialMovementInterrupted;
+    // Reward-agnostic movement-window pair — fires alongside Started/Ended (and, unlike Ended, also on an
+    // interrupted close) for ANY dash-like movement (real dash, RogueSpinAbilityPD's leap, BWBlinkAbilityPD's
+    // teleport). Exists separately from Started/Ended so a "trigger this dash's effects again" augment
+    // (DashEffectDoubleTriggerAugment) can retrigger the REWARD pair without also re-opening a stateful
+    // movement-window listener's window (DashThroughInterruptAugment's sweep — see its own doc comment).
+    private PredictedEvent _onDashMovementStarted;
+    private PredictedEvent _onDashMovementEnded;
 
     public void AddDashStartedListener(System.Action listener) => _onDashStarted.AddListener(listener);
     public void RemoveDashStartedListener(System.Action listener) => _onDashStarted.RemoveListener(listener);
@@ -57,6 +64,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     public void RemoveDashInterruptedListener(System.Action listener) => _onDashInterrupted.RemoveListener(listener);
     public void AddSpecialMovementInterruptedListener(System.Action listener) => _onSpecialMovementInterrupted.AddListener(listener);
     public void RemoveSpecialMovementInterruptedListener(System.Action listener) => _onSpecialMovementInterrupted.RemoveListener(listener);
+    public void AddDashMovementStartedListener(System.Action listener) => _onDashMovementStarted.AddListener(listener);
+    public void RemoveDashMovementStartedListener(System.Action listener) => _onDashMovementStarted.RemoveListener(listener);
+    public void AddDashMovementEndedListener(System.Action listener) => _onDashMovementEnded.AddListener(listener);
+    public void RemoveDashMovementEndedListener(System.Action listener) => _onDashMovementEnded.RemoveListener(listener);
 
     // Lets an ability that functions like a dash (e.g. RogueSpinAbilityPD's leap) hook into the same
     // OnDashStarted/OnDashEnded listeners a real dash already fires (DashExplosionAugment, DashHealAugment,
@@ -66,6 +77,11 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // alongside its own Activate()/end-of-active logic.
     public void NotifyDashStarted() => _onDashStarted.Invoke();
     public void NotifyDashEnded() => _onDashEnded.Invoke();
+    // Same "caller decides" contract as NotifyDashStarted/NotifyDashEnded above — every call site that fires
+    // those for an ability-driven movement (RogueSpinAbilityPD, BWBlinkAbilityPD) fires these alongside them,
+    // matching what the real dash's own StartDash/EndDash do automatically (see their own call sites).
+    public void NotifyDashMovementStarted() => _onDashMovementStarted.Invoke();
+    public void NotifyDashMovementEnded() => _onDashMovementEnded.Invoke();
 
     // Grants back one dash charge, clamped to the character's own current max — e.g.
     // DashThroughInterruptAugment refunding a charge on a successful interrupt. Doesn't touch
@@ -75,6 +91,38 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     {
         if (_stats == null) return;
         currentState.currentCharges = Mathf.Min(currentState.currentCharges + 1, _stats.dashCharges);
+    }
+
+    // Shaves time off the currently-regenerating dash charge's chargeRegenTimer — e.g.
+    // OnAbilityStartReduceDashCDAugment. Unlike RefundDashCharge above (a flat +1, no timer interaction),
+    // this can OVERFLOW: if `seconds` exceeds what's left on the current charge's timer, that charge is
+    // granted immediately and the remainder carries over to reduce the NEXT charge's own timer (freshly set
+    // to DashCooldown, same value Simulate()'s own regen tick resets it to) — repeating until `seconds` is
+    // exhausted or every charge is already full. Bounded by _stats.dashCharges (always small), so this
+    // terminates even if DashCooldown is ever 0 or negative (each iteration still grants a charge and moves
+    // the loop closer to the currentCharges == dashCharges exit condition, regardless of how much `seconds`
+    // itself decreases that iteration). A no-op whenever already at max charges — matches every other
+    // dash-charge mutator's own "harmless when there's nothing to do" convention.
+    public void ReduceDashCooldown(float seconds)
+    {
+        if (_stats == null || seconds <= 0f) return;
+
+        while (seconds > 0f && currentState.currentCharges < _stats.dashCharges)
+        {
+            if (currentState.chargeRegenTimer <= 0f) currentState.chargeRegenTimer = _stats.DashCooldown;
+
+            if (seconds < currentState.chargeRegenTimer)
+            {
+                currentState.chargeRegenTimer -= seconds;
+                seconds = 0f;
+            }
+            else
+            {
+                seconds -= currentState.chargeRegenTimer;
+                currentState.currentCharges++;
+                currentState.chargeRegenTimer = currentState.currentCharges < _stats.dashCharges ? _stats.DashCooldown : 0f;
+            }
+        }
     }
 
     // Not predicted state — set once (ConstantMovementAugment.OnApply(), never reverted, same "permanent for
@@ -91,6 +139,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     private bool _pendingPausePressed;
     private bool _pendingPickPressed;
     private int  _pendingPickIndex;
+    private float _pendingPickLuckMultiplierA = 1f;
+    private float _pendingPickLuckMultiplierB = 1f;
     private bool _pendingEndScreenReadyPressed;
     private InputSystem_Actions _input;
 
@@ -98,15 +148,19 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // feedback on your own click matters more than the extra tick of latency verifiedState would add.
     public bool IsReady => currentState.isReady;
     public bool IsDashing => currentState.isDashing;
-    // True while dash or either ability slot is currently forcing a special action on this player — dash,
-    // isSpecialMoving, or an ability whose IAbilityPD.ForcesSpecialAction is true and IsActive (e.g.
-    // RogueSpinAbilityPD's leap). A non-locking ability (ForcesSpecialAction false, e.g.
-    // RogueVanishAbilityPD — it only flips invisibility/movespeed, never touches movement) does NOT set this
-    // while it's the one active. Read by _ability1/_ability2's own UI (LocalUIManagerPD/PlayerUIWorldSpace)
-    // to show the on-cooldown BG even when the slot itself would otherwise read as ready, and matches the
-    // exact same formula Simulate() gates starting a new dash/ability against — see that block's own doc
-    // comment for the full three-rule spec this implements.
-    public bool IsLockedOut => currentState.isDashing || currentState.isSpecialMoving || currentState.stunTimer > 0f
+    // True while either ability slot is currently forcing a special action on this player — isSpecialMoving,
+    // or an ability whose IAbilityPD.ForcesSpecialAction is true and IsActive (e.g. RogueSpinAbilityPD's
+    // leap). A non-locking ability (ForcesSpecialAction false, e.g. RogueVanishAbilityPD — it only flips
+    // invisibility/movespeed, never touches movement) does NOT set this while it's the one active.
+    //
+    // Deliberately does NOT include isDashing/currentState.isDashing (unlike its old formula) — dashing no
+    // longer hard-locks abilities the way a true lockout does. It follows the same lenient rule as a
+    // Berserk-Surge-style forced Surge instead: only IAbilityPD.IsActionAbility abilities get blocked while
+    // dashing, buff abilities stay castable through it. See Simulate()'s own dash/ability gating block for
+    // the actual (isDashing || IsForcedSurging) && IsActionAbility formula — _ability1/_ability2's own UI
+    // (LocalUIManagerPD/PlayerUIWorldSpace) reads IsDashing directly alongside IsLockedOut/IsForcedSurging to
+    // mirror that same formula for the on-cooldown BG.
+    public bool IsLockedOut => currentState.isSpecialMoving || currentState.stunTimer > 0f
         || (_ability1 != null && _ability1.IsActive && _ability1.ForcesSpecialAction)
         || (_ability2 != null && _ability2.IsActive && _ability2.ForcesSpecialAction);
     // Mirrors EnemyBasePD.IsStunned/IsTrueStunned — see State.stunTimer/trueStunTimer's own doc comments for
@@ -131,6 +185,13 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // via GetFinalInput) rather than recomputed by AugmentManagerPD, since a remote machine's own
         // local ProgressionManager save data would give a different (wrong) answer for this player's pick.
         public float pickMultiplier;
+        // LuckRolledLevelUpStatsAugment's per-stat roll for THIS pick — unlike pickMultiplier, this is
+        // genuinely random and can't be safely recomputed every tick, so it's captured once (at card-display
+        // time, by AugmentCardUI, via a local UnityEngine.Random roll — never GameRandom) and buffered
+        // through RequestPick alongside pickedCardIndex, inside the same _pendingPickPressed block, rather
+        // than recomputed fresh in GetFinalInput the way pickMultiplier is.
+        public float pickLuckMultiplierA;
+        public float pickLuckMultiplierB;
         // Direction from this player's own position toward wherever the mouse cursor currently points,
         // projected onto the ground plane — see ComputeCursorWorldDir's own doc comment. Captured here
         // (owning client only, via GetFinalInput) same as direction/surgeHeld above, so every machine
@@ -223,6 +284,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _onDashEnded   = new PredictedEvent(predictionManager, this);
         _onDashInterrupted = new PredictedEvent(predictionManager, this);
         _onSpecialMovementInterrupted = new PredictedEvent(predictionManager, this);
+        _onDashMovementStarted = new PredictedEvent(predictionManager, this);
+        _onDashMovementEnded   = new PredictedEvent(predictionManager, this);
 
         if (!isOwner) return;
         _input = new InputSystem_Actions();
@@ -248,10 +311,12 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     public void RequestPausePressed() => _pendingPausePressed = true;
 
     // Called from the level-up card UI's OnClick. Same buffer-and-drain pattern as ready/pause.
-    public void RequestPick(int cardIndex)
+    public void RequestPick(int cardIndex, float luckMultiplierA = 1f, float luckMultiplierB = 1f)
     {
         _pendingPickPressed = true;
         _pendingPickIndex = cardIndex;
+        _pendingPickLuckMultiplierA = luckMultiplierA;
+        _pendingPickLuckMultiplierB = luckMultiplierB;
     }
 
     // Called from the win/game-over screen's ready button. Same buffer-and-drain pattern as ready/pause.
@@ -293,6 +358,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         {
             input.pickPressed = true;
             input.pickedCardIndex = _pendingPickIndex;
+            input.pickLuckMultiplierA = _pendingPickLuckMultiplierA;
+            input.pickLuckMultiplierB = _pendingPickLuckMultiplierB;
         }
         _pendingPickPressed = false;
 
@@ -352,7 +419,11 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // ── Simulation ─────────────────────────────────────────────────────────
     protected override void Simulate(Input input, ref State state, float delta)
     {
-        if (GameManagerPD.instance == null || !GameManagerPD.instance.GameStarted) return;
+        // LoadingScreenRevealed, not GameStarted (2026-08-18) — see its own doc comment on GameManagerPD.
+        // Movement/ability/dash input used to start processing the instant GameStarted flipped true, well
+        // before the loading screen actually cleared — harmless on its own (nobody could see it happening),
+        // but kept in lockstep with everything else that gates on this now for consistency.
+        if (GameManagerPD.instance == null || !GameManagerPD.instance.LoadingScreenRevealed) return;
 
         bool isSinglePlayer = predictionManager == null || predictionManager.players == null || predictionManager.players.players.Count <= 1;
         bool isPresenting = AugmentManagerPD.instance != null && AugmentManagerPD.instance.IsPresenting;
@@ -375,7 +446,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         }
 
         if (input.pickPressed && AugmentManagerPD.instance != null && owner.HasValue)
-            AugmentManagerPD.instance.SubmitPick(owner.Value, input.pickedCardIndex, input.pickMultiplier);
+            AugmentManagerPD.instance.SubmitPick(owner.Value, input.pickedCardIndex, input.pickMultiplier, input.pickLuckMultiplierA, input.pickLuckMultiplierB);
 
         // Not gated by isPresenting/IsPaused — the end screen only ever shows once the game has already
         // won/ended, and readying up from it should work regardless of whatever pause state happens to be
@@ -416,8 +487,16 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             _lastKnownMaxCharges = _stats.dashCharges;
         }
 
-        // Charge regen runs even while dead so the player has dashes on revive.
-        if (_stats != null && state.currentCharges < _stats.dashCharges)
+        // Charge regen runs even while dead so the player has dashes on revive. Paused while actually
+        // isDashing (2026-08-19) — a real dash only, NOT isSpecialMoving (RogueSpinAbilityPD's leap and
+        // other ability-driven movement use that flag instead, see its own doc comment, and should keep
+        // ticking normally). Plays nice with Interrupt() for free: EndDash(interrupted: true) sets isDashing
+        // false immediately just like a natural end does, so regen resumes from wherever it was frozen
+        // either way, no separate handling needed. ReduceDashCooldown() (other effects shaving time off the
+        // current charge, e.g. OnAbilityStartReduceDashCDAugment) is untouched by this gate — it mutates
+        // chargeRegenTimer directly, independent of this natural per-tick decrement, so it still applies
+        // normally even mid-dash.
+        if (_stats != null && state.currentCharges < _stats.dashCharges && !state.isDashing)
         {
             state.chargeRegenTimer -= delta;
             if (state.chargeRegenTimer <= 0f)
@@ -454,36 +533,42 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             state.cursorDistance = input.cursorDistance;
         }
 
-        // "Locked out" — dash and either ability slot are the only three things that can force a special
-        // action on this player, disrupting normal movement, and only ever one should run at a time.
-        // isDashing/isSpecialMoving cover dash and any special-movement window (belt-and-suspenders
-        // alongside the IAbilityPD check below — today only RogueSpinAbilityPD ever sets isSpecialMoving,
-        // always in lockstep with ForcesSpecialAction, but this stays correct even if that ever changes). A
-        // LOCKING ability (ForcesSpecialAction true, e.g. RogueSpinAbilityPD) being active locks everything
-        // else out exactly like dashing does — dash, the other slot, and itself. A NON-locking one
-        // (ForcesSpecialAction false, e.g. RogueVanishAbilityPD — it only flips invisibility/movespeed,
-        // never touches movement) does NOT set this while it's the one active, so it never blocks anything
-        // else. Same formula as the public IsLockedOut property (that one reads currentState instead of
-        // this tick's own `state` ref, otherwise identical) — see its own doc comment for the exact rule spec.
-        bool lockedOut = state.isDashing || state.isSpecialMoving || state.stunTimer > 0f
+        // "Locked out" — a HARD lock: isSpecialMoving or either ability slot are the only things left that
+        // can force a special action on this player, disrupting normal movement, and only ever one should
+        // run at a time. isSpecialMoving covers any special-movement window (belt-and-suspenders alongside
+        // the IAbilityPD check below — today only RogueSpinAbilityPD ever sets isSpecialMoving, always in
+        // lockstep with ForcesSpecialAction, but this stays correct even if that ever changes). A LOCKING
+        // ability (ForcesSpecialAction true, e.g. RogueSpinAbilityPD) being active locks everything else out
+        // — dash, the other slot, and itself. A NON-locking one (ForcesSpecialAction false, e.g.
+        // RogueVanishAbilityPD — it only flips invisibility/movespeed, never touches movement) does NOT set
+        // this while it's the one active, so it never blocks anything else. Same formula as the public
+        // IsLockedOut property (that one reads currentState instead of this tick's own `state` ref, otherwise
+        // identical) — see its own doc comment for the exact rule spec.
+        //
+        // isDashing is deliberately NOT part of this hard lock (unlike its old formula) — dashing now follows
+        // the same lenient rule as a Berserk-Surge-style forced Surge: only IAbilityPD.IsActionAbility
+        // abilities get blocked while dashing (actionBlocked below), buff abilities stay castable through it.
+        bool lockedOut = state.isSpecialMoving || state.stunTimer > 0f
             || (_ability1 != null && _ability1.IsActive && _ability1.ForcesSpecialAction)
             || (_ability2 != null && _ability2.IsActive && _ability2.ForcesSpecialAction);
 
-        if (input.dashPressed && state.currentCharges > 0 && !lockedOut)
+        // Starting a new dash still requires NOT already dashing (state.isDashing is no longer folded into
+        // lockedOut above, so this needs its own explicit check) and not hard-locked-out.
+        if (input.dashPressed && state.currentCharges > 0 && !lockedOut && !state.isDashing)
             StartDash(ref state);
 
         // Ability1 input — PlayerControllerPD only gates/forwards; the ability component itself owns its
         // own cooldown state and decides what Activate()/NotifyActivationBlocked() actually do.
         //
-        // Also blocked outright during a Berserk-Surge-style forced Surge (CharacterStatsPD.
-        // IsForcedSurging) for any ability whose own ActiveSurgeBlock is true — that flag already marks
-        // exactly the abilities that call ForceEndSurge()/AddSurgeBlock() at the top of their own Activate()
-        // (see IAbilityPD.ActiveSurgeBlock's own doc comment), i.e. abilities that would otherwise cancel
-        // the forced surge the instant they're cast (RogueSpinAbilityPD, etc.) — reusing it here instead of
-        // adding a second, parallel flag to the interface.
+        // Also blocked outright while actively dashing OR during a Berserk-Surge-style forced Surge
+        // (CharacterStatsPD.IsForcedSurging) for any ability whose own IsActionAbility is true — buff
+        // abilities (pure stat/buff-state grants) stay usable through either, only action abilities are
+        // blocked. NOT ActiveSurgeBlock (a different, unrelated flag — see IAbilityPD.IsActionAbility's own
+        // doc comment for why the two can't be conflated).
         if (input.ability1Pressed && _ability1 != null)
         {
-            bool blocked1 = lockedOut || (_stats.IsForcedSurging && _ability1.ActiveSurgeBlock);
+            bool actionBlocked1 = (state.isDashing || _stats.IsForcedSurging) && _ability1.IsActionAbility;
+            bool blocked1 = lockedOut || actionBlocked1;
             if (_ability1.IsReady && !blocked1) _ability1.Activate();
             else _ability1.NotifyActivationBlocked();
         }
@@ -491,7 +576,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // Ability2 input — same gate/forward split as Ability1 above.
         if (input.ability2Pressed && _ability2 != null)
         {
-            bool blocked2 = lockedOut || (_stats.IsForcedSurging && _ability2.ActiveSurgeBlock);
+            bool actionBlocked2 = (state.isDashing || _stats.IsForcedSurging) && _ability2.IsActionAbility;
+            bool blocked2 = lockedOut || actionBlocked2;
             if (_ability2.IsReady && !blocked2) _ability2.Activate();
             else _ability2.NotifyActivationBlocked();
         }
@@ -620,6 +706,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (_physicsCollider != null) _physicsCollider.enabled = false;
         _rigidbody.velocity = Vector3.zero;
         _onDashStarted.Invoke();
+        _onDashMovementStarted.Invoke();
     }
 
     // interrupted: false for the natural end (Simulate()'s own dashTimer<=0 check) — fires _onDashEnded as
@@ -641,6 +728,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         {
             _onDashEnded.Invoke();
         }
+        // Movement window closes regardless of why — see _onDashMovementEnded's own field comment.
+        _onDashMovementEnded.Invoke();
     }
 
     // ── Special movement helpers ─────────────────────────────────────────────
@@ -718,25 +807,44 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             cancelledSomething = true;
         }
 
+        // Status popup only for an actual committed-action cancel (dash, or a CA ability's
+        // StartSpecialMovement window) — never for a no-op call (nothing currently mid-action).
+        if (cancelledSomething) _stats?.NotifyStatusPopup(DamageNumberManager.StatusPopupKind.Interrupted);
+
         return cancelledSomething;
     }
 
     // Public entry point for a real, direct stun (not knockback-derived) — sets trueStunTimer as well as the
     // shared stunTimer gate, same isTrueStun split as EnemyBasePD.Stun()/ApplyStun(). No crowd-control-resist
     // scaling here (unlike the enemy-side Stun()) — players don't have a resist stat, not because they're
-    // deliberately meant to be immune-proof; add one here first if that's ever needed. Purely behavioral, no
-    // visual/tint side effect by design (unlike EnemyBasePD's own yellow trueStunTimer flash — players have
-    // no such indicator yet; IsTrueStunned is exposed above as the hook for one if that's ever added).
-    public void Stun(float duration) => ApplyStun(duration, isTrueStun: true);
+    // deliberately meant to be immune-proof; add one here first if that's ever needed. Also fires the "Stun"
+    // status popup — rising edge only (see the popup gate below), same convention as the enemy side. No
+    // in-game source calls this yet, but the popup is wired ahead of one existing.
+    public void Stun(float duration)
+    {
+        bool wasTrueStunned = currentState.trueStunTimer > 0f;
+        ApplyStun(duration, isTrueStun: true);
+        if (!wasTrueStunned && currentState.trueStunTimer > 0f) _stats?.NotifyStatusPopup(DamageNumberManager.StatusPopupKind.Stun);
+    }
 
-    // Shared behavioral gate for Stun() above and Knockback() below — Mathf.Max-based so it never shortens a
-    // longer stun already in progress, same convention as the enemy-side version. Doesn't check anything
-    // like the enemy-side isStunnable/stunResistant gate — not because players are deliberately meant to be
-    // immune-proof, just that nothing currently needs stun immunity/resistance; add that check here first if
-    // it's ever required. Doesn't touch isDashing/isSpecialMoving or call Interrupt() itself — Knockback()
-    // below composes that; a future standalone caller that also needs a committed action cancelled first is
-    // responsible for calling Interrupt() itself, same "small composable primitive, caller composes"
-    // convention as the SetX(bool) family.
+    // Player-side counterpart to EnemyBasePD.InterruptTrueStun — for a FUTURE caller that wants to grant
+    // bonus true-stun duration on the SAME hit as a paired Interrupt() call, without ALSO popping "Stun" —
+    // the "Interrupted" popup already conveys that visually, same reasoning EnemyBasePD.InterruptTrueStun's
+    // own doc comment gives. No live caller yet (same "wired ahead of one existing" scoping as Stun() itself)
+    // — exists so that whenever an enemy attack DOES interrupt-and-stun a player on one hit, it has a path
+    // that can't accidentally double-pop, instead of composing Interrupt() + Stun() together (which would).
+    public void InterruptTrueStun(float duration) => ApplyStun(duration, isTrueStun: true);
+
+    // Shared MECHANICAL gate for Stun()/InterruptTrueStun() above and Knockback() below — Mathf.Max-based so
+    // it never shortens a longer stun already in progress, same convention as the enemy-side version. Popup
+    // logic deliberately lives in Stun() itself, not here (see InterruptTrueStun's own doc comment for why) —
+    // same split EnemyBasePD.Stun()/InterruptTrueStun()/ApplyStun() already establishes. Doesn't check
+    // anything like the enemy-side isStunnable/stunResistant gate — not because players are deliberately
+    // meant to be immune-proof, just that nothing currently needs stun immunity/resistance; add that check
+    // here first if it's ever required. Doesn't touch isDashing/isSpecialMoving or call Interrupt() itself —
+    // Knockback() below composes that; a future standalone caller that also needs a committed action
+    // cancelled first is responsible for calling Interrupt() itself, same "small composable primitive,
+    // caller composes" convention as the SetX(bool) family.
     private void ApplyStun(float duration, bool isTrueStun = false)
     {
         if (duration <= 0f || (_stats != null && _stats.IsDead)) return;

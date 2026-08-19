@@ -14,8 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Mending Casts</color>
   description: <color=#FFA000>On <color=#FFB4FF>Ability</color> Cast:</color> <color=#7DFF00>Heal
-    {LiveHealthRatio}</color><color=#FFA000>(<color=#00FF00>1% Max Health</color>
-    x that <color=#FFB4FF>Ability's</color> base cooldown)</color> <color=#7DFF00>Health</color>.
+    {LiveAbilityHealAmount}</color><color=#FFA000>(<color=#7DFF00>1 + 25% Bonus Health
+    Regen</color> x that <color=#FFB4FF>Ability's</color> base cooldown)</color>
+    <color=#7DFF00>Health</color>.
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   effectPrefab: {fileID: 3859375549581224503, guid: 1b3b8382c86dcf940bcc3fd06e164792, type: 3}
   multiplayerOnly: 0
@@ -27,3 +28,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

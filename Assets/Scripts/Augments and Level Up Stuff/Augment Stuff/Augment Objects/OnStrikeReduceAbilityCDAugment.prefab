@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b8aac96bc655e9a45970e77d5ebdb38b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnStrikeReduceAbilityCDAugment
-  cooldownReductionFlat: 0.05
+  reductionPercent: 0.005

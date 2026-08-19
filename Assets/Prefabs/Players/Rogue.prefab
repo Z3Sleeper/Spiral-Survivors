@@ -101,24 +101,26 @@ MonoBehaviour:
   abilityName: <color=#FF0050>Eviscerate</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    <color=#00FFFF>Somersault
-    forward</color>, <color=#FFA000>Striking</color> with your <color=#FFA000>Weapons</color>
-    <color=#FFA000>5 times each</color> with <color=#FFA000>damage</color> multiplied
-    by <color=#FF0050>Attack Speed</color>.'
+    <color=#00FFFF>Somersault</color>
+    <color=#FFA000>Invincibly</color> forward, <color=#FFA000>Striking</color> with
+    your <color=#FFA000>Weapons</color> <color=#FFA000>5 times each</color>, dealing
+    a total of <color=#FFA000>{LiveDamageRatio}</color><color=#FFA000>(75% Weapon
+    Strength x <color=#FF0050>Attack Speed</color>)</color>.'
   cooldown: 12
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 1
+  isActionAbility: 1
   duration: 0.75
   postActiveInvincibilityGrace: 0.2
   dashSpeed: 10
   visuals: {fileID: 2534175426824249865}
   leapHeight: 2
-  damageRadiusSizeMultiplier: 1.25
+  damageRadiusSizeMultiplier: 1.5
   spinRate: 1080
   hitCountPerWeapon: 5
-  spinAbilityDamageMultiplier: 1
+  spinAbilityDamageMultiplier: 0.75
 --- !u!114 &-4890662838761607972
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -141,10 +143,11 @@ MonoBehaviour:
 
     <color=#FFBE50><i>Ability
     Power increases Duration</i></color>'
-  cooldown: 15
+  cooldown: 20
   cooldownStartsOnCast: 0
   slot: 1
   tags: []
   activeSurgeBlock: 0
+  isActionAbility: 0
   duration: 3
   moveSpeedTotalPercent: 0.25

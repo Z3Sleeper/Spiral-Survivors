@@ -227,4 +227,4 @@ MonoBehaviour:
   activeSurgeBlock: 0
   duration: 2
   moveSpeedTotalPercent: 0.5
-  postBlinkInvincibility: 0.2
+  postBlinkInvincibility: 0.05

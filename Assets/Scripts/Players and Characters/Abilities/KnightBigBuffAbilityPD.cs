@@ -22,11 +22,11 @@ using UnityEngine;
 // The Max Health buff acts as a pseudo-heal for free: CharacterStatsPD.ApplyStatChange (which
 // AddMaxHealthTotalPercent routes through) already bumps current health by the exact same delta the ceiling
 // just rose by, so granting +50% Max Health here also tops the caster up by 50% of their pre-buff Max
-// Health, no separate Heal() call needed. The reverse direction needs one extra step ApplyStatChange does
-// NOT do on its own: if natural regen/healing filled the player back up while the ceiling was raised, current
-// health could still be sitting above the new (lower) ceiling once the buff ends and the ceiling drops back
-// down — CharacterStatsPD.ClampHealthToMax() (called right after AddMaxHealthTotalPercent's own reversal
-// below) explicitly re-clamps for exactly that case.
+// Health, no separate Heal() call needed. The reverse direction is handled by that same shared method too —
+// ApplyStatChange only ever pulls current health DOWN to the new (lower) ceiling if it's actually sitting
+// above it (e.g. natural regen/healing topped the caster up while the ceiling was raised), never below —
+// so a caster who took damage mid-buff and was already under the new max before the ceiling dropped keeps
+// whatever health they had, no separate re-clamp call needed here.
 public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.State>, IAbilityPD
 {
     public struct State : IPredictedData<State>
@@ -52,6 +52,9 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
+    // Buff — only grants stat changes for its own duration, doesn't otherwise act on the world. Exposed for
+    // live playtesting — see IAbilityPD.IsActionAbility's own doc comment.
+    [SerializeField] private bool isActionAbility = false;
 
     [Header("Effect")]
     public float duration = 10f;
@@ -59,10 +62,10 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     public float maxHealthPercent       = 0.5f;
     public float rangePercent           = 0.5f;
     public float strengthPercent        = 0.5f;
-    // Passed straight to AddDamageReductionPercent, which itself subtracts this from damageReductionPercent
-    // (1f = no reduction) — 0.5 here means incoming damage multiplies by 0.5, i.e. half damage taken. Not a
-    // "true total" increase stacking convention, just a flat multiplicative half same as the ability's own
-    // stated design (see class doc comment).
+    // Passed straight to AddDamageReductionPercent, which multiplies damageReductionPercent (1f = no
+    // reduction) by (1 - this) — 0.5 here means incoming damage multiplies by 0.5, i.e. half damage taken,
+    // compounding multiplicatively with any other simultaneously-active damage reduction source (see
+    // AddDamageReductionPercent's own doc comment for why it's multiplicative, not additive).
     public float damageReductionPercent = 0.5f;
 
     // Mirrors Activate()'s own _appliedDuration formula exactly (see class doc comment). Outside a live
@@ -102,6 +105,7 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     // ability slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
+    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole buff) — see IAbilityPD.
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
@@ -231,12 +235,9 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
             _stats.SetTaunting(false);
             _stats.AddSizePercent(-_appliedSizePercent);
             _stats.AddMaxHealthTotalPercent(-_appliedMaxHealthPercent);
-            // Explicit re-clamp for the one case ApplyStatChange's own delta-add doesn't cover — see class
-            // doc comment.
-            _stats.ClampHealthToMax();
             _stats.AddWeaponRangeTotalPercent(-_appliedRangePercent);
             _stats.AddStrengthTotalPercent(-_appliedStrengthPercent);
-            _stats.AddDamageReductionPercent(-_appliedDamageReductionPercent);
+            _stats.RemoveDamageReductionPercent(_appliedDamageReductionPercent);
         }
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.

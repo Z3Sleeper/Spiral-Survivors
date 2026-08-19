@@ -13,15 +13,7 @@ MonoBehaviour:
   m_Name: BladeweaviestBladeweaverAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFA000>Master Weaver</color>
-  description: '<color=#FFA000>+3 Weapons</color>
-
-    <color=#FF5000>+20% Total
-    Strength</color>
-
-    <color=#FFA000>+20% On-Hit Power</color>
-
-    <color=#FFBE50><i>Strength
-    & On-Hit Power are divided by Weapon Count</i></color>'
+  description: <color=#FFA000>+3 Weapons</color>
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 7936682745043488114, guid: 2e7098a8c9ed0b1499104711288df516, type: 3}
   multiplayerOnly: 0
@@ -33,3 +25,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

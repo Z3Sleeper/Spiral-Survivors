@@ -14,18 +14,57 @@ public class AugmentCardUI : MonoBehaviour
     private int _cardIndex;
     private float _effectiveValueA;
     private float _effectiveValueB;
+    private float _luckMultiplierA = 1f;
+    private float _luckMultiplierB = 1f;
 
-    public void StatAugmentSetup(StatAugmentPair pair, int cardIndex)
+    // stats is optional (same convention as AugmentSetup) — pass the picking player's own live
+    // CharacterStatsPD so LuckRolledLevelUpStatsAugment can be detected; leave null for display-only
+    // contexts with no live character to check.
+    public void StatAugmentSetup(StatAugmentPair pair, int cardIndex, CharacterStatsPD stats = null)
     {
         _cardIndex = cardIndex;
         pickButton.interactable = true;
 
-        _effectiveValueA = pair.statA.value * ProgressionManager.GetStatMultiplier(pair.statA.statType);
-        _effectiveValueB = pair.statB.value * ProgressionManager.GetStatMultiplier(pair.statB.statType);
+        // Rolled ONCE per card (not once per stat) and cached, never re-rolled — the roll shown on the card
+        // is exactly the roll that gets applied on pick, threaded through OnPicked -> RequestPick -> Input ->
+        // SubmitPick -> PlayerPick, all the way to CharacterStatsPD.ApplyStatAugmentPick. Both stats on the
+        // card share this single roll (not independent per-stat rolls) — this is a "how lucky was this pick"
+        // roll, not two separate ones. Uses UnityEngine.Random, NOT GameRandom: this runs in purely local,
+        // non-deterministic UI-display code on one client only, and GameRandom is the shared, order-sensitive
+        // PD stream every machine must draw from identically — rolling it here would desync every other
+        // client's subsequent draws.
+        bool hasLuckRoll = stats != null && stats.luckRolledLevelUpStats;
+        float luckMultiplier = 1f;
+        bool isHighroll = false;
+        // HighrollBonus is scaled down (not passed raw) — that stat is now a damage-scope 300%-at-base
+        // replacement multiplier (see WeaponDamageMath.ApplyCritAndHighroll), way too strong to hand a stat
+        // pick unscaled; see LuckRolledLevelUpStatsAugment's own highrollBonusScale doc comment.
+        if (hasLuckRoll)
+            luckMultiplier = WeaponDamageMath.RollLuckMultiplier(stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.HighrollBonus * stats.luckRolledLevelUpStatsHighrollScale, UnityEngine.Random.Range, out isHighroll);
+        _luckMultiplierA = luckMultiplier;
+        _luckMultiplierB = luckMultiplier;
+
+        _effectiveValueA = pair.statA.value * ProgressionManager.GetStatMultiplier(pair.statA.statType) * _luckMultiplierA;
+        _effectiveValueB = pair.statB.value * ProgressionManager.GetStatMultiplier(pair.statB.statType) * _luckMultiplierB;
+
+        // LuckRolledLevelUpStatsAugment's own roll, surfaced on the card so the player can see how lucky
+        // this particular card is before picking — "!" marks a Highroll (the roll snapped to LuckCeiling and
+        // got HighrollBonus applied on top, see RollLuckMultiplier), otherwise just the plain rolled percent.
+        // Colored with the game-wide Luck color (#00FF87) for a positive roll/Highroll, red for a negative
+        // one. FormatLiveNumber gives the same tiered decimal precision (whole/1dp/2dp by magnitude) every
+        // other live-value token in this codebase uses.
+        string luckPrefix = "";
+        if (hasLuckRoll)
+        {
+            float percent = (luckMultiplier - 1f) * 100f;
+            string magnitude = AugmentDescriptionFormatter.FormatLiveNumber(Mathf.Abs(percent));
+            string luckColor = percent >= 0f ? "#00FF87" : "red";
+            luckPrefix = isHighroll ? $"<color={luckColor}>(+{magnitude}%!)</color>\n" : percent >= 0f ? $"<color={luckColor}>(+{magnitude}%)</color>\n" : $"<color={luckColor}>(-{magnitude}%)</color>\n";
+        }
 
         augmentImage.sprite = statAugmentSprite;
-        titleText.text = $"{pair.statA.ColoredName} & {pair.statB.ColoredName}";
-        descriptionText.text = $"{pair.statA.Colored($"{pair.statA.prependText}{_effectiveValueA}{pair.statA.appendText} {pair.statA.displayName}")}\n{pair.statB.Colored($"{pair.statB.prependText}{_effectiveValueB}{pair.statB.appendText} {pair.statB.displayName}")}";
+        titleText.text = $"{luckPrefix}{pair.statA.ColoredName} & {pair.statB.ColoredName}";
+        descriptionText.text = $"{pair.statA.Colored($"{pair.statA.prependText}{AugmentDescriptionFormatter.FormatLiveNumber(_effectiveValueA)}{pair.statA.appendText} {pair.statA.displayName}")}\n{pair.statB.Colored($"{pair.statB.prependText}{AugmentDescriptionFormatter.FormatLiveNumber(_effectiveValueB)}{pair.statB.appendText} {pair.statB.displayName}")}";
 
         pickButton.onClick.RemoveAllListeners();
         pickButton.onClick.AddListener(OnPicked);
@@ -52,7 +91,7 @@ public class AugmentCardUI : MonoBehaviour
     {
         SFXManager.instance?.Play(pickSound, Vector3.zero);
         LocalUIManagerPD.instance.HideAllCards();
-        LocalUIManagerPD.instance.RequestPick(_cardIndex);
+        LocalUIManagerPD.instance.RequestPick(_cardIndex, _luckMultiplierA, _luckMultiplierB);
     }
 
     // For display-only contexts (e.g. an encyclopedia/browse list) where OnPicked's LocalUIManagerPD.instance

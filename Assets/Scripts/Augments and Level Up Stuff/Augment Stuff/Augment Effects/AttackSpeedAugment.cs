@@ -13,8 +13,8 @@ public class AttackSpeedAugment : AugmentEffectPD<AttackSpeedAugment.State>
 
     // Renamed to exactly match the CharacterStatsPD fields these feed (attackSpeedFlat/attackSpeedTotalPercent
     // have no "bonus" prefix on CharacterStatsPD itself — see that class for why).
-    [SerializeField] private float attackSpeedFlat         = 0.25f;
-    [SerializeField] private float attackSpeedTotalPercent = 0.15f;
+    [SerializeField] private float attackSpeedFlat         = 0.6f;
+    [SerializeField] private float attackSpeedTotalPercent = 0f;
 
     protected override void OnApply()
     {

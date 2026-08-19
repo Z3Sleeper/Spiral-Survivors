@@ -21,6 +21,19 @@ public class CharacterSelectUI : MonoBehaviour
     [SerializeField] private AugmentCardUI detailAugmentCardPrefab;
     [SerializeField] private Transform detailAugmentContent;
 
+    [Header("Difficulty")]
+    [SerializeField] private TextMeshProUGUI difficultyText;
+    [SerializeField] private TextMeshProUGUI difficultyDescriptionText;
+    // Hidden entirely (not just disabled) at the respective end of the range — see RefreshDifficultyDisplay.
+    [SerializeField] private GameObject difficultyPrevArrow;
+    [SerializeField] private GameObject difficultyNextArrow;
+
+    // Toggled via .interactable, not SetActive — Ready should stay visible but unclickable while the lobby
+    // Threat Level ceiling is still resolving (a new/departed member) rather than disappearing entirely. See
+    // IsCeilingResolved/RefreshFromLobby's own doc comments.
+    [Header("Ready")]
+    [SerializeField] private Button readyButton;
+
     // Named fields (one per class), not a raw array — an array element's position is easy to mix up when
     // wiring buttons in the Inspector with no label to check against; these get folded into an internal,
     // CharacterRegistry-index-aligned array in Awake() so the rest of the highlight logic can still just
@@ -45,6 +58,11 @@ public class CharacterSelectUI : MonoBehaviour
     private bool _isRandom;
     private bool _localIsReady;
 
+    // null until the first RefreshFromLobby this lobby session — distinguishes "no snapshot yet" from "empty
+    // lobby" so the very first pass after joining never spuriously reads as a membership CHANGE. Cleared in
+    // ResetLocalLobbyState alongside every other per-lobby-session field. See DetectMembershipChangeAndUnready.
+    private HashSet<string> _lastKnownMemberIds;
+
     private void Awake()
     {
         if (instance != null) { Destroy(gameObject); return; }
@@ -62,6 +80,8 @@ public class CharacterSelectUI : MonoBehaviour
             if (_characterButtonImages[i] != null) _characterButtonDefaultColors[i] = _characterButtonImages[i].color;
 
         if (randomButtonImage != null) _randomButtonDefaultColor = randomButtonImage.color;
+
+        RefreshDifficultyDisplay();
     }
 
     private void UpdateCharacterButtonHighlight(int selectedIndex)
@@ -116,9 +136,34 @@ public class CharacterSelectUI : MonoBehaviour
     // Non-host clients never write this directly — see SelectColor/ColorRequestKey.
     private const string ColorAssignmentsKey = "ColorAssignments";
 
+    // Same "lobby-wide, host-owner-enforced single writer" shape as ColorAssignmentsKey above, just a plain
+    // int instead of a serialized dictionary — see ResolveDifficulty's own doc comment for the write side.
+    private const string DifficultyKey = "Difficulty";
+
     // Per-member data — a non-authoritative REQUEST only ("I'd like this color"), never a claim. Only the
-    // host ever turns a request into an actual assignment, via ResolveColorAssignments.
-    private const string ColorRequestKey = "colorRequest";
+    // host ever turns a request into an actual assignment, via ResolveColorAssignments. Public (not private)
+    // so LobbySceneController.InitializeForLobby can write a saved-preference request directly at join time,
+    // before the player has manually clicked anything.
+    public const string ColorRequestKey = "colorRequest";
+
+    // Per-member data, self-write-only (same restriction ColorRequestKey's own doc comment describes — a
+    // client can never write another player's Steam member data). Written once at join time
+    // (LobbySceneController.InitializeForLobby) and never re-sent mid-session — see that write site's own
+    // doc comment for why ProgressionManager.HighestUnlockedDifficulty is safe to treat as join-time-stable.
+    // Read back host-only by ResolveDifficultyCeiling.
+    public const string UnlockedDifficultyKey = "unlockedTL";
+
+    // Lobby-wide, host-owner-enforced single writer — same shape as DifficultyKey above. Only meaningful
+    // once TLCeilingResolvedKey reads "True"; stale/partial otherwise, since ResolveDifficultyCeiling never
+    // writes this from an incomplete read.
+    private const string TLCeilingKey = "TLCeiling";
+
+    // Lobby-wide, host-owner-enforced single writer. "True" iff the host successfully read EVERY current
+    // member's UnlockedDifficultyKey this pass. The one single explicit, observable piece of shared state
+    // every client (host included) reads identically via IsCeilingResolved() to decide whether Ready can be
+    // clicked — deliberately not an inferred/derived per-machine guess (see IsCeilingResolved's own doc
+    // comment for why that distinction matters here).
+    private const string TLCeilingResolvedKey = "TLCeilingResolved";
 
     private static Dictionary<string, int> ParseColorAssignments(string blob)
     {
@@ -168,6 +213,21 @@ public class CharacterSelectUI : MonoBehaviour
         return true;
     }
 
+    // Honors a saved-preference ColorRequestKey on a member's very FIRST assignment (previously only
+    // consulted on a LATER change-request, once already assigned — see ResolveColorAssignments' own second
+    // loop) — falls back to FindFirstFreeColor if no valid request is on file yet, or the requested color is
+    // already taken. This is what makes GameStartData.SavedColorIndex (restored automatically on lobby join,
+    // written as an immediate ColorRequestKey by LobbySceneController.InitializeForLobby) actually take
+    // effect on a fresh join, instead of every player always landing on FindFirstFreeColor's arbitrary pick
+    // regardless of what they filed.
+    private int AssignInitialColor(CSteamID lobbyCSteamID, ulong memberIdRaw, HashSet<int> taken)
+    {
+        string requestVal = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, new CSteamID(memberIdRaw), ColorRequestKey);
+        if (int.TryParse(requestVal, out int requested) && requested >= 0 && requested < colorPalette.Count && !taken.Contains(requested))
+            return requested;
+        return FindFirstFreeColor(taken);
+    }
+
     // HOST-ONLY. Reconciles ColorAssignments against the current member list and everyone's outstanding
     // colorRequest: prunes members who've left (freeing their color back up), auto-assigns anyone missing
     // an assignment (new joiners), and grants a pending request iff the requested color is actually free —
@@ -201,6 +261,29 @@ public class CharacterSelectUI : MonoBehaviour
             changed = true;
         }
 
+        // Host processed first — this method only ever runs on the host's own machine (see the IsOwner guard
+        // above), so "host" == GameStartData.LocalUserId here. Resolving the host's own initial assignment
+        // before anyone else's means a same-pass ColorRequestKey collision between the host and a client
+        // always lands in the host's favor (the host's preferred slot is already in `taken` by the time a
+        // client's own request gets checked below) — explicit design, host has priority on color conflicts.
+        foreach (var member in lobby.Members)
+        {
+            if (member.Id != GameStartData.LocalUserId) continue;
+            if (ulong.TryParse(member.Id, out ulong hostIdRaw) && !assignments.ContainsKey(member.Id))
+            {
+                int assigned = AssignInitialColor(lobbyCSteamID, hostIdRaw, taken);
+                assignments[member.Id] = assigned;
+                taken.Add(assigned);
+                changed = true;
+            }
+            break;
+        }
+
+        // Runs for EVERY member, host included — the host-priority pass above only ever handles the host's
+        // own FIRST (never-yet-assigned) color, not any later re-pick. By the time this loop reaches the
+        // host, it's already guaranteed to have an assignment (from the pass above), so it naturally falls
+        // into the "already assigned, check for a change request" branch below just like any other member —
+        // this is what actually lets the host successfully change color after their first pick.
         foreach (var member in lobby.Members)
         {
             if (!ulong.TryParse(member.Id, out ulong memberIdRaw)) continue;
@@ -208,7 +291,7 @@ public class CharacterSelectUI : MonoBehaviour
 
             if (!hasAssignment)
             {
-                int assigned = FindFirstFreeColor(taken);
+                int assigned = AssignInitialColor(lobbyCSteamID, memberIdRaw, taken);
                 assignments[member.Id] = assigned;
                 taken.Add(assigned);
                 changed = true;
@@ -243,15 +326,155 @@ public class CharacterSelectUI : MonoBehaviour
         return assignments;
     }
 
+    // Same "host resolves its own local truth into the lobby-wide blob, only writing on an actual change"
+    // shape as ResolveColorAssignments above — comparing against the actual currently-stored value (not a
+    // separate dirty flag) for the same reason: Steam fires a fresh LobbyDataUpdate_t for every SetLobbyData
+    // call regardless of whether the value actually differs, so an unconditional write here would retrigger
+    // RefreshFromLobby -> ResolveDifficulty -> write -> LobbyDataUpdate_t -> RefreshFromLobby -> ... forever.
+    // No-ops entirely for a non-host (same IsOwner guard, and Steam itself enforces lobby-wide data as
+    // host-owner-only regardless). GamePresets.instance.Difficulty is the single source of truth this reads
+    // from — never the other way around, so a client's own local GamePresets value (whatever THEY last
+    // hosted with) never leaks into what gets displayed or played.
+    private void ResolveDifficulty(Lobby lobby)
+    {
+        if (!lobby.IsOwner) return;
+        if (GamePresets.instance == null) return;
+        if (!ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw)) return;
+        var lobbyCSteamID = new CSteamID(lobbyIdRaw);
+
+        string resolved = GamePresets.instance.Difficulty.ToString();
+        if (SteamMatchmaking.GetLobbyData(lobbyCSteamID, DifficultyKey) != resolved)
+            SteamMatchmaking.SetLobbyData(lobbyCSteamID, DifficultyKey, resolved);
+    }
+
+    // Host-only (same IsOwner guard/reasoning as ResolveDifficulty above) — recomputes the lobby-wide Threat
+    // Level ceiling (min of every current member's own ProgressionManager.HighestUnlockedDifficulty) fresh,
+    // from scratch, every single pass, rather than maintaining a persisted per-member dictionary that would
+    // need explicit pruning on leave. A player who joins and leaves again before their UnlockedDifficultyKey
+    // write ever arrives simply drops out of lobby.Members before the next pass — nothing is left referencing
+    // them, so nothing can ever get permanently stuck waiting on data that will never come.
+    //
+    // "resolved" (see TLCeilingResolvedKey) means the host successfully read EVERY current member's own
+    // UnlockedDifficultyKey this pass — an empty/unpropagated read (a member who just joined and hasn't had
+    // their own write reach this host yet) marks the WHOLE pass unresolved rather than being silently
+    // skipped/defaulted, so TLCeilingKey is never written from a partial read. Down-only clamp on the live
+    // selection: never raises GamePresets.instance.Difficulty back up even if the ceiling just rose (e.g. the
+    // constraining player left) — see RefreshDifficultyDisplay's own Next-arrow logic for how the ceiling
+    // rising is instead surfaced (arrow becomes clickable again, selection itself doesn't move).
+    private void ResolveDifficultyCeiling(Lobby lobby)
+    {
+        if (!lobby.IsOwner) return;
+        if (GamePresets.instance == null) return;
+        if (!ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw)) return;
+        var lobbyCSteamID = new CSteamID(lobbyIdRaw);
+
+        bool resolved = lobby.Members.Count > 0;
+        int ceiling = int.MaxValue;
+
+        foreach (var member in lobby.Members)
+        {
+            int memberUnlock;
+            if (member.Id == GameStartData.LocalUserId)
+            {
+                // No round-trip for the host's own entry — same convention this method's own per-member read
+                // loop below and RefreshFromLobby's char/color/power resolution already use.
+                memberUnlock = ProgressionManager.HighestUnlockedDifficulty;
+            }
+            else
+            {
+                if (!ulong.TryParse(member.Id, out ulong memberIdRaw)) { resolved = false; continue; }
+                string raw = SteamMatchmaking.GetLobbyMemberData(lobbyCSteamID, new CSteamID(memberIdRaw), UnlockedDifficultyKey);
+                if (!int.TryParse(raw, out memberUnlock)) { resolved = false; continue; }
+            }
+            if (memberUnlock < ceiling) ceiling = memberUnlock;
+        }
+
+        if (resolved)
+        {
+            if (ceiling < GamePresets.instance.Difficulty)
+                GamePresets.instance.SetDifficulty(ceiling);
+
+            string ceilingStr = ceiling.ToString();
+            if (SteamMatchmaking.GetLobbyData(lobbyCSteamID, TLCeilingKey) != ceilingStr)
+                SteamMatchmaking.SetLobbyData(lobbyCSteamID, TLCeilingKey, ceilingStr);
+        }
+
+        string resolvedStr = resolved.ToString();
+        if (SteamMatchmaking.GetLobbyData(lobbyCSteamID, TLCeilingResolvedKey) != resolvedStr)
+            SteamMatchmaking.SetLobbyData(lobbyCSteamID, TLCeilingResolvedKey, resolvedStr);
+    }
+
+    // Every client's own reaction to a detected join/leave (see the diff below) — un-readies ONLY itself,
+    // never another player, since Steam member data is self-write-only. Every client independently observing
+    // the same lobby.Members change and reacting identically is what achieves "everyone's ready resets" for
+    // free, without any host-to-everyone push mechanism (which isn't possible for another player's own ready
+    // flag anyway). Gated on _localIsReady actually being true (not an unconditional write) for the same
+    // "only write on an actual change" reasoning ResolveDifficulty/ResolveColorAssignments already follow.
+    private void DetectMembershipChangeAndUnready(Lobby lobby)
+    {
+        if (lobbyManager == null) return;
+
+        var currentIds = new HashSet<string>();
+        foreach (var member in lobby.Members) currentIds.Add(member.Id);
+
+        if (_lastKnownMemberIds != null && !_lastKnownMemberIds.SetEquals(currentIds))
+        {
+            if (_localIsReady)
+            {
+                _localIsReady = false;
+                lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
+            }
+        }
+
+        _lastKnownMemberIds = currentIds;
+    }
+
+    // The single explicit, observable source of truth every client (host included) reads IDENTICALLY to
+    // decide whether the Ready button can be clicked right now — deliberately not each machine independently
+    // re-deriving "is the ceiling resolved" from its own local view of lobby.Members, since two machines'
+    // own local snapshots can be momentarily out of sync with each other (a join visible to the host before
+    // it's visible to a given client, or vice versa). Reading a per-machine value as if it were already
+    // synced is exactly the class of bug this project's prior Threat-Level desync came from. No lobby
+    // (solo/offline testing) always reads as resolved — nothing to wait on.
+    private bool IsCeilingResolved()
+    {
+        if (lobbyManager == null || !lobbyManager.CurrentLobby.IsValid) return true;
+        if (!ulong.TryParse(lobbyManager.CurrentLobby.LobbyId, out ulong lobbyIdRaw)) return true;
+        string resolvedStr = SteamMatchmaking.GetLobbyData(new CSteamID(lobbyIdRaw), TLCeilingResolvedKey);
+        return resolvedStr == "True";
+    }
+
+    // The LOBBY ceiling (min of every current member's own unlock, synced via TLCeilingKey), never this
+    // machine's own ProgressionManager.HighestUnlockedDifficulty directly — reading the local value directly
+    // here would be the exact bug this whole feature exists to fix (a host with a higher personal unlock
+    // could see/click a Next arrow past what other members had actually unlocked). Falls back to the personal
+    // value only when there's genuinely no lobby to sync through (solo/offline testing), same fallback IsHost
+    // itself already uses, or before TLCeilingKey has ever been written (a lobby's very first pass).
+    private int GetLobbyCeilingOrPersonal()
+    {
+        if (lobbyManager == null || !lobbyManager.CurrentLobby.IsValid) return ProgressionManager.HighestUnlockedDifficulty;
+        if (!ulong.TryParse(lobbyManager.CurrentLobby.LobbyId, out ulong lobbyIdRaw)) return ProgressionManager.HighestUnlockedDifficulty;
+        string stored = SteamMatchmaking.GetLobbyData(new CSteamID(lobbyIdRaw), TLCeilingKey);
+        return int.TryParse(stored, out int ceiling) ? ceiling : ProgressionManager.HighestUnlockedDifficulty;
+    }
+
     public void RefreshFromLobby(Lobby lobby)
     {
         if (playerListText == null || CharacterRegistry.instance == null) return;
         codeButton?.Init(lobby.LobbyId);
 
+        // Every client's own reaction to a join/leave — see the method's own doc comment. Runs before the
+        // Resolve* calls below purely for ordering clarity; it doesn't depend on their output.
+        DetectMembershipChangeAndUnready(lobby);
+
         // Host reconciles first so its own read immediately below (both here and everyone else's, once this
         // client's write propagates) reflects the freshest possible assignment — no-ops entirely for non-host
         // clients, whose color always comes purely from reading this same blob, never from self-assignment.
         ResolveColorAssignments(lobby);
+        // Before ResolveDifficulty — a down-clamp this pass must already be reflected in what
+        // ResolveDifficulty persists into DifficultyKey below, not lag a full pass behind it.
+        ResolveDifficultyCeiling(lobby);
+        ResolveDifficulty(lobby);
 
         if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
         {
@@ -308,13 +531,26 @@ public class CharacterSelectUI : MonoBehaviour
 
             bool isReady = member.Id == GameStartData.LocalUserId ? _localIsReady : member.IsReady;
             string readyState = isReady ? "Ready" : "Not Ready";
+            string readyColor = isReady ? "green" : "white";
             long power = member.Id == GameStartData.LocalUserId
                 ? ProgressionManager.SpentPoints
                 : (_powerLevels.TryGetValue(member.Id, out long p) ? p : 0L);
             string powerStr = ProgressionManager.FormatPoints(power);
-            sb.AppendLine($"<color=#{colorHex}>■</color> {readyState} - {member.DisplayName} - {charName} - Spent Points: {powerStr}");
+            // Outer <color> covers the glyph AND the rest of the line (player's own color); the nested
+            // <color> for readyState overrides just that one span, then reverts to the outer color for
+            // everything after it closes — TMP rich text nests/reverts like a stack.
+            sb.AppendLine($"<color=#{colorHex}>■ <color={readyColor}>{readyState}</color> - {member.DisplayName} - {charName} - Spent Points: {powerStr}</color>");
         }
         playerListText.text = sb.ToString();
+
+        // Re-checked on every lobby refresh, not just once at Awake() — lobbyManager.CurrentLobby isn't
+        // necessarily valid yet at Awake()-time for a client still mid-connect, so IsHost could read a stale
+        // "no lobby, treat as host" fallback until the first real RefreshFromLobby lands. Keeps the arrows'
+        // host-only visibility correct as connection state actually resolves.
+        RefreshDifficultyDisplay();
+        // Re-checked every pass alongside the arrows above, same reasoning — see IsCeilingResolved's own
+        // doc comment for why this is a plain synced-value read, not a per-machine derived guess.
+        if (readyButton != null) readyButton.interactable = IsCeilingResolved();
     }
 
     public void OnKnightClicked()       => SelectCharacter(0);
@@ -322,6 +558,104 @@ public class CharacterSelectUI : MonoBehaviour
     public void OnArcherClicked()       => SelectCharacter(2);
     public void OnBladeweaverClicked()  => SelectCharacter(3);
     public void OnExecutionerClicked()  => SelectCharacter(4);
+
+    // Host-only (2026-08-20) — only the host's own GamePresets value actually carries over into the Game
+    // scene, so letting a client change it here would be pure UI lying (their own click would visibly
+    // "work" locally but have zero effect on the match that actually starts). No lobby / lobbyManager
+    // unassigned (e.g. solo/offline testing) is treated as host — same "nothing to arbitrate" fallback
+    // SelectColor's own no-lobby branch already uses.
+    private bool IsHost => lobbyManager == null || !lobbyManager.CurrentLobby.IsValid || lobbyManager.CurrentLobby.IsOwner;
+
+    public void OnDifficultyPrevClicked() => ChangeDifficulty(-1);
+    public void OnDifficultyNextClicked() => ChangeDifficulty(1);
+
+    private void ChangeDifficulty(int delta)
+    {
+        // Real logical guard, not just relying on the arrows being hidden for a non-host — see
+        // SelectCharacter's own identical LoadingScreen guard for the same "don't just trust the visuals"
+        // reasoning.
+        if (!IsHost) return;
+        if (GamePresets.instance == null) return;
+        GamePresets.instance.SetDifficulty(GamePresets.instance.Difficulty + delta);
+        // Belt-and-suspenders on top of GamePresets' own personal-unlock clamp, which has no notion of the
+        // lobby ceiling — a host whose OWN unlock exceeds the current lobby ceiling could otherwise still
+        // click past it via this arrow even though the arrow itself should already be hidden past that point
+        // (same "don't just trust the visuals" reasoning SelectCharacter's own LoadingScreen guard uses).
+        if (lobbyManager != null && lobbyManager.CurrentLobby.IsValid)
+        {
+            int ceiling = GetLobbyCeilingOrPersonal();
+            if (GamePresets.instance.Difficulty > ceiling) GamePresets.instance.SetDifficulty(ceiling);
+        }
+        // Written immediately here, not left to the next passive RefreshFromLobby pass — unlike a color
+        // pick (which piggybacks on Steam's own member-data-changed callback firing from SetLobbyMemberData
+        // even for a mere request), nothing else naturally triggers a lobby refresh right after this click,
+        // so without this a client wouldn't see the new difficulty until some UNRELATED lobby event
+        // happened to fire next (another player readying up, joining, etc.) — could be a long, confusing wait.
+        if (lobbyManager != null) ResolveDifficulty(lobbyManager.CurrentLobby);
+        RefreshDifficultyDisplay();
+    }
+
+    private void RefreshDifficultyDisplay()
+    {
+        if (GamePresets.instance == null) return;
+
+        // The host's own local GamePresets value IS the single source of truth (see ChangeDifficulty's own
+        // host-only gate and ResolveDifficulty's own doc comment) — a client instead reads back whatever the
+        // host most recently resolved into the lobby-wide Steam blob, same "host resolves, everyone reads
+        // the shared value" split ResolveColorAssignments/RefreshFromLobby already use for color. Never the
+        // other way around — a client's own local GamePresets.Difficulty (whatever THEY last hosted with,
+        // completely irrelevant here) must never leak into what gets shown or played in someone else's lobby.
+        int difficulty = GamePresets.instance.Difficulty;
+        if (!IsHost && lobbyManager != null && lobbyManager.CurrentLobby.IsValid
+            && ulong.TryParse(lobbyManager.CurrentLobby.LobbyId, out ulong lobbyIdRaw))
+        {
+            string stored = SteamMatchmaking.GetLobbyData(new CSteamID(lobbyIdRaw), DifficultyKey);
+            if (int.TryParse(stored, out int synced)) difficulty = synced;
+        }
+        if (difficultyText != null) difficultyText.text = $"Threat Level {difficulty}";
+        if (difficultyDescriptionText != null)
+        {
+            // Matches EnemySpawnerPD's own three independent difficultyDamage/Health/MoveSpeedGrowthPerLevel
+            // rates exactly (50%/100%/20% per level as of 2026-08-20) — difficulty 1 is the no-op baseline
+            // (all three 0% here), not "difficulty * rate" (which would wrongly show a bonus at difficulty 1
+            // already). Empty at difficulty 1 rather than showing "+0%" for all three.
+            int levelsAboveBase = difficulty - 1;
+            int damagePercent    = levelsAboveBase * 50;
+            int healthPercent    = levelsAboveBase * 100;
+            int moveSpeedPercent = levelsAboveBase * 10;
+            // Threat Level 2's own unique modifier (CharacterStatsPD.ActivateDifficultyModifiers,
+            // threatLevel2SlowMultiplier/Duration) — same "levelsAboveBase > 0" gate as the stat lines above
+            // since Threat Level 1 has no unique modifier of its own, and this one's threshold happens to be
+            // exactly difficulty >= 2 too. Hardcoded text, not read live off CharacterStatsPD's own fields —
+            // same convention the three stat lines above already use (matches EnemySpawnerPD's formula by
+            // value, not by reference), since this UI lives in a different scene from the player prefab.
+            string threatLevel2Line = difficulty >= 2 ? "\nLevel 2: Players are 40% Slowed for 1.5 seconds when they take damage." : "";
+            // Threat Level 3's own unique modifier (EnemySpawnerPD.threatLevel3EliteCountMultiplier).
+            string threatLevel3Line = difficulty >= 3 ? "\nLevel 3: Double Elite spawns." : "";
+            // Threat Level 4's own unique modifier (EnemySpawnerPD.threatLevel4PlebMoveSpeedMultiplier).
+            string threatLevel4Line = difficulty >= 4 ? "\nLevel 4: Spikies are 50% faster." : "";
+            // Threat Level 5's own unique modifier (EnemySpawnerPD.threatLevel5AttackCooldownMultiplier).
+            string threatLevel5Line = difficulty >= 5 ? "\nLevel 5: Enemies attack twice as often." : "";
+            // Threat Level 6's own unique modifier (EnemySpawnerPD.threatLevel6BossCount).
+            string threatLevel6Line = difficulty >= 6 ? "\nLevel 6: Double Boss spawns." : "";
+            difficultyDescriptionText.text = levelsAboveBase > 0
+                ? $"+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
+                : "";
+        }
+
+        // Hidden entirely (SetActive, not Button.interactable) rather than just greyed — either because a
+        // non-host has no business touching this at all (see IsHost's own doc comment), or because there's
+        // nothing further to click in that direction: Prev at the absolute floor, Next at whichever comes
+        // first — the LOBBY ceiling (min of every current member's own unlock, see GetLobbyCeilingOrPersonal's
+        // own doc comment for why this is no longer just the host's own personal unlock), or (the common
+        // case) simply not having unlocked anything past this yet. GamePresets.SetDifficulty enforces the
+        // same HighestUnlockedDifficulty clamp independently, so this is belt-and-suspenders with that, not
+        // the only thing stopping a locked pick.
+        bool isHost = IsHost;
+        int highestUnlocked = GetLobbyCeilingOrPersonal();
+        if (difficultyPrevArrow != null) difficultyPrevArrow.SetActive(isHost && difficulty > GamePresets.MinDifficulty);
+        if (difficultyNextArrow != null) difficultyNextArrow.SetActive(isHost && difficulty < highestUnlocked);
+    }
 
     public void OnRandomClicked()
     {
@@ -434,6 +768,9 @@ public class CharacterSelectUI : MonoBehaviour
     {
         if (lobbyManager == null) return;
         if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
+        // Real logical guard, not just relying on the button's own visible interactable state — same
+        // "don't just trust the visuals" reasoning ChangeDifficulty's own belt-and-suspenders clamp uses.
+        if (readyButton != null && !readyButton.interactable) return;
         _localIsReady = !_localIsReady;
         // Explicit value, not ToggleLocalReady() — that toggles based on the lobby provider's own mirrored
         // localLobbyUser.IsReady, a separate state source from _localIsReady above that can drift out of
@@ -460,7 +797,8 @@ public class CharacterSelectUI : MonoBehaviour
     // Renamed from ResetReadyState — that only ever cleared _localIsReady, but auditing turned up two more
     // local, lobby-specific fields with the exact same "never reset on leave" gap: _isRandom (so picking
     // Random in one lobby wouldn't silently keep showing "Random" as your char name in a later lobby even
-    // after GameStartData.LocalCharacterIndex got reset back to 0 by InitializeForLobby), and the cached
+    // after GameStartData.LocalCharacterIndex got reset back to GameStartData.SavedCharacterIndex by
+    // InitializeForLobby), and the cached
     // OTHER-members' selections (_charSelections/_colorSelections/_powerLevels — keyed by userId, so a
     // player who hops between lobbies with you could otherwise briefly show stale data from the previous
     // lobby until the next RefreshFromLobby overwrites it). Called from both LobbySceneController.OnRoomLeft
@@ -472,6 +810,9 @@ public class CharacterSelectUI : MonoBehaviour
         _charSelections.Clear();
         _colorSelections.Clear();
         _powerLevels.Clear();
+        // null, not .Clear() — see the field's own doc comment for why "no snapshot yet" must stay
+        // distinguishable from "snapshot was an empty set".
+        _lastKnownMemberIds = null;
     }
 
     // Just files a REQUEST — never claims the color directly. The host (see ResolveColorAssignments) is the
@@ -483,6 +824,11 @@ public class CharacterSelectUI : MonoBehaviour
     private void SelectColor(int index)
     {
         if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
+
+        // Saved regardless of whether the host actually grants this particular request this session — this
+        // records what the player WANTS, for LobbySceneController.InitializeForLobby to request again
+        // automatically next time they join a lobby (see GameStartData.SavedColorIndex's own doc comment).
+        GameStartData.SavedColorIndex = index;
 
         if (lobbyManager != null)
         {
@@ -511,6 +857,9 @@ public class CharacterSelectUI : MonoBehaviour
 
         _isRandom = false;
         GameStartData.LocalCharacterIndex = index;
+        // See GameStartData.SavedCharacterIndex's own doc comment — restored automatically next time this
+        // player joins a lobby.
+        GameStartData.SavedCharacterIndex = index;
         _charSelections[GameStartData.LocalUserId] = index;
         RefreshCharacterDetails(index);
 

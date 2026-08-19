@@ -14,8 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Rejuvinating Bonk</color>
   description: <color=#FFA000>On Ally Strike:</color> <color=#7DFF00>Heal</color>
-    yourself and allies you hit for <color=#7DFF00>{LiveHealthRegenRatio}</color><color=#FFA000>(<color=#7DFF00>{HealthRegenMultiplierPercent}%
-    Health Regen</color>)</color> <color=#7DFF00>Health</color>.
+    yourself and allies you hit for <color=#7DFF00>{LiveHealthRegenRatio}</color><color=#FFA000>(2
+    + <color=#7DFF00>{HealthRegenMultiplierPercent}% Health Regen</color>)</color>
+    <color=#7DFF00>Health</color>.
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   effectPrefab: {fileID: 5466158232830945447, guid: 7d71063e9ace64c418f53c5aaebbe766, type: 3}
   multiplayerOnly: 1
@@ -27,3 +28,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

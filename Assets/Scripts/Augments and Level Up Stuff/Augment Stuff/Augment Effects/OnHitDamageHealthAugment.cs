@@ -1,4 +1,5 @@
 using PurrNet.Prediction;
+using UnityEngine;
 
 // Deals bonus damage scaled off BonusHealth (MaxHealth minus the character's raw baseMaxHealth — i.e. only
 // the health gained from augments/meta-progression/etc., not weapon damage or unmodified starting health)
@@ -18,14 +19,19 @@ public class OnHitDamageHealthAugment : AugmentEffectPD<OnHitDamageHealthAugment
 
     // 0.5f = 50% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
     public float onHitBonusHealthPercent = 0.5f;
+    // Flat floor added to the scaled portion below (2026-08-12, playtesting: this augment did literally
+    // nothing for a build with zero BonusHealth investment) — added BEFORE the onHitPower multiply/luck roll
+    // (see OnHit()), so it still scales with onHitPower/luck same as the rest of the hit, just guarantees a
+    // non-zero base even at zero BonusHealth investment.
+    [SerializeField] private float baseDamage = 5f;
 
-    // Baseline damage this would currently deal (BonusHealth * percent, at 100% OnHitPower — the per-hit
-    // OnHitPower multiplier itself isn't included since that varies hit-to-hit, not a stat to preview) for
-    // AugmentDescriptionFormatter's {LiveBonusHealthRatio} token. Blank while not actually in a match, or
-    // with no character context to compute against, rather than showing a misleading number.
+    // Baseline damage this would currently deal (baseDamage + BonusHealth * percent, at 100% OnHitPower —
+    // the per-hit OnHitPower multiplier itself isn't included since that varies hit-to-hit, not a stat to
+    // preview) for AugmentDescriptionFormatter's {LiveBonusHealthRatio} token. Blank while not actually in a
+    // match, or with no character context to compute against, rather than showing a misleading number.
     public string LiveBonusHealthRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.BonusHealth * onHitBonusHealthPercent)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseDamage + stats.BonusHealth * onHitBonusHealthPercent)} "
             : "";
 
     protected override void OnApply()
@@ -43,14 +49,14 @@ public class OnHitDamageHealthAugment : AugmentEffectPD<OnHitDamageHealthAugment
     {
         if (!data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy) || enemy._isDead) return;
 
-        // Anything that deals damage rolls luck variance — no exceptions.
-        float baseDamage = Stats.BonusHealth * onHitBonusHealthPercent * data.onHitPower;
-        float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
-        if (isHighroll) rolled *= 1f + Stats.HighrollBonus;
-
-        if (data.isCrit) rolled *= Stats.CritDamage;
+        // Anything that deals damage rolls luck variance — no exceptions. baseDamage joins the scaled
+        // portion INSIDE the onHitPower multiply (same convention as the live-preview formula, which already
+        // assumes 100% OnHitPower) — see its own field comment.
+        float preRoll = (baseDamage + Stats.BonusHealth * onHitBonusHealthPercent) * data.onHitPower;
+        float rolled = WeaponDamageMath.RollDamage(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
+        rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, data.isCrit, Stats.HighrollBonus, Stats.CritDamage);
 
         enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
-        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false, source = DamageSource.OnHitDamageHealthAugment });
+        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false });
     }
 }

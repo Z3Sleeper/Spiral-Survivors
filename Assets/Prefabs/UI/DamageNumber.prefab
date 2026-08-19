@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 3681813280262231137}
   - component: {fileID: 5739133174915043806}
   - component: {fileID: 5872084163197778109}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: Text (TMP)
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -191,7 +191,7 @@ GameObject:
   m_Component:
   - component: {fileID: 8588254995810041972}
   - component: {fileID: 3582064587514324191}
-  m_Layer: 0
+  m_Layer: 5
   m_Name: DamageNumber
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -227,12 +227,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DamageNumber
   _text: {fileID: 5872084163197778109}
+  _zDrift: 0.05
   _maxHeight: 2
   _duration: 1
-  _zDrift: 0.05
-  _fontSize: 6
+  _enemyFontSize: 6
   _nonPrioritySize: 4
-  _normalColor: {r: 1, g: 1, b: 1, a: 1}
-  _critColor: {r: 1, g: 0.5267917, b: 0, a: 1}
-  _highrollColor: {r: 0, g: 1, b: 0.5294118, a: 1}
-  _critHighrollColor: {r: 1, g: 0.3137255, b: 1, a: 1}
+  _playerFontSize: 6
+  _statusMaxHeight: 2
+  _statusDuration: 1
+  _statusFontSize: 6
+  _statusColor: {r: 1, g: 1, b: 1, a: 1}

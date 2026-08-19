@@ -108,9 +108,10 @@ MonoBehaviour:
   slot: 0
   tags: []
   activeSurgeBlock: 0
+  isActionAbility: 0
   duration: 3
-  fireRatePenaltyPercent: 0.5
-  recastBlockDuration: 0.25
+  fireRatePenaltyPercent: 0.65
+  recastBlockDuration: 0.5
 --- !u!114 &-8620584594776125514
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -130,20 +131,21 @@ MonoBehaviour:
     <color=#FFA000>(AoE
     Effect)</color> Fire a rain of arrows within <color=#3278FF>2x Bow Range</color>,
     dealing <color=#FF5000>{LiveDamageRatio}</color><color=#FFA000>(<color=#FF5000>{TotalDamagePercent}%
-    unpenalized Strength</color>) damage</color> over <color=#FFA000>5 seconds</color>
-    and <color=#FFA000>Slowing</color> enemies by <color=#FFA000>{LiveSlowRatio}%</color>.'
+    Strength</color>) damage</color> over <color=#FFA000>5 seconds</color> and <color=#FFA000>Slowing</color>
+    enemies by <color=#FFA000>{LiveSlowRatio}%</color>.'
   cooldown: 10
   cooldownStartsOnCast: 0
   slot: 1
   tags:
   - AoE Effect
   activeSurgeBlock: 0
+  isActionAbility: 1
   castRangeMultiplier: 2
   castRadius: 4
   tickCount: 21
   tickInterval: 0.25
   strengthPercentPerTick: 0.15
-  slowPercent: 0.25
+  slowPercent: 0.35
   slowDuration: 0.5
   recastRetriggerRate: 0.5
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: f238e103dc50fdf41a69da3cb67089ef, type: 3}

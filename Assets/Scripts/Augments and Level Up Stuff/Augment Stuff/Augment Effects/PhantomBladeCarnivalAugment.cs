@@ -33,6 +33,6 @@ public class PhantomBladeCarnivalAugment : AugmentEffectPD<PhantomBladeCarnivalA
         if (phantomBladePrefab == null) return;
         if (!data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy) || enemy._isDead) return;
 
-        PhantomBladeSummonHelper.SummonCopyAtTarget(hierarchy, phantomBladePrefab, Stats, enemy, data.damage, data.size, data.isCrit, data.usePenalizedOnHitPower, data.baseDamageMultiplier);
+        PhantomBladeSummonHelper.SummonCopyAtTarget(hierarchy, phantomBladePrefab, Stats, enemy, data.damage, data.size, data.isCrit, data.baseDamageMultiplier);
     }
 }

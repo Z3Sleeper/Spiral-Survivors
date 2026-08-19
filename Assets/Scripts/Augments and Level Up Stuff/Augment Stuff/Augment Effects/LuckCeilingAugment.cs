@@ -8,7 +8,7 @@ public class LuckCeilingAugment : AugmentEffectPD<LuckCeilingAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float bonusLuckCeilingFlat = 0.25f;
+    [SerializeField] private float bonusLuckCeilingFlat = 0.15f;
 
     protected override void OnApply()
     {

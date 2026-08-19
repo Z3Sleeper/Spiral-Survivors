@@ -13,16 +13,23 @@ using UnityEngine;
 // orchestrates WHO gets grabbed, WHEN each phase transitions, and the windup indicators/move-speed boost.
 public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
 {
-    public enum OrbiterState { Moving, Windup, Pulling, Holding }
+    public enum OrbiterState { Moving, Pulling, Holding }
 
     public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public EnemyBaseState b;
         public int   phaseId;
+        // Dual-purpose, per phase (same convention KingSpikePD's own remoteSequenceTimer already uses):
+        // counts UP (elapsed time since Pulling began) while phaseId == Pulling, counts DOWN (remaining
+        // time) while phaseId == Holding — see each case's own comment in HandleActiveState.
         public float phaseTimer;
         public float attackCooldownTimer;
         // Capacity 3, index doubles as the windupIndicators slot — see UpdateView's own use of the index.
         public DisposableList<PredictedObjectID> heldPlebs;
+        // How many of heldPlebs have had DispatchPull() called on them so far during the CURRENT Pulling
+        // phase — see DispatchPull's own doc comment for the one-at-a-time sequencing this drives. Reset to
+        // 0 wherever Pulling begins (Moving's own TryStartGrab success branch).
+        public int pullSequenceIndex;
 
         public void Dispose()
         {
@@ -43,21 +50,26 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;
 
     [Header("Grab")]
-    [SerializeField] private float grabRadius = 10f;
-    [SerializeField] private float grabCooldown = 8f;
-    [SerializeField] private float windupDuration = 0.5f;
+    [SerializeField] private float grabRadius = 15f;
+    [SerializeField] private float windupDuration = 1f;
     [SerializeField] private float pullDuration = 0.25f;
+    // Gap between each held pleb's own windup START (2026-08-17 — used to pull the whole group in one shot)
+    // — pleb i's own windup begins i * pullSequentialDelay after Pulling started, REGARDLESS of whether an
+    // earlier pleb's own windup/pull has finished yet (confirmed live design intent: windups overlap, they
+    // don't queue behind each other) — see DispatchPull's own doc comment for the full timing model.
+    // Independently tunable per tier/prefab, per explicit design (intended to shrink as tiers get tuned
+    // harder).
+    [SerializeField] private float pullSequentialDelay = 0.25f;
     [SerializeField] private float holdDuration = 3f;
     [SerializeField] private float holdOrbitRadius = 2f;
     // Only holdOrbitRadius scales with size (an Elite is just a bigger prefab, size tuned up in the Editor
-    // same as any other enemy) — every other tunable here (durations, angular speed, move-speed multiplier,
-    // grab radius/cooldown) stays exactly as authored regardless of size. Same "* size" precedent
-    // SpikeShieldPD's own orbitRadius/SpearGloomPD's own stabRange already use — read live everywhere
-    // holdOrbitRadius would otherwise be used directly (BeginPull's actual pull target, UpdateView's
-    // indicator aim) so the real orbit and its indicator can never drift out of sync with each other.
+    // same as any other enemy) — every other tunable here (durations, angular speed, grab radius/cooldown)
+    // stays exactly as authored regardless of size. Same "* size" precedent SpikeShieldPD's own orbitRadius/
+    // SpearGloomPD's own stabRange already use — read live everywhere holdOrbitRadius would otherwise be used
+    // directly (BeginPull's actual pull target, UpdateView's indicator aim) so the real orbit and its
+    // indicator can never drift out of sync with each other.
     private float EffectiveHoldOrbitRadius => holdOrbitRadius * size;
-    [SerializeField] private float holdOrbitAngularSpeed = 180f;
-    [SerializeField] private float holdMoveSpeedMultiplier = 1.5f;
+    [SerializeField] private float holdOrbitAngularSpeed = 120f;
     // Each held pleb's own damage is overridden to this Orbiter's own `damage * X` for the duration of the
     // hold (see IEnemyPD.SetDamageOverride's own doc comment) — "using a grabbed pleb like a weapon" hits as
     // hard as its wielder, scaled independently of the pleb's own tuning. Split (2026-08-11) into two separate
@@ -65,18 +77,42 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     // independently — TryStartGrab applies pullDamageMultiplier at selection, HandleActiveState's own
     // Pulling->Holding transition switches every held pleb over to orbitDamageMultiplier.
     [SerializeField] private float pullDamageMultiplier  = 1f;
-    [SerializeField] private float orbitDamageMultiplier = 1f;
+    [SerializeField] private float orbitDamageMultiplier = 0.5f;
     // Single source of truth for how many plebs one grab pulls — retuning this alone is enough to change the
-    // count; no prefab surgery needed (see windupIndicatorTemplate's own comment for why).
-    [SerializeField] private int maxGrabCount = 3;
+    // count; no prefab surgery needed (see windupIndicatorTemplate's own comment for why). Tier1-authored
+    // baseline, scaled per tier by maxGrabCountTierGrowth below (applied in OnConfigureSpawn()). See
+    // _authoredMaxGrabCount's own doc comment for why this needs the snapshot-and-reset treatment instead of
+    // just incrementing this field directly.
+    [SerializeField] private int maxGrabCount = 2;
+    // Captured once in OnAwake(), reset back onto maxGrabCount every pooled reuse in LateAwake() — otherwise
+    // OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot" pattern
+    // established for BlitzGloomPD/DaggerGloomPD/MortarGloomPD/SpearGloomPD's own identical attack-count
+    // fields. EnsureIndicatorPoolCapacity/GetInitialState's own heldPlebs sizing were ALREADY built
+    // (2026-08-19) anticipating this exact future tier-scaling — see their own doc comments.
+    private int _authoredMaxGrabCount;
+
+    [Header("Attack Cooldown")]
+    [SerializeField] private float attackCooldown = 5f;
+    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
+    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
+    // pattern as _authoredMaxGrabCount above.
+    private float _authoredAttackCooldown;
+
+    [Header("Tier Scaling")]
+    // Added onto maxGrabCount per tier above 1 — see OnConfigureSpawn().
+    [SerializeField] private int maxGrabCountTierGrowth = 1;
+
     // ONE authored line indicator (same shape as SpearGloomPD's own WindupIndicator — an empty parent
     // Transform with a flattened-Cube "DangerIndicator" mesh child), kept inactive on the prefab and never
     // itself shown directly — LateAwake() clones it maxGrabCount times instead of requiring maxGrabCount
     // hand-placed copies in the Editor, so retuning maxGrabCount alone is enough, no re-wiring.
+    [Header("Indicators")]
     [SerializeField] private Transform windupIndicatorTemplate;
 
     // Built once from windupIndicatorTemplate (see LateAwake()) — index i is aimed at heldPlebs[i], hidden
-    // when that slot is empty or the current phase isn't Windup. Not serialized; these are runtime clones.
+    // when that slot is empty or outside its own individual windup window (see UpdateView — each slot's
+    // window is independent now, not tied to a single shared phase). Not serialized; these are runtime
+    // clones.
     private Transform[] _windupIndicators;
     // Parallel to _windupIndicators — resolved from each clone's own child (same WindupFill-under-
     // WindupIndicator shape SpearGloomPD's own template uses), null entries just mean that clone has none.
@@ -85,12 +121,28 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     // Scratch buffer for TryStartGrab — cleared and reused every call, same zero-alloc convention as every
     // other enemy's own scratch list in this codebase (e.g. ShooterGloomPD._multishotAngles).
     private static readonly List<IEnemyPD> _grabCandidates = new();
+    // Scratch buffer for OnInterrupted() — snapshots heldPlebs before ReleaseAllHeld() clears it, so the
+    // post-release interrupt-stun loop still has something to iterate. See OnInterrupted's own doc comment.
+    private static readonly List<PredictedObjectID> _interruptStunScratch = new();
 
     private OrbiterState GetPhase(ref State s) => (OrbiterState)s.phaseId;
+
+    protected override void OnAwake()
+    {
+        base.OnAwake();
+        _authoredMaxGrabCount = maxGrabCount;
+        _authoredAttackCooldown = attackCooldown;
+    }
 
     protected override void LateAwake()
     {
         base.LateAwake();
+
+        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
+        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredMaxGrabCount's own
+        // doc comment.
+        maxGrabCount = _authoredMaxGrabCount;
+        attackCooldown = _authoredAttackCooldown;
 
         // Guaranteed at least one full cooldown before the first grab attempt, plus a randomized extra so
         // multiple Orbiters don't all attack in lockstep — same pattern every other timed-attack enemy in
@@ -99,27 +151,62 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         // defaulted to 0 and a freshly-spawned/pooled-reused Orbiter was immediately grab-ready the instant
         // it spawned. Re-runs on every pooled reuse since LateAwake() itself does (see the indicator-pool
         // guard right below for that same reasoning).
-        currentState.attackCooldownTimer = grabCooldown + GameRandom.instance.NextFloat(0f, grabCooldown);
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
 
-        // Guarded to a single real build per instance (LateAwake() re-fires on every pooled reuse, but the
-        // clones themselves persist across a pooled life just like this GameObject itself does — no reason
-        // to destroy/recreate them every reuse). Plain Unity Instantiate, not hierarchy.Create() — these are
-        // purely cosmetic, driven entirely off this identity's own predicted state in UpdateView() (which
-        // already runs identically on every machine), so they need no PredictedIdentity/networked existence
-        // of their own, same as every other purely-decorative child object in this codebase.
-        if (_windupIndicators == null && windupIndicatorTemplate != null)
+        // Indicator pool build moved to OnConfigureSpawn() (2026-08-19) — see EnsureIndicatorPoolCapacity's
+        // own doc comment for why: maxGrabCount may end up per-tier-scaled there in the future, and
+        // ConfigureSpawn always runs AFTER LateAwake, so sizing the pool here would lock it to the
+        // PRE-scaling count.
+    }
+
+    // Lazy + GROWABLE, not build-once (2026-08-19) — called from OnConfigureSpawn(), after any future
+    // per-tier scaling on maxGrabCount has already been applied (see OnConfigureSpawn's own doc comment on
+    // EnemyBasePD for the general pattern), so this always sees the FINAL count for whichever life is
+    // currently spawning. Growable specifically because a single pooled instance can be reused across
+    // DIFFERENT tiers over its lifetime (pooling has no guarantee reuse only ever goes same-or-higher tier),
+    // so a fixed build-once array (the old LateAwake()-based approach) could come up short on a LATER,
+    // higher-tier life even though it was correctly sized for whichever life built it first. Never shrinks —
+    // a later lower-tier life just uses a prefix of the larger arrays; every other read site already scopes
+    // to heldPlebs.Count/the current grab count, not the array's own Length.
+    private void EnsureIndicatorPoolCapacity()
+    {
+        if (windupIndicatorTemplate == null) return;
+        int have = _windupIndicators?.Length ?? 0;
+        if (have >= maxGrabCount) return;
+
+        var newIndicators = new Transform[maxGrabCount];
+        var newFills = new WindupFillPD[maxGrabCount];
+        for (int i = 0; i < have; i++)
         {
-            _windupIndicators = new Transform[maxGrabCount];
-            _windupFills      = new WindupFillPD[maxGrabCount];
-            for (int i = 0; i < maxGrabCount; i++)
-            {
-                var clone = Instantiate(windupIndicatorTemplate, windupIndicatorTemplate.parent);
-                clone.gameObject.SetActive(false);
-                _windupIndicators[i] = clone;
-                _windupFills[i]      = clone.GetComponentInChildren<WindupFillPD>(true);
-            }
-            windupIndicatorTemplate.gameObject.SetActive(false);
+            newIndicators[i] = _windupIndicators[i];
+            newFills[i] = _windupFills[i];
         }
+        for (int i = have; i < maxGrabCount; i++)
+        {
+            var clone = Instantiate(windupIndicatorTemplate, windupIndicatorTemplate.parent);
+            clone.gameObject.SetActive(false);
+            newIndicators[i] = clone;
+            newFills[i] = clone.GetComponentInChildren<WindupFillPD>(true);
+        }
+        _windupIndicators = newIndicators;
+        _windupFills = newFills;
+        windupIndicatorTemplate.gameObject.SetActive(false);
+    }
+
+    // Tier1-authored maxGrabCount, scaled by maxGrabCountTierGrowth per tier above 1 (see that field's own
+    // doc comment). spawnTier is already final by the time this runs (set earlier in the same
+    // ConfigureSpawn() call) — scaled BEFORE EnsureIndicatorPoolCapacity() so the pool always sizes to this
+    // life's FINAL count.
+    protected override void OnConfigureSpawn()
+    {
+        base.OnConfigureSpawn();
+        maxGrabCount += (spawnTier - 1) * maxGrabCountTierGrowth;
+        EnsureIndicatorPoolCapacity();
+
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
+        // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
+        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
     }
 
     protected override State GetInitialState()
@@ -129,15 +216,18 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         return s;
     }
 
-    // base.EffectiveMoveSpeed already folds in the shared slow-multiplier logic — this just layers the
-    // hold-phase boost on top, without duplicating HandleMovement's own force/rotation code.
-    public override float EffectiveMoveSpeed =>
-        base.EffectiveMoveSpeed * (GetPhase(ref currentState) == OrbiterState.Holding ? holdMoveSpeedMultiplier : 1f);
-
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
-        state.attackCooldownTimer -= delta;
         var phase = GetPhase(ref state);
+        // Only ticks while actually waiting to grab again — NOT mid-Pulling/Holding (2026-08-19 fix). Unlike
+        // some other enemies' own attackCooldownTimer, which deliberately keeps ticking through the whole
+        // attack sequence for overlap pacing (e.g. SpearGloomPD's own spearAttackCooldownTimer — "pacing
+        // between whole attack sequences, not attack execution speed"), Orbiter's own sequence explicitly
+        // should NOT burn down cooldown while it's actively pulling/holding plebs — per design, the cooldown
+        // is meant to gate re-entry into Moving's own "ready to grab again" check specifically, not to overlap
+        // with the grab+hold sequence itself.
+        if (phase == OrbiterState.Moving)
+            state.attackCooldownTimer -= delta;
 
         switch (phase)
         {
@@ -145,51 +235,77 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                 if (_target != null) HandleMovement(ref state, delta);
                 if (state.attackCooldownTimer <= 0f && TryStartGrab(ref state))
                 {
-                    state.phaseId    = (int)OrbiterState.Windup;
-                    state.phaseTimer = windupDuration;
+                    // Straight into Pulling — no separate shared Windup phase anymore (2026-08-17); each
+                    // held pleb now gets its OWN windup, staggered by pullSequentialDelay — see this case's
+                    // own comment below for the full timing model.
+                    state.phaseId    = (int)OrbiterState.Pulling;
+                    state.phaseTimer = 0f;
+                    state.pullSequenceIndex = 0;
+                    // Turtles up the instant selection locks in — invulnerable through the WHOLE committed
+                    // sequence (selection -> pull -> right up until it actually starts orbiting/chasing),
+                    // not just the pull motion itself (also grants untargetability internally, one-way
+                    // coupling — see IEnemyPD.SetHurtboxDisabled's own doc comment). Reverted the instant
+                    // Holding begins below.
+                    SetHurtboxDisabled(true);
                 }
                 break;
 
-            // Stationary through Windup and Pulling (no HandleMovement call in either) — keeps the pull
+            // Stationary through the whole Pulling sequence (no HandleMovement call) — keeps the pull
             // destination math simple (owner position fixed for the whole pull) and reads as one committed
             // action, matching every other windup+strike enemy's own kinematic-through-the-sequence
             // convention in this codebase.
-            case OrbiterState.Windup:
-                state.phaseTimer -= delta;
-                if (state.phaseTimer <= 0f)
-                {
-                    BeginPull(ref state);
-                    // Turtles up for the pull itself — kinematic (see the tail of this method) + untargetable
-                    // (also grants invulnerability internally, one-way coupling — see IEnemyPD.
-                    // SetHurtboxDisabled's own doc comment), per explicit design: the reeling-in moment is
-                    // protected, not vulnerable. Reverted the instant Holding begins below.
-                    SetHurtboxDisabled(true);
-                    state.phaseId    = (int)OrbiterState.Pulling;
-                    state.phaseTimer = pullDuration;
-                }
-                break;
-
+            //
+            // phaseTimer counts UP here (elapsed since Pulling began), not down — held pleb i's own windup
+            // window is [i * pullSequentialDelay, i * pullSequentialDelay + windupDuration), and its actual
+            // OrbitTarget() dispatch lands the instant that window closes. Confirmed live design intent
+            // (2026-08-17): each pleb's windup starts on its OWN staggered schedule regardless of whether an
+            // earlier pleb's windup/pull has finished — NOT gated behind the previous one completing first
+            // — so with windupDuration > pullSequentialDelay (the common case), multiple plebs sit mid-
+            // windup simultaneously. See DispatchPull's own comment for the exact dispatch condition, and
+            // UpdateView for how the same per-slot window math drives each indicator independently.
             case OrbiterState.Pulling:
-                state.phaseTimer -= delta;
-                if (state.phaseTimer <= 0f)
+            {
+                state.phaseTimer += delta;
+                int count = state.heldPlebs.Count;
+
+                // While loop, not if — guards against a single tick's delta covering more than one
+                // scheduled dispatch (a brief stall), so a pull can never be silently skipped, same
+                // convention RogueSpinAbilityPD's own hit-scheduling loop uses.
+                while (state.pullSequenceIndex < count &&
+                       state.phaseTimer >= state.pullSequenceIndex * pullSequentialDelay + windupDuration)
                 {
-                    // Vulnerable again the instant it starts actually chasing with its now-orbiting plebs —
-                    // only isStunnable (below) stays off through Holding, per explicit design: a genuine
-                    // "hit it with an interrupt to stop it" counter-play window, not a full invincibility
-                    // window like Pulling was.
+                    DispatchPull(ref state, state.pullSequenceIndex);
+                    state.pullSequenceIndex++;
+                }
+
+                // Every held pleb has been dispatched AND the last one's own pullDuration has elapsed —
+                // vulnerable again the instant it starts actually chasing with its now-orbiting plebs —
+                // only isStunnable (below) stays off through Holding, per explicit design: a genuine
+                // "hit it with an interrupt to stop it" counter-play window, not a full invincibility
+                // window like Pulling was.
+                if (count > 0 && state.pullSequenceIndex >= count &&
+                    state.phaseTimer >= (count - 1) * pullSequentialDelay + windupDuration + pullDuration)
+                {
                     SetHurtboxDisabled(false);
                     // Pull -> orbit damage multiplier switch — see pullDamageMultiplier/orbitDamageMultiplier's
-                    // own doc comment.
-                    for (int i = 0; i < state.heldPlebs.Count; i++)
+                    // own doc comment. Also releases every held pleb into actually orbiting (BeginOrbiting) —
+                    // each one has been frozen at its own slot (WaitingToOrbit) since finishing its own
+                    // staggered pull-in; releasing them all in this SAME tick is what keeps their angular
+                    // spacing exactly even instead of drifting (see EnemyOrbitPhase's own doc comment).
+                    for (int i = 0; i < count; i++)
                     {
                         var go = hierarchy.GetGameObject(state.heldPlebs[i]);
                         if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+                        {
                             enemy.SetDamageOverride(true, damage * orbitDamageMultiplier);
+                            enemy.BeginOrbiting();
+                        }
                     }
                     state.phaseId    = (int)OrbiterState.Holding;
                     state.phaseTimer = holdDuration;
                 }
                 break;
+            }
 
             case OrbiterState.Holding:
                 if (_target != null) HandleMovement(ref state, delta);
@@ -198,7 +314,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                 {
                     ReleaseAllHeld(ref state);
                     state.phaseId             = (int)OrbiterState.Moving;
-                    state.attackCooldownTimer = grabCooldown;
+                    state.attackCooldownTimer = attackCooldown;
                 }
                 break;
         }
@@ -207,10 +323,9 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         // held-orbit itself either way (that logic lives entirely in each pleb's own LateSimulate(), reading
         // this Orbiter's live position — see EnemyBasePD.LateSimulate()'s own doc comment), but Interrupt()
         // still lands and forces it back to Moving/drops everything held (see OnInterrupted() below) — the
-        // intended counter-play. Kinematic only through Pulling (Windup is already stationary via omission,
-        // matching every other windup+strike enemy's own "no HandleMovement call" convention — see the
-        // switch's own comment), same asymmetric "re-zero velocity on the entering edge only" shape every
-        // other multi-phase enemy in this codebase uses.
+        // intended counter-play. Kinematic through the whole Pulling sequence (windup+pull both, now merged
+        // into one phase — see that case's own comment), same asymmetric "re-zero velocity on the entering
+        // edge only" shape every other multi-phase enemy in this codebase uses.
         phase = GetPhase(ref state);
         isStunnable = phase != OrbiterState.Holding;
         if (_rigidbody != null)
@@ -226,9 +341,9 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     }
 
     // Locks in the 3 (or fewer, if that's all that's nearby — grabbing however many are available rather
-    // than requiring exactly 3, per explicit design) targets immediately at Moving->Windup entry, not at
-    // pull start, since the windup indicators and invulnerability both need to be live for the full 0.5s
-    // delay.
+    // than requiring exactly 3, per explicit design) targets immediately at Moving->Pulling entry, not
+    // deferred to each one's own individual windup — invulnerability needs to be live for the whole
+    // sequence, and a targeted pleb shouldn't keep wandering while waiting for its own turn.
     private bool TryStartGrab(ref State state)
     {
         if (EnemySpawnerPD.instance == null) return false;
@@ -302,24 +417,24 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     private static float SlotAngleDeg(int index, int count) => index * (360f / count);
 
     // Kinematic/movement-disabled/invulnerable are already applied back in TryStartGrab (the instant each
-    // pleb was selected) — this only starts the actual pull MOTION now that the windup has finished.
-    private void BeginPull(ref State state)
+    // pleb was selected) — this fires the actual pull MOTION for exactly held pleb index i, called by
+    // Pulling's own case handler the instant that pleb's windup window closes (see its own comment for the
+    // full timing model). Order within the ring doesn't matter (per explicit design); the index just walks
+    // heldPlebs in whatever order TryStartGrab already sorted them into (furthest-first).
+    private void DispatchPull(ref State state, int i)
     {
         int count = state.heldPlebs.Count;
-        for (int i = 0; i < count; i++)
-        {
-            var go = hierarchy.GetGameObject(state.heldPlebs[i]);
-            // Dead-target guard — a claimed pleb can still go away mid-windup (e.g. EnemySpawnerPD's
-            // pre-boss WipeAllEnemies doesn't check invulnerability). Left in heldPlebs/still counted toward
-            // SlotAngleDeg's spacing either way (removing it here would mean re-spacing everyone else
-            // mid-sequence for a vanishingly rare case) — just skipped so it doesn't error trying to orbit
-            // something that no longer resolves.
-            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+        var go = hierarchy.GetGameObject(state.heldPlebs[i]);
+        // Dead-target guard — a claimed pleb can still go away mid-sequence (e.g. EnemySpawnerPD's
+        // pre-boss WipeAllEnemies doesn't check invulnerability). Left in heldPlebs/still counted toward
+        // SlotAngleDeg's spacing either way (removing it here would mean re-spacing everyone else
+        // mid-sequence for a vanishingly rare case) — just skipped so it doesn't error trying to orbit
+        // something that no longer resolves.
+        if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
             enemy.OrbitTarget(ObjectId, transform.position, EffectiveHoldOrbitRadius, pullDuration, holdOrbitAngularSpeed, SlotAngleDeg(i, count));
-        }
     }
 
-    // Reverses every effect BeginPull/TryStartGrab applied, on whichever plebs are currently held regardless
+    // Reverses every effect DispatchPull/TryStartGrab applied, on whichever plebs are currently held regardless
     // of which phase this was called from (natural hold-expiry, death, or Interrupt()) — a held pleb's own
     // orbit fields self-clear via StopOrbiting() rather than needing this to know their exact sub-phase.
     private void ReleaseAllHeld(ref State state)
@@ -354,19 +469,45 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
     // meant to be cancelable — CanBeInterrupted now defaults to false (see EnemyBasePD's own doc comment).
     // Only Holding qualifies: it's the one phase actually meant to have a real "hit it with an interrupt to
-    // stop it" counter-play window (per explicit design). Windup/Pulling are stunnable (not committed) and
-    // are no longer interruptible either, superseding the earlier "Interrupt() cancels the grab at any
-    // phase" behavior.
+    // stop it" counter-play window (per explicit design). Pulling (windup+pull, now one merged phase) is
+    // stunnable (not committed) and isn't interruptible either, superseding the earlier "Interrupt() cancels
+    // the grab at any phase" behavior.
     protected override bool CanBeInterrupted => GetPhase(ref currentState) == OrbiterState.Holding;
 
     // Drops everything held and returns to Moving — can now only ever fire during Holding (see
-    // CanBeInterrupted above), so hurtboxDisabled is always already false by this point (only ever set true
-    // during Pulling, long reverted by the time Holding begins) — no extra revert needed here.
+    // CanBeInterrupted above), so hurtboxDisabled is always already false by this point (set true all the
+    // way back at Moving->Windup entry, reverted at the Pulling->Holding transition, long before Holding
+    // itself begins) — no extra revert needed here. attackCooldownTimer is explicitly reset to a FULL
+    // cooldown here (2026-08-19 fix) — it was already exhausted by the time Holding was ever reached (that's
+    // what let TryStartGrab fire in the first place), so leaving it untouched meant Moving's own
+    // attackCooldownTimer <= 0 check passed again the instant the paired interrupt-stun wore off, triggering
+    // an immediate re-grab instead of actually waiting out a cooldown — same bug class (and same flat, not
+    // randomized, value — matches this phase's own natural Holding-timeout transition just above) as the fix
+    // already applied to Spear/Dagger/Blitz/Shooter/Leaper/Mortar's own OnInterrupted().
     protected override void OnInterrupted()
     {
+        // Snapshotted before ReleaseAllHeld() clears heldPlebs — see the stun loop at the bottom of this
+        // method for why it's needed after that call, not before.
+        _interruptStunScratch.Clear();
+        for (int i = 0; i < currentState.heldPlebs.Count; i++)
+            _interruptStunScratch.Add(currentState.heldPlebs[i]);
+
         ReleaseAllHeld(ref currentState);
-        currentState.phaseId    = (int)OrbiterState.Moving;
-        currentState.phaseTimer = 0f;
+        currentState.phaseId             = (int)OrbiterState.Moving;
+        currentState.phaseTimer          = 0f;
+        currentState.attackCooldownTimer = attackCooldown;
+
+        // Fires AFTER the release above, per explicit design — every pleb that was just dropped gets
+        // stunned by the ORBITER itself (not by whatever interrupted the Orbiter), silently: InterruptTrueStun
+        // never pops its own "Stun" popup (see EnemyBasePD.Stun()'s own doc comment on that split), so
+        // freeing up to maxGrabCount plebs at once doesn't flood the screen with redundant popups when the
+        // one "Interrupted" popup already shown on the Orbiter itself already conveys the whole event.
+        foreach (var id in _interruptStunScratch)
+        {
+            var go = hierarchy.GetGameObject(id);
+            if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
+                enemy.InterruptTrueStun();
+        }
     }
 
     protected override void OnDeathStop()
@@ -384,18 +525,25 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         base.UpdateView(viewState, verified);
         if (_windupIndicators == null || !gameObject.activeInHierarchy) return;
 
-        bool windupActive = GetPhase(ref viewState) == OrbiterState.Windup;
-        int  heldCount    = viewState.heldPlebs.Count;
+        bool  pullingPhase = GetPhase(ref viewState) == OrbiterState.Pulling;
+        int   heldCount    = viewState.heldPlebs.Count;
         for (int i = 0; i < _windupIndicators.Length; i++)
         {
             var indicator = _windupIndicators[i];
             if (indicator == null) continue;
 
+            // Per-slot windup window, not phase-level (2026-08-17 — used to be one shared Windup phase for
+            // the whole group) — slot i shows its own indicator only while viewState.phaseTimer (elapsed
+            // since Pulling began, see that case's own comment) falls within ITS OWN
+            // [i*pullSequentialDelay, i*pullSequentialDelay+windupDuration) window, independent of every
+            // other slot's own window (they can and do overlap).
+            float localElapsed = viewState.phaseTimer - i * pullSequentialDelay;
+            bool slotFilled = pullingPhase && i < heldCount && localElapsed >= 0f && localElapsed < windupDuration;
+
             // Near edge = the orbit slot itself (this Orbiter's position + the holdOrbitRadius/SlotAngleDeg
             // offset this pleb is being pulled TO), NOT this Orbiter's own center — far edge = the target
             // pleb's actual LIVE position (where it's being pulled FROM). The indicator is the pull path,
             // not a targeting line from the Orbiter to something.
-            bool slotFilled = windupActive && i < heldCount;
             Vector3 spikyPos = default;
             if (slotFilled)
             {
@@ -412,12 +560,13 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             }
             if (!slotFilled) continue;
 
-            // Live, every frame — see feedback_windupfill_self_timed_drift: a self-timed StartFill() runs on
-            // its own Time.deltaTime clock, independent of the tick-based phaseTimer that actually gates
-            // BeginPull(), and can drift out of sync with it even though windupDuration itself is fixed
-            // (never attack-speed-scaled) — a fixed duration doesn't guarantee the two clocks stay aligned.
+            // Live, every frame, off this slot's own localElapsed — see feedback_windupfill_self_timed_drift:
+            // a self-timed StartFill() runs on its own Time.deltaTime clock, independent of the tick-based
+            // phaseTimer that actually gates DispatchPull(), and can drift out of sync with it even though
+            // windupDuration itself is fixed (never attack-speed-scaled) — a fixed duration doesn't guarantee
+            // the two clocks stay aligned.
             if (fill != null)
-                fill.SetProgress(1f - Mathf.Clamp01(viewState.phaseTimer / windupDuration));
+                fill.SetProgress(Mathf.Clamp01(localElapsed / windupDuration));
 
             float   rad = SlotAngleDeg(i, heldCount) * Mathf.Deg2Rad;
             Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: PhantomBladeCarnivalAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#8C8C8C>Phantom</color> <color=#FFA000>Carnival</color>
+  displayName: <color=#8C8C8C>Phantom</color> <color=#FFA000>Phantasm</color>
   description: '<color=#FFA000>On <color=#8C8C8C>Phantom Blade</color> Summon:</color>
     <color=#FFA000>Summon</color> an exact copy <color=#8C8C8C>Phantom Blade</color>
     piercing the same enemy. This cannot trigger itself.
@@ -32,3 +32,4 @@ MonoBehaviour:
   requiredTags:
   - Phantom Blade
   incompatibleTags: []
+  unlockTag: Phantom Blade

@@ -36,6 +36,13 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private TextMeshProUGUI unlockPopupText;
     [SerializeField] private AudioClip unlockSound;
 
+    // Main-menu counterpart to the old debug-only "Erase Save Data" button that used to live inside
+    // UpgradePanel — not tied to the shop anymore, and gated behind a confirm/cancel panel now that it's a
+    // real player-facing action rather than a debug tool. OnWipeProgressClicked just opens the panel;
+    // ProgressionManager.HardReset() only ever runs from OnWipeProgressConfirmClicked.
+    [Header("Wipe Progress")]
+    [SerializeField] private GameObject wipeProgressConfirmPanel;
+
     // Off only for testing reconnection — see OnAllReady's own comment on the one call this gates.
     [SerializeField] private bool lockLobbyOnMatchStart = true;
 
@@ -100,6 +107,12 @@ public class LobbySceneController : MonoBehaviour
 
     private void Start()
     {
+        // Same "emulate a genuinely fresh state every time we're in the Lobby scene" reasoning as the
+        // timeScale/LoadingScreen/network resets right below — see ProgressionManager.ResetAnnouncedUnlocks'
+        // own doc comment for why the shop-unlock-message dedup is scoped to one lobby visit, not the whole
+        // app lifetime.
+        ProgressionManager.ResetAnnouncedUnlocks();
+
         // PausePD.UpdateView() drives Time.timeScale (and/or predictionManager.time.timeScale) to 0 every
         // frame while paused, and only ReturnToLobbyManager.ReturnToLobby() ever resets it back to 1 — a
         // disconnect-triggered kick back to this scene bypasses that entirely, so if the game happened to
@@ -401,9 +414,9 @@ public class LobbySceneController : MonoBehaviour
         RefreshUpgradeButtonAffordability();
     }
 
-    // Checked once on scene load and once again whenever the shop closes (rather than continuously) — the
-    // only things that can change affordability are purchases made INSIDE the shop, so re-checking anywhere
-    // else would just be redundant work.
+    // Checked once on scene load, whenever the shop closes, and after a progress wipe (rather than
+    // continuously) — those are the only things that can change affordability, so re-checking anywhere else
+    // would just be redundant work.
     private void RefreshUpgradeButtonAffordability()
     {
         if (upgradeButtonTexts == null) return;
@@ -445,12 +458,34 @@ public class LobbySceneController : MonoBehaviour
         Application.Quit();
     }
 
+    public void OnWipeProgressClicked()
+    {
+        if (wipeProgressConfirmPanel != null) wipeProgressConfirmPanel.SetActive(true);
+    }
+
+    public void OnWipeProgressCancelClicked()
+    {
+        if (wipeProgressConfirmPanel != null) wipeProgressConfirmPanel.SetActive(false);
+    }
+
+    public void OnWipeProgressConfirmClicked()
+    {
+        ProgressionManager.HardReset();
+        if (wipeProgressConfirmPanel != null) wipeProgressConfirmPanel.SetActive(false);
+        // Upgrade Shop button highlight reads ProgressionManager's own affordability state — stale green
+        // after a wipe otherwise. See RefreshUpgradeButtonAffordability's own doc comment.
+        RefreshUpgradeButtonAffordability();
+    }
+
     private void InitializeForLobby(Lobby lobby)
     {
         _initializedForLobby = true;
 
         GameStartData.LocalUserId = lobbyManager.CurrentProvider.GetLocalUserIdAsync().Result;
-        GameStartData.LocalCharacterIndex = 0;
+        // Restored from PlayerPrefs (see GameStartData.SavedCharacterIndex's own doc comment) instead of a
+        // hardcoded 0 — a player's own last character/color choice carries over automatically into every
+        // fresh lobby entry (create or return-after-match) rather than resetting every time.
+        GameStartData.LocalCharacterIndex = GameStartData.SavedCharacterIndex;
         lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
         // Keeps CharacterSelectUI's own local state (ready flag, _isRandom, cached other-members'
         // selections) in sync with the lobby-side reset above — belt and suspenders alongside the
@@ -460,19 +495,30 @@ public class LobbySceneController : MonoBehaviour
         _connectingToHost = false;
 
         // Color is no longer self-assigned here — the host is the single source of truth for color
-        // assignment now (see CharacterSelectUI.ResolveColorAssignments/ColorAssignmentsKey). This starts
-        // at whatever GameStartData.LocalColorIndex already held (0 by default) as a harmless placeholder;
-        // the RefreshFromLobby call below resolves the real assignment — instantly for the host itself (no
+        // assignment now (see CharacterSelectUI.ResolveColorAssignments/ColorAssignmentsKey). ColorRequestKey
+        // is written explicitly here (not left to whatever GameStartData.LocalColorIndex happened to already
+        // hold) so the saved preference is already on file the instant ResolveColorAssignments' own initial-
+        // assignment pass runs — see CharacterSelectUI.AssignInitialColor's own doc comment. Still only a
+        // REQUEST, not a claim: the host still arbitrates, so a saved color already taken by someone with
+        // priority (the host itself) still resolves to something else, same as any other request. The
+        // RefreshFromLobby call below resolves the real assignment — instantly for the host itself (no
         // network round-trip to read back its own just-written data), or within one lobby-update round-trip
         // for a joining client waiting on the host's answer.
         if (ulong.TryParse(lobby.LobbyId, out ulong lobbyIdRaw))
         {
             var steamLobby = new CSteamID(lobbyIdRaw);
-            SteamMatchmaking.SetLobbyMemberData(steamLobby, "char", "0");
+            SteamMatchmaking.SetLobbyMemberData(steamLobby, "char", GameStartData.LocalCharacterIndex.ToString());
             SteamMatchmaking.SetLobbyMemberData(steamLobby, "power", ProgressionManager.SpentPoints.ToString());
+            SteamMatchmaking.SetLobbyMemberData(steamLobby, CharacterSelectUI.ColorRequestKey, GameStartData.SavedColorIndex.ToString());
+            // Written once here, never re-sent mid-session — ProgressionManager.HighestUnlockedDifficulty is
+            // effectively join-time-stable for a lobby (only changes via UnlockNextDifficulty on a verified
+            // in-match win, or ProgressionManager.HardReset() from the main menu's Wipe Progress flow, which
+            // isn't reachable while already inside a character-select lobby). See
+            // CharacterSelectUI.ResolveDifficultyCeiling for the host-side read of this.
+            SteamMatchmaking.SetLobbyMemberData(steamLobby, CharacterSelectUI.UnlockedDifficultyKey, ProgressionManager.HighestUnlockedDifficulty.ToString());
         }
-        CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, 0, GameStartData.LocalColorIndex);
-        CharacterSelectUI.instance?.RefreshCharacterDetails(0);
+        CharacterSelectUI.instance?.SetLocalDefault(GameStartData.LocalUserId, GameStartData.LocalCharacterIndex, GameStartData.SavedColorIndex);
+        CharacterSelectUI.instance?.RefreshCharacterDetails(GameStartData.LocalCharacterIndex);
         CharacterSelectUI.instance?.RefreshFromLobby(lobby);
         ShowCharacterSelect();
     }

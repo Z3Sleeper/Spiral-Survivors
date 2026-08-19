@@ -73,6 +73,9 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
+    // Action — a committed teleport. Exposed for live playtesting — see IAbilityPD.IsActionAbility's own
+    // doc comment.
+    [SerializeField] private bool isActionAbility = true;
 
     [Header("Effect")]
     public float duration = 2f;
@@ -140,6 +143,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     // active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
+    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole Move Speed buff) — see IAbilityPD.
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
@@ -205,6 +209,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         // Fired at the OLD position, before anything moves — see class doc comment for why Started/Ended
         // straddle the teleport instead of both firing together.
         _controller?.NotifyDashStarted();
+        _controller?.NotifyDashMovementStarted();
 
         // See class doc comment for why this is currentOrigin (the blades' LIVE position), not
         // _bladeDance.currentState.targetPosition (their final resting point).
@@ -236,6 +241,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
 
         // Fired at the NEW (blinked-to) position — see class doc comment.
         _controller?.NotifyDashEnded();
+        _controller?.NotifyDashMovementEnded();
 
         ApplyBuffAndCooldown();
     }
@@ -292,7 +298,9 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     {
         if (_stats == null || _stats.IsDead || currentState.isActive || currentState.cooldownTimer > 0f) return;
         _controller?.NotifyDashStarted();
+        _controller?.NotifyDashMovementStarted();
         _controller?.NotifyDashEnded();
+        _controller?.NotifyDashMovementEnded();
         ApplyBuffAndCooldown();
     }
 

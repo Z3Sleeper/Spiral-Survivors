@@ -57,24 +57,73 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     [Header("Dagger Settings")]
     public float spinDamageMultiplier = 1f;
     [SerializeField] private float spinRadius         = 3f;
-    [SerializeField] private float windupDuration     = 0.5f;
+    [SerializeField] private float windupDuration     = 0.75f;
     [SerializeField] private float spinDuration       = 0.1f;
-    [SerializeField] private float betweenSpinPause   = 0.3f;
-    [SerializeField] private float postSpinPause      = 0.6f;
-    [SerializeField] private float attackCooldown     = 3f;
+    [SerializeField] private float betweenSpinPause   = 0.25f;
+    [SerializeField] private float postSpinPause      = 0.5f;
+    // Tier1-authored baseline, scaled per tier by attacksPerAttackTierGrowth below (applied in
+    // OnConfigureSpawn()). See _authoredAttacksPerAttack's own doc comment for why this needs the
+    // snapshot-and-reset treatment instead of just incrementing this field directly.
     [SerializeField] private int   attacksPerAttack   = 1;
-    [SerializeField] private float dashSpeedMultiplier = 15f;
+    [SerializeField] private float dashSpeedMultiplier = 4f;
+    // Captured once in OnAwake(), reset back onto attacksPerAttack every pooled reuse in LateAwake() —
+    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
+    // pattern EnemyBasePD's own maxHealth/damage/moveSpeed/xpValue/enemyName already use (and BlitzGloomPD's
+    // own _authoredBlitzesPerAttack already established for this exact identical case).
+    private int _authoredAttacksPerAttack;
+
+    [Header("Attack Cooldown")]
+    [SerializeField] private float attackCooldown = 5f;
+    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
+    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
+    // pattern as _authoredAttacksPerAttack above.
+    private float _authoredAttackCooldown;
+
+    [Header("Tier Scaling")]
+    // Added onto attacksPerAttack per tier above 1 — see OnConfigureSpawn().
+    [SerializeField] private int attacksPerAttackTierGrowth = 1;
+
+    [Header("Indicators")]
     [SerializeField] private GameObject   _windupIndicator;
     [SerializeField] private WindupFillPD _windupFill;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+    protected override void OnAwake()
+    {
+        base.OnAwake();
+        _authoredAttacksPerAttack = attacksPerAttack;
+        _authoredAttackCooldown = attackCooldown;
+    }
+
     protected override void LateAwake()
     {
         base.LateAwake();
 
+        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
+        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredAttacksPerAttack's
+        // own doc comment.
+        attacksPerAttack = _authoredAttacksPerAttack;
+        attackCooldown = _authoredAttackCooldown;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        // Re-set again in OnRespawnReset() once attacksPerAttack is actually tier-scaled (that always runs
+        // AFTER OnConfigureSpawn, on this life's first Simulate() tick — see its own comment for the
+        // BlitzGloomPD precedent) — this LateAwake() assignment is only ever a placeholder until then.
         currentState.attacksRemaining    = attacksPerAttack;
+    }
+
+    // Tier1-authored attacksPerAttack, scaled by attacksPerAttackTierGrowth per tier above 1 (see that
+    // field's own doc comment). spawnTier is already final by the time this runs (set earlier in the same
+    // ConfigureSpawn() call).
+    protected override void OnConfigureSpawn()
+    {
+        base.OnConfigureSpawn();
+        attacksPerAttack += (spawnTier - 1) * attacksPerAttackTierGrowth;
+
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
+        // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
+        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
     }
 
     // Sets WindupSpeed/SpinSpeed (and caches _postSpinClipLength, re-derived fresh from postSpinPause/
@@ -105,13 +154,15 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     {
         if (dashJustEnded) EnterWindup(ref state);
 
-        // attackCooldownTimer: untouched — pacing between attack sequences, not execution speed.
-        // stateTimer: scaled live by EffectiveAttackSpeed every tick (not pre-divided once at state entry)
-        // — reacts immediately if attack speed changes mid-state, same as SpearGloomPD's own stateTimer.
-        state.attackCooldownTimer -= delta;
-        state.stateTimer          -= delta * EffectiveAttackSpeed;
-
         var ss = GetDaggerState(ref state);
+
+        // attackCooldownTimer: only ticks while actually in Moving (2026-08-19 — uniform across every
+        // multi-phase enemy's own attack-cadence cooldown now, see OrbiterGloomPD's own fix). stateTimer:
+        // scaled live by EffectiveAttackSpeed every tick (not pre-divided once at state entry) — reacts
+        // immediately if attack speed changes mid-state, same as SpearGloomPD's own stateTimer.
+        if (ss == DaggerState.Moving)
+            state.attackCooldownTimer -= delta;
+        state.stateTimer -= delta * EffectiveAttackSpeed;
 
         switch (ss)
         {
@@ -145,9 +196,10 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
                 {
                     // IsTargetStillValid — a target that went invisible-and-non-taunting since the last spin
                     // shouldn't get chained into another one against them; see that property's own doc comment.
-                    // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the
-                    // spin that just finished above, but stops the chain from continuing into another one,
-                    // falling through to PostSpin instead (see IsCrowdControlled's own doc comment).
+                    // !IsCrowdControlled — a true Stun() landing mid-sequence never interrupts the spin that
+                    // just finished above, but stops the chain from continuing into another one, falling
+                    // through to PostSpin instead (a Slow does NOT stop the chain — see IsCrowdControlled's
+                    // own doc comment, hard CC only).
                     if (state.attacksRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenSpins(ref state);
                     else                                                  EnterPostSpin(ref state);
                 }
@@ -260,7 +312,8 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         dir.Normalize();
         Vector3 behindPoint = _target.position + dir * (preferredRange / 4f);
         SetDaggerState(ref state, DaggerState.DashingToTarget);
-        StartDashToPoint(ref state, baseMoveSpeed * dashSpeedMultiplier, behindPoint);
+        // EffectiveMoveSpeed, not baseMoveSpeed (2026-08-13) — see BlitzGloomPD.EnterBlitz's own comment.
+        StartDashToPoint(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, behindPoint);
     }
 
     private void EnterPostSpin(ref State state)
@@ -273,9 +326,9 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private void EnterMoving(ref State state)
     {
         // attacksRemaining deliberately left untouched here — the attack-start sites (Moving/BetweenSpins)
-        // now own resetting it (refill-if-exhausted, not unconditional), so an attempt cancelled via
-        // Interrupt() (which funnels through here) keeps whatever count it already had instead of getting
-        // silently topped back up.
+        // own resetting it for the natural target-lost/crowd-controlled early-exit path (refill-if-exhausted,
+        // not unconditional). OnInterrupted() now zeroes it explicitly itself, BEFORE calling this, for the
+        // Interrupt()-driven path — see its own doc comment.
         // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
         // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
         FindClosestTarget();
@@ -295,10 +348,19 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         }
     }
 
-    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
-    // it runs out of attacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    // Fully aborts the attack chain (2026-08-12, reworked from "leave attacksRemaining untouched" — this
+    // also now applies to a DashingToTarget interrupt, previously the one case that effectively just cost a
+    // single rep) — an interrupted attack no longer retries with whatever reps it had left; it zeroes the
+    // counter AND puts the whole sequence on a full fresh cooldown (same formula EnterPostSpin's own natural
+    // chain-end already uses), so the very next Moving-state check can't immediately refill-and-restart.
+    // Moving itself is stunnable (see isStunnable's own per-tick assignment above), so a Stun() paired with
+    // the same hit as this Interrupt() (always called BEFORE a paired Stun(), see IEnemyPD.Interrupt()'s own
+    // doc comment) freezes this enemy here via EnemyBasePD.Simulate()'s own isStunnable-gated freeze for the
+    // stun's whole duration before it's ever able to attack again — no extra handling needed for that here.
     protected override void OnInterrupted()
     {
+        currentState.attacksRemaining    = 0;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch

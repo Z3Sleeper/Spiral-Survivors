@@ -105,6 +105,7 @@ MonoBehaviour:
   slot: 1
   tags: []
   activeSurgeBlock: 0
+  isActionAbility: 0
   duration: 8
   sizePercent: 0.5
   maxHealthPercent: 0.5
@@ -138,9 +139,10 @@ MonoBehaviour:
   tags:
   - AoE Effect
   activeSurgeBlock: 0
+  isActionAbility: 1
   radiusMultiplier: 1.25
   stunDuration: 1.5
-  healPercentPerEnemy: 0.02
+  healPercentPerEnemy: 0.01
   knockback: 10
   retriggerRate: 0.5
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}

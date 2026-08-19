@@ -256,19 +256,18 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private void Hit(IEnemyPD enemy)
     {
         if (enemy._isDead) return;
-        float damage = RollDamage(_stats.Strength, out bool isHighroll);
-        if (isHighroll) damage *= 1f + _stats.HighrollBonus;
+        float damage = RollDamage(_stats.WeaponStrength, out bool isHighroll);
         bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
-        if (isCrit) damage *= _stats.CritDamage;
-        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.Strength, onHitPower = _stats.OnHitPower, isCrit = isCrit };
+        damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage, _stats.WeaponOnHitPower);
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.WeaponStrength, onHitPower = _stats.WeaponOnHitPower, isCrit = isCrit };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * hitData.onHitPower);
-        NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
+        NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
     }
 
     // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been
@@ -276,7 +275,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private void HitAlly(CharacterStatsPD ally)
     {
         if (ally == _stats || ally.IsDead) return;
-        _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = _stats.OnHitPower });
+        _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = _stats.WeaponOnHitPower });
     }
 
     // ── Gizmos ────────────────────────────────────────────────────────────────

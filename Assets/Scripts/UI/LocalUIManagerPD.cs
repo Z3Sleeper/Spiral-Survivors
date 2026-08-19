@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using PurrNet;
 using PurrNet.Prediction;
@@ -10,6 +11,14 @@ public class LocalUIManagerPD : MonoBehaviour
     public static LocalUIManagerPD instance;
 
     [SerializeField] private Slider healthBar;
+    // The health bar Slider's own Fill Image — Slider itself has no color to tint, so this is a separate
+    // reference to whichever child Image actually renders the fill, wired up in the Inspector.
+    [SerializeField] private Image healthBarFillImage;
+    // Extra "hey, you're invincible" heads-up — tints the health bar this color for as long as
+    // CharacterStatsPD.UIIsInvincible reads true, reverting to whatever color the fill was authored with
+    // (captured once in Awake()) the instant invincibility ends. Exposed so it can be tuned/reused for a
+    // different tint without touching code.
+    [SerializeField] private Color invincibleHealthBarColor = Color.white;
     [SerializeField] private Slider shieldBar;
     [SerializeField] private Slider shieldRegenBar;
     [SerializeField] private TextMeshProUGUI healthText;
@@ -20,7 +29,6 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private Image energyImage;
     [SerializeField] private TextMeshProUGUI energyText;
     [SerializeField] private GameObject statsUI;
-    [SerializeField] private TextMeshProUGUI statsDamageText;
     [SerializeField] private TextMeshProUGUI statsNumbersText;
     [SerializeField] private GameObject statsUIExpanded;
     [SerializeField] private TextMeshProUGUI statsWordsTextExpanded;
@@ -30,6 +38,7 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI bossTimerText;
     [SerializeField] private TextMeshProUGUI upgradePointsText;
+    [SerializeField] private TextMeshProUGUI difficultyText;
     // Rogue's invisibility ability's screen tint — this manager is already per-local-client only, so a
     // caller just needs to gate on its own isOwner before calling this (see RogueVanishAbilityPD); no
     // further "is this really me" check needed here.
@@ -113,7 +122,7 @@ public class LocalUIManagerPD : MonoBehaviour
     private List<AugmentCardUI> _cardPool = new();
 
     [Header("Augment List")]
-    [SerializeField] private GameObject augmentListPanel;
+    [SerializeField] private AugmentListUIPD augmentListUI;
 
     [Header("Settings")]
     [SerializeField] private GameObject settingsPanel;
@@ -140,9 +149,15 @@ public class LocalUIManagerPD : MonoBehaviour
     private IAbilityPD _ability2;
     private bool _isRanged;
 
+    // Captured once, before anything can tint it — same "cache the true authored value before anything can
+    // touch it" reasoning EnemyBasePD's own _originalColors uses.
+    private Color _healthBarDefaultColor;
+    private bool  _healthBarInvincibleTintShown;
+
     private void Awake()
     {
         instance = this;
+        if (healthBarFillImage != null) _healthBarDefaultColor = healthBarFillImage.color;
         levelUpScreen.SetActive(false);
         if (tintScreenOverlay != null) tintScreenOverlay.SetActive(false);
         statsUI.SetActive(true);
@@ -229,11 +244,7 @@ public class LocalUIManagerPD : MonoBehaviour
         statsUIExpanded.SetActive(expanded);
     }
 
-    public void SetAugmentListVisible(bool visible)
-    {
-        if (augmentListPanel != null)
-            augmentListPanel.SetActive(visible);
-    }
+    public void SetAugmentListVisible(bool visible) => augmentListUI.SetVisible(visible);
 
     public void SetInvisibleTintVisible(bool visible)
     {
@@ -303,6 +314,15 @@ public class LocalUIManagerPD : MonoBehaviour
         levelUpScreen.SetActive(false);
     }
 
+    // How long every card stays non-interactable right after the level-up screen appears — two reasons:
+    // (1) a player mashing an attack/dash/ability input right as they level up could otherwise land that
+    // same click on a pick button the instant it appears, and (2) augment picks matter enough (unlike, say,
+    // a cosmetic dialog) that a beat of forced delay before the FIRST click can land is worth it purely so
+    // a player who doesn't read has a moment where clicking literally can't do anything yet, rather than
+    // reflexively clicking the first option a fraction of a second after the panel opens.
+    [SerializeField] private float pickLockoutDuration = 1f;
+    private Coroutine _pickLockoutRoutine;
+
     // Barebones — every level-up is a stat-augment pick for now, no real augment pool yet.
     public void SetUpLevelUpScreen(List<LevelUpOption> options)
     {
@@ -313,16 +333,33 @@ public class LocalUIManagerPD : MonoBehaviour
             if (options[i].isAugment)
                 card.AugmentSetup(options[i].augmentData, i, _stats);
             else
-                card.StatAugmentSetup(options[i].statPair, i);
+                card.StatAugmentSetup(options[i].statPair, i, _stats);
+            // AugmentSetup/StatAugmentSetup both set this true internally — overridden back to false here,
+            // lifted by LiftPickLockout below once pickLockoutDuration elapses.
+            card.SetInteractive(false);
         }
+
+        if (_pickLockoutRoutine != null) StopCoroutine(_pickLockoutRoutine);
+        _pickLockoutRoutine = StartCoroutine(LiftPickLockout(options.Count));
+    }
+
+    // Real-time, not scaled — the level-up screen is up precisely because PausePD's "presenting" state has
+    // Time.timeScale at 0 (see PausePD.IsPaused's own doc comment), so a scaled WaitForSeconds here would
+    // simply never elapse and the lockout would never lift.
+    private IEnumerator LiftPickLockout(int cardCount)
+    {
+        yield return new WaitForSecondsRealtime(pickLockoutDuration);
+        for (int i = 0; i < cardCount && i < _cardPool.Count; i++)
+            _cardPool[i].SetInteractive(true);
+        _pickLockoutRoutine = null;
     }
 
     // Only buffers the request through the local player's own controller — Simulate() performs the
     // actual pick once this is drained into Input, same reasoning as the ready/pause buttons.
-    public void RequestPick(int cardIndex)
+    public void RequestPick(int cardIndex, float luckMultiplierA = 1f, float luckMultiplierB = 1f)
     {
         if (_controller == null) return;
-        _controller.RequestPick(cardIndex);
+        _controller.RequestPick(cardIndex, luckMultiplierA, luckMultiplierB);
     }
 
     private bool _levelUpScreenShown;
@@ -486,6 +523,7 @@ public class LocalUIManagerPD : MonoBehaviour
         UpdateStatsExpanded();
         UpdateXP();
         UpdateUpgradePoints();
+        UpdateDifficultyText();
         UpdateRunClock();
         UpdateBossUI();
         UpdateBossHealthBars();
@@ -613,6 +651,11 @@ public class LocalUIManagerPD : MonoBehaviour
     private float _lastXPCurrentForText = float.NaN;
     private float _lastXPToNextForText = float.NaN;
     private float _lastUpgradePointsForText = float.NaN;
+    // Set once and never again — Difficulty is fixed for the whole match (GameManagerPD.Awake() reads it
+    // once from GamePresets and never touches it again), so there's nothing to change-detect against like
+    // every other *ForText field here. Stays false (retries every frame) until GameManagerPD.instance
+    // actually exists, in case this manager's own Awake() happens to run first.
+    private bool  _difficultyTextSet;
     private int   _lastRunClockMinutes = -1;
     private int   _lastRunClockSeconds = -1;
     private int   _lastBossMinutes = -1;
@@ -628,6 +671,13 @@ public class LocalUIManagerPD : MonoBehaviour
     {
         SetSlider(healthBar, _stats.UIHealth / _stats.MaxHealth);
         SetSlider(shieldBar, _stats.MaxShield > 0f ? _stats.UIShield / _stats.MaxShield : 0f);
+
+        // Extra "you're invincible" heads-up — see invincibleHealthBarColor's own doc comment.
+        if (healthBarFillImage != null && _stats.UIIsInvincible != _healthBarInvincibleTintShown)
+        {
+            _healthBarInvincibleTintShown = _stats.UIIsInvincible;
+            healthBarFillImage.color = _healthBarInvincibleTintShown ? invincibleHealthBarColor : _healthBarDefaultColor;
+        }
         SetSlider(shieldRegenBar, (_stats.shieldRechargeTime - _stats.UIShieldRechargeTimer) / _stats.shieldRechargeTime);
 
         if (_stats.UIHealth != _lastUIHealthForText || _stats.MaxHealth != _lastMaxHealthForText ||
@@ -695,13 +745,16 @@ public class LocalUIManagerPD : MonoBehaviour
         // stuck-at-full countdown for the buff's own duration instead of staying hidden until the buff ends
         // and the cooldown genuinely begins ticking.
         bool onCooldown = _ability1.CooldownRemaining > 0f && !_ability1.AbilityIsActive;
-        // BG is shown more broadly — real cooldown, any OTHER not-ready reason, or merely locked out
-        // (dashing, or a locking ability elsewhere is active — see PlayerControllerPD.IsLockedOut's own doc
-        // comment) — even though the ability itself may otherwise be fully ready. The countdown TEXT and
-        // the CDFill overlay itself both stay tied to actual cooldown only (onCooldown above) — neither a
-        // lockout nor a non-cooldown IsReady gate has a timer/depletion to show, so both would just read as
-        // stale/wrong if they followed the BG here.
-        bool showBG = !_ability1.IsReady || (_controller != null && _controller.IsLockedOut);
+        // BG is shown more broadly — real cooldown, any OTHER not-ready reason, a hard lockout (a locking
+        // ability elsewhere is active, or isSpecialMoving/stunned — see PlayerControllerPD.IsLockedOut's own
+        // doc comment), or blocked by actively dashing OR a Berserk-Surge-style forced Surge (only for an
+        // action ability — see IAbilityPD.IsActionAbility's own doc comment, same condition
+        // PlayerControllerPD.Simulate() itself gates Activate() on) — even though the ability itself may
+        // otherwise be fully ready. The countdown TEXT and the CDFill overlay itself both stay tied to actual
+        // cooldown only (onCooldown above) — none of the other reasons have a timer/depletion to show, so
+        // both would just read as stale/wrong if they followed the BG here.
+        bool showBG = !_ability1.IsReady || (_controller != null && _controller.IsLockedOut)
+            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability1.IsActionAbility);
         if (showBG != _ability1CooldownUIShown)
         {
             _ability1CooldownUIShown = showBG;
@@ -754,7 +807,9 @@ public class LocalUIManagerPD : MonoBehaviour
         // See UpdateAbility1's own identical comments for why this is CooldownRemaining (not !IsReady) AND
         // excludes AbilityIsActive (not just "> 0f").
         bool onCooldown = _ability2.CooldownRemaining > 0f && !_ability2.AbilityIsActive;
-        bool showBG = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut);
+        // See UpdateAbility1's own identical comment for the full BG-visibility reasoning.
+        bool showBG = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut)
+            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability2.IsActionAbility);
         if (showBG != _ability2CooldownUIShown)
         {
             _ability2CooldownUIShown = showBG;
@@ -862,9 +917,12 @@ public class LocalUIManagerPD : MonoBehaviour
         // value, since the panel is closed the overwhelming majority of the time.
         if (statsUI == null || !statsUI.activeInHierarchy) return;
 
-        SetText(statsDamageText, $" {FormatStat(_stats.Strength, 1)} ({FormatStat(_stats.Strength * _stats.EffectiveLuckFloor, 1)} - {FormatStat(_stats.Strength * _stats.LuckCeiling, 1)})");
-
         _statsSB.Clear();
+        // Current Strength only (2026-08-19) — folded back into the top of this panel from its own dedicated
+        // statsDamageText box, which is gone; no more LuckFloor/LuckCeiling range display alongside it.
+        // FormatStat (not :G4 like the rest of this panel) — Strength alone can scale into the thousands+
+        // over a long run, and needs FormatStat's k/mil/bil/tril abbreviation the other stats here don't.
+        _statsSB.AppendLine($" {FormatStat(_stats.Strength, 1)}");
         _statsSB.AppendLine($" {_stats.AttackSpeed:G4}");
         _statsSB.AppendLine($" {_stats.EnergyRegen:G4}");
         _statsSB.AppendLine($" {_stats.WeaponRange * 5f:G4}");
@@ -923,6 +981,20 @@ public class LocalUIManagerPD : MonoBehaviour
         if (points == _lastUpgradePointsForText) return;
         _lastUpgradePointsForText = points;
         SetText(upgradePointsText, $"<b>{FormatStat(points)} pts</b>");
+    }
+
+    // Same "Threat Level {X}" text CharacterSelectUI.RefreshDifficultyDisplay already shows in the lobby —
+    // set once and latched via _difficultyTextSet since Difficulty never changes mid-match, unlike every
+    // other text updater here. Gated on GameManagerPD.GameStarted specifically, not just instance existing
+    // (2026-08-21 fix) — GameManagerPD.Difficulty isn't actually resolved/replicated from the server until
+    // the same tick GameStarted itself flips true (see GameManagerPD.Simulate()'s own difficulty-capture),
+    // and this HUD can be up well before that (loading screen clears close to, but not strictly after, that
+    // moment) — without this a fast client could latch "Threat Level 1" (the State default) permanently.
+    private void UpdateDifficultyText()
+    {
+        if (difficultyText == null || _difficultyTextSet || GameManagerPD.instance == null || !GameManagerPD.instance.GameStarted) return;
+        _difficultyTextSet = true;
+        SetText(difficultyText, $"Threat Level {GameManagerPD.instance.Difficulty}");
     }
 
     private void UpdateRunClock()

@@ -123,8 +123,8 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
 
         currentState.direction           = direction;
         currentState.ricochetsRemaining  = ricochets;
-        currentState.currentDamage       = stats.Strength;
-        currentState.currentOnHitPower   = stats.OnHitPower;
+        currentState.currentDamage       = stats.WeaponStrength;
+        currentState.currentOnHitPower   = stats.WeaponOnHitPower;
 
         transform.rotation    = Quaternion.LookRotation(direction);
         transform.localScale  = _baseScale * stats.bonusSizePercent;
@@ -203,10 +203,9 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         _hitTargets.Add(enemy);
 
         float damage = WeaponDamageMath.RollDamage(state.currentDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
-        if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = GameRandom.instance.NextFloat() < _critChance;
-        if (isCrit) damage *= _critDamage;
-        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
+        damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _critDamage);
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage, state.currentOnHitPower);
         // state.currentDamage/currentOnHitPower are this shot's already ricochet-decayed values BEFORE this
         // hit's own decay below is applied — downstream on-hit effects see exactly what this specific hit
         // (e.g. the 3rd bounce) actually represented, not the shot's original full-power baseline.
@@ -217,7 +216,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _knockback * state.currentOnHitPower);
-        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
+        _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
 
         ApplyHitDropoffAndRicochet(ref state);
     }

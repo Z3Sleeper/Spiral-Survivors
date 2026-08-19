@@ -1,18 +1,28 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
-// Ported from _OldSystemArchive/UI/AugmentListUI.cs — refreshes itself whenever this panel becomes
-// active, which happens exactly when PlayerControllerPD's Tab-hold calls
-// LocalUIManagerPD.SetAugmentListVisible(true), so no separate "refresh on pick" hook is needed.
+// Ported from _OldSystemArchive/UI/AugmentListUI.cs — this component's own GameObject (Augment List) stays
+// permanently active now; container (List Container, holding the GridLayoutGroup) is what actually shows/
+// hides, via SetVisible below, called from LocalUIManagerPD.SetAugmentListVisible on Tab hold/release.
 public class AugmentListUIPD : MonoBehaviour
 {
-    [SerializeField] private Transform container;
+    [SerializeField] private RectTransform container;
     [SerializeField] private AugmentListEntryPD entryPrefab;
 
     private readonly List<AugmentListEntryPD> _pool = new();
     private readonly List<AugmentData> _picked = new();
+    private GridLayoutGroup _gridLayoutGroup;
+    private Coroutine _fixLayoutRoutine;
 
-    private void OnEnable() => Refresh();
+    private void Awake() => _gridLayoutGroup = container.GetComponent<GridLayoutGroup>();
+
+    public void SetVisible(bool visible)
+    {
+        container.gameObject.SetActive(visible);
+        if (visible) Refresh();
+    }
 
     private void Refresh()
     {
@@ -39,6 +49,24 @@ public class AugmentListUIPD : MonoBehaviour
             entry.Setup(_picked[i], localStats);
             entry.gameObject.SetActive(true);
         }
+
+        // container just activated THIS frame (SetVisible above) — Unity hasn't fully resolved its layout
+        // yet, so a rebuild forced synchronously here still computes against stale data (confirmed live).
+        // Deferred one frame so it runs after Unity's own activation pass settles.
+        if (_fixLayoutRoutine != null) StopCoroutine(_fixLayoutRoutine);
+        _fixLayoutRoutine = StartCoroutine(FixLayoutNextFrame());
+    }
+
+    private IEnumerator FixLayoutNextFrame()
+    {
+        yield return null;
+        // Disable/re-enable the GridLayoutGroup itself — runs Unity's own OnEnable -> SetDirty path, the
+        // same path an Inspector edit uses (which is what fixed this manually) — SetActive on the pooled
+        // entries alone doesn't reliably trigger this.
+        _gridLayoutGroup.enabled = false;
+        _gridLayoutGroup.enabled = true;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(container);
+        _fixLayoutRoutine = null;
     }
 
     private AugmentListEntryPD GetEntry(int index)

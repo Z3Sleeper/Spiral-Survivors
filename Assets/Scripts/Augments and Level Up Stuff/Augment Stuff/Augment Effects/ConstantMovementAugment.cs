@@ -11,7 +11,7 @@ public class ConstantMovementAugment : AugmentEffectPD<ConstantMovementAugment.S
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float moveSpeedFlat = 5f;
+    [SerializeField] private float moveSpeedFlat = 4f;
 
     protected override void OnApply()
     {

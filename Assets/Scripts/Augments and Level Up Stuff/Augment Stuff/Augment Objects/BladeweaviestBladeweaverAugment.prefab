@@ -45,5 +45,3 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BladeweaviestBladeweaverAugment
   bonusWeaponCountFlat: 3
-  totalStrengthPercent: 0.2
-  onHitPowerTotalPercent: 0.2

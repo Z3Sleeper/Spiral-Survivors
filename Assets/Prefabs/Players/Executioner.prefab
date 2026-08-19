@@ -92,7 +92,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fbdd2e160df3d5449a10803883f2120f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ExeBigAxeAbilityPD
-  icon: {fileID: 21300000, guid: 9f6a6461c3528d14db21cc5407bcaabf, type: 3}
+  icon: {fileID: 21300000, guid: 40fa89a1f0474a143bf77b5f5edf4333, type: 3}
   abilityName: <color=#FF8700>Execution Time</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
@@ -111,6 +111,7 @@ MonoBehaviour:
   slot: 1
   tags: []
   activeSurgeBlock: 0
+  isActionAbility: 0
   duration: 8
   weaponRangeTotalPercent: 0.75
   executeThresholdPercent: 0.25
@@ -129,23 +130,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ExeAxeThrowAbilityPD
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   abilityName: <color=#FF8700>Axe Throw</color>
-  description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
-
-    Throw
-    a returning axe <color=#3278FF>5x Range</color> ahead, dealing <color=#FF5000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{strengthPercent}%
-    unpenalized Strength</color>) damage</color> that <color=#FFA000>Interrupts</color>.
-    Has <color=#FF8700>+100% Crit Damage</color>.
-
-    <color=#FFBE50><i>Size scales
-    with Range</i></color>
-
-    <color=#FFBE50><i>Triggers Weapon Strike effects</i></color>'
+  description: "<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>\nThrow
+    a returning axe <color=#3278FF>3x Range</color> ahead, dealing \n<color=#FF5000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{strengthPercent}%
+    Strength</color>) damage</color> that <color=#FFA000>Interrupts</color>. Has
+    <color=#FF8700>+100% Crit Damage</color>.\n<color=#FFBE50><i>Size scales with
+    Range</i></color>\n<color=#FFBE50><i>Triggers Weapon Strike effects</i></color>"
   cooldown: 8
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 0
+  isActionAbility: 1
   strengthPercent: 1
-  maxRangeMultiplier: 5
+  maxRangeMultiplier: 3
   projectileSpeed: 20
   projectilePrefab: {fileID: 2942187867930129664, guid: 3917a023e9490874693890b5efd7102b, type: 3}

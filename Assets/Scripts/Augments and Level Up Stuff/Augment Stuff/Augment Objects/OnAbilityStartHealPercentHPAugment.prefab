@@ -44,4 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a0110c7dc8f20ce48a5a12b3225c8c49, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnAbilityStartHealPercentHPAugment
-  healPercentMaxHealthPerCooldownSecond: 0.025
+  flatHealPerCooldownSecond: 1
+  bonusHealthRegenPercent: 0.25

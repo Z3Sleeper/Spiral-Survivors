@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eee21570f3355b84291c261bcb807176, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeStackingAttackSpeedAugment
-  stackInterval: 1
-  maxStacks: 10
-  attackSpeedFlat: 0.15
+  stackInterval: 0.25
+  maxStacks: 20
+  attackSpeedFlat: 0.05

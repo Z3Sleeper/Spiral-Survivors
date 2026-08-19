@@ -9,8 +9,8 @@ public class HealthRegenAugment : AugmentEffectPD<HealthRegenAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusHealthRegenFlat    = 1.25f;
-    [SerializeField] private float bonusHealthRegenPercent = 0.15f;
+    [SerializeField] private float bonusHealthRegenFlat    = 1.2f;
+    [SerializeField] private float bonusHealthRegenPercent = 0f;
 
     protected override void OnApply()
     {

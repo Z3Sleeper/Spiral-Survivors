@@ -1,46 +1,28 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Ported from _OldSystemArchive/Augment Effects/PhantomBladeOnCritAugment.cs. Old system subscribed to
-// global static events (WeaponBase.OnCritStrike, PhantomBlade.OnSummon) filtered by `if (stats != _stats)
-// return;` — a real cross-player-interaction risk baked into the architecture itself. Replaced with every
-// weapon that lands a crit calling straight into its own owning player's CharacterStatsPD.NotifyCritStrike
-// (see feedback_predictedevent_anchor_persistent_identity memory for why this is anchored on Stats rather
-// than the weapon itself), and this augment subscribing once to its own Stats. Every hop is a per-owner-
-// instance relationship with no shared/static channel anywhere, so cross-player interaction isn't just
-// filtered against — there's no channel for it to happen through.
-//
-// No custom predicted-state counting needed — the crit-progress counter is a plain field, mutated only
-// from inside the PredictedEvent callback (itself guaranteed to fire exactly once per logical crit,
-// deterministically, on every machine — same reasoning that already makes _onStrikeHighroll/_onHeal safe
-// elsewhere in this codebase).
-//
-// Crit-progress divide (2026-07-26): a naive "+1 per crit, need 3" blows up under high WeaponCount/
-// weaponTracks/Multishot — more simultaneous projectiles/weapons means more crit EVENTS for the same
-// number of actual attacks, so blades would summon far faster than intended for anyone stacking those
-// stats (Archer's multishot in particular). Each crit now increments by the SAME divisor Strength/
-// OnHitPower already auto-divide by (weaponTracks * WeaponCount * (1f + Multishot)), so total blade
-// output tracks actual attacks made, not raw crit event count. _critCount is a float for this reason —
-// overflow past critsNeeded is preserved via subtraction (not reset to 0), so fractional progress from a
-// high-division-count hit isn't discarded on the tick that finally crosses the threshold.
-//
-// Targeting deliberately does NOT use the crit event's own target payload (which enemy actually got hit)
-// — per the user's call, this targets the closest enemies instead, same convention as
-// PhantomBladePassiveAugment/PhantomBladeOnDashAugment, with bladeCount exposed the same way. The crit
-// event still carries a PredictedObjectID (CharacterStatsPD's own _onCritStrike) since other Phantom Blade
-// augments further down the family may still want the actual hit target — this one just ignores it.
+// Reworked (2026-08-19) from an on-real-crit-strike trigger (subscribed to CharacterStatsPD's own
+// CritStrike event, counting toward a critsNeeded threshold) to an independent periodic roll — same
+// "timer lives in predicted State, ticks in Simulate()" shape PhantomBladePassiveAugment already uses, but
+// WITHOUT that augment's own AttackSpeed-scaled acceleration: baseTimer (1s) always ticks at plain real
+// time, deliberately not sped up by attack speed. Every time the timer expires, rolls Stats.CritChance —
+// same GameRandom.instance.NextFloat() < CritChance check every weapon's own crit roll uses — and only
+// summons if that roll succeeds. No longer reacts to actual weapon crits at all, so this is now completely
+// decoupled from weapon count/attack speed/Multishot scaling on the TRIGGER side (only the summon's own
+// damage formula reads Stats.Strength, same as every other Phantom Blade augment).
 public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugment.State>
 {
     public struct State : IPredictedData<State>
     {
+        public float timer;
         public void Dispose() { }
     }
 
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
-    public int critsNeeded = 3;
-    public int bladeCount = 1;
-    public float baseDamageMultiplier = 0.75f;
+    [SerializeField] private float baseTimer = 1f;
+    public int bladeCount = 3;
+    public float baseDamageMultiplier = 0.6f;
 
     // baseDamageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
     // convention wouldn't apply to it directly — this alias exists purely so a description can reference
@@ -48,15 +30,14 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
     // {LiveBladeDamageRatio} itself is blank (out of a live match — see ShowLiveValues's own doc comment).
     public float BaseDamageMultiplierPercent => baseDamageMultiplier;
 
-    // Mirrors this augment's own usePenalizedDamage: true call below — for AugmentDescriptionFormatter's
-    // {LiveBladeDamageRatio} token. See PhantomBladeSummonHelper.PreviewDamage's own doc comment for the
-    // full shared-formula convention.
+    // For AugmentDescriptionFormatter's {LiveBladeDamageRatio} token. See
+    // PhantomBladeSummonHelper.PreviewDamage's own doc comment for the full shared-formula convention.
     public string LiveBladeDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, baseDamageMultiplier, usePenalizedDamage: true))} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, baseDamageMultiplier))} "
             : "";
 
-    private int _critCount;
+    protected override State GetInitialState() => new() { timer = baseTimer };
 
     protected override void OnApply()
     {
@@ -66,31 +47,24 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
         // fraction — this used to be half the damage bonus, bumped to match it exactly). Only
         // PhantomBladeSizeAugment itself touches the separate multiplicative Percent tier.
         Stats.AddPhantomBladeSizeBonus(phantomBladeDamageBonus);
-        Stats.AddCritStrikeListener(OnCritStrike);
     }
 
-    protected override void OnDestroy()
+    protected override void Simulate(ref State state, float delta)
     {
-        base.OnDestroy();
-        if (Stats != null) Stats.RemoveCritStrikeListener(OnCritStrike);
-    }
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+        if (Stats == null || Stats.IsDead) return;
 
-    private void OnCritStrike(WeaponHitData data)
-    {
-        _critCount += 1;
-        if (_critCount < critsNeeded) return;
-        _critCount -= critsNeeded;
+        // Plain delta, no AttackSpeed scaling — see class doc comment for why this deliberately doesn't
+        // mirror PhantomBladePassiveAugment's own accelerated timer.
+        state.timer -= delta;
+        if (state.timer > 0f) return;
 
+        state.timer = baseTimer;
+
+        if (GameRandom.instance.NextFloat() >= Stats.CritChance) return;
         if (phantomBladePrefab == null) return;
 
-        // usePenalizedDamage: true, usePenalizedOnHitPower: true — this augment's trigger frequency itself
-        // scales with WeaponCount (more weapons means more hits means more crits), unlike Passive/OnDash
-        // which trigger at a fixed rate. Using the WeaponCount-divided Strength (blade damage) and
-        // WeaponCount-divided OnHitPower (this blade's own onhit-trigger power, if PhantomBladeOnHitAugment
-        // is active) instead of the family's usual Unpenalized variants offsets that so total output stays
-        // flat as weapon count grows instead of ballooning — see PhantomBladeSummonHelper.SummonAtTarget's
-        // own comment.
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, baseDamageMultiplier, usePenalizedDamage: true, usePenalizedOnHitPower: true);
+            Stats.transform.position, bladeCount, baseDamageMultiplier);
     }
 }

@@ -8,7 +8,7 @@ public class StackPowerAugment : AugmentEffectPD<StackPowerAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float stackPowerPercent = 0.3f;
+    [SerializeField] private float stackPowerPercent = 0.5f;
 
     protected override void OnApply()
     {

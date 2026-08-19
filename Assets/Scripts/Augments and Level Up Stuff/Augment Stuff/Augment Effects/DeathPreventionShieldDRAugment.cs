@@ -18,7 +18,7 @@ public class DeathPreventionShieldDRAugment : AugmentEffectPD<DeathPreventionShi
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float damageReductionPercent = 0.3f;
+    [SerializeField] private float damageReductionPercent = 0.5f;
 
     // Plain, not State — mutated only from PredictedEvent listener callbacks (OnShieldBreak/OnShieldRecharge
     // themselves guarantee exactly-once-per-real-occurrence, see CharacterStatsPD._onShieldBreak's own doc
@@ -54,7 +54,7 @@ public class DeathPreventionShieldDRAugment : AugmentEffectPD<DeathPreventionShi
     {
         if (!_reductionActive) return;
         _reductionActive = false;
-        Stats.AddDamageReductionPercent(-damageReductionPercent);
+        Stats.RemoveDamageReductionPercent(damageReductionPercent);
     }
 
     private void OnShieldRecharge()

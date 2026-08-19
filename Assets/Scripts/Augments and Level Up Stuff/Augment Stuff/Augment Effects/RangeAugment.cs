@@ -11,8 +11,8 @@ public class RangeAugment : AugmentEffectPD<RangeAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusWeaponRangeFlat    = 2.5f;
-    [SerializeField] private float bonusWeaponRangePercent = 0.15f;
+    [SerializeField] private float bonusWeaponRangeFlat    = 6f;
+    [SerializeField] private float bonusWeaponRangePercent = 0f;
 
     protected override void OnApply()
     {

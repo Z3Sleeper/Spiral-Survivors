@@ -375,16 +375,16 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private void Hit(IEnemyPD enemy, bool isOuter)
     {
         if (enemy._isDead) return;
-        float baseDamage = isOuter ? _stats.Strength : _stats.Strength * innerDamageMultiplier;
+        float baseDamage = isOuter ? _stats.WeaponStrength : _stats.WeaponStrength * innerDamageMultiplier;
         float damage = RollDamage(baseDamage, out bool isHighroll);
-        if (isHighroll) damage *= 1f + _stats.HighrollBonus;
         bool  isCrit = isOuter && GameRandom.instance.NextFloat() < _stats.CritChance;
-        if (isCrit) damage *= _stats.CritDamage;
-        if (isHighroll) _stats.NotifyStrikeHighroll(damage);
+        damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
         // baseDamage already accounts for innerDamageMultiplier on handle (inner) hits, and onHitPower gets
         // the equivalent innerOnHitPowerMultiplier treatment — downstream on-hit effects see the actual
-        // per-hit damage/power this hit represented, not a flat re-read of Strength/OnHitPower.
-        float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
+        // per-hit damage/power this hit represented, not a flat re-read of WeaponStrength/WeaponOnHitPower.
+        // Computed here (moved above NotifyStrikeHighroll) so that call can pass this hit's own onHitPower too.
+        float onHitPower = isOuter ? _stats.WeaponOnHitPower : _stats.WeaponOnHitPower * innerOnHitPowerMultiplier;
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage, onHitPower);
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = onHitPower, isCrit = isCrit };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
@@ -392,7 +392,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * onHitPower);
-        NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true, source = DamageSource.Weapon });
+        NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
     }
 
     // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been
@@ -401,7 +401,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private void HitAlly(CharacterStatsPD ally, bool isOuter)
     {
         if (ally == _stats || ally.IsDead) return;
-        float onHitPower = isOuter ? _stats.OnHitPower : _stats.OnHitPower * innerOnHitPowerMultiplier;
+        float onHitPower = isOuter ? _stats.WeaponOnHitPower : _stats.WeaponOnHitPower * innerOnHitPowerMultiplier;
         _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = onHitPower });
     }
 

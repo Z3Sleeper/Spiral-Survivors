@@ -204,6 +204,12 @@ namespace PurrNet.Steam
                     break;
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ProblemDetectedLocally:
                 case ESteamNetworkingConnectionState.k_ESteamNetworkingConnectionState_ClosedByPeer:
+                    // Steam's own reason for the close — the state alone (collapsed to Disconnected below)
+                    // never says WHY, so a flaky/rejected connection previously left nothing in the log to
+                    // diagnose against (NAT/relay failure, timeout, peer-side reject, etc. all looked
+                    // identical). m_eEndReason is a numeric ESteamNetConnectionEnd code (see Steamworks docs);
+                    // m_szEndDebug is Steam's own human-readable string for the same close, when it has one.
+                    PurrLogger.LogWarning($"Steam connection closed: reason={param.m_info.m_eEndReason}, debug=\"{param.m_info.m_szEndDebug}\", state={param.m_info.m_eState}");
                     connectionState = ConnectionState.Disconnecting;
                     connectionState = ConnectionState.Disconnected;
                     break;

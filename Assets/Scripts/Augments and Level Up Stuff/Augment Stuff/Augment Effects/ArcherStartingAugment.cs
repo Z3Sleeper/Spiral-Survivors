@@ -13,13 +13,17 @@ public class ArcherStartingAugment : AugmentEffectPD<ArcherStartingAugment.State
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float fireRateTotalPercent = 11f;
-    // +19 against ProjectileSpeed's 1f-neutral TotalPercent baseline = a flat x20 multiplier.
-    [SerializeField] private float projectileSpeedTotalPercent = 19f;
+    // Author-facing as a direct multiplier (e.g. 8 = x8 Fire Rate) rather than the raw "Total tier" delta
+    // CharacterStatsPD's shared fireRateTotalPercent accumulator actually stores — converted to that delta
+    // (multiplier - 1f) in OnApply() below, so the underlying accumulator (also temporarily added to/reversed
+    // by ArcherFocusFireAbilityPD's own AddFireRateTotalPercent calls) stays untouched and still purely
+    // additive; only this augment's own Inspector value reads as the intuitive end multiplier.
+    [SerializeField] private float fireRateMultiplier = 8f;
+    [SerializeField] private float projectileSpeedMultiplier = 20f;
 
     protected override void OnApply()
     {
-        Stats.AddFireRateTotalPercent(fireRateTotalPercent);
-        Stats.AddProjectileSpeedTotalPercent(projectileSpeedTotalPercent);
+        Stats.AddFireRateTotalPercent(fireRateMultiplier - 1f);
+        Stats.AddProjectileSpeedTotalPercent(projectileSpeedMultiplier - 1f);
     }
 }

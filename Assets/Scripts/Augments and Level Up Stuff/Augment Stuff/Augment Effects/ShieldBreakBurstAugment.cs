@@ -35,12 +35,12 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float invincibilityDuration = 1f;
-    public float damagePercent        = 2f;
+    [SerializeField] private float invincibilityDuration = 0.25f;
+    public float damagePercent        = 3f;
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
     // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
     // scaling itself.
-    [SerializeField] private float radiusMultiplier    = 1f;
+    [SerializeField] private float radiusMultiplier    = 1.25f;
     [SerializeField] private float knockbackMultiplier = 2f;
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate        = 0.5f;
@@ -52,7 +52,7 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
     // AugmentDescriptionFormatter's {LiveStrengthRatio} token.
     public string LiveStrengthRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.UnpenalizedStrength * damagePercent * stats.AreaEffectPower)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * damagePercent * stats.AreaEffectPower)} "
             : "";
 
     [Header("VFX")]
@@ -95,7 +95,6 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                damagePercent: damagePercent, notifyOnHit: false, hasKnockback: true, knockback: knockback,
-                source: DamageSource.ShieldBreakBurst, vfxPerCast: true);
+                damagePercent: damagePercent, notifyOnHit: false, hasKnockback: true, knockback: knockback, vfxPerCast: true);
     }
 }

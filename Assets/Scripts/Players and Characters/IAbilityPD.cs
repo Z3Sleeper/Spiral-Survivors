@@ -53,6 +53,31 @@ public interface IAbilityPD
     // alongside its own Activate()/end-of-active logic" precedent as NotifyDashStarted/NotifyDashEnded.
     bool ActiveSurgeBlock { get; }
 
+    // "Action" (true) vs "buff" (false) — a plain content categorization. Exposed as a tunable Inspector
+    // field on every concrete implementer (not hardcoded) specifically so it can be flipped live during
+    // playtesting to decide what should/shouldn't be allowed during a forced Surge, rather than needing a
+    // recompile per change — see each implementer's own isActionAbility field. Not otherwise state-dependent
+    // (never changes mid-match on its own). An action ability DOES something beyond granting stats/
+    // buff-states — a committed movement (RogueSpinAbilityPD, BWBlinkAbilityPD), spawning a projectile/
+    // hazard (ExeAxeThrowAbilityPD), or otherwise directly acting on the world. A buff ability only grants
+    // stat changes or a temporary buff state on the caster (ArcherFocusFireAbilityPD, KnightBigBuffAbilityPD,
+    // RogueVanishAbilityPD, ExeBigAxeAbilityPD) — nothing else happens. KnightAreaStunHealAbilityPD is a
+    // buff by explicit exception (does act on the world, but the user's own call is that it's fine to allow
+    // during a forced Surge anyway).
+    //
+    // Distinct from ActiveSurgeBlock just above (a completely different concern — "does this ability's own
+    // active window fight an in-progress Surge" — several buff abilities are also ActiveSurgeBlock, e.g.
+    // BWBladeDanceAbilityPD is an action AND blocks Surge; the two flags answer unrelated questions and
+    // deliberately don't derive from each other). PlayerControllerPD.Simulate() reads this alone (not
+    // ActiveSurgeBlock) to decide whether a Berserk-Surge-style forced Surge (CharacterStatsPD.
+    // IsForcedSurging) blocks this specific ability — buff abilities stay usable through a forced Surge,
+    // only action abilities are blocked. Dash itself is a deliberate exception — always allowed through a
+    // forced Surge regardless of this flag, the one action the player keeps the whole time (see
+    // PlayerControllerPD.Simulate()'s own dash-input comment). LocalUIManagerPD/PlayerUIWorldSpace read
+    // the identical condition to show the on-cooldown background while blocked this way, even though the
+    // ability's own CooldownRemaining/IsReady have nothing to do with why it's currently unusable.
+    bool IsActionAbility { get; }
+
     // True for the whole window this ability is "doing its thing" — RogueSpinAbilityPD's whole leap,
     // RogueVanishAbilityPD's whole invisibility/movespeed buff. Distinct from IsActive above: IsActive is
     // specifically the special/locking-movement signal PlayerControllerPD.IsLockedOut cares about, while

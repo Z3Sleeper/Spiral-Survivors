@@ -18,6 +18,17 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     public struct State : IPredictedData<State>, IDuplicate<State>
     {
         public bool gameStarted;
+        // Ticks once gameStarted, same deterministic-clock reasoning as elapsedRunTime below — drives the
+        // loading screen's minimum display time (see loadingScreenRevealed) off the SAME synced simulation
+        // clock every machine already agrees on, rather than each machine's own local
+        // LoadingScreen.Show()-call wall-clock timestamp (which could differ machine-to-machine by however
+        // long Steam lobby data propagation/scene-load happened to take on each one). Deliberately NOT
+        // reset/reused for anything else — it only ever needs to count up to minimumLoadingScreenSeconds
+        // once, then loadingScreenRevealed latches and this stops mattering.
+        public float loadingScreenTimer;
+        // Rising edge of this (not gameStarted directly) is what UpdateView reacts to for the loading
+        // screen hide/music/enemy-count-reset reveal — see its own comment in Simulate() and UpdateView().
+        public bool loadingScreenRevealed;
         public float currentXP;
         public int level;
         public float xpToNextLevel;
@@ -49,6 +60,14 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         // since it tracks a different question (everyone's seen the end screen and wants to return to the
         // lobby) that only becomes relevant once hasWon/isGameOver is true.
         public DisposableList<PlayerID> endReadyPlayers;
+        // Snapshotted once, the exact tick gameStarted flips true — see Difficulty's own doc comment for why
+        // this can't just be each machine's own local Awake()-time read of GamePresets.instance.Difficulty
+        // the way it used to be. Same "captured once at gameStarted" shape as fixedPlayerCount above, but
+        // gated to the SERVER's own write specifically (see Simulate()) rather than every machine converging
+        // on the same value naturally the way fixedPlayerCount does (nm.playerCount is already network-
+        // agreed by the time it's read; GamePresets.instance.Difficulty is NOT — it's a purely local,
+        // per-machine value, correct only on whichever machine is actually hosting).
+        public int difficulty;
         public void Dispose()
         {
             readyPlayers.Dispose();
@@ -73,6 +92,12 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     public static event System.Action<bool> OnGameEnded;
     public static event System.Action<int, int> OnEndReadyCountChanged;
 
+    [Header("Loading Screen")]
+    // Minimum time (deterministic simulated seconds, ticked identically on every machine — see
+    // State.loadingScreenTimer's own comment) the loading screen stays up after gameStarted before the
+    // reveal (hide + music + enemy-count reset) fires, even if setup itself finished faster.
+    [SerializeField] private float minimumLoadingScreenSeconds = 5f;
+
     [Header("XP")]
     [SerializeField] private float baseXPToNextLevel = 20f;
     [SerializeField] private float xpLevelStep = 5f;
@@ -89,8 +114,17 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
 
     [Header("Upgrade Points")]
     // Lets a harder level award more points per kill without having to also inflate enemy XP values
-    // (which would throw off the level-up pacing) for balance purposes.
+    // (which would throw off the level-up pacing) for balance purposes. General-purpose manual tuning knob
+    // — composes with (multiplies alongside) pointsExponentialScalePerDifficultyLevel below, doesn't
+    // replace it.
     [SerializeField] private float upgradePointMultiplier = 1f;
+    // Exponential, not linear — deliberately the ONE exception to the "multiply base, no exponential"
+    // convention every other difficulty/tier growth field in this codebase uses (see
+    // project_health_tier_growth_linear memory for why that convention exists elsewhere; explicit user call
+    // to go the other way here since each Threat Level compounds noticeably harder than the last, not just
+    // linearly). DifficultyPointMultiplier = pointsExponentialScalePerDifficultyLevel^(Difficulty-1), so
+    // difficulty 1 = 1x (no bonus) and default 2.5 reaches ~97.7x at difficulty 6.
+    [SerializeField] private float pointsExponentialScalePerDifficultyLevel = 2.5f;
 
     [Header("Connection Watchdog")]
     // A connected player whose own local one-time setup (PlayerDataPD's isOwner/verified-gated color +
@@ -99,6 +133,16 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     [SerializeField] private float maxSetupWaitSeconds = 30f;
 
     public bool  GameStarted        => currentState.gameStarted;
+    // True only once the loading screen has ACTUALLY been hidden (see State.loadingScreenRevealed's own
+    // doc comment) — strictly later than GameStarted (can never be true while GameStarted is false; see
+    // Simulate()'s own early-return ordering), by up to minimumLoadingScreenSeconds. Any system whose own
+    // effects the player should never experience before they can actually SEE the game (enemy spawning,
+    // the boss-spawn countdown, player input/movement processing) should gate on THIS, not GameStarted
+    // directly — gating on GameStarted alone let enemies spawn and the boss timer start counting down
+    // while the loading screen was still covering the screen, so by the time it actually cleared, the
+    // player found enemies already nearly on top of them with a countdown already several seconds spent
+    // (confirmed live, 2026-08-18).
+    public bool  LoadingScreenRevealed => currentState.loadingScreenRevealed;
     public float CurrentXP          => currentState.currentXP;
     public int   Level              => currentState.level;
     public float XPToNextLevel      => currentState.xpToNextLevel;
@@ -114,10 +158,20 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     // See State.fixedPlayerCount's own doc comment — the number every co-op-scaling system should read.
     public int   FixedPlayerCount    => currentState.fixedPlayerCount;
 
-    private bool _wasGameStartedLastFrame;
+    private bool _wasLoadingScreenRevealedLastFrame;
     private bool _wasEndedLastFrame;
     private int  _prevEndReadyCount = -1;
     private bool _returnTriggered;
+
+    // Plain field, not predicted State — just a read-and-store for now (2026-08-20), same scope EnemySpawnerPD's
+    // own GamePresets read has: nothing actually USES this yet, and it isn't networked/reconciled across
+    // State-backed (see State.difficulty's own doc comment) — the HOST's own GamePresets.instance.Difficulty
+    // is the single source of truth, written ONCE by the server into replicated State at the same moment
+    // fixedPlayerCount is (see Simulate()), so every machine (client included) converges on the exact same
+    // value instead of each independently reading its own local GamePresets (which, for a client, reflects
+    // whatever THEY last happened to host with — completely unrelated to the match they're actually playing
+    // in now). Defaults to 1 before gameStarted flips true, same as GetInitialState() below.
+    public int Difficulty => currentState.difficulty;
 
     private void Awake()
     {
@@ -134,6 +188,7 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     protected override State GetInitialState() => new()
     {
         level = 1,
+        difficulty = 1,
         xpToNextLevel = baseXPToNextLevel,
         readyPlayers = DisposableList<PlayerID>.Create(4),
         endReadyPlayers = DisposableList<PlayerID>.Create(4),
@@ -153,8 +208,26 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
             if (state.readyPlayers.Count < nm.playerCount) return;
 
             state.fixedPlayerCount = nm.playerCount;
+            // Server-gated, unlike fixedPlayerCount right above — nm.playerCount is already network-agreed
+            // by this point (every machine computes the same value), but GamePresets.instance.Difficulty is
+            // NOT: it's purely local per-machine, correct only on whichever machine is actually hosting. A
+            // client's own Simulate() simply skips this write and keeps predicting the State default (0)
+            // until the server's own verified State (carrying the real value) replicates in and corrects
+            // it — the standard PurrDiction client-correction flow, same as any other server-decided value.
+            if (nm.isServer)
+                state.difficulty = GamePresets.instance != null ? GamePresets.instance.Difficulty : 1;
             state.gameStarted = true;
             return;
+        }
+
+        // Latches once — see State.loadingScreenTimer/loadingScreenRevealed's own comments. Unconditional
+        // (not PausePD-gated like elapsedRunTime below): nothing could legitimately pause the game before
+        // its own reveal has even fired yet.
+        if (!state.loadingScreenRevealed)
+        {
+            state.loadingScreenTimer += delta;
+            if (state.loadingScreenTimer >= minimumLoadingScreenSeconds)
+                state.loadingScreenRevealed = true;
         }
 
         // PausePD.IsPaused already folds in the pause menu, level-up presenting, AND hasWon/isGameOver —
@@ -286,7 +359,12 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     // local, per-client, non-predicted tracker rather than touching predicted State here — how many
     // points this machine's save file has earned is a purely local concern with nothing to gain from
     // being part of the simulation (see LocalUpgradePointsTracker for the full reasoning).
-    public void AwardUpgradePoints(float baseAmount) => LocalUpgradePointsTracker.instance.AddPoints(baseAmount * upgradePointMultiplier);
+    // DifficultyPointMultiplier folded in here (not into upgradePointMultiplier directly) so the two stay
+    // independently visible/tunable — one's a manual balance knob, the other's fully derived from Difficulty.
+    public void AwardUpgradePoints(float baseAmount) => LocalUpgradePointsTracker.instance.AddPoints(baseAmount * upgradePointMultiplier * DifficultyPointMultiplier);
+
+    // pointsExponentialScalePerDifficultyLevel^(Difficulty-1) — see that field's own doc comment.
+    private float DifficultyPointMultiplier => Mathf.Pow(pointsExponentialScalePerDifficultyLevel, Difficulty - 1);
 
     // ── XP ─────────────────────────────────────────────────────────────────
 
@@ -326,7 +404,13 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
         if (!verified.HasValue) return;
         var v = verified.Value;
 
-        if (v.gameStarted && !_wasGameStartedLastFrame)
+        // Reacts to loadingScreenRevealed, NOT gameStarted directly — that flag already latched true only
+        // once minimumLoadingScreenSeconds of SYNCED simulation time have passed since gameStarted (see
+        // Simulate()'s own comment), so every machine reveals at the exact same simulated tick regardless
+        // of when each one's own local LoadingScreen.Show() call happened to fire in real time. This is
+        // what keeps one machine's loading screen from clearing (and the game becoming visible/audible)
+        // while another machine's hasn't caught up yet.
+        if (v.loadingScreenRevealed && !_wasLoadingScreenRevealedLastFrame)
         {
             if (LoadingScreen.instance != null) LoadingScreen.instance.Hide();
             if (MusicPlayer.instance != null) MusicPlayer.instance.Play();
@@ -334,13 +418,28 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
             // EnemyBasePD.ResetActiveCounts() for why the redundancy is deliberate.
             EnemyBasePD.ResetActiveCounts();
         }
-        _wasGameStartedLastFrame = v.gameStarted;
+        _wasLoadingScreenRevealedLastFrame = v.loadingScreenRevealed;
 
         bool ended = v.hasWon || v.isGameOver;
         if (ended && !_wasEndedLastFrame)
         {
             OnGameEnded?.Invoke(v.hasWon);
             EnemyBasePD.ResetActiveCounts();
+            // Local, per-client save-file concern (same reasoning as LocalUpgradePointsTracker/
+            // ProgressionManager elsewhere) — every machine in the match independently unlocks its OWN next
+            // difficulty on a win, same "everyone earns from a win, not just the host" convention points
+            // already follow. Verified-state edge-detected (this whole block only runs once per real ended
+            // transition, off UpdateView()'s verified param), not raw Simulate() — a predicted-context call
+            // here would re-fire the save-file write on every resimulated replay of the winning tick.
+            // UnlockManager.Queue is scene-independent (plain static queue, no MonoBehaviour) — safe to call
+            // from here in the Game scene; LobbySceneController already drains it and shows the popup once
+            // we're back in the Lobby scene, same path ProgressionManager.CommitPoints already uses for shop
+            // unlocks. Message becomes "Threat Level {unlocked} Unlocked!" via ShowNextUnlock's own format.
+            if (v.hasWon)
+            {
+                int unlocked = ProgressionManager.UnlockNextDifficulty(Difficulty);
+                if (unlocked > 0) UnlockManager.Queue($"Threat Level {unlocked}");
+            }
         }
         _wasEndedLastFrame = ended;
 

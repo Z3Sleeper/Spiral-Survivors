@@ -30,7 +30,7 @@ public class SurgeStackingAttackSpeedAugment : AugmentEffectPD<SurgeStackingAtta
 
     [SerializeField] private float stackInterval    = 1f;
     [SerializeField] private int   maxStacks         = 10;
-    [SerializeField] private float attackSpeedFlat     = 0.15f;
+    [SerializeField] private float attackSpeedFlat     = 0.25f;
 
     // Plain view-layer bookkeeping, not State — tracks what this effect has ACTUALLY applied to
     // CharacterStatsPD so it can be reversed exactly, same role as EnemyBasePD's _wasDeadLastFrame.

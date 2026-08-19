@@ -12,8 +12,8 @@ public class DashHasteAugment : AugmentEffectPD<DashHasteAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float dashHaste              = 25f;
-    [SerializeField] private float bonusDashHastePercent  = 0.15f;
+    [SerializeField] private float dashHaste              = 60f;
+    [SerializeField] private float bonusDashHastePercent  = 0f;
 
     protected override void OnApply()
     {

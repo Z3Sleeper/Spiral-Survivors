@@ -24,4 +24,5 @@ public enum StatType
     ShieldRechargeTime  = 23,
     AbilityHaste        = 24,
     DeathPrevention     = 25,
+    MoveSpeedPercent    = 26,
 }

@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: StackPowerAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#8C3CFF>Stacks on Stacks</color>
-  description: '<color=#8C3CFF>+30% Stack Power</color>
+  displayName: <color=#9664FF>Stacks on Stacks</color>
+  description: '<color=#9664FF>+50% Stack Power</color>
 
     <color=#FFBE50><i>Stack
     Power boosts the effects of all Stacking effects</i></color>'

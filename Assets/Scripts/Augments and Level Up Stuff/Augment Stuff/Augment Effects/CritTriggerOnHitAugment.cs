@@ -18,7 +18,7 @@ public class CritTriggerOnHitAugment : AugmentEffectPD<CritTriggerOnHitAugment.S
         public void Dispose() { }
     }
     
-    [SerializeField] private float secondHitOnHitPowerPercent = 0.5f;
+    [SerializeField] private float secondHitOnHitPowerPercent = 0.3f;
 
     protected override void OnApply()
     {

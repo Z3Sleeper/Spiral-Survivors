@@ -44,6 +44,9 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
+    // Buff — only grants stat changes for its own duration, doesn't otherwise act on the world. Exposed for
+    // live playtesting — see IAbilityPD.IsActionAbility's own doc comment.
+    [SerializeField] private bool isActionAbility = false;
 
     [Header("Effect")]
     public float duration = 10f;
@@ -86,6 +89,7 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     // slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
+    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole buff) — see IAbilityPD.
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
@@ -208,7 +212,10 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
         if (_stats != null)
         {
             _stats.AddWeaponRangeTotalPercent(-_appliedWeaponRangeTotalPercent);
-            _stats.AddExecuteThresholdPercent(-_appliedExecuteThreshold);
+            // RemoveExecuteThresholdPercent, not AddExecuteThresholdPercent(-x) (2026-08-14) — execute
+            // threshold now stacks multiplicatively (see its own doc comment), so a straight negated Add no
+            // longer correctly inverts what Activate()'s own AddExecuteThresholdPercent call applied.
+            _stats.RemoveExecuteThresholdPercent(_appliedExecuteThreshold);
             _stats.AddCritChanceFlat(-_appliedCritChance);
         }
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.

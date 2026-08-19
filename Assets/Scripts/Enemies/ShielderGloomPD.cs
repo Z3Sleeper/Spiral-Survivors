@@ -22,27 +22,51 @@ public class ShielderGloomPD : EnemyBasePD
     // source of tuning truth (per explicit design), pushed into the Shield once via Configure() right after
     // it spawns. See SpikeShieldPD.Configure()'s own doc comment for what each parameter does.
     [Header("Shield Tuning")]
-    [SerializeField] private float orbitRadius = 1f;
-    [SerializeField] private float rotationRateDegPerSecond = 180f;
-    [SerializeField] private float attackRange = 3f;
+    [SerializeField] private float orbitRadius = 0.75f;
+    // Tier1-authored baseline, scaled per tier by rotationRateDegPerSecondTierGrowth below (applied in
+    // OnConfigureSpawn(), then pushed into the Shield via SetRotationRateAndAttackRange) — see
+    // _authoredRotationRateDegPerSecond's own doc comment for why this needs the snapshot-and-reset
+    // treatment instead of just multiplying this field directly.
+    [SerializeField] private float rotationRateDegPerSecond = 45f;
+    // Same tier1-authored-baseline treatment as rotationRateDegPerSecond above.
+    [SerializeField] private float attackRange = 4f;
     // Full width of the forward-facing rectangular attack zone (same convention SpearGloomPD.stabWidth
     // uses), not a half-width — easier to reason about from the Inspector.
-    [SerializeField] private float attackWidth = 2f;
-    [SerializeField] private float windupDuration = 0.5f;
-    [SerializeField] private float releaseDuration = 0.15f;
-    [SerializeField] private float attackCooldown = 3f;
+    [SerializeField] private float attackWidth = 1.4f;
+    [SerializeField] private float windupDuration = 1f;
+    [SerializeField] private float releaseDuration = 0.1f;
     // Multipliers against this Shielder's own inherited `damage` stat — same shape as every other enemy
     // attack (e.g. SpearGloomPD.stabDamageMultiplier * damage), not a flat number — so these scale
     // correctly with whatever health/damage multiplier EnemySpawnerPD.SpawnEnemy's own ConfigureSpawn call
     // applies (elite/coop scaling, etc.) the same way every other enemy's attack already does.
-    [SerializeField] private float shieldburstDamageMultiplier = 2f;
-    [SerializeField] private float shieldContactDamageMultiplier = 1f;
+    [SerializeField] private float shieldburstDamageMultiplier = 1f;
+    [SerializeField] private float shieldContactDamageMultiplier = 0.5f;
     [SerializeField] private float contactCooldownSeconds = 0.5f;
-    // Swapped onto whichever of the Shield's own renderers are configured to show it (see
-    // SpikeShieldPD.readyMaterialRenderers) the instant it's actually able to trigger Shieldburst again —
-    // reverts to each renderer's own original material while on cooldown or mid-attack. Current tier colors:
-    // T1 red, T2 blue, T3 yellow — set per-prefab to match whichever tier this Shielder spawns in.
-    [SerializeField] private Material shieldReadyMaterial;
+
+    [Header("Attack Cooldown")]
+    [SerializeField] private float attackCooldown = 5f;
+    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake() (before
+    // Configure() reads it), scaled by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() and
+    // pushed into the Shield via SpikeShieldPD.SetAttackCooldown() — same "_authoredX snapshot" pattern as
+    // _authoredRotationRateDegPerSecond/_authoredAttackRange below.
+    private float _authoredAttackCooldown;
+
+    [Header("Tier Scaling")]
+    // Linear per tier, multiplying the tier1-authored base — NOT compounding/exponential (e.g. tier3 is
+    // base * (1 + 2*growth), not base * (1+growth)^2). Default 0.2 means tier2 = base * 1.2, matching the
+    // "*1.2" the user specified as the tier2 shape; tier3/4 continue linearly (1.4x/1.6x), not accelerating.
+    [SerializeField] private float rotationRateDegPerSecondTierGrowth = 0.2f;
+    [SerializeField] private float attackRangeTierGrowth = 0.2f;
+
+    // Captured once in OnAwake(), reset back onto rotationRateDegPerSecond/attackRange every pooled reuse in
+    // LateAwake() (BEFORE Configure() reads them) — otherwise OnConfigureSpawn's scaling would keep
+    // compounding across reuses, same "_authoredX snapshot" pattern established for the attack-count fields
+    // on Blitz/Dagger/Mortar/Spear/Orbiter. Configure() itself (called from LateAwake(), below) always runs
+    // BEFORE spawnTier is finalized for this life (same ordering hazard TierAccentMaterial's own doc comment
+    // describes), so the tier-scaled values get pushed into the already-spawned Shield separately, later, in
+    // OnConfigureSpawn() — see SetRotationRateAndAttackRange's own doc comment.
+    private float _authoredRotationRateDegPerSecond;
+    private float _authoredAttackRange;
 
     // Plain, not State — a 1:1, whole-life companion object, same "spawned effect stores its owner as a
     // plain reference, not a re-resolved PredictedObjectID" convention AreaEffectPD/PhantomBladeSummonHelper
@@ -57,12 +81,27 @@ public class ShielderGloomPD : EnemyBasePD
     public Transform Target => _target;
     public CharacterStatsPD TargetStats => _targetStats;
 
+    protected override void OnAwake()
+    {
+        base.OnAwake();
+        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
+        _authoredAttackRange = attackRange;
+        _authoredAttackCooldown = attackCooldown;
+    }
+
     // Re-fires on every pooled reuse (same as every other LateAwake() override in this codebase), so a
     // fresh logical Shielder life always spawns and configures a fresh Shield — no extra bookkeeping needed
     // to keep the pair in sync across pooled respawns.
     protected override void LateAwake()
     {
         base.LateAwake();
+
+        // Reset to the tier1-authored baseline before Configure() reads them below (and before
+        // OnConfigureSpawn scales them fresh for this life) — see _authoredRotationRateDegPerSecond's own
+        // doc comment.
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
+        attackRange = _authoredAttackRange;
+        attackCooldown = _authoredAttackCooldown;
 
         if (shieldPrefab == null) return;
         var id = hierarchy.Create(shieldPrefab, transform.position, transform.rotation);
@@ -74,8 +113,27 @@ public class ShielderGloomPD : EnemyBasePD
             _shield = shield;
             shield.Configure(this, orbitRadius, rotationRateDegPerSecond, attackRange, attackWidth,
                 windupDuration, releaseDuration, attackCooldown, shieldburstDamageMultiplier,
-                shieldContactDamageMultiplier, contactCooldownSeconds, shieldReadyMaterial);
+                shieldContactDamageMultiplier, contactCooldownSeconds);
         }
+    }
+
+    // TierAccentMaterial isn't resolvable correctly yet at LateAwake()-time above (spawnTier isn't finalized
+    // for this life until ConfigureSpawn sets it, which runs AFTER LateAwake() — see TierAccentMaterial's own
+    // doc comment), so the Shield's ready material is pushed here instead, once tier is known. Same reasoning
+    // for rotationRateDegPerSecond/attackRange's own tier scaling — Configure() above already ran with the
+    // UN-scaled baseline, so the final tier-scaled values get pushed into the already-spawned Shield here.
+    protected override void OnConfigureSpawn()
+    {
+        base.OnConfigureSpawn();
+        _shield?.SetReadyMaterial(TierAccentMaterial);
+
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        attackRange = _authoredAttackRange * (1f + (spawnTier - 1) * attackRangeTierGrowth);
+        _shield?.SetRotationRateAndAttackRange(rotationRateDegPerSecond, attackRange);
+
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment).
+        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
+        _shield?.SetAttackCooldown(attackCooldown);
     }
 
     // Interruptible exactly while the Shield is winding up — the Shield tells the Shielder its own commitment

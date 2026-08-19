@@ -31,6 +31,12 @@ public class SFXManager : MonoBehaviour
             _pool[i] = go.AddComponent<AudioSource>();
             _pool[i].outputAudioMixerGroup = sfxGroup;
         }
+
+        // Applies the player's saved SFX/Music mixer volume as early as possible — this singleton is created
+        // once at true app boot (DontDestroyOnLoad), well before either scene's own Settings panel GameObject
+        // (which starts inactive, so ITS Awake() doesn't fire until first opened) would apply them otherwise.
+        // See Settings.ApplySavedMixerVolumes' own doc comment.
+        if (sfxGroup != null) Settings.ApplySavedMixerVolumes(sfxGroup.audioMixer);
     }
 
     private void OnDestroy()

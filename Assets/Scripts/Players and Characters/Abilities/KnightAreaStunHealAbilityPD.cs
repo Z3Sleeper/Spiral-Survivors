@@ -25,6 +25,10 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     public struct State : IPredictedData<State>
     {
         public float cooldownTimer;
+        // Guards FirstSuccessfulInterrupt (FSI) — reset once per Activate(), not per retrigger, so a whole
+        // cast (including every AreaEffectCount retrigger) fires FSI at most once, the first time any
+        // enemy is actually interrupted. See OnEnemyInterrupted/CharacterStatsPD.NotifyInterrupted.
+        public bool interruptedThisCast;
         public void Dispose() { }
     }
 
@@ -46,6 +50,10 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // nothing for a Surge block to actually bracket. Still exposed for interface consistency — see
     // IAbilityPD.ActiveSurgeBlock's own doc comment.
     [SerializeField] private bool activeSurgeBlock = false;
+    // Buff, by explicit exception — stuns/knocksback/heals like a real action, but the user's own call is
+    // that it's fine to let players cast this during a forced Surge anyway. Exposed for live playtesting —
+    // see IAbilityPD.IsActionAbility's own doc comment.
+    [SerializeField] private bool isActionAbility = false;
 
     [Header("Effect")]
     // Flat multiplier on top of CharacterStatsPD.RangeScalingAoEBase (see Activate()) — exposed purely for
@@ -60,8 +68,8 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     public float stunDuration = 2f;
     // Flat percent of the caster's own MaxHealth healed per enemy actually hit, BEFORE AreaEffectPower/
     // AbilityPower scale the total (see Activate()) — passed to Stats.Heal() as a raw amount, same as every
-    // other heal source now; Heal() itself rolls luck variance and HealPower/CritHealPower internally, no
-    // separate roll needed here.
+    // other heal source now; Heal() itself scales by HealPower/CritHealPower internally (no luck roll —
+    // heals don't roll luck), no separate handling needed here.
     public float healPercentPerEnemy = 0.03f;
 
     // Mirrors this ability's own Activate() lambda formulas exactly (both stats' own bonus-over-neutral
@@ -125,6 +133,7 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // Never forces a special action — doesn't touch movement at all, and IsActive is always false anyway.
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
+    public bool IsActionAbility => isActionAbility;
     // Always false, for the same reason as IsActive above — NotifyAbilityStart/NotifyAbilityEnd both fire
     // from within the same Activate() call instead of bracketing an observable window.
     public bool AbilityIsActive => false;
@@ -183,6 +192,8 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
             int totalCasts = Mathf.Max(1, _stats.AreaEffectCount);
             Vector3 castPosition = _stats.transform.position;
 
+            currentState.interruptedThisCast = false;
+
             var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
             if (chainId.HasValue)
             {
@@ -199,7 +210,12 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
                 // 100%/1.0) stays exactly 1x and +30%/+30% together means +60% total, not +160%.
                 // interrupt: true — this stun is meant to cancel whatever attack an enemy is mid-sequence on,
                 // not just land and wait for it to finish (see EnemyBasePD.Interrupt()'s own doc comment);
-                // Cast() applies it before knockback/onEnemyHit for exactly that reason.
+                // Cast() applies it before knockback/onEnemyHit for exactly that reason. Every enemy this cast
+                // actually interrupts also gets IEnemyPD.InterruptTrueStun's own flat, CC-resist-immune bonus
+                // duration on top of the ordinary onEnemyHit Stun() below (this cast's own stunDuration passed
+                // through as the paired amount — see OnEnemyInterrupted/CharacterStatsPD.NotifyInterrupted's
+                // own doc comments) — an enemy NOT successfully interrupted (already uninterruptible this
+                // tick) still gets the plain onEnemyHit stun alone, no bonus.
                 if (go != null && go.TryGetComponent(out AreaEffectPD chain))
                     chain.Launch(_stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
                         dealDamage: false, hasKnockback: true, knockback: knockback, interrupt: true,
@@ -209,6 +225,7 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
                             if (hitCount <= 0) return;
                             _stats.Heal(hitCount * healPercentPerEnemy * _stats.MaxHealth * (_stats.AreaEffectPower + _stats.AbilityPower - 1f));
                         },
+                        onSuccessfulInterrupt: OnEnemyInterrupted,
                         vfxPerCast: true);
             }
         }
@@ -217,6 +234,18 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     }
 
     public void NotifyActivationBlocked() { }
+
+    // Fired by AreaEffectCastHelper.Cast for every enemy this cast actually interrupted (see its own doc
+    // comment on onSuccessfulInterrupt) — feeds the generic SI/FSI events, gated to fire FSI at most once
+    // per Activate() via currentState.interruptedThisCast (FSI itself isn't used for anything stun-related
+    // here — InterruptTrueStun fires on every SI, see NotifyInterrupted's own doc comment). Passes this same
+    // cast's own (already AreaEffectPower/AbilityPower-scaled) stun duration as the paired-stun amount, added
+    // to InterruptTrueStun's flat portion for every enemy this cast successfully interrupts. The onEnemyHit
+    // Stun() call below still fires independently for every hit enemy regardless (including this one) —
+    // ApplyStun's own Mathf.Max semantics mean the two calls can never fight each other; whichever produces
+    // the longer duration simply wins.
+    private void OnEnemyInterrupted(IEnemyPD enemy) =>
+        _stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast, stunDuration * (_stats.AreaEffectPower + _stats.AbilityPower - 1f));
 
     protected override void Simulate(ref State state, float delta)
     {

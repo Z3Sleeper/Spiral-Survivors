@@ -50,18 +50,37 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     // single source of truth for reach; both the visual indicator and the actual stab hit-check derive from
     // it (see UpdateView() for the indicator, EnterStab() for the hit-check), so tuning this one field keeps
     // both in sync automatically.
-    [SerializeField] private float stabRange          = 3f;
+    [SerializeField] private float stabRange          = 4.5f;
     // Full width of the forward-facing rectangular stab zone (EnterStab() checks stabWidth/2 either side of
     // this enemy's own facing) — replaces what used to be the _spearHitbox BoxCollider's own authored
     // size.x. Not derived from anything at runtime; hand-tune to match however wide the stab visually reads.
-    [SerializeField] private float stabWidth          = 2f;
+    [SerializeField] private float stabWidth          = 1.25f;
     [SerializeField] private float windupDuration     = 0.5f;
     [SerializeField] private float stabDuration       = 0.1f;
-    [SerializeField] private float betweenStabPause   = 0.3f;
-    [SerializeField] private float postStabPause      = 0.6f;
-    [SerializeField] private float attackCooldown     = 3f;
+    [SerializeField] private float betweenStabPause   = 0.25f;
+    [SerializeField] private float postStabPause      = 0.5f;
+    // Tier1-authored baseline, scaled per tier by attacksPerAttackTierGrowth below (applied in
+    // OnConfigureSpawn()). See _authoredAttacksPerAttack's own doc comment for why this needs the
+    // snapshot-and-reset treatment instead of just incrementing this field directly.
     [SerializeField] private int   attacksPerAttack   = 1;
-    [SerializeField] private float dashSpeedMultiplier = 1.5f;
+    [SerializeField] private float dashSpeedMultiplier = 4f;
+    // Captured once in OnAwake(), reset back onto attacksPerAttack every pooled reuse in LateAwake() —
+    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
+    // pattern established for BlitzGloomPD/DaggerGloomPD/MortarGloomPD's own identical attack-count fields.
+    private int _authoredAttacksPerAttack;
+
+    [Header("Attack Cooldown")]
+    [SerializeField] private float attackCooldown = 5f;
+    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
+    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
+    // pattern as _authoredAttacksPerAttack above.
+    private float _authoredAttackCooldown;
+
+    [Header("Tier Scaling")]
+    // Added onto attacksPerAttack per tier above 1 — see OnConfigureSpawn().
+    [SerializeField] private int attacksPerAttackTierGrowth = 1;
+
+    [Header("Indicators")]
     [SerializeField] private GameObject _windupIndicator;
     [SerializeField] private WindupFillPD _windupFill;
 
@@ -70,12 +89,42 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private SpearState GetSpearState(ref State s) => (SpearState)s.spearStateId;
     private void SetSpearState(ref State s, SpearState st) => s.spearStateId = (int)st;
 
+    protected override void OnAwake()
+    {
+        base.OnAwake();
+        _authoredAttacksPerAttack = attacksPerAttack;
+        _authoredAttackCooldown = attackCooldown;
+    }
+
     protected override void LateAwake()
     {
         base.LateAwake();
 
+        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
+        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredAttacksPerAttack's
+        // own doc comment.
+        attacksPerAttack = _authoredAttacksPerAttack;
+        attackCooldown = _authoredAttackCooldown;
         currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        // Re-set again in OnRespawnReset() once attacksPerAttack is actually tier-scaled (that always runs
+        // AFTER OnConfigureSpawn, on this life's first Simulate() tick) — this LateAwake() assignment is
+        // only ever a placeholder until then.
         currentState.spearAttacksRemaining    = attacksPerAttack;
+    }
+
+    // Tier1-authored attacksPerAttack, scaled by attacksPerAttackTierGrowth per tier above 1 (see that
+    // field's own doc comment). spawnTier is already final by the time this runs (set earlier in the same
+    // ConfigureSpawn() call).
+    protected override void OnConfigureSpawn()
+    {
+        base.OnConfigureSpawn();
+        attacksPerAttack += (spawnTier - 1) * attacksPerAttackTierGrowth;
+
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
+        // the placeholder spearAttackCooldownTimer LateAwake() already assigned above, using the now-scaled
+        // value.
+        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
+        currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
     }
 
     // Caches _windupClipRate/_stabClipRate/_postStabClipLength (re-derived live in UpdateView, scaled by
@@ -104,15 +153,18 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     {
         if (dashJustEnded) EnterWindup(ref state);
 
-        // spearAttackCooldownTimer: untouched — pacing between whole attack sequences, not attack
-        // execution speed. spearStateTimer: scaled live by EffectiveAttackSpeed every tick (not
-        // pre-divided once at state entry) — this is what makes windup/stabbing-state/betweenStabs/
-        // postStab all reactively speed up or slow down immediately if attack speed changes mid-state,
-        // rather than being locked to whatever it was when the state started.
-        state.spearAttackCooldownTimer -= delta;
-        state.spearStateTimer          -= delta * EffectiveAttackSpeed;
-
         var ss = GetSpearState(ref state);
+
+        // spearAttackCooldownTimer: only ticks while actually in Moving (2026-08-19 — uniform across every
+        // multi-phase enemy's own attack-cadence cooldown now, see OrbiterGloomPD's own fix for the first
+        // instance of this change) — frozen for the whole dash/windup/stab/postStab sequence rather than
+        // ticking (and going increasingly negative) throughout it. spearStateTimer: scaled live by
+        // EffectiveAttackSpeed every tick (not pre-divided once at state entry) — this is what makes
+        // windup/stabbing-state/betweenStabs/postStab all reactively speed up or slow down immediately if
+        // attack speed changes mid-state, rather than being locked to whatever it was when the state started.
+        if (ss == SpearState.Moving)
+            state.spearAttackCooldownTimer -= delta;
+        state.spearStateTimer -= delta * EffectiveAttackSpeed;
 
         switch (ss)
         {
@@ -148,9 +200,10 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
                 {
                     // IsTargetStillValid — a target that went invisible-and-non-taunting since the last stab
                     // shouldn't get chained into another one against them; see that property's own doc comment.
-                    // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the
-                    // stab that just finished above, but stops the chain from continuing into another one,
-                    // falling through to PostStab instead (see IsCrowdControlled's own doc comment).
+                    // !IsCrowdControlled — a true Stun() landing mid-sequence never interrupts the stab that
+                    // just finished above, but stops the chain from continuing into another one, falling
+                    // through to PostStab instead (a Slow does NOT stop the chain — see IsCrowdControlled's
+                    // own doc comment, hard CC only).
                     if (state.spearAttacksRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenStabs(ref state);
                     else                                                      EnterPostStab(ref state);
                 }
@@ -281,10 +334,12 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void EnterDashToTarget(ref State state)
     {
         SetSpearState(ref state, SpearState.DashingToTarget);
-        // baseMoveSpeed * dashSpeedMultiplier is the unscaled base — HandleDash itself applies
-        // EffectiveAttackSpeed live, every tick, so this dash speeds up/slows down in real time right
-        // alongside every other attack-speed-scaled part of this attack, not just at dash start.
-        StartDashToTarget(ref state, baseMoveSpeed * dashSpeedMultiplier, preferredRange / 2f);
+        // EffectiveMoveSpeed * dashSpeedMultiplier is the base, baked in once at dash start (2026-08-13 —
+        // was baseMoveSpeed, see BlitzGloomPD.EnterBlitz's own comment) — HandleDash itself ADDITIONALLY
+        // applies EffectiveAttackSpeed live, every tick, on top of that, so this dash speeds up/slows down
+        // in real time right alongside every other attack-speed-scaled part of this attack, not just at
+        // dash start.
+        StartDashToTarget(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, preferredRange / 2f);
     }
 
     private void EnterPostStab(ref State state)
@@ -298,9 +353,9 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void EnterMoving(ref State state)
     {
         // spearAttacksRemaining deliberately left untouched here — the attack-start sites (Moving/
-        // BetweenStabs) now own resetting it (refill-if-exhausted, not unconditional), so an attempt
-        // cancelled via Interrupt() (which funnels through here) keeps whatever count it already had instead
-        // of getting silently topped back up.
+        // BetweenStabs) own resetting it for the natural target-lost/crowd-controlled early-exit path
+        // (refill-if-exhausted, not unconditional). OnInterrupted() now zeroes it explicitly itself, BEFORE
+        // calling this, for the Interrupt()-driven path — see its own doc comment.
         // Attack routine's over — reprioritize onto whoever's closest now, rather than sitting on whoever
         // this routine happened to start against. See EnemyBasePD.FindClosestTarget's own doc comment.
         FindClosestTarget();
@@ -320,10 +375,18 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         }
     }
 
-    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
-    // it runs out of spearAttacksRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
+    // Fully aborts the attack chain (2026-08-12, reworked from "leave spearAttacksRemaining untouched") —
+    // an interrupted attack no longer retries with whatever reps it had left; it zeroes the counter AND
+    // puts the whole sequence on a full fresh cooldown (same formula EnterPostStab's own natural chain-end
+    // already uses), so the very next Moving-state check can't immediately refill-and-restart. Moving
+    // itself is stunnable (see isStunnable's own per-tick assignment above), so a Stun() paired with the
+    // same hit as this Interrupt() (always called BEFORE a paired Stun(), see IEnemyPD.Interrupt()'s own
+    // doc comment) freezes this enemy here via EnemyBasePD.Simulate()'s own isStunnable-gated freeze for the
+    // stun's whole duration before it's ever able to attack again — no extra handling needed for that here.
     protected override void OnInterrupted()
     {
+        currentState.spearAttacksRemaining    = 0;
+        currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch

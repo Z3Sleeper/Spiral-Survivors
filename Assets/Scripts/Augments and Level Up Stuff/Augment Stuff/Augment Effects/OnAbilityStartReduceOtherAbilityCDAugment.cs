@@ -4,7 +4,7 @@ using UnityEngine;
 // Reduces the OTHER ability's remaining cooldown by reductionPercent (default 50%) of the CASTED ability's
 // own CURRENT cooldown (i.e. CooldownDuration — the live, ability-haste-scaled cooldown, NOT
 // BaseCooldownDuration and NOT CooldownRemaining), every time either ability starts — same _onAbilityStart
-// trigger OnAbilityStartRefillEnergyAugment/OnAbilityStartHealPercentHPAugment already use
+// trigger OnAbilityStartRefillEnergyAugment/OnAbilityStartHealHealthRegenAugment already use
 // (CharacterStatsPD._onAbilityStart fires the instant any ability's own AbilityIsActive flips true). At the
 // default 50%, casting a 6s-current-cooldown ability shaves 3 seconds off whatever the OTHER ability
 // currently has left.
@@ -21,7 +21,7 @@ public class OnAbilityStartReduceOtherAbilityCDAugment : AugmentEffectPD<OnAbili
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float reductionPercent = 0.5f;
+    [SerializeField] private float reductionPercent = 0.3f;
 
     // Cached once — Ability1/Ability2 are permanent one-per-character fixtures for the whole match, same
     // convention OnStrikeReduceAbilityCDAugment's own _abilities cache already uses.

@@ -12,7 +12,7 @@ public class MultiShotSpreadAugment : AugmentEffectPD<MultiShotSpreadAugment.Sta
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     [SerializeField] private float bonusMultishotSpreadPercent = 0.8f;
-    [SerializeField] private float knockbackMultiplier  = 0.5f;
+    [SerializeField] private float knockbackMultiplier  = 1f;
 
     protected override void OnApply()
     {

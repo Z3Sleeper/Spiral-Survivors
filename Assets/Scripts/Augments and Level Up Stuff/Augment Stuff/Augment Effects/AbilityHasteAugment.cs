@@ -10,8 +10,8 @@ public class AbilityHasteAugment : AugmentEffectPD<AbilityHasteAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float abilityHaste             = 25f;
-    [SerializeField] private float bonusAbilityHastePercent = 0.15f;
+    [SerializeField] private float abilityHaste             = 30f;
+    [SerializeField] private float bonusAbilityHastePercent = 0f;
 
     protected override void OnApply()
     {

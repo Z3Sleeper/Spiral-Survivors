@@ -8,8 +8,8 @@ public class HealthAugment : AugmentEffectPD<HealthAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusMaxHealthFlat = 25f;
-    [SerializeField] private float bonusMaxHealthPercent = 0.15f;
+    [SerializeField] private float bonusMaxHealthFlat = 60f;
+    [SerializeField] private float bonusMaxHealthPercent = 0f;
 
     protected override void OnApply()
     {

@@ -44,7 +44,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7f6de1386c5e14f409d011a5839c4dd9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShieldBreakBurstAugment
-  invincibilityDuration: 1
+  invincibilityDuration: 0.25
   damagePercent: 3
   radiusMultiplier: 1.25
   knockbackMultiplier: 2

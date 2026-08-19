@@ -43,35 +43,31 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     // The "too close" trigger threshold — separate from preferredRange (which governs the normal approach/
     // backpedal hold distance via HandleMovement) since a player closing distance faster than backpedal can
     // keep up needs an actual evasive dash, not just movement hysteresis.
-    [SerializeField] private float minAttackRange     = 3f;
-    [SerializeField] private float attackCooldown     = 5f;
-    [SerializeField] private float windupDuration     = 0.5f;
+    [SerializeField] private float minAttackRange     = 8f;
+    [SerializeField] private float windupDuration     = 0.25f;
     [SerializeField] private float shootDuration      = 0.1f;
-    [SerializeField] private float betweenShotPause   = 0.3f;
-    [SerializeField] private float postShotPause      = 0.3f;
+    [SerializeField] private float betweenShotPause   = 0.25f;
+    [SerializeField] private float postShotPause      = 0.5f;
     [SerializeField] private int   shotsPerAttack     = 1;
     [SerializeField] private float shotDamageMultiplier = 1f;
     // Multiplier against baseMoveSpeed, matching every other dashing enemy's own dashSpeedMultiplier
     // convention (see StartDashToPoint/StartDashToTarget callers) — NOT old's 33x, which was tuned against
     // old's differently-scaled move speed values.
-    [SerializeField] private float dashSpeedMultiplier = 3f;
+    [SerializeField] private float dashSpeedMultiplier = 4f;
     // Extra clearance beyond exactly reaching minAttackRange, same buffer old's own EnterDash() used.
     [SerializeField] private float dashDistanceBuffer  = 0.5f;
 
     [Header("Projectile")]
     [SerializeField] private GameObject projectilePrefab;
     [SerializeField] private float projectileSpeed    = 8f;
-    [SerializeField] private float projectileMaxRange = 30f;
+    [SerializeField] private float projectileMaxRange = 20f;
     // Spawn offset in front of the enemy, along the fire direction — avoids the projectile immediately
     // self-colliding with the firer's own hurtbox/collider at spawn.
     [SerializeField] private float spawnOffset        = 0.75f;
-    // 1 = default size, 1.5 = 50% larger, etc. — manually tuned per prefab variant (elite variants set this
-    // higher to match their bigger ScaledVisuals), not derived from anything at runtime.
+    // Extra multiplier ON TOP of this enemy's own size (1 = no extra adjustment, scales 1:1 with size) —
+    // multiplied by size at the actual Launch() call site below (2026-08-20), so an Elite's bigger
+    // ScaledVisuals no longer needs this hand-tuned to match separately; it now tracks size automatically.
     [SerializeField] private float projectileScale    = 1f;
-    // Null = leave the projectile prefab's own default material. Set per color-variant prefab (e.g. an
-    // elite/recolored Shooter Gloom) so its shots visually match — not derived from the enemy's own
-    // gun/hat material at runtime, same manual-per-variant convention as projectileScale above.
-    [SerializeField] private Material projectileMaterial;
 
     // Baseline "clip length / baseline duration" ratios, cached instead of SetFloat'd directly — every one
     // of Shooter's own attack beats scales with attack speed (Shooting's damage is a one-shot projectile
@@ -83,10 +79,28 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     private float _postShotClipRate;
 
     [Header("Multishot")]
-    // 0 = fire 1 bullet straight, no extra shots. See MultishotMath (WeaponBasePD.cs) for exactly how extra
-    // shots fan out — one always center, the rest split left-first between the two sides.
+    // 0 = fire 1 bullet straight, no extra shots (tier1-authored baseline — "base 1" total shot). See
+    // MultishotMath (WeaponBasePD.cs) for exactly how extra shots fan out — one always center, the rest
+    // split left-first between the two sides. Scaled per tier by multishotCountTierGrowth below (applied in
+    // OnConfigureSpawn()) — see _authoredMultishotCount's own doc comment for why this needs the
+    // snapshot-and-reset treatment instead of just incrementing this field directly.
     [SerializeField] private int   multishotCount       = 0;
-    [SerializeField] private float multishotSpreadAngle = 135f;
+    [SerializeField] private float multishotSpreadAngle = 90f;
+    // Captured once in OnAwake(), reset back onto multishotCount every pooled reuse in LateAwake() —
+    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
+    // pattern established for the attack-count fields on Blitz/Dagger/Mortar/Spear/Orbiter.
+    private int _authoredMultishotCount;
+
+    [Header("Attack Cooldown")]
+    [SerializeField] private float attackCooldown = 5f;
+    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
+    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
+    // pattern as _authoredMultishotCount above.
+    private float _authoredAttackCooldown;
+
+    [Header("Tier Scaling")]
+    // Added onto multishotCount per tier above 1 — see OnConfigureSpawn().
+    [SerializeField] private int multishotCountTierGrowth = 2;
 
     public enum ShooterState { Moving, DashingAway, Windup, Shooting, BetweenShots, PostShot }
 
@@ -97,11 +111,38 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     // call, same convention as WeaponRangedPD's own _multishotAngles.
     private static readonly List<float> _multishotAngles = new();
 
+    protected override void OnAwake()
+    {
+        base.OnAwake();
+        _authoredMultishotCount = multishotCount;
+        _authoredAttackCooldown = attackCooldown;
+    }
+
     protected override void LateAwake()
     {
         base.LateAwake();
+        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
+        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredMultishotCount's own
+        // doc comment.
+        multishotCount = _authoredMultishotCount;
+        attackCooldown = _authoredAttackCooldown;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.shotsRemaining      = shotsPerAttack;
+    }
+
+    // Tier1-authored multishotCount, scaled by multishotCountTierGrowth per tier above 1 (see that field's
+    // own doc comment). spawnTier is already final by the time this runs (set earlier in the same
+    // ConfigureSpawn() call). Read live at fire time (FireShots), not mirrored into State, so no extra reset
+    // needed anywhere else.
+    protected override void OnConfigureSpawn()
+    {
+        base.OnConfigureSpawn();
+        multishotCount += (spawnTier - 1) * multishotCountTierGrowth;
+
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
+        // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
+        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
     }
 
     // Sets the WindupSpeed/ShootSpeed/PostShotSpeed Animator float parameters so each clip's actual
@@ -129,14 +170,16 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     {
         if (dashJustEnded) EnterWindup(ref state);
 
-        // attackCooldownTimer: untouched — pacing between attack sequences, not execution speed.
-        // shooterStateTimer: scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own
-        // comment on the identical pattern. DashingAway needs no separate handling — HandleDash already
-        // applies EffectiveAttackSpeed live to the dash's own velocity.
-        state.attackCooldownTimer -= delta;
-        state.shooterStateTimer   -= delta * EffectiveAttackSpeed;
-
         var ss = GetShooterState(ref state);
+
+        // attackCooldownTimer: only ticks while actually in Moving (2026-08-19 — uniform across every
+        // multi-phase enemy's own attack-cadence cooldown now, see OrbiterGloomPD's own fix). shooterStateTimer:
+        // scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own comment on the identical
+        // pattern. DashingAway needs no separate handling — HandleDash already applies EffectiveAttackSpeed
+        // live to the dash's own velocity.
+        if (ss == ShooterState.Moving)
+            state.attackCooldownTimer -= delta;
+        state.shooterStateTimer -= delta * EffectiveAttackSpeed;
 
         switch (ss)
         {
@@ -172,9 +215,10 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 {
                     // IsTargetStillValid — a target that went invisible-and-non-taunting since the last shot
                     // shouldn't get chained into another one against them; see that property's own doc comment.
-                    // !IsCrowdControlled — a true Stun() or Slow() landing mid-sequence never interrupts the
-                    // shot that just finished above, but stops the chain from continuing into another one,
-                    // falling through to PostShot instead (see IsCrowdControlled's own doc comment).
+                    // !IsCrowdControlled — a true Stun() landing mid-sequence never interrupts the shot that
+                    // just finished above, but stops the chain from continuing into another one, falling
+                    // through to PostShot instead (a Slow does NOT stop the chain — see IsCrowdControlled's
+                    // own doc comment, hard CC only).
                     if (state.shotsRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenShots(ref state);
                     else                                                EnterPostShot(ref state);
                 }
@@ -247,7 +291,8 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         float dashDistance = (minAttackRange - currentDistance) + dashDistanceBuffer;
         Vector3 destination = transform.position + awayDir * dashDistance;
 
-        StartDashToPoint(ref state, baseMoveSpeed * dashSpeedMultiplier, destination);
+        // EffectiveMoveSpeed, not baseMoveSpeed (2026-08-13) — see BlitzGloomPD.EnterBlitz's own comment.
+        StartDashToPoint(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, destination);
     }
 
     private void EnterWindup(ref State state)
@@ -298,9 +343,20 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         }
     }
 
-    // Resets the state machine back to Moving, same terminal transition the attack chain already uses when
-    // it runs out of shotsRemaining naturally. See EnemyBasePD.Interrupt()'s own doc comment.
-    protected override void OnInterrupted() => EnterMoving(ref currentState);
+    // Fully aborts the attack chain (2026-08-12) — an interrupted attack no longer retries with whatever
+    // shots it had left; it zeroes shotsRemaining AND puts the whole sequence on a full fresh cooldown (same
+    // formula EnterPostShot's own natural chain-end already uses), so the very next Moving-state check can't
+    // immediately refill-and-restart. Moving itself is stunnable (see isStunnable's own per-tick assignment
+    // above), so a Stun() paired with the same hit as this Interrupt() (always called BEFORE a paired
+    // Stun(), see IEnemyPD.Interrupt()'s own doc comment) freezes this enemy here via EnemyBasePD.Simulate()'s
+    // own isStunnable-gated freeze for the stun's whole duration before it's ever able to attack again — no
+    // extra handling needed for that here.
+    protected override void OnInterrupted()
+    {
+        currentState.shotsRemaining      = 0;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        EnterMoving(ref currentState);
+    }
 
     // ── Firing ────────────────────────────────────────────────────────────────
 
@@ -330,7 +386,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
 
             var go = hierarchy.GetGameObject(id.Value);
             if (go != null && go.TryGetComponent(out EnemyProjectilePD projectile))
-                projectile.Launch(dmg, dir, projectileSpeed, projectileMaxRange, projectileScale, projectileMaterial);
+                projectile.Launch(dmg, dir, projectileSpeed, projectileMaxRange, projectileScale * size, TierAccentMaterial);
         }
     }
 

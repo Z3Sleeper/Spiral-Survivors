@@ -76,7 +76,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // again to end up radius past it on the opposite side). Speed is derived from that distance and the
     // fixed travelTime, rather than travelTime being derived from a fixed speed, so every blade takes the
     // same time to finish its flight regardless of size.
-    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit, bool usePenalizedOnHitPower, float baseDamageMultiplier)
+    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit, float baseDamageMultiplier)
     {
         float radius = BaseSpawnRadius * sizeMultiplier;
 
@@ -86,16 +86,15 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         _maxRange = radius * 2f;
         _speed = _maxRange / travelTime;
         _onHitEnabled = owner.phantomBladeOnHitEnabled;
-        // usePenalizedOnHitPower picks between the WeaponCount-divided OnHitPower (only PhantomBladeOnCritAugment's
-        // blades, matching how that same augment already uses divided Strength for this blade's own damage)
-        // and the Unpenalized variant (every other augment's blades, and a Carnival copy of one of them) —
-        // see PhantomBladeSummonHelper.SummonAtTarget's own doc comment. baseDamageMultiplier is the exact
-        // same ratio (e.g. 6f for "600% Strength") that augment used to roll this blade's own damage, so a
-        // blade given a bigger/smaller cut of Strength scaling gets a proportionally bigger/smaller cut of
-        // OnHitPower too, instead of every blade reporting the same flat onHitPower regardless of how strong
-        // that particular summon was tuned to be.
-        float onHitPowerBase = usePenalizedOnHitPower ? owner.OnHitPower : owner.UnpenalizedOnHitPower;
-        _onHitPower = onHitPowerBase * baseDamageMultiplier * owner.phantomBladeOnHitPowerPercent;
+        // Reads owner.OnHitPower directly (2026-08-19 — was a usePenalizedOnHitPower ternary against the
+        // since-removed divided OnHitPower; see PhantomBladeSummonHelper.PreviewDamage's own doc comment for
+        // the full reasoning) — every blade, regardless of which augment summoned it, uses the same
+        // undivided OnHitPower now. baseDamageMultiplier is the exact same ratio (e.g. 6f for "600%
+        // Strength") that augment used to roll this blade's own damage, so a blade given a bigger/smaller
+        // cut of Strength scaling gets a proportionally bigger/smaller cut of OnHitPower too, instead of
+        // every blade reporting the same flat onHitPower regardless of how strong that particular summon
+        // was tuned to be.
+        _onHitPower = owner.OnHitPower * baseDamageMultiplier * owner.phantomBladeOnHitPowerPercent;
 
         transform.localScale = _baseScale * sizeMultiplier;
 
@@ -162,7 +161,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         // into _damage already — every enemy this blade hits sees the same crit status for its whole
         // flight, not a fresh per-hit roll.
         enemy.TakeDamage(_damage, _isCrit, _owner.owner ?? default);
-        _owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = _damage, isCrit = _isCrit, isHighroll = false, attacker = _owner, isPriority = true, source = DamageSource.PhantomBlade });
+        _owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = _damage, isCrit = _isCrit, isHighroll = false, attacker = _owner, isPriority = true });
 
         // Only fires if some Phantom Blade augment actually enabled it — most blades never touch the OnHit
         // chain at all. weaponDamage uses this blade's own already-rolled damage (the closest available

@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1e9592db4177fd8409e9f20098023edc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AbilityHasteAugment
-  abilityHaste: 60
+  abilityHaste: 30
   bonusAbilityHastePercent: 0

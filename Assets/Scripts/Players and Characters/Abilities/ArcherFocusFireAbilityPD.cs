@@ -68,6 +68,9 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
+    // Buff — only grants stat changes for its own duration, doesn't otherwise act on the world. Exposed for
+    // live playtesting — see IAbilityPD.IsActionAbility's own doc comment.
+    [SerializeField] private bool isActionAbility = false;
 
     [Header("Effect")]
     public float duration = 3f;
@@ -135,6 +138,7 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     // or the other ability slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
+    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole Focus Fire window) — see IAbilityPD.
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.

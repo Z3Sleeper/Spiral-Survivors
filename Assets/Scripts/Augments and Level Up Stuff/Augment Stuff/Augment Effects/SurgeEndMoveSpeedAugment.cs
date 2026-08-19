@@ -21,7 +21,7 @@ public class SurgeEndMoveSpeedAugment : AugmentEffectPD<SurgeEndMoveSpeedAugment
     // only if those are already non-neutral (e.g. a class with an innate move speed penalty gets a
     // slightly weaker flat buff too) — same as any other Bonus-tier grant.
     [SerializeField] private float moveSpeedFlat = 5f;
-    [SerializeField] private float buffDuration    = 2f;
+    [SerializeField] private float buffDuration    = 3f;
 
     [Header("Buff Bar")]
     [SerializeField] private Sprite buffIcon;

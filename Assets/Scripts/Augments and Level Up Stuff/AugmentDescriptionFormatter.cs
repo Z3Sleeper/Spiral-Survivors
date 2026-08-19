@@ -2,12 +2,20 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using UnityEngine;
 
-// Resolves {TokenName} placeholders inside an AugmentData.description against the effect prefab's own
+// Resolves {TokenName} placeholders inside an AugmentData.description against an effect object's own
 // public fields/properties/methods (and, if not found there, the given CharacterStatsPD's public
 // fields/properties) via reflection — lets an augment script expose a value for display just by making a
 // member public and referencing its exact name in the Inspector text, with no per-token plumbing needed
 // anywhere else. The description text itself stays fully Inspector-editable, exactly like today; only the
 // NUMBERS come from the script.
+//
+// The Format(AugmentData, CharacterStatsPD) overload's "effect object" is the real per-player SPAWNED
+// instance (via AugmentManagerPD's own registry) whenever one exists, not AugmentData.effectPrefab's own
+// dead template — see that overload's own doc comment (2026-08-19). This matters for any token method that
+// reads its own instance's runtime state (e.g. a stacking augment's current stack count) rather than just
+// config fields/CharacterStatsPD — those only ever see the real value once resolution stopped defaulting to
+// the prefab. Falls back to the prefab for a not-yet-picked preview, a class passive not yet applied, or a
+// no-live-player context (lobby/Encyclopedia).
 //
 // Three kinds of member are checked, in order, for each token name found on the effect script:
 // 1. A public FIELD — the augment's own raw tunable (e.g. onHitBonusHealthPercent). Substituted as-is.
@@ -67,7 +75,18 @@ public static class AugmentDescriptionFormatter
     public static string Format(AugmentData data, CharacterStatsPD stats)
     {
         if (data == null) return string.Empty;
-        object effect = data.effectPrefab != null ? data.effectPrefab.GetComponent<IAugmentEffectDescribable>() : null;
+
+        // Prefers the real per-player spawned instance (AugmentManagerPD's own registry) over the dead
+        // effectPrefab template whenever one exists (2026-08-19) — so a token method reading its own
+        // instance state (e.g. a stacking augment's current stack count) sees the real player's live value
+        // instead of the prefab's permanently-zeroed default. Falls back to the prefab for a not-yet-picked
+        // level-up preview card, a class passive not yet applied, or a menu/Encyclopedia display with no
+        // live player — exactly the same behavior as before this existed.
+        IAugmentEffectDescribable liveEffect = null;
+        if (stats != null && stats.owner.HasValue && AugmentManagerPD.instance != null)
+            liveEffect = AugmentManagerPD.instance.GetSpawnedEffect(stats.owner.Value, data);
+
+        object effect = liveEffect ?? (data.effectPrefab != null ? data.effectPrefab.GetComponent<IAugmentEffectDescribable>() : null);
         return Format(data.description, effect, stats);
     }
 

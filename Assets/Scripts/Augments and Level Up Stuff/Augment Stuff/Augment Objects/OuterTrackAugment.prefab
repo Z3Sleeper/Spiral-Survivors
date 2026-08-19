@@ -45,5 +45,3 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OuterTrackAugment
   totalWeaponRangePercent: 0.25
-  totalStrengthPercent: 0.6
-  totalOnHitPowerPercent: 0.6

@@ -15,7 +15,7 @@ public class CritExecuteAugment : AugmentEffectPD<CritExecuteAugment.State>
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     [SerializeField] private float critExecuteThreshold = 0.25f;
-    [SerializeField] private float bonusCritChanceFlat   = 0.25f;
+    [SerializeField] private float bonusCritChanceFlat   = 0.1f;
 
     protected override void OnApply()
     {

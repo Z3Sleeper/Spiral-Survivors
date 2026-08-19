@@ -44,8 +44,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9ba4d0f7a6ceb874f91dd8419f7e5e70, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DashExplosionAugment
-  damagePercent: 2
-  onHitPowerPercent: 2
+  damagePercent: 1.5
+  onHitPowerPercent: 1.5
   radiusMultiplier: 1.25
   knockbackMultiplier: 1
   retriggerRate: 0.5

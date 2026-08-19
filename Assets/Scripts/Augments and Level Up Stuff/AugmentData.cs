@@ -48,6 +48,17 @@ public class AugmentData : ScriptableObject
     // picked augment's incompatibleTags) declares the link.
     public string[] incompatibleTags;
 
+    [Header("Unlock")]
+    // Gates whether this augment can ever appear in a level-up pool at all — empty/null means always
+    // available (the default, and what every existing augment keeps). SINGULAR, unlike tags/requiredTags/
+    // incompatibleTags above, and drawn from a completely separate AugmentUnlockTagDatabase — see that
+    // class's own doc comment for why it's a different pool from AbilityTagDatabase, and
+    // CharacterStatsPD.UnlockedAugmentTagMask for how a player's own unlocked set is checked against this
+    // at pick time (AugmentManagerPD.IsAugmentTagUnlocked). Not yet wired to any actual unlock TRIGGER as of
+    // this scaffolding pass — nothing grants a tag yet, so any augment given one here is effectively unpickable
+    // by anyone until a future system starts calling ProgressionManager.UnlockAugmentTag.
+    public string unlockTag;
+
     public bool IsAvailableForClass(CharacterClassID characterClass)
     {
         bool inList = characterClasses != null && System.Array.IndexOf(characterClasses, characterClass) >= 0;

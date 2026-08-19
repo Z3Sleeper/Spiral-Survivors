@@ -65,19 +65,21 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     [Header("Visuals")]
     [SerializeField] private Transform _windupIndicator;
     [SerializeField] private WindupFillPD _windupFill;
-    // Whichever renderers should tint red the instant this Shield is actually able to trigger Shieldburst
-    // again (reverting to their own original color otherwise — on cooldown or mid-attack), and yellow while
-    // a true stun is propagated from the owning Shielder's body (see LateSimulate()'s own doc comment) —
-    // EXACT same "instance .material once, tint .color, revert to a cached original" mechanism EnemyBasePD's
-    // own hit-flash/stun-tint system already uses for its own `renderers`/`_originalColors` (this class just
-    // can't literally inherit that code, being deliberately not IEnemyPD/EnemyBasePD — see class doc
-    // comment). Since this Shield has no health/death of its own, there's no hit-flash/dead-red state to
-    // reserve red for — that slot is repurposed here to mean "ready to attack" instead.
+    // Whichever renderers should tint to this life's tier accent color (2026-08-21 — was a hardcoded
+    // Color.red; now the same color permanentReadyMaterialRenderers below get pushed as an actual material,
+    // and the same color the owning Shielder's own _accentRenderers show — see SetReadyMaterial's own doc
+    // comment) the instant this Shield is actually able to trigger Shieldburst again (reverting to their own
+    // original authored color otherwise — on cooldown or mid-attack; the renderer's own authored material is
+    // already black in the Editor, no black-specific code needed here), and yellow while a true stun is
+    // propagated from the owning Shielder's body (see LateSimulate()'s own doc comment) — EXACT same
+    // "instance .material once, tint .color, revert to a cached original" mechanism EnemyBasePD's own hit-
+    // flash/stun-tint system already uses for its own `renderers`/`_originalColors` (this class just can't
+    // literally inherit that code, being deliberately not IEnemyPD/EnemyBasePD — see class doc comment).
     [SerializeField] private Renderer[] readyMaterialRenderers;
-    // Separate from readyMaterialRenderers above — these grab shieldReadyMaterial once (Configure()-time)
-    // and never revert, for decorative pieces (e.g. the spike clusters) that should just permanently match
-    // the ready color rather than toggling with attack/stun state. Untouched by the tint system above — a
-    // plain one-time material swap, not a per-instance tint, since there's nothing here to ever revert to.
+    // Separate from readyMaterialRenderers above — these grab whatever SetReadyMaterial() last pushed and
+    // never revert, for decorative pieces (e.g. the spike clusters) that should just permanently match the
+    // ready color rather than toggling with attack/stun state. Untouched by the tint system above — a
+    // plain material swap, not a per-instance tint, since there's nothing here to ever revert to.
     [SerializeField] private Renderer[] permanentReadyMaterialRenderers;
 
     private Color[] _originalColors;
@@ -89,7 +91,6 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     private ShieldTintState _appliedTintState = ShieldTintState.Original;
 
     private PredictedRigidbody _rigidbody;
-    private Collider _physicsCollider;
     private Collider _contactDamageCollider;
 
     // Plain, not State — this Shield is a 1:1, whole-life companion to exactly one ShielderGloomPD instance,
@@ -132,15 +133,13 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         _rigidbody = GetComponent<PredictedRigidbody>();
         // Always kinematic, set once, never toggled — this object's own position is entirely scripted every
         // tick (orbit math), never physics-driven, unlike e.g. SpearGloomPD's body which only goes kinematic
-        // during its own Windup/Stabbing. Still a real (kinematic) Rigidbody + collider so it physically
-        // pushes players like any other enemy's body does.
+        // during its own Windup/Stabbing.
         if (_rigidbody != null) _rigidbody.isKinematic = true;
 
-        // Same child-name convention EnemyBasePD.Awake() resolves PhysicsCollider/ContactDamageCollider by,
-        // for consistency, even though this class can't literally inherit that lookup code.
-        var physicsChild = transform.Find("PhysicsCollider");
-        if (physicsChild != null) _physicsCollider = physicsChild.GetComponent<Collider>();
-
+        // No physics collider on this object (removed 2026-08-12 — it was pushing players around in buggy
+        // ways); positioned close enough to the owning ShielderGloomPD body that a player can't stand
+        // between them without already being in the ContactDamageCollider below. Only the child-name lookup
+        // convention EnemyBasePD.Awake() uses for its own ContactDamageCollider carries over here.
         var contactChild = transform.Find("ContactDamageCollider");
         if (contactChild != null) _contactDamageCollider = contactChild.GetComponent<Collider>();
 
@@ -182,10 +181,12 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
 
     // Called once, synchronously, by ShielderGloomPD.LateAwake() immediately after hierarchy.Create()
     // returns — same "mutate currentState right after Create()" pattern as RemoteSpikeBurstPD.Launch().
+    // No longer takes the ready material (2026-08-20) — see SetReadyMaterial's own doc comment for why that
+    // has to be pushed separately, later, instead of here.
     public void Configure(ShielderGloomPD owner, float orbitRadius, float rotationRateDegPerSecond,
         float attackRange, float attackWidth, float windupDuration, float releaseDuration,
         float attackCooldown, float shieldburstDamageMultiplier, float shieldContactDamageMultiplier,
-        float contactCooldownSeconds, Material shieldReadyMaterial)
+        float contactCooldownSeconds)
     {
         _owner = owner;
         _orbitRadius = orbitRadius;
@@ -198,8 +199,6 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         _shieldburstDamageMultiplier = shieldburstDamageMultiplier;
         _shieldContactDamageMultiplier = shieldContactDamageMultiplier;
         _contactCooldownSeconds = contactCooldownSeconds;
-        _shieldReadyMaterial = shieldReadyMaterial;
-        ApplyPermanentReadyMaterial();
 
         // Inherits the Shielder's own generic per-enemy size scalar (EnemyBasePD.size) directly — an Elite
         // variant is just a bigger Shielder prefab (size tuned up in the Editor, same as any other enemy),
@@ -279,7 +278,12 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
 
         Vector3 origin = _owner.transform.position;
 
-        state.attackCooldownTimer -= delta;
+        var phase = (ShieldPhase)state.phaseId;
+        // Only ticks while actually FreeRotating (2026-08-19 — uniform across every multi-phase enemy's own
+        // attack-cadence cooldown now, see OrbiterGloomPD's own fix) — frozen through the whole
+        // Windup/Releasing sequence rather than ticking (and going increasingly negative) throughout it.
+        if (phase == ShieldPhase.FreeRotating)
+            state.attackCooldownTimer -= delta;
 
         // Same decrement/remove shape as EnemyBasePD.Simulate()'s own contactCooldowns loop.
         for (int i = state.contactCooldowns.Count - 1; i >= 0; i--)
@@ -291,8 +295,6 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             else
                 state.contactCooldowns[i] = entry;
         }
-
-        var phase = (ShieldPhase)state.phaseId;
 
         // True-stun propagation from the owning Shielder's own body (owner.IsTrueStunned — a live read,
         // same "cross-identity Simulate()-context read" convention _owner.Target already relies on; safe
@@ -461,12 +463,12 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             if (!cooldowns[i].player.Equals(player)) continue;
             if (cooldowns[i].remaining > 0) return;
             cooldowns[i] = new ContactCooldown { player = player, remaining = ticks };
-            stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier);
+            stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, _owner.SpawnCategory == EnemySpawnCategory.Pleb);
             return;
         }
 
         cooldowns.Add(new ContactCooldown { player = player, remaining = ticks });
-        stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier);
+        stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, _owner.SpawnCategory == EnemySpawnCategory.Pleb);
     }
 
     protected override void UpdateView(State viewState, State? verified)
@@ -529,6 +531,40 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             ApplyRendererTint(wantState);
     }
 
+    // Called by ShielderGloomPD.OnConfigureSpawn() (2026-08-20), not Configure() — Configure() itself runs
+    // from the Shielder's own LateAwake(), which fires BEFORE ConfigureSpawn() (and therefore before
+    // EnemyBasePD.spawnTier is finalized for this life — see EnemyBasePD.TierAccentMaterial's own doc
+    // comment), so a tier-derived material can't be resolved correctly that early. Re-applies immediately —
+    // matters on a pooled reuse, where permanentReadyMaterialRenderers would otherwise still show whichever
+    // tier's material this exact Shield instance happened to be showing at the end of its PREVIOUS life.
+    public void SetReadyMaterial(Material material)
+    {
+        _shieldReadyMaterial = material;
+        ApplyPermanentReadyMaterial();
+    }
+
+    // Called by ShielderGloomPD.OnConfigureSpawn() (2026-08-20), same reasoning/timing as SetReadyMaterial
+    // above — Configure() already ran (from LateAwake(), before spawnTier was finalized) with the UN-scaled
+    // baseline, so the actual tier-scaled values get pushed here afterward instead. _size is NOT reapplied
+    // to attackRange here — InAttackRectangle already multiplies _attackRange * _size live at check-time
+    // (see its own comment), so baking size in here would double-apply it.
+    public void SetRotationRateAndAttackRange(float rotationRateDegPerSecond, float attackRange)
+    {
+        _rotationRateDegPerSecond = rotationRateDegPerSecond;
+        _attackRange = attackRange;
+    }
+
+    // Called by ShielderGloomPD.OnConfigureSpawn() (Threat Level 5), same reasoning/timing as
+    // SetRotationRateAndAttackRange above — Configure() already ran (from LateAwake(), before
+    // attackCooldownMultiplier was applied) with the UN-scaled baseline, so the scaled value gets pushed
+    // here afterward instead. Re-rolls the pending attackCooldownTimer with the same formula Configure()
+    // used, same "set again once the real scaling lands" reasoning as every other enemy's OnConfigureSpawn.
+    public void SetAttackCooldown(float attackCooldown)
+    {
+        _attackCooldown = attackCooldown;
+        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+    }
+
     private void ApplyPermanentReadyMaterial()
     {
         if (permanentReadyMaterialRenderers == null || _shieldReadyMaterial == null) return;
@@ -536,10 +572,14 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             if (r != null) r.sharedMaterial = _shieldReadyMaterial;
     }
 
-    // Priority: Stunned (yellow) > Ready (red) > Original — see UpdateView's own doc comment for why. Same
-    // per-renderer .material.color tint EnemyBasePD's own hit-flash/stun-tint system uses, just with red
-    // repurposed to mean "ready" instead of "just took damage" (this Shield has neither health nor a hit-
-    // flash of its own — see class doc comment).
+    // Priority: Stunned (yellow) > Ready (tier accent color) > Original — see UpdateView's own doc comment
+    // for why. Same per-renderer .material.color tint EnemyBasePD's own hit-flash/stun-tint system uses.
+    // Ready reads _shieldReadyMaterial.color (2026-08-21 — was a hardcoded Color.red) so this tint always
+    // matches whatever SetReadyMaterial last pushed (this life's TierAccentMaterial), same color
+    // permanentReadyMaterialRenderers show as an actual material and _accentRenderers show on the Shielder's
+    // own body — falls back to Color.red only in the narrow window before SetReadyMaterial has ever been
+    // called (shouldn't be visibly reachable — see SetReadyMaterial's own doc comment for why it's always set
+    // before this Shield could actually reach the Ready state).
     private void ApplyRendererTint(ShieldTintState wantState)
     {
         _appliedTintState = wantState;
@@ -551,7 +591,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             readyMaterialRenderers[i].material.color = wantState switch
             {
                 ShieldTintState.Stunned => Color.yellow,
-                ShieldTintState.Ready   => Color.red,
+                ShieldTintState.Ready   => _shieldReadyMaterial != null ? _shieldReadyMaterial.color : Color.red,
                 _                       => _originalColors[i],
             };
         }

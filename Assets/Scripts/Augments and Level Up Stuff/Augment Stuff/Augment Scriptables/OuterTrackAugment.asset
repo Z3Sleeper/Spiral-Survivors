@@ -16,15 +16,7 @@ MonoBehaviour:
   description: 'Gain a <color=#FFA000>Second Blade Track</color> outside your first
     that spins in the opposite direction.
 
-    <color=#FF5000>+30% Strength</color>
-
-    <color=#FFA000>+30%
-    On-Hit Power</color>
-
-    <color=#3278FF>-25% Total Range</color>
-
-    <color=#FFBE50><i>Strength
-    & On-Hit Power are divided by Weapon Count</i></color>'
+    <color=#3278FF>-25% Total Range</color>'
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 2849589214751653731, guid: 9717396f46b52a64384661412fb91029, type: 3}
   multiplayerOnly: 0
@@ -36,3 +28,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

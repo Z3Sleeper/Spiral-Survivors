@@ -61,6 +61,10 @@ public static class AreaEffectCastHelper
     // knockback or Stun() (via onEnemyHit) needs the enemy already un-kinematic'd by Interrupt() before that
     // knockback's own velocity assignment runs, or it gets silently eaten by AddKnockbackVelocity's own
     // "not supported on a kinematic body" guard — see EnemyBasePD.Interrupt()'s own doc comment.
+    // onSuccessfulInterrupt: fired only when interrupt is true AND that specific enemy's Interrupt() call
+    // actually returned true — Interrupt()'s own return value is otherwise discarded here, so this is the
+    // only way a caller learns "did this land." Feeds CharacterStatsPD's generic SI/FSI event pair (see
+    // CharacterStatsPD.NotifyInterrupted) — e.g. KnightAreaStunHealAbilityPD.
     // abilityPower: 1f (neutral) by default — only a real IAbilityPD implementer passes its own
     // CharacterStatsPD.AbilityPower here (e.g. ArcherArrowRainAbilityPD); the plain augment-effect callers
     // (DashExplosionAugment/DashHealAugment/ShieldBreakBurstAugment) have no AbilityPower concept of their
@@ -75,18 +79,13 @@ public static class AreaEffectCastHelper
     // existed. A caller expecting many simultaneous/rapid hits per cast (ArcherArrowRainAbilityPD: up to 20
     // ticks * every enemy in radius) should pass overrideHitSfx: true and leave hitSfxOverride null for
     // silence, rather than letting owner.hitSfx spam on every single tick.
-    // source: only meaningful when dealDamage is true — identifies which "AoE Effects" caller this cast
-    // belongs to for DamageNumberManager's stacking system (see DamageSource's own doc comment), so e.g.
-    // ShieldBreakBurstAugment and DashExplosionAugment damage numbers never merge together just because they
-    // both happen to route through this same shared helper. Defaults to Weapon purely as an inert
-    // placeholder for callers that never reach the dealDamage-gated block below (targetAllies: true, or
-    // dealDamage: false) — never actually read in those cases.
     public static void Cast(PredictedHierarchy hierarchy, CharacterStatsPD owner, Vector3 position, float radius,
         GameObject radiusVFXPrefab, bool targetAllies = false,
         bool dealDamage = false, float damagePercent = 0f, float onHitPowerPercent = 0f, bool notifyOnHit = true,
         bool hasKnockback = false, float? knockback = null,
-        bool interrupt = false, float abilityPower = 1f, DamageSource source = DamageSource.Weapon,
+        bool interrupt = false, float abilityPower = 1f,
         Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null,
+        Action<IEnemyPD> onSuccessfulInterrupt = null,
         bool overrideHitSfx = false, AudioClip hitSfxOverride = null)
     {
         float areaAndAbilityPower = owner.AreaEffectPower + abilityPower - 1f;
@@ -117,28 +116,32 @@ public static class AreaEffectCastHelper
 
                 // First, before anything else below — see this method's own doc comment on why the
                 // ordering relative to knockback/onEnemyHit matters.
-                if (interrupt) enemy.Interrupt();
+                if (interrupt && enemy.Interrupt())
+                    onSuccessfulInterrupt?.Invoke(enemy);
 
                 if (dealDamage)
                 {
                     bool isCrit = GameRandom.instance.NextFloat() < owner.CritChance;
 
-                    float baseDamage = owner.UnpenalizedStrength * damagePercent * areaAndAbilityPower;
+                    float baseDamage = owner.Strength * damagePercent * areaAndAbilityPower;
                     float rolledDamage = WeaponDamageMath.RollDamage(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, owner.Highroll, out bool dmgHighroll);
-                    if (dmgHighroll) rolledDamage *= 1f + owner.HighrollBonus;
-                    if (isCrit) rolledDamage *= owner.CritDamage;
+                    rolledDamage = WeaponDamageMath.ApplyCritAndHighroll(rolledDamage, dmgHighroll, isCrit, owner.HighrollBonus, owner.CritDamage);
 
                     enemy.TakeDamage(rolledDamage, isCrit, owner.owner ?? default);
-                    owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolledDamage, isCrit = isCrit, isHighroll = dmgHighroll, attacker = owner, isPriority = true, source = source, overrideSfx = overrideHitSfx, sfx = hitSfxOverride });
+                    owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolledDamage, isCrit = isCrit, isHighroll = dmgHighroll, attacker = owner, isPriority = true, overrideSfx = overrideHitSfx, sfx = hitSfxOverride });
 
                     if (notifyOnHit)
                     {
-                        float baseOnHitPower = owner.OnHitPower * onHitPowerPercent * areaAndAbilityPower;
-                        float rolledOnHitPower = WeaponDamageMath.RollDamage(baseOnHitPower, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, owner.Highroll, out bool onHitHighroll);
-                        if (onHitHighroll) rolledOnHitPower *= 1f + owner.HighrollBonus;
+                        // Passed through RAW, not luck/highroll-rolled here — matches every weapon type's own
+                        // convention (WeaponMeleePD/WeaponAxePD/WeaponRangedProjectilePD all pass onHitPower =
+                        // Stats.OnHitPower unrolled; only the damage roll above highrolls). Rolling this
+                        // separately (2026-08-19 fix) meant a single hit could highroll TWICE — once here,
+                        // once more in whichever on-hit augment consumes this onHitPower for its own roll —
+                        // a hit is only ever supposed to be able to highroll once.
+                        float onHitPower = owner.OnHitPower * onHitPowerPercent * areaAndAbilityPower;
 
                         // isCrit inherited from this same hit, matching every other onhit-notify call site.
-                        owner.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolledDamage, onHitPower = rolledOnHitPower, isCrit = isCrit });
+                        owner.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolledDamage, onHitPower = onHitPower, isCrit = isCrit });
                     }
                 }
 

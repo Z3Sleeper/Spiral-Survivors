@@ -44,7 +44,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1ca92e4486ea0445b83ac8094424109, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DashHealAugment
-  healthRegenMultiplier: 5
+  healthRegenMultiplier: 2.5
+  baseHeal: 10
   radiusMultiplier: 1.25
   retriggerRate: 0.5
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 51d1225411f343943a91a434cbf2f2dd, type: 3}

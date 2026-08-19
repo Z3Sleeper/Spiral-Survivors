@@ -9,8 +9,8 @@ public class MoveSpeedAugment : AugmentEffectPD<MoveSpeedAugment.State>
         public void Dispose() { }
     }
 
-    [SerializeField] private float bonusMoveSpeedFlat    = 1.25f;
-    [SerializeField] private float bonusMoveSpeedPercent = 0.15f;
+    [SerializeField] private float bonusMoveSpeedFlat    = 3f;
+    [SerializeField] private float bonusMoveSpeedPercent = 0f;
 
     protected override void OnApply()
     {

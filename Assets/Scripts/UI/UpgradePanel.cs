@@ -25,9 +25,9 @@ public class UpgradePanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI dashChargesButtonText;
     [SerializeField] private TextMeshProUGUI revivePowerButtonText;
     [SerializeField] private TextMeshProUGUI reviveTimePenaltyButtonText;
-    [SerializeField] private TextMeshProUGUI xpMultiplierButtonText;
     [SerializeField] private TextMeshProUGUI levelUpOptionsButtonText;
     [SerializeField] private TextMeshProUGUI totalStrengthPercentButtonText;
+    [SerializeField] private TextMeshProUGUI moveSpeedPercentButtonText;
     [SerializeField] private TextMeshProUGUI luckButtonText;
     [SerializeField] private TextMeshProUGUI strengthPerLevelButtonText;
     [SerializeField] private TextMeshProUGUI maxShieldButtonText;
@@ -91,9 +91,9 @@ public class UpgradePanel : MonoBehaviour
         RefreshButtonText(StatType.DashCharges,        "Dash Charges",        dashChargesButtonText);
         RefreshButtonText(StatType.RevivePower,        "Revive Power",        revivePowerButtonText);
         RefreshButtonText(StatType.ReviveTimePenalty,  "Revive Time Penalty", reviveTimePenaltyButtonText);
-        RefreshButtonText(StatType.XPMultiplier,       "XP",                  xpMultiplierButtonText);
         RefreshButtonText(StatType.LevelUpOptions,      "Level Up Options",    levelUpOptionsButtonText);
         RefreshButtonText(StatType.TotalStrengthPercent, "Total Strength %",     totalStrengthPercentButtonText);
+        RefreshButtonText(StatType.MoveSpeedPercent,    "Move Speed %",        moveSpeedPercentButtonText);
         RefreshButtonText(StatType.Luck,                "Luck",                luckButtonText);
         RefreshButtonText(StatType.StrengthPerLevel,    "Strength Per Level",       strengthPerLevelButtonText);
         RefreshButtonText(StatType.MaxShield,            "Max Shield",             maxShieldButtonText);
@@ -113,8 +113,9 @@ public class UpgradePanel : MonoBehaviour
         int tier    = ProgressionManager.GetBaseStatTier(statType);
         int maxTier = ProgressionManager.GetMaxBaseTier(statType);
 
-        string color = tier >= maxTier                                    ? "#007700"
-                     : ProgressionManager.CanUpgradeBaseStat(statType) ? "#000000"
+        string color = tier >= maxTier                                              ? "#007700"
+                     : ProgressionManager.CanUpgradeBaseStat(statType)               ? "#000000"
+                     : ProgressionManager.IsTierAffordableButDifficultyLocked(statType) ? "#CC0000"
                      : "#AA6600";
 
         buttonLabel.text = $"<color={color}>{label}\n({tier}/{maxTier})</color>";
@@ -127,9 +128,9 @@ public class UpgradePanel : MonoBehaviour
         StatType.MaxShield         => "%",
         StatType.ReviveTimePenalty  => "%",
         StatType.ShieldRechargeTime => "s",
-        StatType.XPMultiplier      => "%",
         StatType.LevelUpStats        => "%",
         StatType.TotalStrengthPercent => "%",
+        StatType.MoveSpeedPercent  => "%",
         StatType.RevivePower       => "%",
         _                          => ""
     };
@@ -139,7 +140,7 @@ public class UpgradePanel : MonoBehaviour
         int tier      = ProgressionManager.GetBaseStatTier(stat);
         int maxTier   = ProgressionManager.GetMaxBaseTier(stat);
         float perTier = ProgressionManager.GetBaseStatValuePerTier(stat);
-        float displayScale = (stat == StatType.RevivePower || stat == StatType.TotalStrengthPercent || stat == StatType.MaxShield) ? 100f : 1f;
+        float displayScale = (stat == StatType.RevivePower || stat == StatType.TotalStrengthPercent || stat == StatType.MaxShield || stat == StatType.MoveSpeedPercent) ? 100f : 1f;
         float current = Mathf.Abs(perTier * tier)   * displayScale;
         float max     = Mathf.Abs(perTier * maxTier) * displayScale;
         float absPer  = Mathf.Abs(perTier)           * displayScale;
@@ -165,17 +166,17 @@ public class UpgradePanel : MonoBehaviour
             StatType.DashCharges       => $"Increases your maximum Dash Charges by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.RevivePower       => $"(Multiplayer Only) Increases the speed you are revived by and revive allies by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.ReviveTimePenalty => $"(Multiplayer Only) Reduces your Revive Time Penalty per death by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.XPMultiplier      => $"Increases your XP Multiplier by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nTeam XP multiplier is the additively combined XP multiplier of your party divided by the number of players.",
             StatType.LevelUpOptions      => $"Increases your level up reward options by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.TotalStrengthPercent => $"Increases your Total Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.Luck                => $"Increases your Luck by {absPer} per tier ({current}/{max}).\nEach 1 Luck tightens variance towards the maximum roll by 1%.",
+            StatType.MoveSpeedPercent    => $"Increases your Bonus Move Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
+            StatType.Luck                => $"Increases your Luck by {absPer} per tier ({current}/{max}).\nEach 1 Luck tightens variance towards the maximum roll by 1%.\nAll damage is rolled by Luck and can Highroll for bonus damage.",
             StatType.StrengthPerLevel    => $"Increases your Strength per Level by {absPer} per tier ({current}/{max}).",
             StatType.MaxShield           => $"Increases your Max Shield by {absPer}{unit} of your Max Health ({sign}{current}{unit}/{sign}{max}{unit}).\nShield takes 5 seconds to fully recharge, reduced by Shield Recharge Time Reductions.",
             StatType.ShieldRechargeTime  => $"Reduces your Shield Recharge Time by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             // Single tier, no per-tier scaling — uses {tier}/{maxTier} directly ("bought?/total tiers")
             // instead of the generic {current}/{max} amount phrasing above, so it still reads as "(0/1)"/
             // "(1/1)" like every other stat's tier count without implying a scaling amount that isn't real.
-            StatType.DeathPrevention     => $"Unlocks Death Prevention ({tier}/{maxTier}).\nEvery 30 seconds, if you would die, instead set your Health to 1 and become Invincible for 1 second.",
+            StatType.DeathPrevention     => $"Unlocks Death Prevention ({tier}/{maxTier}).\nEvery 30 seconds, if you would die, instead set your Health to 1 and become Invincible for 2 seconds.",
             _                            => string.Empty
         };
     }
@@ -206,14 +207,16 @@ public class UpgradePanel : MonoBehaviour
                 ? "0\npts"
                 : $"{FormatPoints(ProgressionManager.GetRefundAmount(stat))}\npts";
 
+        bool difficultyLocked = ProgressionManager.IsTierAffordableButDifficultyLocked(stat);
+
         if (currentPriceText != null)
-            currentPriceText.text = maxed
-                ? "MAXED"
+            currentPriceText.text = maxed ? "MAXED"
+                : difficultyLocked ? "Locked"
                 : $"{FormatPoints(ProgressionManager.GetBaseStatUpgradeCost(stat))}\npts";
 
         if (buyAllPriceText != null)
-            buyAllPriceText.text = maxed
-                ? "MAXED"
+            buyAllPriceText.text = maxed ? "MAXED"
+                : difficultyLocked ? "Locked"
                 : $"{FormatPoints(ProgressionManager.GetBuyAllCost(stat))}\npts";
     }
 
@@ -234,9 +237,9 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeDashChargesClicked()          { Select(StatType.DashCharges); }
     public void OnUpgradeRevivePowerClicked()          { Select(StatType.RevivePower); }
     public void OnUpgradeReviveTimePenaltyClicked()    { Select(StatType.ReviveTimePenalty); }
-    public void OnUpgradeXPMultiplierClicked()         { Select(StatType.XPMultiplier); }
     public void OnUpgradeLevelUpOptionsClicked()        { Select(StatType.LevelUpOptions); }
     public void OnUpgradeTotalStrengthPercentClicked() { Select(StatType.TotalStrengthPercent); }
+    public void OnUpgradeMoveSpeedPercentClicked()     { Select(StatType.MoveSpeedPercent); }
     public void OnUpgradeLuckClicked()                 { Select(StatType.Luck); }
     public void OnUpgradeStrengthPerLevelClicked()     { Select(StatType.StrengthPerLevel); }
     public void OnUpgradeMaxShieldClicked()            { Select(StatType.MaxShield); }
@@ -276,7 +279,5 @@ public class UpgradePanel : MonoBehaviour
 
     private static string FormatPoints(long value) => ProgressionManager.FormatPoints(value);
 
-    public void OnRefundClicked()         { ProgressionManager.RefundPoints();   Refresh(); }
-    public void OnHardResetClicked()      { ProgressionManager.HardReset();      Refresh(); }
-    public void OnAddDebugPointsClicked() { ProgressionManager.AddDebugPoints(); Refresh(); }
+    public void OnRefundClicked() { ProgressionManager.RefundPoints(); Refresh(); }
 }

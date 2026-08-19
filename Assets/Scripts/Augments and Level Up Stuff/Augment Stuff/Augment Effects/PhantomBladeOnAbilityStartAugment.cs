@@ -19,8 +19,8 @@ public class PhantomBladeOnAbilityStartAugment : AugmentEffectPD<PhantomBladeOnA
     }
 
     [SerializeField] private GameObject phantomBladePrefab;
-    public int bladeCount = 1;
-    public float damageMultiplier = 1f;
+    public int bladeCount = 3;
+    public float damageMultiplier = 0.12f;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
 
     // damageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100 convention
@@ -43,7 +43,7 @@ public class PhantomBladeOnAbilityStartAugment : AugmentEffectPD<PhantomBladeOnA
             if (ability.Slot == AbilitySlot.Ability1) ability1Value = value;
             else if (ability.Slot == AbilitySlot.Ability2) ability2Value = value;
         }
-        // "|" not "/" — see OnAbilityStartHealPercentHPAugment's identical LiveHealthRatio for why.
+        // "|" not "/" — see OnAbilityStartHealHealthRegenAugment's identical LiveAbilityHealAmount for why.
         return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
     }
 
