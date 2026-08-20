@@ -461,10 +461,21 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         _chargeWindupTrackedTarget = _targetStats;
         state.stateTimer = chargeWindupDuration;
         SetSpikeState(ref state, KingSpikeState.ChargeWindup);
-        // Immediate first-tick orientation, same reasoning HandleActiveState's own ChargeWindup case calls
-        // this every subsequent tick for — still rate-limited by this same tick's own delta, not an instant
-        // snap.
-        TrackChargeWindupTarget(ref state, delta);
+        // Snap to face the target FIRST (2026-08-24 fix), THEN let TrackChargeWindupTarget's own
+        // rate-limited tracking take over from subsequent ticks — without this, the body kept whatever
+        // rotation the PREVIOUS charge (or Moving's own chase) left it at, and rotationRateDegPerSecond alone
+        // often isn't fast enough to fully turn around before the windup ends if the target's now roughly
+        // behind it — confirmed live: this boss visibly kept charging in roughly the same direction over and
+        // over instead of properly re-aiming at a player who'd since circled behind it. Only writes
+        // chargeDirection/_chargeDirectionSnapshot on a non-zero return — see
+        // EnemyBasePD.SnapFaceTarget(CharacterStatsPD, bool) own doc comment for the guard/degenerate cases
+        // that return Vector3.zero.
+        Vector3 snapDir = SnapFaceTarget(_chargeWindupTrackedTarget);
+        if (snapDir != Vector3.zero)
+        {
+            state.chargeDirection = snapDir;
+            _chargeDirectionSnapshot = snapDir;
+        }
     }
 
     // The SPECIFIC player this ChargeWindup committed to, captured once at EnterChargeWindup — see its own
@@ -473,11 +484,16 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     private CharacterStatsPD _chargeWindupTrackedTarget;
 
     // Re-faces the body toward _chargeWindupTrackedTarget's LIVE position every ChargeWindup tick, capped at
-    // rotationRateDegPerSecond, via Quaternion.RotateTowards off the body's own CURRENT live rotation — same
-    // "read transform.rotation as the incremental base" pattern EnemyBasePD.FaceAnchorSmooth/FaceTargetSmooth
-    // already establish for a rigidbody-driven enemy (safe/deterministic without needing its own predicted-
-    // State angle field), and the exact same shape BlitzGloomPD.TrackWindupTarget uses for its own Windup —
-    // see that method's own doc comment for the full reasoning. Keeps state.chargeDirection AND
+    // rotationRateDegPerSecond, via Vector3.RotateTowards off state.chargeDirection — the PREDICTED-STATE
+    // value, not transform.rotation (2026-08-24 defensive fix, mirroring the confirmed-live bug fix on
+    // BlitzGloomPD.TrackWindupTarget — see its own doc comment for the full root cause). This boss doesn't
+    // currently hit that exact bug (chained charges route through BetweenCharges, an interstitial state whose
+    // own pause defers EnterChargeWindup to a LATER tick — never the same tick as a preliminary
+    // dashJustEnded-style block, so this method was never called same-tick as a fresh MoveRotation snap), but
+    // it shared the identical fragile "read transform.rotation as the rotate-from basis" dependency — that
+    // read lags a physics step behind any MoveRotation call, so ANY future same-tick double-processing here
+    // would silently reproduce Blitz's exact bug. state.chargeDirection is written/read synchronously within
+    // the same Simulate() tick, immune to that lag regardless of call count. Keeps state.chargeDirection AND
     // _chargeDirectionSnapshot (the plain view-layer copy the charge indicator reads) updated every tick, so
     // whatever EnterCharging reads the instant ChargeWindup ends is always the freshest reachable direction.
     // No-op (holds last direction) if the target's died/gone invisible-without-taunting mid-windup, or if the
@@ -492,11 +508,10 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         if (dir == Vector3.zero) return;
         dir.Normalize();
 
-        Quaternion targetRot = Quaternion.LookRotation(dir);
-        Quaternion newRot = Quaternion.RotateTowards(transform.rotation, targetRot, rotationRateDegPerSecond * delta);
-        _rigidbody.MoveRotation(newRot);
-        state.chargeDirection = newRot * Vector3.forward;
-        _chargeDirectionSnapshot = state.chargeDirection;
+        Vector3 newDir = Vector3.RotateTowards(state.chargeDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta, 0f);
+        _rigidbody.MoveRotation(Quaternion.LookRotation(newDir));
+        state.chargeDirection = newDir;
+        _chargeDirectionSnapshot = newDir;
     }
 
     private void EnterCharging(ref State state)

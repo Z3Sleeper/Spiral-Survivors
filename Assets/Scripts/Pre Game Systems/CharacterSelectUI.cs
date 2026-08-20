@@ -623,6 +623,15 @@ public class CharacterSelectUI : MonoBehaviour
             int damagePercent    = levelsAboveBase * 50;
             int healthPercent    = levelsAboveBase * 100;
             int moveSpeedPercent = levelsAboveBase * 10;
+            // Upgrade Points bonus (2026-08-24) — mirrors GameManagerPD.DifficultyPointMultiplier's own
+            // formula (pointsExponentialScalePerDifficultyLevel^levelsAboveBase) by VALUE, not read live off
+            // GameManagerPD itself — same "hardcoded to match" convention every other line in this block
+            // already uses, since this UI lives in a different scene from GameManagerPD. 1.5 is that field's
+            // own live-tuned value (confirmed against the game scene's GameManagerPD instance, 2026-08-24) —
+            // retune both together if it ever changes.
+            const float upgradePointsExponentialScale = 1.5f;
+            int upgradePointsPercent = Mathf.RoundToInt((Mathf.Pow(upgradePointsExponentialScale, levelsAboveBase) - 1f) * 100f);
+            string upgradePointsLine = levelsAboveBase > 0 ? $"<color=green>+{upgradePointsPercent}% increased Upgrade Points</color>\n" : "";
             // Threat Level 2's own unique modifier (CharacterStatsPD.ActivateDifficultyModifiers,
             // threatLevel2SlowMultiplier/Duration) — same "levelsAboveBase > 0" gate as the stat lines above
             // since Threat Level 1 has no unique modifier of its own, and this one's threshold happens to be
@@ -639,7 +648,7 @@ public class CharacterSelectUI : MonoBehaviour
             // Threat Level 6's own unique modifier (EnemySpawnerPD.threatLevel6BossCount).
             string threatLevel6Line = difficulty >= 6 ? "\nLevel 6: Double Boss spawns." : "";
             difficultyDescriptionText.text = levelsAboveBase > 0
-                ? $"+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
+                ? $"{upgradePointsLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
                 : "";
         }
 

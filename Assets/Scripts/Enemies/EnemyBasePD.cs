@@ -2129,6 +2129,35 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         return dir;
     }
 
+    // Overload taking an EXPLICIT target (2026-08-24) — for the "reset facing before starting a rate-capped
+    // windup chase" primitive every rotation-rate-capped windup needs (BlitzGloomPD/KingSpikePD's own
+    // ChargeWindup/Windup entry points): without an instant, uncapped re-face the MOMENT windup starts, the
+    // rate cap alone often can't finish turning the body around in time if the target's now roughly behind
+    // it (confirmed live — this boss visibly kept charging/blitzing in roughly the same stale direction
+    // instead of properly re-aiming). Two things the plain (ref TState state) overload above can't do,
+    // which is why this is a separate overload rather than an optional-arg change to it: (1) takes the
+    // target explicitly instead of reading this enemy's own live _target — a caller using the "commit once,
+    // keep reading that same reference" contract (CaptureAttackAnchor's own doc comment; e.g.
+    // BlitzGloomPD._windupTrackedTarget/KingSpikePD._chargeWindupTrackedTarget) needs to snap toward its own
+    // FROZEN snapshot, not whatever _target might have been reassigned to mid-windup via taunt/invisible-
+    // retarget; (2) applies the same IsDead/IsInvisible-without-Taunting guard every other targeting check in
+    // this codebase already uses, which the live-_target overload never had — respectInvisibility defaults
+    // true, pass false only if a caller genuinely wants to ignore that (no current caller does). Returns
+    // Vector3.zero on any guard failure/degenerate direction — same "caller only writes into its own
+    // direction state field on a non-zero return" contract as the other overload.
+    protected Vector3 SnapFaceTarget(CharacterStatsPD target, bool respectInvisibility = true)
+    {
+        if (target == null) return Vector3.zero;
+        if (respectInvisibility && (target.IsDead || (target.IsInvisible && !target.IsTaunting))) return Vector3.zero;
+
+        Vector3 dir = target.transform.position - transform.position;
+        dir.y = 0f;
+        if (dir == Vector3.zero) return Vector3.zero;
+        dir.Normalize();
+        _rigidbody.MoveRotation(Quaternion.LookRotation(dir));
+        return dir;
+    }
+
     protected void FaceTargetSmooth(float delta)
     {
         if (_target == null) return;

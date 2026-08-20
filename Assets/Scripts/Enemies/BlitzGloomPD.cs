@@ -269,25 +269,37 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         _windupTrackedTarget = _targetStats;
         state.stateTimer = windupDuration;
         SetBlitzState(ref state, BlitzState.Windup);
-        // Immediate first-tick orientation, same reasoning HandleActiveState's own Windup case calls this
-        // every subsequent tick for — without this, the body would keep whatever rotation Moving left it at
-        // for a full tick before tracking visibly started. Still rate-limited by this same tick's own delta
-        // (not an instant snap) — see TrackWindupTarget's own doc comment.
-        TrackWindupTarget(ref state, delta);
+        // Snap to face the target FIRST (2026-08-24 fix), THEN let TrackWindupTarget's own rate-limited
+        // tracking take over from subsequent ticks — without this, the body kept whatever rotation the
+        // PREVIOUS attack (or Moving's own chase) left it at, and rotationRateDegPerSecond alone often isn't
+        // fast enough to fully turn around before the windup ends if the target's now roughly behind it
+        // (confirmed live — the exact same bug KingSpikePD.EnterChargeWindup had). Only writes
+        // state.blitzDirection on a non-zero return — see EnemyBasePD.SnapFaceTarget(CharacterStatsPD, bool)
+        // own doc comment for the guard/degenerate cases that return Vector3.zero.
+        Vector3 snapDir = SnapFaceTarget(_windupTrackedTarget);
+        if (snapDir != Vector3.zero) state.blitzDirection = snapDir;
     }
 
     // Re-faces the body toward _windupTrackedTarget's LIVE position every Windup tick, capped at
-    // rotationRateDegPerSecond (2026-08-21 — was an instant snap; see that field's own doc comment for why
-    // this is now rate-limited) via Quaternion.RotateTowards off the body's own CURRENT live rotation — same
-    // "read transform.rotation as the incremental base" pattern EnemyBasePD.FaceAnchorSmooth/FaceTargetSmooth
-    // already establish for a rigidbody-driven enemy (safe/deterministic without needing its own predicted-
-    // State angle field, unlike SpikeShieldPD/MortarHazardPD's plain-transform equivalents — see
-    // MortarHazardPD's own doc comment for why THOSE need one and this doesn't). Keeps state.blitzDirection
-    // updated to match every tick, so whatever EnterBlitz reads the instant Windup ends is always the
-    // freshest reachable direction — see class doc comment for why that alone is enough to make this "lock"
-    // automatically. No-op (holds last direction) if the target's died/gone invisible-without-taunting
-    // mid-Windup, or if the computed direction is degenerate (target exactly on top of this enemy) — same
-    // "freeze on invalid, don't stomp with zero" convention the old SnapFaceAnchor call already had.
+    // rotationRateDegPerSecond, via Vector3.RotateTowards off state.blitzDirection — the PREDICTED-STATE
+    // value, not transform.rotation (2026-08-24 fix, was Quaternion.RotateTowards off transform.rotation —
+    // confirmed live bug: chained blitzesPerAttack > 1 attacks never actually re-snapped between blitzes).
+    // Root cause: Rigidbody.MoveRotation doesn't update transform.rotation synchronously — Unity applies it
+    // at the next physics step. HandleActiveState's dashJustEnded block calls EnterWindup (which snaps via
+    // MoveRotation and correctly sets state.blitzDirection) BEFORE the switch statement below re-runs THIS
+    // SAME TICK (ss is re-read after the transition) — so this method's OLD transform.rotation read still
+    // saw the STALE pre-snap rotation, computed a tiny rate-capped step from the WRONG starting point, and
+    // clobbered both the queued MoveRotation and the just-snapped blitzDirection. A freshly-triggered attack
+    // (Moving case calling EnterWindup, then `break`ing) never hit this — no same-tick switch re-entry there
+    // — which is why only chained blitzes (dashJustEnded path) showed the bug. Using state.blitzDirection as
+    // the rotate-FROM basis instead sidesteps the whole physics-step-lag problem: it's written and read
+    // synchronously within the same Simulate() tick, immune to how many times this gets called in one tick.
+    // Keeps state.blitzDirection updated to match every tick, so whatever EnterBlitz reads the instant Windup
+    // ends is always the freshest reachable direction — see class doc comment for why that alone is enough to
+    // make this "lock" automatically. No-op (holds last direction) if the target's died/gone
+    // invisible-without-taunting mid-Windup, or if the computed direction is degenerate (target exactly on
+    // top of this enemy) — same "freeze on invalid, don't stomp with zero" convention the old SnapFaceAnchor
+    // call already had.
     private void TrackWindupTarget(ref State state, float delta)
     {
         if (_windupTrackedTarget == null || _windupTrackedTarget.IsDead ||
@@ -298,10 +310,9 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         if (dir == Vector3.zero) return;
         dir.Normalize();
 
-        Quaternion targetRot = Quaternion.LookRotation(dir);
-        Quaternion newRot = Quaternion.RotateTowards(transform.rotation, targetRot, rotationRateDegPerSecond * delta);
-        _rigidbody.MoveRotation(newRot);
-        state.blitzDirection = newRot * Vector3.forward;
+        Vector3 newDir = Vector3.RotateTowards(state.blitzDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta, 0f);
+        _rigidbody.MoveRotation(Quaternion.LookRotation(newDir));
+        state.blitzDirection = newDir;
     }
 
     private void EnterBlitz(ref State state)

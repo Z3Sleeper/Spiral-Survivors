@@ -373,7 +373,7 @@ MonoBehaviour:
   - {fileID: 8591425792625447302}
   invulnerableShell: {fileID: 5797343280123201819}
   minAttackRange: 8
-  windupDuration: 0.5
+  windupDuration: 1
   fireDuration: 0.1
   betweenStrikePause: 0.25
   postFireDuration: 0.5
@@ -385,12 +385,14 @@ MonoBehaviour:
   hazardWidth: 8
   hazardDepth: 2
   projectileTravelDuration: 0.5
+  rotationRateDegPerSecond: 45
   projectileVfxPrefab: {fileID: 2942187867930129664, guid: 601c590dfab61944b9497067dfd8e6e2, type: 3}
   projectileArcHeight: 3
   projectileSpawnHeightOffset: 1
   projectileSpawnForwardOffset: 0
   attackCooldown: 5
   strikesPerAttackTierGrowth: 1
+  rotationRateDegPerSecondTierGrowth: 0.2
 --- !u!135 &3908022877477359117
 SphereCollider:
   m_ObjectHideFlags: 0

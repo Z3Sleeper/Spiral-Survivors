@@ -123,8 +123,8 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     // project_health_tier_growth_linear memory for why that convention exists elsewhere; explicit user call
     // to go the other way here since each Threat Level compounds noticeably harder than the last, not just
     // linearly). DifficultyPointMultiplier = pointsExponentialScalePerDifficultyLevel^(Difficulty-1), so
-    // difficulty 1 = 1x (no bonus) and default 2.5 reaches ~97.7x at difficulty 6.
-    [SerializeField] private float pointsExponentialScalePerDifficultyLevel = 2.5f;
+    // difficulty 1 = 1x (no bonus) and the live 1.5 value reaches ~7.59x at difficulty 6.
+    [SerializeField] private float pointsExponentialScalePerDifficultyLevel = 1.5f;
 
     [Header("Connection Watchdog")]
     // A connected player whose own local one-time setup (PlayerDataPD's isOwner/verified-gated color +

@@ -88,6 +88,7 @@ public class Settings : MonoBehaviour
     {
         SeeOtherPlayerDamage = value;
         PlayerPrefs.SetInt(SeeOtherPlayerDamageKey, value ? 1 : 0);
+        PlayerPrefs.Save();
     }
 
     public void OnFramerateChanged(int index)
@@ -95,6 +96,7 @@ public class Settings : MonoBehaviour
         int fps = FramerateOptions[index];
         Application.targetFrameRate = fps;
         PlayerPrefs.SetInt(FramerateKey, fps);
+        PlayerPrefs.Save();
     }
 
     // ── Master ────────────────────────────────────────────────────────────
@@ -102,6 +104,7 @@ public class Settings : MonoBehaviour
     {
         AudioListener.volume = value / 100f;
         PlayerPrefs.SetFloat(VolumeKey, value);
+        PlayerPrefs.Save();
         volumeInput.SetTextWithoutNotify(Mathf.RoundToInt(value).ToString());
     }
 
@@ -118,6 +121,7 @@ public class Settings : MonoBehaviour
         value = Mathf.Clamp(value, 0f, 100f);
         AudioListener.volume = value / 100f;
         PlayerPrefs.SetFloat(VolumeKey, value);
+        PlayerPrefs.Save();
         volumeSlider.SetValueWithoutNotify(value);
         volumeInput.SetTextWithoutNotify(Mathf.RoundToInt(value).ToString());
     }
@@ -172,6 +176,7 @@ public class Settings : MonoBehaviour
     {
         if (audioMixer != null) audioMixer.SetFloat(mixerParam, PercentToDb(percent));
         PlayerPrefs.SetFloat(prefsKey, percent);
+        PlayerPrefs.Save();
     }
 
     private static void SyncMixerSliderToUI(Slider slider, TMP_InputField input, float percent)

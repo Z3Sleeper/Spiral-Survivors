@@ -330,7 +330,19 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             input.dashPressed  |= _input.Player.Dash.WasPressedThisFrame();
             input.ability1Pressed |= _input.Player.Ability1.WasPressedThisFrame();
             input.ability2Pressed |= _input.Player.Ability2.WasPressedThisFrame();
-            input.pausePressed |= _input.Player.Pause.WasPressedThisFrame();
+
+            // If the in-game Settings panel is open, Escape closes ONLY that (a purely local UI action, same
+            // "never mutate state directly from a UI callback" reasoning as RequestPausePressed/
+            // RequestReadyToggle above) and is entirely consumed here — it never also reaches
+            // input.pausePressed below. Without this, a single Escape while paused with Settings open would
+            // both close Settings AND (via the same press reaching Simulate()'s pause/ready-toggle branch)
+            // unpause the game — or submit an unwanted ready-toggle in multiplayer — leaving Settings
+            // visibly stuck open over top of whatever's underneath.
+            bool pausePressedThisFrame = _input.Player.Pause.WasPressedThisFrame();
+            if (pausePressedThisFrame && LocalUIManagerPD.instance != null && LocalUIManagerPD.instance.IsSettingsPanelOpen)
+                LocalUIManagerPD.instance.OnSettingsBackClicked();
+            else
+                input.pausePressed |= pausePressedThisFrame;
 
             // Purely local UI toggle, not part of the networked/predicted Input struct — matches old
             // PlayerController's identical direct (un-networked) LocalUIManager calls, since this only

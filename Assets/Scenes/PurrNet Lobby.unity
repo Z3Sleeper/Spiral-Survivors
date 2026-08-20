@@ -2198,8 +2198,8 @@ MonoBehaviour:
   - Hold <color=#FFA000>Right Click</color> to <color=#FFFF00>Surge</color> to dispatch
     threats quickly!\n<color=#FFFF00>Surging</color> doubles your <color=#FF0050>Attack
     Speed</color> but halves your <color=#FFFFFF>Move Speed</color>.
-  - Bosses <color=#FFA000>Enrage</color> after 2 minutes, becoming stronger and stronger
-    as time passes.\nFinish them off quickly!
+  - Bosses <color=#FFA000>Enrage</color> after 2 minutes, becoming stronger as time
+    passes.\nFinish them off quickly!
   - <color=#00FF87>Luck</color> clamps your damage ranges towards the maximum with
     a chance to <color=#00FF87>Highroll</color>  for +300% damage! Happy Highrolling!
   - Only <color=#FFA000>Spiky</color> enemies and objects deal contact damage.\nFeel

@@ -485,6 +485,10 @@ public class LocalUIManagerPD : MonoBehaviour
         if (settingsPanel != null) settingsPanel.SetActive(false);
     }
 
+    // Read by PlayerControllerPD.UpdateInput() to make Escape close an open Settings panel instead of
+    // reaching the networked pause/ready toggle underneath it — see that call site's own doc comment.
+    public bool IsSettingsPanelOpen => settingsPanel != null && settingsPanel.activeSelf;
+
     public void OnResumeClicked()
     {
         if (_controller == null) return;
