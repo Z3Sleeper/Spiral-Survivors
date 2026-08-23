@@ -2192,7 +2192,7 @@ MonoBehaviour:
   hints:
   - Press <color=#FFA000>Space</color> to <color=#00FFFF>Dash</color>.\nYou are <color=#FFA000>Invincible</color>
     while <color=#00FFFF>Dashing</color>.\nWith good timing you can even pass right
-    through enemy attacks, triggering a <color=#FFA000>Dodge</color>!
+    through enemy attacks, triggering a <color=#FFFFFF>Dodge</color>!
   - Your <color=#FF00FF>Shield</color> is a percent of your <color=#00FF00>Max Health</color>.\nRaise
     your <color=#00FF00>Health</color> to increase your <color=#FFA000>Shield</color>!
   - Hold <color=#FFA000>Right Click</color> to <color=#FFFF00>Surge</color> to dispatch
@@ -2201,7 +2201,7 @@ MonoBehaviour:
   - Bosses <color=#FFA000>Enrage</color> after 2 minutes, becoming stronger as time
     passes.\nFinish them off quickly!
   - <color=#00FF87>Luck</color> clamps your damage ranges towards the maximum with
-    a chance to <color=#00FF87>Highroll</color>  for +300% damage! Happy Highrolling!
+    a chance to <color=#00FF87>Highroll</color> for 300% damage! Happy Highrolling!
   - Only <color=#FFA000>Spiky</color> enemies and objects deal contact damage.\nFeel
     free to hug everyone else!\n...and the <color=#FFA000>Spiky</color> ones too
     if you want.
@@ -2216,7 +2216,7 @@ MonoBehaviour:
     to find the best combinations!
   - Try to save one of your <color=#00FFFF>Dash Charges</color> for a sticky situation.\nYou
     don't want to run out when enemies are nearby.
-  - <color=#FFA000>Death Prevention</color> can save you from lethal attacks!\nIt
+  - <color=#FFFFFF>Death Prevention</color> can save you from lethal attacks!\nIt
     has a 30 second cooldown, so watch your <color=#FFA000>HUD</color> to see if
     it's up!
   - All damage is rolled by <color=#00FF87>Luck</color> and can <color=#00FF87>Highroll</color>.
@@ -2245,6 +2245,8 @@ MonoBehaviour:
     to avoid combat while it's <color=#FF00FF>Recharging</color>!
   - Unlock <color=#FFA000>Threat Levels</color> by completing the previous <color=#FFA000>Threat
     Level</color>.\nThey may also unlock other things...
+  - <color=#FF8700>Crit Chance</color> gives all damage you deal a chance to <color=#FF8700>Critically
+    Strike</color> for 300% damage!
   hintInterval: 10
 --- !u!4 &205622257
 Transform:
@@ -13255,14 +13257,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - v0.4.1
+      - v0.5.1
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - v0.4.1
+    - v0.5.1
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -16164,8 +16166,8 @@ RectTransform:
   - {fileID: 828536760}
   - {fileID: 1071027900}
   - {fileID: 1160619928}
-  - {fileID: 1187734833}
   - {fileID: 1376904862}
+  - {fileID: 1187734833}
   - {fileID: 1810272940}
   - {fileID: 1739001023}
   - {fileID: 1584410129}
@@ -19426,7 +19428,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.4.1
+  m_text: Version 0.5.1
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -24729,8 +24731,6 @@ MonoBehaviour:
     icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   - statType: 15
     icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
-  - statType: 16
-    icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 17
     icon: {fileID: 21300000, guid: 9d0c1f9ecd8f0d94683b14b7dea6a6c4, type: 3}
   - statType: 20
@@ -24780,8 +24780,6 @@ MonoBehaviour:
     buttonObject: {fileID: 339451307}
   - statType: 15
     buttonObject: {fileID: 1820001810}
-  - statType: 16
-    buttonObject: {fileID: 1071027899}
   - statType: 17
     buttonObject: {fileID: 1575120191}
   - statType: 18
@@ -27840,6 +27838,58 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 1267779087}
     m_Modifications:
+    - target: {fileID: 2249385004490079258, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2249385004490079258, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2348307747143481142, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2348307747143481142, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2348307747143481142, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMin.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2877011805390365173, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2877011805390365173, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2877011805390365173, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMin.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3040913855833707300, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3040913855833707300, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3040913855833707300, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMin.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4647367830314559697, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4647367830314559697, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 4736180390204763486, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -27923,6 +27973,14 @@ PrefabInstance:
     - target: {fileID: 5900576736720861153, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
       propertyPath: m_Name
       value: Settings
+      objectReference: {fileID: 0}
+    - target: {fileID: 8404197887033278976, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8404197887033278976, guid: 90d29ea1596e1b9418bf2d05bc885fea, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

@@ -1,0 +1,277 @@
+Archived 2026-08-21 — ability icon/cooldown/duration/tooltip UI removed from LocalUIManagerPD.cs (the
+screen-space local HUD) entirely, per explicit request: "I've completely removed abilities from the
+localUI. You can scrap everything we had regarding those." Kept here verbatim in case this ever needs to
+come back, so re-implementing it isn't a from-scratch rebuild.
+
+Context at time of removal: PlayerUIWorldSpace.cs (world-space UI, visible above each player in-world, to
+everyone not just the owner) already has its own equivalent Ability1/Ability2 UI (CDFill/OnCooldownBG/
+Icon/DurationUI), textless by design at the time. Immediately after this archival, a new onCooldownText was
+added to PlayerUIWorldSpace for that world-space UI, using the exact "shape" (onCooldown gate == both
+CooldownRemaining > 0f AND !AbilityIsActive; SetActive only on the change edge; only rebuild the TMP string
+when the ROUNDED-to-0.1s value actually changes; ":F1s" format) that this archived LocalUI version
+established below — see PlayerUIWorldSpace.cs's own UpdateAbility1/UpdateAbility2 for the live, current
+version of that same pattern.
+
+Not a .cs file on purpose — this must never compile (it references fields/types this project no longer
+declares once the removal lands). Plain reference text only.
+
+════════════════════════════════════════════════════════════════════════════
+1. Field declarations (were directly below the other top-of-class [SerializeField] fields)
+════════════════════════════════════════════════════════════════════════════
+
+    [Header("Ability1 UI")]
+    [SerializeField] private Image ability1CDFill;
+    [SerializeField] private GameObject ability1OnCooldownBG;
+    [SerializeField] private Image ability1Icon;
+    [SerializeField] private TextMeshProUGUI ability1CooldownText;
+    private bool _ability1CooldownUIShown;
+    private bool _ability1CooldownTextShown;
+    // DurationUI is the parent panel (DurationBG + DurationBar) — hidden by default in the prefab. Shown
+    // only while IAbilityPD.HasActiveWindow AND AbilityIsActive are both true (see UpdateAbility1's own
+    // comment for why HasActiveWindow gates this permanently rather than just "not active right now"), and
+    // DurationBar's fillAmount counts DOWN from 1 to 0 over ActiveTimeRemaining/ActiveTimeDuration — opposite
+    // direction from the CDFill above, which counts UP as a cooldown drains (both still read as "how much is
+    // left" at a glance, just for two different timers).
+    [SerializeField] private GameObject ability1DurationUI;
+    [SerializeField] private Image ability1DurationBar;
+    private bool _ability1DurationUIShown;
+    // Hover tooltip — AbilityTooltipTriggerPD (on this icon's own hover-catcher Image) relays
+    // OnPointerEnter/Exit into SetAbilityTooltipVisible below, which owns showing/hiding the panel and
+    // formatting the description text; the trigger itself holds no tooltip state.
+    [SerializeField] private GameObject ability1TooltipPanel;
+    [SerializeField] private TextMeshProUGUI ability1DescriptionText;
+
+    // Same shape as Ability1 UI above — both slots are functionally identical now (cooldown-gated
+    // IAbilityPD), so Ability2 gets the same fill/BG/text/duration treatment.
+    [Header("Ability2 UI")]
+    [SerializeField] private Image ability2CDFill;
+    [SerializeField] private GameObject ability2OnCooldownBG;
+    [SerializeField] private Image ability2Icon;
+    [SerializeField] private TextMeshProUGUI ability2CooldownText;
+    private bool _ability2CooldownUIShown;
+    private bool _ability2CooldownTextShown;
+    [SerializeField] private GameObject ability2DurationUI;
+    [SerializeField] private Image ability2DurationBar;
+    private bool _ability2DurationUIShown;
+    // See ability1TooltipPanel/ability1DescriptionText's own doc comment — identical shape for slot 2.
+    [SerializeField] private GameObject ability2TooltipPanel;
+    [SerializeField] private TextMeshProUGUI ability2DescriptionText;
+
+════════════════════════════════════════════════════════════════════════════
+2. Private tracking fields (were alongside _stats/_controller near the top of the class)
+════════════════════════════════════════════════════════════════════════════
+
+    private IAbilityPD _ability1;
+    private IAbilityPD _ability2;
+
+════════════════════════════════════════════════════════════════════════════
+3. Cached-display fields for the cooldown text (were near UpdateHealthAndShields' own cache fields)
+════════════════════════════════════════════════════════════════════════════
+
+    // Cooldown text only shows one decimal, so this caches the ROUNDED (to 0.1s) value, not the raw float —
+    // the raw CooldownRemaining changes basically every frame while ticking, which would defeat the whole
+    // point of caching against redundant TMP rebuilds — but the display only shows 1 decimal (":F1"), so
+    // caching the ROUNDED value still catches the frames where two different raw floats format to the
+    // identical string (still a real, if smaller, win).
+    private float _lastAbility1CooldownDisplay = float.NaN;
+    private float _lastAbility2CooldownDisplay = float.NaN;
+
+════════════════════════════════════════════════════════════════════════════
+4. SetAbilityTooltipVisible (public method, called by AbilityTooltipTriggerPD's OnPointerEnter/OnPointerExit)
+════════════════════════════════════════════════════════════════════════════
+
+    // Called by AbilityTooltipTriggerPD's OnPointerEnter/OnPointerExit (see its own doc comment) — the
+    // small per-icon hover trigger just relays here rather than owning any tooltip state itself, same
+    // "small trigger calls into the central HUD manager" convention SetInvisibleTintVisible uses.
+    // Description text is only (re)formatted on show, not every frame — a hovered tooltip doesn't need to
+    // track live-changing values tick-by-tick the way the rest of this HUD does.
+    public void SetAbilityTooltipVisible(bool isAbility1, bool visible)
+    {
+        GameObject panel = isAbility1 ? ability1TooltipPanel : ability2TooltipPanel;
+        if (panel == null) return;
+        panel.SetActive(visible);
+        if (!visible) return;
+
+        TextMeshProUGUI text = isAbility1 ? ability1DescriptionText : ability2DescriptionText;
+        IAbilityPD ability = isAbility1 ? _ability1 : _ability2;
+        if (text != null && ability != null)
+            text.text = AugmentDescriptionFormatter.Format(ability.Description, ability, _stats);
+    }
+
+════════════════════════════════════════════════════════════════════════════
+5. SetPlayer wiring (were inside the existing SetPlayer(CharacterStatsPD stats) method)
+════════════════════════════════════════════════════════════════════════════
+
+        // A character can carry one of each (Ability1 slot + Ability2 slot) on the same GameObject — both
+        // implement IAbilityPD, so a plain GetComponent<IAbilityPD>() would resolve ambiguously between
+        // them. GetComponents + Slot routes each instance to the right slot instead.
+        foreach (var a in stats.GetComponents<IAbilityPD>())
+        {
+            switch (a.Slot)
+            {
+                case AbilitySlot.Ability1: _ability1 = a; break;
+                case AbilitySlot.Ability2: _ability2 = a; break;
+            }
+        }
+        // Icon is fixed for the whole match (this player's class doesn't change), so it's set once here
+        // rather than re-applied every frame like the cooldown fill/text below.
+        if (ability1Icon != null) ability1Icon.sprite = _ability1?.Icon;
+        if (ability2Icon != null) ability2Icon.sprite = _ability2?.Icon;
+
+════════════════════════════════════════════════════════════════════════════
+6. Update() call site (were among the other per-frame Update* calls)
+════════════════════════════════════════════════════════════════════════════
+
+        UpdateAbility1();
+        UpdateAbility2();
+
+════════════════════════════════════════════════════════════════════════════
+7. UpdateAbility1() / UpdateAbility2() — full bodies
+════════════════════════════════════════════════════════════════════════════
+
+    // Characters without an ability yet (nothing assigned _ability1) just leave this whole panel however
+    // it was left in the editor — every field access below is null-guarded via the early return.
+    private void UpdateAbility1()
+    {
+        if (_ability1 == null) return;
+
+        // CDFill now sits transparent on top of the ability icon and DEPLETES over the cooldown — full
+        // (1) the instant the cooldown starts, draining to empty (0) as it becomes ready, the opposite of
+        // the old "fills up as it becomes ready" direction. 0f fallback (not 1f) for a degenerate
+        // zero-duration cooldown, since "no cooldown to deplete" should read as already-empty/ready.
+        SetFill(ability1CDFill, _ability1.CooldownDuration > 0f
+            ? _ability1.CooldownRemaining / _ability1.CooldownDuration
+            : 0f);
+
+        // Tied to CooldownRemaining directly, NOT "!IsReady" — an ability can be unready for a reason that
+        // isn't a running cooldown at all (e.g. BWBlinkAbilityPD, only castable while Blade Dance is active
+        // — IsReady reads false the rest of the time with CooldownRemaining already sitting at 0). Using
+        // !IsReady here made the countdown text show a permanent, misleading "0.0s" in exactly that case.
+        // Also excludes AbilityIsActive — a buff ability (ExeBigAxeAbilityPD, RogueVanishAbilityPD,
+        // BWBlinkAbilityPD, etc.) already sets cooldownTimer to its full value the INSTANT it's cast, then
+        // (with the default cooldownStartsOnCast = false) holds it there unticked for the whole active
+        // window — so CooldownRemaining reads > 0 throughout the buff too, not just once the real cooldown
+        // actually starts counting down. Without this exclusion the text/fill would show a misleading
+        // stuck-at-full countdown for the buff's own duration instead of staying hidden until the buff ends
+        // and the cooldown genuinely begins ticking.
+        bool onCooldown = _ability1.CooldownRemaining > 0f && !_ability1.AbilityIsActive;
+        // BG is shown more broadly — real cooldown, any OTHER not-ready reason, a hard lockout (a locking
+        // ability elsewhere is active, or isSpecialMoving/stunned — see PlayerControllerPD.IsLockedOut's own
+        // doc comment), or blocked by actively dashing OR a Berserk-Surge-style forced Surge (only for an
+        // action ability — see IAbilityPD.IsActionAbility's own doc comment, same condition
+        // PlayerControllerPD.Simulate() itself gates Activate() on) — even though the ability itself may
+        // otherwise be fully ready. The countdown TEXT and the CDFill overlay itself both stay tied to actual
+        // cooldown only (onCooldown above) — none of the other reasons have a timer/depletion to show, so
+        // both would just read as stale/wrong if they followed the BG here.
+        bool showBG = !_ability1.IsReady || (_controller != null && _controller.IsLockedOut)
+            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability1.IsActionAbility);
+        if (showBG != _ability1CooldownUIShown)
+        {
+            _ability1CooldownUIShown = showBG;
+            if (ability1OnCooldownBG != null) ability1OnCooldownBG.SetActive(showBG);
+        }
+        if (onCooldown != _ability1CooldownTextShown)
+        {
+            _ability1CooldownTextShown = onCooldown;
+            if (ability1CooldownText != null) ability1CooldownText.gameObject.SetActive(onCooldown);
+            // Hidden entirely once ready (not just drained to 0) so the icon reads clean/unobstructed —
+            // same onCooldown edge as the text above, since both should always change together.
+            if (ability1CDFill != null) ability1CDFill.gameObject.SetActive(onCooldown);
+        }
+        if (onCooldown)
+        {
+            float rounded = Mathf.Round(_ability1.CooldownRemaining * 10f) / 10f;
+            if (rounded != _lastAbility1CooldownDisplay)
+            {
+                _lastAbility1CooldownDisplay = rounded;
+                SetText(ability1CooldownText, $"{_ability1.CooldownRemaining:F1}s");
+            }
+        }
+
+        // HasActiveWindow gates this PERMANENTLY (not just "isn't active right now") — an ability that never
+        // has an active window at all (e.g. ExeAxeThrowAbilityPD) should never show this panel even for a
+        // single frame, not just while AbilityIsActive happens to read false. See IAbilityPD.HasActiveWindow's
+        // own doc comment.
+        bool showDuration = _ability1.HasActiveWindow && _ability1.AbilityIsActive;
+        if (showDuration != _ability1DurationUIShown)
+        {
+            _ability1DurationUIShown = showDuration;
+            if (ability1DurationUI != null) ability1DurationUI.SetActive(showDuration);
+        }
+        if (showDuration)
+            SetFill(ability1DurationBar, _ability1.ActiveTimeDuration > 0f
+                ? _ability1.ActiveTimeRemaining / _ability1.ActiveTimeDuration
+                : 0f);
+    }
+
+    // Identical shape to UpdateAbility1 above — both slots are functionally the same now (cooldown-gated
+    // IAbilityPD), see that method's own comments for the reasoning.
+    private void UpdateAbility2()
+    {
+        if (_ability2 == null) return;
+
+        SetFill(ability2CDFill, _ability2.CooldownDuration > 0f
+            ? _ability2.CooldownRemaining / _ability2.CooldownDuration
+            : 0f);
+
+        // See UpdateAbility1's own identical comments for why this is CooldownRemaining (not !IsReady) AND
+        // excludes AbilityIsActive (not just "> 0f").
+        bool onCooldown = _ability2.CooldownRemaining > 0f && !_ability2.AbilityIsActive;
+        // See UpdateAbility1's own identical comment for the full BG-visibility reasoning.
+        bool showBG = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut)
+            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability2.IsActionAbility);
+        if (showBG != _ability2CooldownUIShown)
+        {
+            _ability2CooldownUIShown = showBG;
+            if (ability2OnCooldownBG != null) ability2OnCooldownBG.SetActive(showBG);
+        }
+        if (onCooldown != _ability2CooldownTextShown)
+        {
+            _ability2CooldownTextShown = onCooldown;
+            if (ability2CooldownText != null) ability2CooldownText.gameObject.SetActive(onCooldown);
+            if (ability2CDFill != null) ability2CDFill.gameObject.SetActive(onCooldown);
+        }
+        if (onCooldown)
+        {
+            float rounded = Mathf.Round(_ability2.CooldownRemaining * 10f) / 10f;
+            if (rounded != _lastAbility2CooldownDisplay)
+            {
+                _lastAbility2CooldownDisplay = rounded;
+                SetText(ability2CooldownText, $"{_ability2.CooldownRemaining:F1}s");
+            }
+        }
+
+        // See UpdateAbility1's own identical comment for why HasActiveWindow gates this permanently.
+        bool showDuration = _ability2.HasActiveWindow && _ability2.AbilityIsActive;
+        if (showDuration != _ability2DurationUIShown)
+        {
+            _ability2DurationUIShown = showDuration;
+            if (ability2DurationUI != null) ability2DurationUI.SetActive(showDuration);
+        }
+        if (showDuration)
+            SetFill(ability2DurationBar, _ability2.ActiveTimeDuration > 0f
+                ? _ability2.ActiveTimeRemaining / _ability2.ActiveTimeDuration
+                : 0f);
+    }
+
+════════════════════════════════════════════════════════════════════════════
+8. AbilityTooltipTriggerPD.cs — the ENTIRE file (was Assets/Scripts/UI/AbilityTooltipTriggerPD.cs, deleted
+   outright since it existed solely to drive LocalUIManagerPD.SetAbilityTooltipVisible above — nothing else
+   ever referenced it)
+════════════════════════════════════════════════════════════════════════════
+
+using UnityEngine;
+using UnityEngine.EventSystems;
+
+// Sits on an ability icon's own hover-catcher Image (AbilityIcon under Ability1UI/Ability2UI — Raycast
+// Target on; everything else in that icon's hierarchy, including the Tooltip Panel itself, Raycast Target
+// off, so the tooltip popping up over the icon can't intercept the pointer and immediately hide itself
+// again). Holds no tooltip state itself — just relays hover enter/exit into LocalUIManagerPD, which owns
+// showing/hiding the panel and formatting the description text (see its own SetAbilityTooltipVisible).
+public class AbilityTooltipTriggerPD : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+{
+    [SerializeField] private bool isAbility1;
+
+    public void OnPointerEnter(PointerEventData eventData) => LocalUIManagerPD.instance?.SetAbilityTooltipVisible(isAbility1, true);
+    public void OnPointerExit(PointerEventData eventData) => LocalUIManagerPD.instance?.SetAbilityTooltipVisible(isAbility1, false);
+}

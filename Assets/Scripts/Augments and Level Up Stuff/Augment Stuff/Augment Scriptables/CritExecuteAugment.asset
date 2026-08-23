@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF8700>Critxecute</color>
   description: '<color=#FF8700>Crits</color> <color=#FFA000>Execute</color> enemies
-    below <color=#FFA000>25% health</color>.
+    below <color=#FFA000>20% health</color>.
 
     <color=#FF8700>+10% Crit Chance</color>
 
@@ -31,3 +31,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

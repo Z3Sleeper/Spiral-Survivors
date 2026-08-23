@@ -10,8 +10,7 @@ using UnityEngine;
 // of a new near-duplicate method per augment — see its own doc comment for the full parameter breakdown.
 // Centralizing this means every caller's immediate-cast path and any chain-retrigger path can never silently
 // drift out of sync with each other, same rationale as PhantomBladeSummonHelper. Damage/onHitPower scale by
-// owner.AreaEffectPower, additively combined with a caller-supplied abilityPower when one exists (see Cast's
-// own doc comment on that parameter) — callers are responsible for scaling radius by owner.AreaEffectSize
+// owner.AreaEffectPower directly — callers are responsible for scaling radius by owner.AreaEffectSize
 // themselves before calling in (radius is just "how big," not something this helper needs to know is
 // AreaEffectSize-derived).
 public static class AreaEffectCastHelper
@@ -65,15 +64,6 @@ public static class AreaEffectCastHelper
     // actually returned true — Interrupt()'s own return value is otherwise discarded here, so this is the
     // only way a caller learns "did this land." Feeds CharacterStatsPD's generic SI/FSI event pair (see
     // CharacterStatsPD.NotifyInterrupted) — e.g. KnightAreaStunHealAbilityPD.
-    // abilityPower: 1f (neutral) by default — only a real IAbilityPD implementer passes its own
-    // CharacterStatsPD.AbilityPower here (e.g. ArcherArrowRainAbilityPD); the plain augment-effect callers
-    // (DashExplosionAugment/DashHealAugment/ShieldBreakBurstAugment) have no AbilityPower concept of their
-    // own and just leave this at its default, which reduces the combined term below to exactly
-    // owner.AreaEffectPower alone — unchanged from before this parameter existed. When a caller DOES pass a
-    // real value, it combines with AreaEffectPower ADDITIVELY, not multiplicatively — the two stats' own
-    // BONUS portions (each stat minus its own 1.0 neutral baseline) sum into one combined multiplier, same
-    // "1 + sum of bonuses" shape every other Total-tier stat in this codebase uses, so neutral (both at
-    // 100%/1.0) stays exactly 1x rather than doubling, and e.g. +30%/+30% together means +60% total.
     // overrideHitSfx/hitSfxOverride: only meaningful when dealDamage is true — see HitFeedbackData's own doc
     // comment for the full tri-state shape. false (default) plays owner.hitSfx exactly as before this
     // existed. A caller expecting many simultaneous/rapid hits per cast (ArcherArrowRainAbilityPD: up to 20
@@ -83,13 +73,11 @@ public static class AreaEffectCastHelper
         GameObject radiusVFXPrefab, bool targetAllies = false,
         bool dealDamage = false, float damagePercent = 0f, float onHitPowerPercent = 0f, bool notifyOnHit = true,
         bool hasKnockback = false, float? knockback = null,
-        bool interrupt = false, float abilityPower = 1f,
+        bool interrupt = false,
         Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null,
         Action<IEnemyPD> onSuccessfulInterrupt = null,
         bool overrideHitSfx = false, AudioClip hitSfxOverride = null)
     {
-        float areaAndAbilityPower = owner.AreaEffectPower + abilityPower - 1f;
-
         int hitCount = 0;
 
         if (targetAllies)
@@ -123,7 +111,7 @@ public static class AreaEffectCastHelper
                 {
                     bool isCrit = GameRandom.instance.NextFloat() < owner.CritChance;
 
-                    float baseDamage = owner.Strength * damagePercent * areaAndAbilityPower;
+                    float baseDamage = owner.Strength * damagePercent * owner.AreaEffectPower;
                     float rolledDamage = WeaponDamageMath.RollDamage(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, owner.Highroll, out bool dmgHighroll);
                     rolledDamage = WeaponDamageMath.ApplyCritAndHighroll(rolledDamage, dmgHighroll, isCrit, owner.HighrollBonus, owner.CritDamage);
 
@@ -138,7 +126,7 @@ public static class AreaEffectCastHelper
                         // separately (2026-08-19 fix) meant a single hit could highroll TWICE — once here,
                         // once more in whichever on-hit augment consumes this onHitPower for its own roll —
                         // a hit is only ever supposed to be able to highroll once.
-                        float onHitPower = owner.OnHitPower * onHitPowerPercent * areaAndAbilityPower;
+                        float onHitPower = owner.OnHitPower * onHitPowerPercent * owner.AreaEffectPower;
 
                         // isCrit inherited from this same hit, matching every other onhit-notify call site.
                         owner.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolledDamage, onHitPower = onHitPower, isCrit = isCrit });

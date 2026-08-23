@@ -34,11 +34,13 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // instead of CompressedFloat's quantized/compressed one (same reasoning as CharacterStatsPD's own
         // weaponOrbitAngle).
         public CompressedFloat facingAngle;
-        // Captured once, the instant the attack triggers (conceptually identical to SpearGloomPD's own
-        // CaptureAttackAnchor/attackAnchorPosition) — position+facing read this instead of facingAngle
-        // throughout Windup/Releasing, so the attack can't be visually redirected mid-swing. Plain float,
-        // not CompressedFloat: changes once per attack, so it already gets the cheap "unchanged" case for
-        // free without needing the wrapped-int machinery.
+        // Captured the instant Windup actually ends and the burst fires (2026-08-22 — used to be captured
+        // at Windup ENTRY instead, freezing the angle for the whole windup; Windup now spins live, tracking
+        // _windupTrackedTarget the same way FreeRotating tracks _owner.Target, see LateSimulate's own
+        // comment) — Releasing reads this so it holds the exact angle the burst just fired at, instead of
+        // continuing to follow facingAngle after the fact. Plain float, not CompressedFloat: changes once
+        // per attack, so it already gets the cheap "unchanged" case for free without needing the wrapped-int
+        // machinery.
         public float lockedAngle;
         public int phaseId;
         public float phaseTimer;
@@ -99,6 +101,17 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // owner (see AreaEffectPD/PhantomBladeSummonHelper's own precedent).
     private ShielderGloomPD _owner;
 
+    // The SPECIFIC player this Windup committed to, captured once at the FreeRotating->Windup transition —
+    // same "commit once, keep reading that same reference" contract BlitzGloomPD._windupTrackedTarget/
+    // KingSpikePD._chargeWindupTrackedTarget use (immune to _owner.TargetStats getting reassigned to someone
+    // else mid-windup via taunt/invisible-retarget). Only ever read while actually in Windup.
+    private CharacterStatsPD _windupTrackedTarget;
+    // Companion to _windupTrackedTarget — its position, recorded every tick it's actually alive+visible,
+    // frozen otherwise (dead or invisible). Once a Windup starts, nothing stops it (2026-08-22, was:
+    // skip dealing damage entirely if the target became invalid) — the burst still fires at wherever this
+    // was last legitimately seen, exactly the same principle as KingOrbiterPD's own shot tracking.
+    private Vector3 _windupTrackedLastKnownPosition;
+
     // Every tunable is pushed in once via Configure() — the Shielder owns all of these (see its own class
     // doc comment), this class just holds the copy it was configured with.
     private float _orbitRadius;
@@ -114,7 +127,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     private float _size = 1f;
     // Multipliers, not flat amounts — actual damage is _owner.damage * these, read LIVE at the moment each
     // hit resolves (not cached here at Configure()-time), same reasoning ExeAxeThrowProjectilePD's own
-    // ProcessHit() already uses for AbilityPower: reflects whatever the Shielder's own damage stat currently
+    // ProcessHit() already uses for Strength: reflects whatever the Shielder's own damage stat currently
     // is (including EnemySpawnerPD.ConfigureSpawn's own damageMultiplier scaling, which runs AFTER this
     // Shield's own Configure() call, so caching a value here would miss it).
     private float _shieldburstDamageMultiplier;
@@ -235,6 +248,9 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // Reset, not left alone — this instance may be a pooled reuse carrying a previous life's stale
         // per-player cooldown entries (see GetInitialState()'s own comment).
         currentState.contactCooldowns.Clear();
+        // Same pooled-reuse hygiene as every other _windupTrackedTarget-style field in this codebase.
+        _windupTrackedTarget = null;
+        _windupTrackedLastKnownPosition = default;
 
         if (_windupFill != null) _windupFill.ResetFill();
         if (_windupIndicator != null) _windupIndicator.gameObject.SetActive(false);
@@ -304,12 +320,15 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // AddKnockbackVelocity's own ApplyStun(isTrueStun:...) split), only knocking the OWNER back doesn't
         // freeze the Shield at all.
         //
-        // Windup is excluded — this Shield's own committed state (matches CanBeInterrupted's IsWindingUp
-        // gate) — per explicit design the attack itself is NEVER stopped/paused by a stun, only a real
-        // Interrupt() (ShielderGloomPD.OnInterrupted -> CancelWindup()) can cut a windup short. A stun
-        // landing mid-Windup still shows the yellow tint (UpdateView, unconditional on phase) but doesn't
-        // freeze rotation or disable the contact collider until Windup ends.
-        bool stunFrozen = _owner.IsTrueStunned && phase != ShieldPhase.Windup;
+        // Windup AND Releasing are both excluded (2026-08-22 — used to be just Windup) — the whole committed
+        // attack sequence, trigger through recovery, is this Shield's own "attacking state" (matches
+        // CanBeInterrupted's IsWindingUp gate) — per explicit design a mere stun NEVER stops/pauses ANY part
+        // of it (rotation keeps tracking live through both phases, contact collider stays enabled), only a
+        // real Interrupt() (ShielderGloomPD.OnInterrupted -> CancelWindup()) can cut it short — which resets
+        // phaseId straight back to FreeRotating, so THAT'S what makes the Shield read as stunned afterward
+        // (falls right out of this same check, no separate handling needed for the "interrupted mid-attack"
+        // case). Only FreeRotating (genuinely idle/searching) ever actually freezes on a stun.
+        bool stunFrozen = _owner.IsTrueStunned && phase == ShieldPhase.FreeRotating;
         if (_contactDamageCollider != null && _contactDamageCollider.enabled == stunFrozen)
             _contactDamageCollider.enabled = !stunFrozen;
 
@@ -333,7 +352,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
                         if (toTarget != Vector3.zero)
                         {
                             float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
-                            state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * delta));
+                            state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * _owner.EffectiveAttackSpeed * delta));
                         }
                     }
 
@@ -342,7 +361,11 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
                         Vector3 forward = AngleToDir(state.facingAngle);
                         if (InAttackRectangle(origin, forward, _owner.TargetStats.transform.position))
                         {
-                            state.lockedAngle = state.facingAngle;
+                            // Commits to this SPECIFIC target for the whole Windup — see
+                            // _windupTrackedTarget's own doc comment for why this is a frozen reference, not
+                            // a live re-read of _owner.TargetStats (which could get reassigned mid-windup).
+                            _windupTrackedTarget = _owner.TargetStats;
+                            _windupTrackedLastKnownPosition = _owner.TargetStats.transform.position;
                             state.phaseId = (int)ShieldPhase.Windup;
                             state.phaseTimer = _windupDuration;
                         }
@@ -355,34 +378,87 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
 
             case ShieldPhase.Windup:
             {
-                state.phaseTimer -= delta;
+                // Scaled by EffectiveAttackSpeed (2026-08-22) — a Slow now correctly stretches the windup
+                // out, not just the rotation tracking below and the cooldown between attacks. The fill
+                // progress UpdateView shows (viewState.phaseTimer / _windupDuration) stays correct
+                // unscaled — it's a ratio of however much of the original countdown range is left, which
+                // means the same thing regardless of how fast phaseTimer itself is actually ticking down.
+                state.phaseTimer -= delta * _owner.EffectiveAttackSpeed;
+
+                // Spins/tracks live during Windup now (2026-08-22 — used to lock facingAngle instantly at
+                // Windup entry instead) — same rate-capped MoveTowardsAngle shape as FreeRotating above,
+                // just against _windupTrackedTarget (the specific player this windup committed to) instead
+                // of the Shielder's own live _owner.Target. Freezes (no-op) the instant that target dies or
+                // goes invisible-without-taunting — same "once a windup starts, nothing stops it" principle
+                // BlitzGloomPD.TrackWindupTarget/KingSpikePD.TrackChargeWindupTarget already use: the burst
+                // still fires at wherever facingAngle was last legitimately aimed, it just stops sweeping
+                // further. _windupTrackedLastKnownPosition mirrors the same freeze for the strike's own
+                // position check below.
+                if (_windupTrackedTarget != null && !_windupTrackedTarget.IsDead &&
+                    (!_windupTrackedTarget.IsInvisible || _windupTrackedTarget.IsTaunting))
+                {
+                    _windupTrackedLastKnownPosition = _windupTrackedTarget.transform.position;
+                    Vector3 toTarget = _windupTrackedLastKnownPosition - origin;
+                    toTarget.y = 0f;
+                    if (toTarget != Vector3.zero)
+                    {
+                        float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * _owner.EffectiveAttackSpeed * delta));
+                    }
+                }
+
                 if (state.phaseTimer <= 0f)
                 {
-                    // Re-validate — the target could have died/gone invisible since the trigger check.
-                    // The attack still visually completes either way, it just deals no damage if invalid.
-                    var targetStats = _owner.TargetStats;
-                    if (IsTargetValid(targetStats))
+                    // Locks in the angle the burst actually fires at, for Releasing to hold afterward — see
+                    // State.lockedAngle's own doc comment.
+                    state.lockedAngle = state.facingAngle;
+
+                    // No longer skips damage outright if the target's since died/gone invisible (2026-08-22)
+                    // — fires at _windupTrackedLastKnownPosition regardless, same "once started, nothing
+                    // stops it" principle as the live-tracking above. _windupTrackedTarget itself (not
+                    // _owner.TargetStats) is who actually takes the damage — this Windup committed to THEM
+                    // specifically, not whoever the Shielder happens to be targeting by the time it resolves.
+                    if (_windupTrackedTarget != null)
                     {
                         Vector3 forward = AngleToDir(state.lockedAngle);
-                        if (InAttackRectangle(origin, forward, targetStats.transform.position))
-                            targetStats.TakeDamage(_owner.damage * _shieldburstDamageMultiplier);
+                        if (InAttackRectangle(origin, forward, _windupTrackedLastKnownPosition))
+                            _windupTrackedTarget.TakeDamage(_owner.damage * _shieldburstDamageMultiplier);
                     }
                     state.phaseId = (int)ShieldPhase.Releasing;
                     state.phaseTimer = _releaseDuration;
                 }
-                effectiveAngle = state.lockedAngle;
+                // Live during Windup now, not a frozen lockedAngle — see this case's own comment above.
+                effectiveAngle = state.facingAngle;
                 break;
             }
 
             default: // Releasing
             {
                 state.phaseTimer -= delta;
+
+                // Live now too (2026-08-22 — used to hold state.lockedAngle motionless through the whole
+                // recovery window). Tracks the Shielder's own live _owner.Target, not the frozen
+                // _windupTrackedTarget the just-fired attack committed to — the attack already resolved, so
+                // there's no more reason to stay locked onto whichever specific player it fired at. Never
+                // stunFrozen-gated, same "part of the attacking state" reasoning as Windup above.
+                Transform releaseTarget = _owner.Target;
+                if (releaseTarget != null)
+                {
+                    Vector3 toTarget = releaseTarget.position - origin;
+                    toTarget.y = 0f;
+                    if (toTarget != Vector3.zero)
+                    {
+                        float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * _owner.EffectiveAttackSpeed * delta));
+                    }
+                }
+
                 if (state.phaseTimer <= 0f)
                 {
                     state.phaseId = (int)ShieldPhase.FreeRotating;
                     state.attackCooldownTimer = _attackCooldown;
                 }
-                effectiveAngle = state.lockedAngle;
+                effectiveAngle = state.facingAngle;
                 break;
             }
         }
@@ -405,6 +481,8 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
 
         currentState.phaseId = (int)ShieldPhase.FreeRotating;
         currentState.attackCooldownTimer = _attackCooldown;
+        _windupTrackedTarget = null;
+        _windupTrackedLastKnownPosition = default;
 
         // Predicted-instant hide, not left for UpdateView's own phaseId-driven redraw to eventually catch up
         // — this is invoked out-of-band from a DIFFERENT identity's own Simulate() (ShielderGloomPD's
@@ -524,12 +602,12 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         bool onCooldown = phase == ShieldPhase.FreeRotating && viewState.attackCooldownTimer > 0f;
         bool showReady = !onCooldown;
 
-        // Stunned tint takes priority over ready, and EXCLUDES Windup — matches LateSimulate()'s own
-        // stunFrozen exactly (per explicit design: a stun never pauses/interrupts the attack itself, and the
-        // tint doesn't show while it's mid-windup either, unlike a normal enemy's own always-unconditional
-        // trueStunTimer tint). owner.IsTrueStunned is a live read — see LateSimulate()'s own doc comment for
-        // why that's safe/consistent here.
-        bool isStunned = _owner != null && _owner.IsTrueStunned && phase != ShieldPhase.Windup;
+        // Stunned tint takes priority over ready, and EXCLUDES both Windup AND Releasing (2026-08-22 — used
+        // to be just Windup) — matches LateSimulate()'s own stunFrozen exactly (per explicit design: a stun
+        // never pauses/interrupts any part of the attacking state, and the tint doesn't show for any of it
+        // either, unlike a normal enemy's own always-unconditional trueStunTimer tint). owner.IsTrueStunned
+        // is a live read — see LateSimulate()'s own doc comment for why that's safe/consistent here.
+        bool isStunned = _owner != null && _owner.IsTrueStunned && phase == ShieldPhase.FreeRotating;
         ShieldTintState wantState = isStunned ? ShieldTintState.Stunned
             : showReady ? ShieldTintState.Ready
             : ShieldTintState.Original;

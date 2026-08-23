@@ -45,9 +45,8 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
     // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
     [SerializeField] private float retriggerRate        = 0.5f;
 
-    // Mirrors AreaEffectCastHelper.Cast's own damage formula (abilityPower left at its neutral default here,
-    // so areaAndAbilityPower reduces to exactly Stats.AreaEffectPower — see that method's own doc comment),
-    // minus the luck/crit roll (baseline preview, not a randomly-sampled one — see
+    // Mirrors AreaEffectCastHelper.Cast's own damage formula (Stats.AreaEffectPower directly — see that
+    // method's own doc comment), minus the luck/crit roll (baseline preview, not a randomly-sampled one — see
     // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention), for
     // AugmentDescriptionFormatter's {LiveStrengthRatio} token.
     public string LiveStrengthRatio(CharacterStatsPD stats) =>

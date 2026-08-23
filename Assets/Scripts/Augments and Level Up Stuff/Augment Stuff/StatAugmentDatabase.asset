@@ -43,12 +43,6 @@ MonoBehaviour:
     value: 5
     prependText: +
     appendText: '%'
-  - statType: 7
-    displayName: Energy Regen
-    color: {r: 1, g: 1, b: 0, a: 1}
-    value: 2
-    prependText: +
-    appendText: 
   - statType: 8
     displayName: Dash Haste
     color: {r: 0, g: 1, b: 1, a: 1}

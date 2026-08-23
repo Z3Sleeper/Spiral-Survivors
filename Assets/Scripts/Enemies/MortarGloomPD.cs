@@ -87,6 +87,16 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     // snapshot, same as windupAttackSpeed — see MortarHazardPD's own doc comment for why.
     [SerializeField] private float rotationRateDegPerSecond = 45f;
     private float _authoredRotationRateDegPerSecond;
+    // Max rate the hazard's own tracked DISTANCE (from the firer) can close/open during Windup (2026-08-23)
+    // — same rate-cap idea as rotationRateDegPerSecond above, just for the radial component instead of the
+    // angular one ("Z tracking" — distance snapped instantly before this, only the bearing swing was
+    // capped). No established precedent to tune against yet, so this starts at 10 (player base move speed)
+    // and is expected to get retuned once actually tested. Tier-scaled by rotationRateDegPerSecondTierGrowth
+    // (2026-08-23) — deliberately reusing the SAME growth rate as rotationRateDegPerSecond rather than a
+    // separate tunable, pending confirmation the two should actually tune identically; split into its own
+    // *TierGrowth field later if not.
+    [SerializeField] private float distanceTrackingRateUnitsPerSecond = 10f;
+    private float _authoredDistanceTrackingRateUnitsPerSecond;
 
     [Header("Projectile VFX (cosmetic only — zero gameplay effect)")]
     [SerializeField] private GameObject projectileVfxPrefab; // carries MortarProjectileVFXPD
@@ -125,6 +135,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         _authoredStrikesPerAttack = strikesPerAttack;
         _authoredAttackCooldown = attackCooldown;
         _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
+        _authoredDistanceTrackingRateUnitsPerSecond = distanceTrackingRateUnitsPerSecond;
     }
 
     protected override void LateAwake()
@@ -136,6 +147,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         strikesPerAttack = _authoredStrikesPerAttack;
         attackCooldown = _authoredAttackCooldown;
         rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
+        distanceTrackingRateUnitsPerSecond = _authoredDistanceTrackingRateUnitsPerSecond;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         // Re-set again in OnRespawnReset() once strikesPerAttack is actually tier-scaled (that always runs
         // AFTER OnConfigureSpawn, on this life's first Simulate() tick) — this LateAwake() assignment is
@@ -151,6 +163,9 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         base.OnConfigureSpawn();
         strikesPerAttack += (spawnTier - 1) * strikesPerAttackTierGrowth;
         rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        // Reuses rotationRateDegPerSecondTierGrowth itself (not a separate *TierGrowth field) — see
+        // distanceTrackingRateUnitsPerSecond's own doc comment.
+        distanceTrackingRateUnitsPerSecond = _authoredDistanceTrackingRateUnitsPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
@@ -387,7 +402,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         if (go != null && go.TryGetComponent(out MortarHazardPD hazard))
             hazard.Launch(windupDuration, projectileTravelDuration, hazardWidth * size, hazardDepth * size,
                 damage * strikeDamageMultiplier, _targetStats, transform.position, EffectiveAttackSpeed,
-                rotationRateDegPerSecond);
+                rotationRateDegPerSecond, distanceTrackingRateUnitsPerSecond);
     }
 
     // Aims at wherever the hazard itself actually locked (2026-08-21 — reads the hazard's own live transform,

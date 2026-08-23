@@ -76,6 +76,18 @@ PrefabInstance:
       propertyPath: m_Radius
       value: 0.75
       objectReference: {fileID: 0}
+    - target: {fileID: 6142094079965303665, guid: 35237dad5e860b744967ccf635127c48, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 6142094079965303665, guid: 35237dad5e860b744967ccf635127c48, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 6142094079965303665, guid: 35237dad5e860b744967ccf635127c48, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 16
+      objectReference: {fileID: 0}
     - target: {fileID: 7839943648137112170, guid: 35237dad5e860b744967ccf635127c48, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0

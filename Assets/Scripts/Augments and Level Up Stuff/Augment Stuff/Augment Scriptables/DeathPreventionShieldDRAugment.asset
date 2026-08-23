@@ -12,18 +12,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: DeathPreventionShieldDRAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FF00FF>Unbreakable</color>
+  displayName: <color=#FFFFFF>Unbreakable</color>
   description: '<color=#FFA000>+50% Damage Reduction</color> while <color=#FF00FF>Shielded</color>.
 
     Gain
-    <color=#FFA000>Death Prevention</color>.
+    <color=#FFFFFF>Death Prevention</color>.
 
-    <color=#FFA000>On Death Prevented:</color>
-    <color=#FF00FF>Recharge your Shield</color>.
+    <color=#FFA000>On <color=#FFFFFF>Death
+    Prevented</color>:</color> <color=#FF00FF>Recharge your Shield</color>.
 
-    <color=#FFBE50><i>If you already
-    have Death Prevention, -25% cooldown.</i></color>'
-  icon: {fileID: 21300000, guid: 37a9507e367a9dc4e964a6b2fa3a1d43, type: 3}
+    <color=#FFBE50><i>If
+    you already have Death Prevention, -25% cooldown.</i></color>'
+  icon: {fileID: 21300000, guid: 4bd44dc4f90852d45925e682f60154e6, type: 3}
   effectPrefab: {fileID: 128303859756713544, guid: ec614b706e5c1494f86d50803dc8c147, type: 3}
   multiplayerOnly: 0
   classRestrictionMode: 0
@@ -34,3 +34,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

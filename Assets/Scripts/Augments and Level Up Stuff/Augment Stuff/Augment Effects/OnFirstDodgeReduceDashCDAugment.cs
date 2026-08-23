@@ -23,7 +23,7 @@ public class OnFirstDodgeReduceDashCDAugment : AugmentEffectPD<OnFirstDodgeReduc
 
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
     // {flatCooldownReduction} directly in the description text — see its own doc comment.
-    public float flatCooldownReduction = 5f;
+    public float flatCooldownReduction = 7.5f;
 
     private PlayerControllerPD _controller;
 

@@ -74,12 +74,11 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // still only shaves off a fraction of a second). So instead, for the whole Outbound->Hold->Return window,
     // AbilityHaste converts directly into bonus Attack Speed instead:
     // 1 point of EffectiveAbilityHaste = attackSpeedPercentPerHaste (1% by default) Total Attack Speed,
-    // ADDED via AddAttackSpeedTotalPercent — then that haste-derived amount (not the player's whole Attack
-    // Speed, just this bonus slice of it) is further multiplied by AbilityPower on top. Granted once at cast
-    // (the fresh-cast branch only — a Hold recast doesn't re-grant, the buff already spans the whole
-    // sequence) and reversed with the identical snapshotted value in EndDance(), same cast-time-snapshot
-    // convention as RogueVanishAbilityPD/KnightBigBuffAbilityPD's own applied-percent fields (a live AbilityPower/
-    // AbilityHaste change mid-dance must not desync the add/subtract pair). This also means blade orbit
+    // ADDED via AddAttackSpeedTotalPercent. Granted once at cast (the fresh-cast branch only — a Hold recast
+    // doesn't re-grant, the buff already spans the whole sequence) and reversed with the identical
+    // snapshotted value in EndDance(), same cast-time-snapshot convention as RogueVanishAbilityPD/
+    // KnightBigBuffAbilityPD's own applied-percent fields (a live AbilityHaste change mid-dance must not
+    // desync the add/subtract pair). This also means blade orbit
     // speed itself (EffectiveWeaponSpeed = AttackSpeed * 360) speeds up too, along with anything else this
     // character's Attack Speed drives (FireRate, etc.) — not scoped to "just the blades," matching the
     // user's own framing of "give Bladeweaver attack speed."
@@ -97,13 +96,11 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // Mirrors Activate()'s own _appliedAttackSpeedPercent formula exactly — see attackSpeedPercentPerHaste's
     // own doc comment for the full reasoning. Outside a live match, falls back to 0 — EffectiveAbilityHaste's
     // own neutral (no-investment) value is 0, and 0 haste genuinely means 0% bonus, so this isn't a
-    // misleading placeholder the way it would be for a stat with no true "neutral" — same reasoning as
-    // every other ability's smart-fallback Live*Ratio (see ArcherFocusFireAbilityPD.LiveDurationRatio's own
-    // doc comment).
+    // misleading placeholder the way it would be for a stat with no true "neutral".
     public string LiveAttackSpeedBonusRatio(CharacterStatsPD stats)
     {
         float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste * stats.AbilityPower
+            ? stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste
             : 0f;
         return $"{AugmentDescriptionFormatter.FormatLivePercent(value)}";
     }
@@ -269,9 +266,9 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         }
 
         // See attackSpeedPercentPerHaste's own doc comment for the full reasoning — AbilityHaste converts
-        // straight into bonus Attack Speed for this ability's whole active window, further multiplied by
-        // AbilityPower, since a 0-cooldown ability has no cooldown left for AbilityHaste to meaningfully act on.
-        _appliedAttackSpeedPercent = _stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste * _stats.AbilityPower;
+        // straight into bonus Attack Speed for this ability's whole active window, since a 0-cooldown ability
+        // has no cooldown left for AbilityHaste to meaningfully act on.
+        _appliedAttackSpeedPercent = _stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste;
         _stats.AddAttackSpeedTotalPercent(_appliedAttackSpeedPercent);
 
         currentState.targetPosition = origin + cursorDir * castDistance;

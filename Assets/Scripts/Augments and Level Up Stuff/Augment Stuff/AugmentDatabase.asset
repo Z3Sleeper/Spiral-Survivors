@@ -14,7 +14,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentDatabase
   augments:
   - {fileID: 11400000, guid: 5529743d509f97e4cafabf11de3b570a, type: 2}
-  - {fileID: 11400000, guid: 8db5c41999cc25b4683dadded630e203, type: 2}
   - {fileID: 11400000, guid: 458061ebe64d57245b6cd1b6c58eedc6, type: 2}
   - {fileID: 11400000, guid: e8ad596bff237294f90e7166dd56882f, type: 2}
   - {fileID: 11400000, guid: 032789cf4eca9334990031b37093b4bc, type: 2}
@@ -36,6 +35,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 7d52f377515680643b6248b900d29c56, type: 2}
   - {fileID: 11400000, guid: 2f92664d857a10e4884446dbe79f7d66, type: 2}
   - {fileID: 11400000, guid: 0101f4a866e8d44499d8e39f31e0f0b8, type: 2}
+  - {fileID: 11400000, guid: 99adf152eeec2984f874dd8b8716aa52, type: 2}
   - {fileID: 11400000, guid: 8a4fd37a0bffa9f4fb0c95786b06ca66, type: 2}
   - {fileID: 11400000, guid: 88bc0f2111c291f4ab9b8ca92f3547ad, type: 2}
   - {fileID: 11400000, guid: 08bca29a0c0a6414892598ad2c0c7a7a, type: 2}
@@ -71,7 +71,6 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 5c555264eef673e41b15a02dc6b43df1, type: 2}
   - {fileID: 11400000, guid: 448892ba41a1a344f9934a72838b7bec, type: 2}
   - {fileID: 11400000, guid: 66f19a19c59e4a14cb0c0aa5ac6ba4e3, type: 2}
-  - {fileID: 11400000, guid: 0df6b4abe44715e458003124768c811b, type: 2}
   - {fileID: 11400000, guid: 481e0788260e04243932a7458301d25c, type: 2}
   - {fileID: 11400000, guid: abbc196ed84b7004ba82f45392a6d1b8, type: 2}
   - {fileID: 11400000, guid: 6faf2042aa0f1b44792984ae2c4a0df2, type: 2}

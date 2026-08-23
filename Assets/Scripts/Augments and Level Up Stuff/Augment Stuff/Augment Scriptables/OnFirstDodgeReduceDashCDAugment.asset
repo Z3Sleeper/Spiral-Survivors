@@ -13,8 +13,9 @@ MonoBehaviour:
   m_Name: OnFirstDodgeReduceDashCDAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Dodgy</color>
-  description: <color=#FFA000>On First <color=#00FFFF>Dodge</color>:</color> <color=#FFA000>Reduce</color>
-    your <color=#00FFFF>Dash</color> <color=#FFA000>cooldown</color> by <color=#00FFFF>{LiveCooldownReduction}</color>.
+  description: <color=#FFA000>On First <color=#FFFFFF>Dodge</color> per <color=#00FFFF>Dash</color>:</color>
+    <color=#FFA000>Reduce</color> your <color=#00FFFF>Dash</color> <color=#FFA000>cooldown</color>
+    by <color=#00FFFF>{LiveCooldownReduction}</color> <color=#FFA000>seconds</color>.
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   effectPrefab: {fileID: 4044000749629544058, guid: 82c1d2cd4ef572c4da228f49459ddea2, type: 3}
   multiplayerOnly: 0

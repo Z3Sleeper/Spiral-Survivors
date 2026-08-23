@@ -28,11 +28,29 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI dashChargesText;
     [SerializeField] private Image energyImage;
     [SerializeField] private TextMeshProUGUI energyText;
+    // Held-to-show only (Tab), inactive by default (2026-08-21 — statsUIExpanded retired entirely; this
+    // panel absorbed its stats instead of the two panels swapping while held). See SetStatsVisible.
     [SerializeField] private GameObject statsUI;
+    // Code-driven (2026-08-21), same reasoning statsWordsTextExpanded used to have — Multishot/Ricochet are
+    // gated behind _isRanged (melee has neither stat), so the label column has to vary per-class same as
+    // the numbers column does. Built once in SetPlayer (a class's own _isRanged never changes mid-match),
+    // not every frame like statsNumbersText — see BuildStatsWords.
+    [SerializeField] private TextMeshProUGUI statsWordsText;
     [SerializeField] private TextMeshProUGUI statsNumbersText;
-    [SerializeField] private GameObject statsUIExpanded;
-    [SerializeField] private TextMeshProUGUI statsWordsTextExpanded;
-    [SerializeField] private TextMeshProUGUI statsNumbersTextExpanded;
+    // Visibility is a persisted Settings toggle (Settings.ControlsVisible), not a fixed default — applied
+    // once here at Awake (this is the live scene reference Settings.ApplyOnLoad's own static-context callback
+    // can't reach, same "needs a live component reference" reasoning Settings.ApplySavedMixerVolumes already
+    // has for the AudioMixer) and pushed live via SetControlsVisible whenever the Settings toggle changes
+    // mid-session.
+    [SerializeField] private GameObject controlsUI;
+    // The restored Dash/Energy/Ability panel (2026-08-21) — visibility AND the position/size of
+    // playerUIBackground/buffBar below are all driven together by the same persisted Settings toggle
+    // (Settings.HideExpandedUI), same "live scene reference the static ApplyOnLoad callback can't reach"
+    // reasoning controlsUI above already has. See SetExpandedUIHidden for the full apply logic and the exact
+    // authored position/size values for both states.
+    [SerializeField] private GameObject expandedPlayerUI;
+    [SerializeField] private RectTransform playerUIBackground;
+    [SerializeField] private RectTransform buffBar;
     [SerializeField] private Slider xpBar;
     [SerializeField] private TextMeshProUGUI xpText;
     [SerializeField] private TextMeshProUGUI timerText;
@@ -127,6 +145,25 @@ public class LocalUIManagerPD : MonoBehaviour
     [Header("Settings")]
     [SerializeField] private GameObject settingsPanel;
 
+    // Shared mid-cycle event description panel (2026-08-25) — every EventBasePD-derived event writes into
+    // this SAME text box (EventBasePD's own UpdateView drives it via each event's GetEventDescription()
+    // override), rather than each event needing its own bespoke UI. Inactive by default (see Awake below) —
+    // ShowEventPanel/HideEventPanel are called generically from EventBasePD's own OnEventStart/Cleanup base
+    // implementations, so no per-event script needs to know this panel exists at all.
+    [Header("Event")]
+    [SerializeField] private GameObject eventPanel;
+    [SerializeField] private TextMeshProUGUI eventDescriptionText;
+    // Change-detection cache for SetEventDescription — same "only rebuild the TMP text when the value
+    // actually changed" convention UpdateRunClock/OnPresentingTimerChanged etc. already use elsewhere in
+    // this file. Reset to null on HideEventPanel so the NEXT event's first SetEventDescription call always
+    // actually applies, even if it happens to match whatever text was showing when the panel last hid.
+    private string _lastEventDescription;
+    // Change-detection cache for SetEventDescriptionColor — same convention/reasoning as
+    // _lastEventDescription above, just a Color instead of a string (hence the separate _has bool, since
+    // Color has no natural "not set yet" sentinel the way a string has null).
+    private Color _lastEventDescriptionColor;
+    private bool  _hasLastEventDescriptionColor;
+
     [Header("Pause System")]
     [SerializeField] private GameObject pauseScreen;
     [SerializeField] private GameObject singlePlayerResumePanel;
@@ -141,7 +178,7 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private TextMeshProUGUI endScreenReadyCountText;
 
     private readonly System.Text.StringBuilder _statsSB = new();
-    private readonly System.Text.StringBuilder _statsExpandedSB = new();
+    private readonly System.Text.StringBuilder _statsWordsSB = new();
 
     private CharacterStatsPD _stats;
     private PlayerControllerPD _controller;
@@ -160,10 +197,12 @@ public class LocalUIManagerPD : MonoBehaviour
         if (healthBarFillImage != null) _healthBarDefaultColor = healthBarFillImage.color;
         levelUpScreen.SetActive(false);
         if (tintScreenOverlay != null) tintScreenOverlay.SetActive(false);
-        statsUI.SetActive(true);
-        statsUIExpanded.SetActive(false);
+        statsUI.SetActive(false);
+        if (controlsUI != null) controlsUI.SetActive(Settings.ControlsVisible);
+        SetExpandedUIHidden(Settings.HideExpandedUI);
         pauseScreen.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
+        if (eventPanel != null) eventPanel.SetActive(false);
         if (endScreenPanel != null) endScreenPanel.SetActive(false);
         PausePD.OnPauseChanged += OnPauseStateChanged;
         PausePD.OnCountdownChanged += OnCountdownChanged;
@@ -238,10 +277,46 @@ public class LocalUIManagerPD : MonoBehaviour
         UpdatePauseReadyCount(ready, total);
     }
 
-    public void SetStatsExpanded(bool expanded)
+    // Renamed from SetStatsExpanded (2026-08-21) — used to swap between statsUI and statsUIExpanded while
+    // held; now that statsUIExpanded is retired (its stats absorbed into statsUI directly), this is just a
+    // plain show/hide. Called by PlayerControllerPD's own Tab press/release.
+    public void SetStatsVisible(bool visible) => statsUI.SetActive(visible);
+
+    // Called by Settings.OnControlsVisibilityChanged whenever that toggle changes mid-session, so the panel
+    // reacts immediately instead of only on the next scene load — see controlsUI's own doc comment.
+    public void SetControlsVisible(bool visible)
     {
-        statsUI.SetActive(!expanded);
-        statsUIExpanded.SetActive(expanded);
+        if (controlsUI != null) controlsUI.SetActive(visible);
+    }
+
+    // Compact (no ExpandedPlayerUI) vs expanded (Dash/Energy/Ability panel showing) anchored positions/size
+    // — author-given values, 2026-08-21. Z is always 0 for both states on both elements, so these only carry
+    // X/Y (anchoredPosition) plus playerUIBackground's own height (sizeDelta.y) for the compact/expanded pair.
+    private static readonly Vector2 CompactPlayerUIBackgroundPos = new(0f, 0f);
+    private const float CompactPlayerUIBackgroundHeight = 190f;
+    private static readonly Vector2 ExpandedPlayerUIBackgroundPos = new(0f, 95f);
+    private const float ExpandedPlayerUIBackgroundHeight = 380f;
+    private static readonly Vector2 CompactBuffBarPos = new(0f, 60f);
+    private static readonly Vector2 ExpandedBuffBarPos = new(0f, 240f);
+
+    // Called by Settings.OnHideExpandedUIChanged whenever that toggle changes mid-session (same reasoning as
+    // SetControlsVisible above), and once from Awake() to apply whatever was already saved. hidden=true
+    // means the Dash/Energy/Ability panel is OFF and playerUIBackground/buffBar sit at their compact
+    // position/size — see Settings.HideExpandedUI's own doc comment for the naming (checked = hidden).
+    public void SetExpandedUIHidden(bool hidden)
+    {
+        if (expandedPlayerUI != null) expandedPlayerUI.SetActive(!hidden);
+
+        if (playerUIBackground != null)
+        {
+            playerUIBackground.anchoredPosition = hidden ? CompactPlayerUIBackgroundPos : ExpandedPlayerUIBackgroundPos;
+            Vector2 size = playerUIBackground.sizeDelta;
+            size.y = hidden ? CompactPlayerUIBackgroundHeight : ExpandedPlayerUIBackgroundHeight;
+            playerUIBackground.sizeDelta = size;
+        }
+
+        if (buffBar != null)
+            buffBar.anchoredPosition = hidden ? CompactBuffBarPos : ExpandedBuffBarPos;
     }
 
     public void SetAugmentListVisible(bool visible) => augmentListUI.SetVisible(visible);
@@ -290,9 +365,7 @@ public class LocalUIManagerPD : MonoBehaviour
         if (ability1Icon != null) ability1Icon.sprite = _ability1?.Icon;
         if (ability2Icon != null) ability2Icon.sprite = _ability2?.Icon;
         _isRanged = stats.GetComponent<WeaponManagerPD>().IsRanged;
-        statsWordsTextExpanded.text = _isRanged
-            ? "Dash Cooldown:\nLuck Variance:\nHighroll Bonus:\nRicochet:\nMultishot:"
-            : "Dash Cooldown:\nLuck Variance:\nHighroll Bonus:";
+        BuildStatsWords();
         healthBar.value = 1f;
         shieldBar.value = 1f;
         shieldRegenBar.value = 1f;
@@ -489,6 +562,51 @@ public class LocalUIManagerPD : MonoBehaviour
     // reaching the networked pause/ready toggle underneath it — see that call site's own doc comment.
     public bool IsSettingsPanelOpen => settingsPanel != null && settingsPanel.activeSelf;
 
+    // Called once from EventBasePD's own OnEventStart base implementation — see IEventPD.OnEventStart's own
+    // doc comment for why this lives in the shared base rather than every concrete event calling it itself.
+    public void ShowEventPanel()
+    {
+        if (eventPanel != null) eventPanel.SetActive(true);
+    }
+
+    // Called every UpdateView (render-frame) while an event is active — see EventBasePD.UpdateView's own doc
+    // comment. Change-detection guarded (see _lastEventDescription's own doc comment) so a value that hasn't
+    // actually changed since last frame doesn't rebuild the TMP text for nothing.
+    public void SetEventDescription(string text)
+    {
+        if (eventDescriptionText == null) return;
+        if (text == _lastEventDescription) return;
+        _lastEventDescription = text;
+        eventDescriptionText.text = text;
+    }
+
+    // Called every UpdateView (render-frame) while an event is active — see EventBasePD.UpdateView's own doc
+    // comment (drives the "flash for the first few seconds" tell). Change-detection guarded same as
+    // SetEventDescription above — the color changes virtually every frame during the actual flash (so this
+    // guard rarely bites there), but still avoids redundant writes once it's settled on white.
+    public void SetEventDescriptionColor(Color color)
+    {
+        if (eventDescriptionText == null) return;
+        if (_hasLastEventDescriptionColor && color == _lastEventDescriptionColor) return;
+        _hasLastEventDescriptionColor = true;
+        _lastEventDescriptionColor = color;
+        eventDescriptionText.color = color;
+    }
+
+    // Called once from EventBasePD's own Cleanup() base implementation, for EITHER outcome (success or
+    // failure) — see IEventPD.Cleanup()'s own doc comment.
+    public void HideEventPanel()
+    {
+        if (eventDescriptionText != null)
+        {
+            eventDescriptionText.text = string.Empty;
+            eventDescriptionText.color = Color.white;
+        }
+        if (eventPanel != null) eventPanel.SetActive(false);
+        _lastEventDescription = null;
+        _hasLastEventDescriptionColor = false;
+    }
+
     public void OnResumeClicked()
     {
         if (_controller == null) return;
@@ -524,7 +642,6 @@ public class LocalUIManagerPD : MonoBehaviour
         UpdateDeathPreventionUI();
         UpdateEnergy();
         UpdateStats();
-        UpdateStatsExpanded();
         UpdateXP();
         UpdateUpgradePoints();
         UpdateDifficultyText();
@@ -935,32 +1052,56 @@ public class LocalUIManagerPD : MonoBehaviour
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");
         _statsSB.AppendLine($" {_stats.CritDamage * 100f:G4}%");
         _statsSB.AppendLine($" {_stats.Luck:G4}");
+        // Luck Variance/Highroll Bonus — absorbed from the now-retired statsUIExpanded panel (2026-08-21).
+        _statsSB.AppendLine($" {(_stats.EffectiveLuckFloor - 1f) * 100f:+0.0;-0.0}% | {(_stats.LuckCeiling - 1f) * 100f:+0.0;-0.0}%");
         _statsSB.AppendLine($" {Mathf.Min(_stats.HighrollChance * 100f, 100f):0.##}%");
-        _statsSB.AppendLine($" {_stats.OnHitPower * 100f:G4}%");
+        _statsSB.AppendLine($" {_stats.HighrollBonus * 100f:+0.0;-0.0}%");
         // Same raw-number convention as EffectiveDashHaste above (no % suffix) — both are the same
         // baseCooldown / (1 + haste/100) shaped stat, just for abilities instead of dash.
         _statsSB.AppendLine($" {_stats.EffectiveAbilityHaste:G4}");
-        // Same 1f-baseline-as-percent convention as OnHitPower above (default multiplier 1f reads as 100%).
-        _statsSB.AppendLine($" {_stats.AbilityPower * 100f:G4}%");
+        // 1f-baseline-as-percent convention (default multiplier 1f reads as 100%).
+        _statsSB.AppendLine($" {_stats.OnHitPower * 100f:G4}%");
+        // Multishot/Ricochet — absorbed from the now-retired statsUIExpanded panel, moved to the tail end.
+        // Gated behind _isRanged again (melee has neither stat) — see BuildStatsWords for the matching
+        // label-side gate; the two must stay in lockstep or the numbers column desyncs from its own labels.
+        if (_isRanged)
+        {
+            _statsSB.AppendLine($" {_stats.Multishot}");
+            _statsSB.AppendLine($" {_stats.Ricochet}");
+        }
         SetText(statsNumbersText, _statsSB.ToString());
     }
 
-    private void UpdateStatsExpanded()
+    // Builds statsWordsText's own label column — called once per SetPlayer (a class's own _isRanged never
+    // changes mid-match, so this never needs to re-run per frame the way UpdateStats' numbers column does).
+    // Order MUST match UpdateStats' own _statsSB.AppendLine sequence exactly, line for line — the two
+    // StringBuilders render side-by-side as separate TMP columns with no shared indexing to keep them
+    // aligned automatically.
+    private void BuildStatsWords()
     {
-        // See UpdateStats' own comment — same "only visible while held" panel, same skip-entirely-while-
-        // hidden win.
-        if (statsUIExpanded == null || !statsUIExpanded.activeInHierarchy) return;
+        if (statsWordsText == null) return;
 
-        _statsExpandedSB.Clear();
-        _statsExpandedSB.AppendLine($" {_stats.DashCooldown:F1}s");
-        _statsExpandedSB.AppendLine($" {(_stats.EffectiveLuckFloor - 1f) * 100f:+0.0;-0.0}% | {(_stats.LuckCeiling - 1f) * 100f:+0.0;-0.0}%");
-        _statsExpandedSB.AppendLine($" {_stats.HighrollBonus * 100f:+0.0;-0.0}%");
+        _statsWordsSB.Clear();
+        _statsWordsSB.AppendLine("Strength:");
+        _statsWordsSB.AppendLine("Attack Speed:");
+        _statsWordsSB.AppendLine("Energy Regen:");
+        _statsWordsSB.AppendLine("Range:");
+        _statsWordsSB.AppendLine("Move Speed:");
+        _statsWordsSB.AppendLine("Dash Haste:");
+        _statsWordsSB.AppendLine("Crit Chance:");
+        _statsWordsSB.AppendLine("Crit Damage:");
+        _statsWordsSB.AppendLine("Luck:");
+        _statsWordsSB.AppendLine("Luck Variance:");
+        _statsWordsSB.AppendLine("Highroll Chance:");
+        _statsWordsSB.AppendLine("Highroll Bonus:");
+        _statsWordsSB.AppendLine("Ability Haste:");
+        _statsWordsSB.AppendLine("On-Hit Power:");
         if (_isRanged)
         {
-            _statsExpandedSB.AppendLine($" {_stats.Ricochet}");
-            _statsExpandedSB.AppendLine($" {_stats.Multishot}");
+            _statsWordsSB.AppendLine("Multishot:");
+            _statsWordsSB.AppendLine("Ricochet:");
         }
-        SetText(statsNumbersTextExpanded, _statsExpandedSB.ToString());
+        SetText(statsWordsText, _statsWordsSB.ToString());
     }
 
     private void UpdateXP()

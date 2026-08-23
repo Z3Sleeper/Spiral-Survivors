@@ -52,6 +52,13 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         // rollback replay must restore correctly, unlike the old snap-straight-to-target write (a pure
         // function of only currently-live inputs, safe without State).
         public CompressedFloat facingAngleDeg;
+        // Current tracked DISTANCE from the firer (2026-08-23) — same "changes virtually every tick during
+        // the 'attached' phase" bandwidth reasoning facingAngleDeg above already has, and the same
+        // State-backed requirement (MoveTowards reads its own previous value every tick, which a rollback
+        // replay must restore correctly). See State.facingAngleDeg's own doc comment for the shared shape;
+        // this is the radial component to that field's angular one — together they fully rate-cap this
+        // hazard's tracked position instead of only its bearing.
+        public CompressedFloat trackedDistance;
         public void Dispose() { }
     }
 
@@ -78,6 +85,12 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     // instant snap (the old behavior) meant no amount of player movement could ever throw off where the
     // shell eventually lands.
     private float _rotationRateDegPerSecond = 45f;
+    // Max rate the tracked DISTANCE (from the firer) can close/open during the "attached" phase (2026-08-23)
+    // — same one-time-snapshot-at-Launch() shape as _rotationRateDegPerSecond above, for the identical
+    // "firer could die/get pooled-and-reused mid-track" reason. Distance used to snap instantly to the
+    // target's live range every tick — only the angular swing was ever capped — see LateSimulate's own
+    // comment.
+    private float _distanceTrackingRateUnitsPerSecond = 10f;
 
     // Live-tracking inputs (2026-08-21) — see class doc comment. _trackedTarget is the SPECIFIC player this
     // strike committed to (captured by the caller at spawn time, immune to MortarGloomPD's own _targetStats
@@ -95,7 +108,7 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     // class doc comment; trackedTarget may be null (no live tracking, stays exactly where spawned).
     public void Launch(float windupDuration, float fireDuration, float width, float depth, float damage,
         CharacterStatsPD trackedTarget = null, Vector3 firerPosition = default, float windupAttackSpeed = 1f,
-        float rotationRateDegPerSecond = 45f)
+        float rotationRateDegPerSecond = 45f, float distanceTrackingRateUnitsPerSecond = 10f)
     {
         _halfWidth = width * 0.5f;
         _halfDepth = depth * 0.5f;
@@ -104,6 +117,7 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         _fireDuration   = fireDuration;
         _windupAttackSpeed = Mathf.Max(0.0001f, windupAttackSpeed);
         _rotationRateDegPerSecond = rotationRateDegPerSecond;
+        _distanceTrackingRateUnitsPerSecond = distanceTrackingRateUnitsPerSecond;
 
         currentState.windupTimer = windupDuration;
         currentState.fireTimer   = fireDuration;
@@ -112,10 +126,10 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         _trackedTarget = trackedTarget;
         _firerPosition = firerPosition;
 
-        // Seeds the tracked bearing to match wherever the caller already placed this hazard for its first
-        // frame (SpawnHazard's own hierarchy.Create() call) — same Atan2(z,x) convention LateSimulate's own
-        // tracking uses, so the first real tick's MoveTowardsAngle starts from the correct current bearing
-        // instead of a spurious jump from 0.
+        // Seeds the tracked bearing AND distance to match wherever the caller already placed this hazard for
+        // its first frame (SpawnHazard's own hierarchy.Create() call) — same Atan2(z,x) convention
+        // LateSimulate's own tracking uses, so the first real tick's MoveTowardsAngle/MoveTowards starts from
+        // the correct current bearing/range instead of a spurious jump from 0.
         if (trackedTarget != null)
         {
             Vector3 initialTargetPos = trackedTarget.transform.position;
@@ -124,6 +138,7 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
             toTarget.y = 0f;
             if (toTarget.sqrMagnitude > 0.0001f)
                 currentState.facingAngleDeg = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+            currentState.trackedDistance = toTarget.magnitude;
         }
 
         // Pooled-reuse safety — same reasoning as RemoteSpikeBurstPD.Launch()'s own explicit ResetFill() call.
@@ -160,15 +175,15 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
 
         if (!state.locked)
         {
-            // "Attached" phase — keep tracking the committed target's live BEARING (angle from the firer),
-            // capped at _rotationRateDegPerSecond (2026-08-21 — was an instant snap straight to the target's
-            // position; see that field's own doc comment for why this is now rate-limited). Range (distance
-            // from the firer) still snaps instantly — only the angular swing is capped, mirroring
-            // BlitzGloomPD/KingSpikePD's own identical rate-capped facing, just reinterpreted for a
-            // firer-relative ground hazard instead of a body's own facing direction. Holds its last
-            // position/bearing (no teleport-to-stale-null) if the target's died/gone invisible-without-
-            // taunting mid-Windup — same "freeze on invalid" convention EnemyBasePD.IsTargetStillValid's own
-            // callers already use.
+            // "Attached" phase — keep tracking the committed target's live BEARING (angle from the firer) AND
+            // DISTANCE, both rate-capped (2026-08-21 for bearing; 2026-08-23 for distance — was an instant
+            // snap to the target's live range every tick, only the angular swing was ever capped) at
+            // _rotationRateDegPerSecond/_distanceTrackingRateUnitsPerSecond respectively — mirrors
+            // BlitzGloomPD/KingSpikePD's own rate-capped facing, just reinterpreted for a firer-relative
+            // ground hazard's full 2D position instead of just a body's own facing direction. Holds its last
+            // position/bearing/distance (no teleport-to-stale-null) if the target's died/gone invisible-
+            // without-taunting mid-Windup — same "freeze on invalid" convention EnemyBasePD.IsTargetStillValid's
+            // own callers already use.
             if (_trackedTarget != null && !_trackedTarget.IsDead &&
                 (!_trackedTarget.IsInvisible || _trackedTarget.IsTaunting))
             {
@@ -176,15 +191,16 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
                 targetPos.y = 0f;
                 Vector3 toTarget = targetPos - _firerPosition;
                 toTarget.y = 0f;
-                float distance = toTarget.magnitude;
-                if (distance > 0.0001f)
+                float targetDistance = toTarget.magnitude;
+                if (targetDistance > 0.0001f)
                 {
                     float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
                     state.facingAngleDeg = Mathf.MoveTowardsAngle(state.facingAngleDeg, targetAngle, _rotationRateDegPerSecond * delta);
+                    state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, _distanceTrackingRateUnitsPerSecond * delta);
 
                     float rad = state.facingAngleDeg * Mathf.Deg2Rad;
                     Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
-                    transform.SetPositionAndRotation(_firerPosition + dir * distance, Quaternion.LookRotation(dir));
+                    transform.SetPositionAndRotation(_firerPosition + dir * state.trackedDistance, Quaternion.LookRotation(dir));
                 }
             }
 
@@ -202,7 +218,12 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         for (int i = 0; i < n; i++)
         {
             var stats = _hitResults[i].GetComponent<CharacterStatsPD>();
-            if (stats != null && !stats.IsDead && !stats.IsInvincible) stats.TakeDamage(_damage);
+            // No IsInvincible pre-check (2026-08-24 fix, was skipping the call entirely while invincible) —
+            // TakeDamage() already no-ops safely against invincibility on its own, AND is the only place
+            // Dodge credit gets awarded (see CharacterStatsPD.NotifyDodge's own doc comment); short-circuiting
+            // here before ever calling it silently ate every Dodge this attack should have granted while the
+            // player was dash-invincible.
+            if (stats != null && !stats.IsDead) stats.TakeDamage(_damage);
         }
         state.expired = true;
     }

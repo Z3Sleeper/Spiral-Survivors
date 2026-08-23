@@ -1,97 +1,117 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Knight's first class ability, built on the IAbilityPD architecture — gated by a cooldown, same shape as
-// the two Rogue abilities. Instantaneous: stuns every enemy within range and heals a flat percent of the
-// caster's own MaxHealth per enemy actually hit, with no active window at all — IsActive/AbilityIsActive are
-// always false (nothing to lock dash/the other ability slot out for, see ForcesSpecialAction below), and
-// NotifyAbilityStart/NotifyAbilityEnd fire back to back inside the same Activate() call rather than
-// bracketing a real duration.
+// Knight's first class ability, built on the IAbilityPD architecture — gated by a cooldown. Reworked
+// (2026-08-23) from an instantaneous stun+self-heal into a real timed buff with a delayed payoff: casting
+// grants +25% Total Max Health, +25% Damage Reduction, +50% Total Weapon Range, and +50% Size for a fixed
+// duration, and once per cast — either when that duration naturally ends, OR early via a recast (see below),
+// whichever happens first — the AoE triggers: every nearby enemy gets interrupted, stunned, and knocked back.
+// No damage, no heal-per-enemy-hit — both gone; the AoE keeps its knockback but exists purely for the
+// interrupt+stun+knockback utility now, no self-sustain.
 //
-// Radius is CharacterStatsPD.RangeScalingAoEBase (the shared "AoE Effects" family formula — see its own doc
-// comment; built off the actual WeaponRange stat, NOT the caster's true weapon extent —
-// WeaponManagerPD.TryGetFarthestWeaponReach, the "real hitbox edge, tip offset included" tech
-// RogueSpinAbilityPD's own damage capsule and PlayerRangeIndicatorPD's ring use — deliberately not used here
-// per explicit direction) times this ability's own flat radiusMultiplier (tuning-only, doesn't affect how it
-// responds to WeaponRange/AreaEffectSize). The actual cast — stun + self-heal, no damage — goes through the shared
-// "AoE Effects" AreaEffectCastHelper.Cast (dealDamage: false, stun layered on via onEnemyHit same as
-// ShieldBreakBurstAugment's own, self-heal via onCastComplete), via a spawned AreaEffectPD chain — the same
-// generic chain class DashExplosionAugment/DashHealAugment/ShieldBreakBurstAugment all use, not a
-// Knight-specific one — so Stats.AreaEffectCount > 1 gets automatic multi-cast support (retriggerRate apart)
-// without this class needing to track that itself. Pooled on the prefab, so the common single-cast case
-// (AreaEffectCount == 1, i.e. always unless something grants more) costs a pooled reactivate, not a real spawn.
+// Same-day rework (2026-08-23): the Weapon Range and Size grants, and Damage Reduction's own percentage
+// (50% -> 25%), all moved over from KnightBigBuffAbilityPD, which used to grant them for its own Berserk
+// Surge's duration — per explicit user request, this ability now owns EVERY stat buff between the two
+// Knight abilities, and KnightBigBuffAbilityPD is purely a Berserk Surge trigger with no stat grants of its
+// own at all anymore. Cooldown also bumped 10s -> 20s in the same pass (now matching KnightBigBuffAbilityPD's
+// own 20s). Duration went 5s -> 10s that same pass, then retuned again to 8s shortly after. Renamed from
+// "Shockwave" to "Steadfast" and swapped from Ability1 to Ability2 (KnightBigBuffAbilityPD/"Resolve" took
+// Ability1) in that same later pass.
+//
+// Recastable while already active — a second press triggers the AoE immediately instead of waiting for the
+// buff to naturally expire, but (2026-08-23 change, per explicit user request) does NOT end the buff itself
+// early anymore — the Max Health/Damage Reduction grant stays up for the full duration regardless of when
+// the AoE actually fires. Exactly one AoE trigger per cast: State.aoeTriggered is set the instant TriggerAoE()
+// runs (recast or natural end, whichever happens first) and gates the OTHER path out — a natural expiry after
+// an early recast does nothing further, and a second recast press after the first (IsReady still allows it,
+// past recastBlockDuration) is a no-op too. Deliberate, explicit design intent (user's own words): lets a
+// player trigger the stun right away if they'd rather interrupt a key enemy attack or clear a horde off them
+// immediately, without sacrificing the rest of the buff's duration to do it. recastBlockDuration is a short
+// misclick guard, same shape/reasoning as ArcherFocusFireAbilityPD's own — a double-press/held-down button
+// can't immediately burn the early-trigger for essentially nothing. EndBuff()/TriggerAoE() are the single
+// shared reversal/payoff every ending path (natural expiry, death, recast) calls, so they can never drift
+// apart.
+//
+// No AbilityPower scaling anywhere (2026-08-23, explicit removal) — duration/maxHealthPercent/
+// damageReductionPercent are all flat, fixed values, and the AoE's own stunDuration now scales by
+// CharacterStatsPD.AreaEffectPower alone (a direct multiplier, neutral at 1.0) rather than the old additive
+// AreaEffectPower+AbilityPower-1f combination. The "AoE Effects" family's own radius/count/retrigger scaling
+// (AreaEffectSize via RangeScalingAoEBase, AreaEffectCount) is untouched — that's owned by the shared
+// AreaEffectCastHelper/AreaEffectPD chain, not this ability's own AbilityPower term.
+//
+// All four stat grants use the Total tier (AddMaxHealthTotalPercent/AddDamageReductionPercent/
+// AddWeaponRangeTotalPercent/AddSizePercent) rather than the plain Bonus tier the generic stat-pick augments
+// use, same "outlier/special effect, not a per-point-buy pick" reasoning as every other buff ability in this
+// codebase. Max Health also tops current health up by the same delta the ceiling just rose by for free:
+// CharacterStatsPD.ApplyStatChange (which AddMaxHealthTotalPercent routes through) already bumps current
+// health by the exact same amount the ceiling just rose by, no separate Heal() call needed. The reverse
+// direction is handled by that same shared method too — it only ever pulls current health DOWN to the new
+// (lower) ceiling if actually sitting above it, never below, so a caster who took damage mid-buff keeps
+// whatever health they had.
+//
+// Death force-ends the buff early (and still triggers the AoE if a recast hasn't already, same as natural
+// expiry — see State.aoeTriggered's own doc comment), same convention as every other buff this session
+// (KnightBigBuffAbilityPD/ArcherFocusFireAbilityPD/RogueVanishAbilityPD/ExeBigAxeAbilityPD/BWBlinkAbilityPD)
+// — see Simulate()'s own comment.
 public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealAbilityPD.State>, IAbilityPD
 {
     public struct State : IPredictedData<State>
     {
+        public float activeTimer;
+        public bool  isActive;
         public float cooldownTimer;
-        // Guards FirstSuccessfulInterrupt (FSI) — reset once per Activate(), not per retrigger, so a whole
-        // cast (including every AreaEffectCount retrigger) fires FSI at most once, the first time any
-        // enemy is actually interrupted. See OnEnemyInterrupted/CharacterStatsPD.NotifyInterrupted.
+        // True once TriggerAoE() has fired for the CURRENT cast (recast or natural/death end, whichever
+        // happens first) — reset to false only at a fresh Activate(). Gates every other would-be trigger for
+        // the same cast out, so the AoE only ever goes off once per cast regardless of how it actually ends —
+        // see class doc comment.
+        public bool aoeTriggered;
+        // Guards FirstSuccessfulInterrupt (FSI) — reset once per AoE trigger (natural end OR recast), not
+        // per retrigger, so a whole AoE (including every AreaEffectCount retrigger) fires FSI at most once,
+        // the first time any enemy is actually interrupted. See OnEnemyInterrupted/CharacterStatsPD.
+        // NotifyInterrupted.
         public bool interruptedThisCast;
         public void Dispose() { }
     }
 
     [SerializeField] private Sprite icon;
-    [SerializeField] private string abilityName = "Shockwave";
-    [SerializeField, TextArea] private string description = "Stun all nearby enemies for 2 seconds and heal 3% Max Health per enemy hit.";
-    public float cooldown = 10f;
-    // Exposed for interface uniformity (see IAbilityPD.CooldownStartsOnCast's own doc comment) but currently
-    // inert either way — this ability has no active window at all (AbilityIsActive is always false, see
-    // class doc comment), so "wait for the active window to end" and "start immediately at cast" collapse to
-    // the same behavior: the cooldown always starts ticking the instant Activate() runs (see Simulate()).
-    // Ready to become meaningful if this ability ever gains a real active/channeled window later.
+    [SerializeField] private string abilityName = "Steadfast";
+    [SerializeField, TextArea] private string description =
+        "Gain +25% Max Health, +25% Damage Reduction, +50% Range, and +50% Size for 8 seconds. At the end of the duration, interrupt and stun all nearby enemies. Recast to trigger the stun early.";
+    public float cooldown = 20f;
+    // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
+    // throughout the active window) — see Simulate(). true: cooldown starts ticking immediately at cast,
+    // running concurrently with the window. Same convention/default as RogueVanishAbilityPD's own.
     [SerializeField] private bool cooldownStartsOnCast = false;
     // Which action-bar slot this occupies — Inspector-configurable per character rather than hardcoded per
     // class, so which ability goes where is a prefab-authoring choice, not a recompile.
-    [SerializeField] private AbilitySlot slot = AbilitySlot.Ability1;
+    [SerializeField] private AbilitySlot slot = AbilitySlot.Ability2;
     [SerializeField] private string[] tags;
-    // Moot in practice — this ability has no active window at all (see class doc comment), so there's
-    // nothing for a Surge block to actually bracket. Still exposed for interface consistency — see
-    // IAbilityPD.ActiveSurgeBlock's own doc comment.
+    // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract. No longer
+    // moot now that this ability has a real active window (unlike its pre-rework instantaneous self).
     [SerializeField] private bool activeSurgeBlock = false;
-    // Buff, by explicit exception — stuns/knocksback/heals like a real action, but the user's own call is
-    // that it's fine to let players cast this during a forced Surge anyway. Exposed for live playtesting —
-    // see IAbilityPD.IsActionAbility's own doc comment.
+    // Buff — only grants stat changes for its own duration (plus a delayed AoE payoff), doesn't otherwise
+    // act on the world mid-window. Exposed for live playtesting — see IAbilityPD.IsActionAbility's own doc
+    // comment.
     [SerializeField] private bool isActionAbility = false;
 
     [Header("Effect")]
-    // Flat multiplier on top of CharacterStatsPD.RangeScalingAoEBase (see Activate()) — exposed purely for
+    public float duration = 8f;
+    public float maxHealthPercent       = 0.25f;
+    public float damageReductionPercent = 0.25f;
+    public float rangePercent           = 0.5f;
+    public float sizePercent            = 0.5f;
+    // Recast-to-trigger-early (see IsReady's own doc comment) is blocked for this long after a fresh cast —
+    // purely a misclick guard, same shape/reasoning as ArcherFocusFireAbilityPD's own recastBlockDuration.
+    [SerializeField] private float recastBlockDuration = 0.5f;
+
+    [Header("AoE Payoff (triggers when the buff ends, or early via recast)")]
+    // Flat multiplier on top of CharacterStatsPD.RangeScalingAoEBase (see TriggerAoE) — exposed purely for
     // tuning "feel" — this just scales the whole result up/down without touching either of that shared
     // formula's own inputs.
     [SerializeField] private float radiusMultiplier = 2f;
-    // Base stun duration BEFORE CharacterStatsPD.AreaEffectPower/AbilityPower scale it (see Activate()) —
-    // the two stats' own BONUS portions are summed, not the stats themselves multiplied (see Activate()'s
-    // own comment for why), so a 2s base still stuns for exactly 2s at the 100%/100% neutral baseline for
-    // both stats, and e.g. +30% AreaEffectPower with +30% AbilityPower stuns for 2s * 1.6 = 3.2s (the two
-    // +30% bonuses just add to +60% total).
+    // Base stun duration BEFORE CharacterStatsPD.AreaEffectPower scales it (see TriggerAoE) — a direct
+    // multiplier, neutral at 1.0, so a 2s base still stuns for exactly 2s with no AreaEffectPower investment.
     public float stunDuration = 2f;
-    // Flat percent of the caster's own MaxHealth healed per enemy actually hit, BEFORE AreaEffectPower/
-    // AbilityPower scale the total (see Activate()) — passed to Stats.Heal() as a raw amount, same as every
-    // other heal source now; Heal() itself scales by HealPower/CritHealPower internally (no luck roll —
-    // heals don't roll luck), no separate handling needed here.
-    public float healPercentPerEnemy = 0.03f;
-
-    // Mirrors this ability's own Activate() lambda formulas exactly (both stats' own bonus-over-neutral
-    // portions summed additively, see class doc comment). Outside a live match, falls back to the base
-    // field itself — exact at neutral (AreaEffectPower + AbilityPower - 1f == 1 when both stats sit at
-    // their own 1.0 baseline, see ArcherFocusFireAbilityPD.LiveDurationRatio's own doc comment for why this
-    // is precise, not approximate), so one token covers both contexts.
-    public string LiveStunDurationRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? stunDuration * (stats.AreaEffectPower + stats.AbilityPower - 1f)
-            : stunDuration;
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
-    }
-
-    public string LiveHealPercentRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? healPercentPerEnemy * (stats.AreaEffectPower + stats.AbilityPower - 1f)
-            : healPercentPerEnemy;
-        return $"{AugmentDescriptionFormatter.FormatLivePercent(value)}";
-    }
     // Flat knockback override, NOT derived from Stats.Knockback (unlike ShieldBreakBurstAugment's own
     // Stats.Knockback * multiplier) — this ability's oomph is a fixed push regardless of the caster's own
     // Knockback stat. Passed straight through to AreaEffectCastHelper.Cast's knockback param, which applies
@@ -107,14 +127,24 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
     [SerializeField] private GameObject radiusVFXPrefab;
 
-    // Spawned on every cast (see Activate()) — pooled, so this is cheap even when AreaEffectCount is just 1.
-    // Must be an AreaEffectPD-carrying prefab registered in PredictedPrefabs.asset — can reuse the exact same
-    // prefab DashExplosionAugment/DashHealAugment/ShieldBreakBurstAugment already spawn, since the class
-    // itself isn't tied to any one of them, or a separate prefab instance if you'd rather pool it independently.
-    [Header("Chain (spawned on every cast)")]
+    // Spawned when the AoE actually triggers (buff end or recast — see TriggerAoE), not at Activate() itself
+    // anymore. Pooled, so this is cheap even when AreaEffectCount is just 1. Must be an AreaEffectPD-carrying
+    // prefab registered in PredictedPrefabs.asset — can reuse the exact same prefab DashExplosionAugment/
+    // DashHealAugment/ShieldBreakBurstAugment already spawn, since the class itself isn't tied to any one of
+    // them, or a separate prefab instance if you'd rather pool it independently.
+    [Header("Chain (spawned when the AoE triggers)")]
     [SerializeField] private GameObject chainPrefab;
 
     private CharacterStatsPD _stats;
+
+    // Snapshots of the fields above at cast time, reversed with the identical values at buff-end — protects
+    // against the Inspector field changing mid-buff (same convention as every other buff ability in this
+    // codebase). Also what IsReady's own recast-block elapsed-time math is measured against.
+    private float _appliedMaxHealthPercent;
+    private float _appliedDamageReductionPercent;
+    private float _appliedRangePercent;
+    private float _appliedSizePercent;
+    private float _appliedDuration;
 
     protected override State GetInitialState() => default;
 
@@ -124,23 +154,26 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     }
 
     public Sprite Icon => icon;
-
-    // No isActive concept at all — this ability never has an active window to gate against (see the
-    // class's own doc comment), so readiness is purely the cooldown.
-    public bool IsReady => currentState.cooldownTimer <= 0f;
-    // Always false — there is no active window, instantaneous start-to-end (see class doc comment).
-    public bool IsActive => false;
-    // Never forces a special action — doesn't touch movement at all, and IsActive is always false anyway.
+    // True during the active window too (not just off cooldown), but only once recastBlockDuration has
+    // elapsed since the cast that started it — see that field's own doc comment for why (misclick guard).
+    // Same "two distinct ready conditions" shape as ArcherFocusFireAbilityPD's own recast, though unlike that
+    // ability a press here while active doesn't gate on aoeTriggered — it's still allowed through, Activate()
+    // itself just no-ops if the AoE already went off this cast (see its own comment).
+    public bool IsReady => _stats != null && (
+        (currentState.isActive && _appliedDuration - currentState.activeTimer >= recastBlockDuration)
+        || (!currentState.isActive && currentState.cooldownTimer <= 0f));
+    public bool IsActive => currentState.isActive;
+    // Only ever flips stat totals — never touches movement, so it never locks dash or the other ability slot
+    // out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
     public bool IsActionAbility => isActionAbility;
-    // Always false, for the same reason as IsActive above — NotifyAbilityStart/NotifyAbilityEnd both fire
-    // from within the same Activate() call instead of bracketing an observable window.
-    public bool AbilityIsActive => false;
-    // No active window at all — instantaneous cast, see class doc comment.
-    public bool HasActiveWindow => false;
-    public float ActiveTimeRemaining => 0f;
-    public float ActiveTimeDuration => 0f;
+    // Same underlying window as IsActive for this ability (the whole buff) — see IAbilityPD.AbilityIsActive's
+    // own doc comment for why these are separate interface members even though they agree here.
+    public bool AbilityIsActive => currentState.isActive;
+    public bool HasActiveWindow => true;
+    public float ActiveTimeRemaining => Mathf.Max(0f, currentState.activeTimer);
+    public float ActiveTimeDuration => _appliedDuration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -166,90 +199,200 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
         return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
     }
 
+    // Mirrors TriggerAoE()'s own stunDuration formula exactly (AreaEffectPower alone, no more AbilityPower —
+    // see class doc comment). Outside a live match, falls back to the base field itself — exact at
+    // AreaEffectPower's own neutral 1.0 baseline, same "neutral stat value == the base field" convention as
+    // every other Live*Ratio in this file.
+    public string LiveStunDurationRatio(CharacterStatsPD stats)
+    {
+        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
+            ? stunDuration * stats.AreaEffectPower
+            : stunDuration;
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
+    }
+
+    // Mirrors Simulate()'s own tick condition exactly (see that method's own comment) — a cooldown-reduction
+    // effect should only ever eat into time that's ACTUALLY counting down right now, not a cooldownTimer
+    // that's merely sitting at its full pre-loaded value while the active window (cooldownStartsOnCast=false)
+    // hasn't ended yet to let it start ticking.
+    private bool IsCooldownActivelyTicking =>
+        currentState.cooldownTimer > 0f && (cooldownStartsOnCast || !currentState.isActive);
+
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
-    public void ReduceCooldownFlat(float seconds) =>
+    public void ReduceCooldownFlat(float seconds)
+    {
+        if (!IsCooldownActivelyTicking) return;
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
-    public void ReduceCooldownPercentRemaining(float percent01) =>
+    }
+    public void ReduceCooldownPercentRemaining(float percent01)
+    {
+        if (!IsCooldownActivelyTicking) return;
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
-    public void ReduceCooldownPercentTotal(float percent01) =>
+    }
+    public void ReduceCooldownPercentTotal(float percent01)
+    {
+        if (!IsCooldownActivelyTicking) return;
         currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+    }
 
     public void Activate()
     {
         if (!IsReady || _stats == null) return;
 
-        currentState.cooldownTimer = EffectiveCooldown;
-
-        // Start and End fire back to back — there's no active window in between (see class doc comment).
-        // Skipped entirely at 0 (raw, un-hasted) cooldown — an ability that can be spammed with no downtime
-        // shouldn't be firing "a real ability cast" notifications on every cast (PhantomBladeOnAbilityStartAugment
-        // and any future listener would otherwise see it fire far more often than intended).
-        if (cooldown > 0f) _stats.NotifyAbilityStart(this);
-
-        if (chainPrefab != null)
+        if (currentState.isActive)
         {
-            float radius = _stats.RangeScalingAoEBase * radiusMultiplier;
-            int totalCasts = Mathf.Max(1, _stats.AreaEffectCount);
-            Vector3 castPosition = _stats.transform.position;
-
-            currentState.interruptedThisCast = false;
-
-            var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
-            if (chainId.HasValue)
-            {
-                var go = hierarchy.GetGameObject(chainId.Value);
-                // dealDamage: false — no damage source at all, just knockback (its own independent gate in
-                // Cast(), see its own doc comment for why that no longer requires dealDamage), stun
-                // (onEnemyHit, same layering shape ShieldBreakBurstAugment's own Stun uses), and a self-heal
-                // based on total enemies hit (onCastComplete). stunDuration/heal scale by AreaEffectPower AND
-                // AbilityPower here (in the lambdas) rather than inside the shared helper, since Cast() itself
-                // no longer knows anything about "stun"/"heal per hit" specifically. ADDITIVE, not
-                // multiplicative, per the user's own call — the two stats' own BONUS portions (each stat
-                // minus its own 1.0 neutral baseline) sum into one combined multiplier, same "1 + sum of
-                // bonuses" shape every other Total-tier stat in this codebase uses, so neutral (both at
-                // 100%/1.0) stays exactly 1x and +30%/+30% together means +60% total, not +160%.
-                // interrupt: true — this stun is meant to cancel whatever attack an enemy is mid-sequence on,
-                // not just land and wait for it to finish (see EnemyBasePD.Interrupt()'s own doc comment);
-                // Cast() applies it before knockback/onEnemyHit for exactly that reason. Every enemy this cast
-                // actually interrupts also gets IEnemyPD.InterruptTrueStun's own flat, CC-resist-immune bonus
-                // duration on top of the ordinary onEnemyHit Stun() below (this cast's own stunDuration passed
-                // through as the paired amount — see OnEnemyInterrupted/CharacterStatsPD.NotifyInterrupted's
-                // own doc comments) — an enemy NOT successfully interrupted (already uninterruptible this
-                // tick) still gets the plain onEnemyHit stun alone, no bonus.
-                if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-                    chain.Launch(_stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                        dealDamage: false, hasKnockback: true, knockback: knockback, interrupt: true,
-                        onEnemyHit: enemy => enemy.Stun(stunDuration * (_stats.AreaEffectPower + _stats.AbilityPower - 1f)),
-                        onCastComplete: hitCount =>
-                        {
-                            if (hitCount <= 0) return;
-                            _stats.Heal(hitCount * healPercentPerEnemy * _stats.MaxHealth * (_stats.AreaEffectPower + _stats.AbilityPower - 1f));
-                        },
-                        onSuccessfulInterrupt: OnEnemyInterrupted,
-                        vfxPerCast: true);
-            }
+            // Recast — triggers the AoE early instead of waiting for the buff to naturally expire, but no
+            // longer ends the buff itself (2026-08-23 change) — see class doc comment. Only fires if this
+            // cast's AoE hasn't already gone off (a second recast press, or a recast after the natural end
+            // already fired it, are both no-ops).
+            if (!currentState.aoeTriggered) TriggerAoE(ref currentState);
+            return;
         }
 
-        if (cooldown > 0f) _stats.NotifyAbilityEnd(this);
+        _appliedMaxHealthPercent       = maxHealthPercent;
+        _appliedDamageReductionPercent = damageReductionPercent;
+        _appliedRangePercent           = rangePercent;
+        _appliedSizePercent            = sizePercent;
+        _appliedDuration                = duration;
+
+        currentState.activeTimer   = _appliedDuration;
+        currentState.isActive      = true;
+        currentState.aoeTriggered  = false;
+        currentState.cooldownTimer = EffectiveCooldown;
+
+        // See IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract — RemoveSurgeBlock's
+        // matching call sits in EndBuff() below.
+        if (activeSurgeBlock)
+        {
+            _stats.ForceEndSurge();
+            _stats.AddSurgeBlock();
+        }
+
+        // Also tops current health up by the same delta the ceiling just rose by — see class doc comment.
+        _stats.AddMaxHealthTotalPercent(_appliedMaxHealthPercent);
+        _stats.AddDamageReductionPercent(_appliedDamageReductionPercent);
+        _stats.AddWeaponRangeTotalPercent(_appliedRangePercent);
+        _stats.AddSizePercent(_appliedSizePercent);
+
+        // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
+        // Skipped entirely at 0 (raw, un-hasted) cooldown — an ability that can be spammed with no downtime
+        // shouldn't be firing "a real ability cast" notifications on every cycle (PhantomBladeOnAbilityStartAugment
+        // and any future listener would otherwise see it fire far more often than intended).
+        if (cooldown > 0f) _stats.NotifyAbilityStart(this);
+    }
+
+    // Ends the buff itself — only ever called from the natural-expiry/death path in Simulate() now (a recast
+    // no longer ends the buff, see class doc comment). Takes the `ref State state` actually in scope at the
+    // call site (the possibly-replayed `state` parameter from Simulate()) rather than assuming currentState,
+    // same reasoning as KingOrbiterPD.OnAoEInterrupt.
+    private void EndBuff(ref State state)
+    {
+        state.isActive = false;
+        if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
+        if (_stats != null)
+        {
+            _stats.AddMaxHealthTotalPercent(-_appliedMaxHealthPercent);
+            _stats.RemoveDamageReductionPercent(_appliedDamageReductionPercent);
+            _stats.AddWeaponRangeTotalPercent(-_appliedRangePercent);
+            _stats.AddSizePercent(-_appliedSizePercent);
+        }
+
+        // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
+        // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.
+        if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
+    }
+
+    // The delayed payoff — interrupt + stun every nearby enemy, no damage, no knockback, no heal (all tossed,
+    // see class doc comment). Goes through the shared "AoE Effects" AreaEffectCastHelper.Cast (via the
+    // spawned AreaEffectPD chain — the same generic chain class DashExplosionAugment/DashHealAugment/
+    // ShieldBreakBurstAugment all use, not a Knight-specific one), so Stats.AreaEffectCount > 1 gets automatic
+    // multi-cast support (retriggerRate apart) without this class needing to track that itself. Every caller
+    // is responsible for checking state.aoeTriggered first (see its own doc comment) — this method just marks
+    // it unconditionally, it doesn't check it itself, so it stays a plain "do the thing" method callable from
+    // either the recast or the natural-end path.
+    private void TriggerAoE(ref State state)
+    {
+        state.aoeTriggered = true;
+
+        if (_stats == null || chainPrefab == null) return;
+
+        float radius = _stats.RangeScalingAoEBase * radiusMultiplier;
+        int totalCasts = Mathf.Max(1, _stats.AreaEffectCount);
+        Vector3 castPosition = _stats.transform.position;
+
+        state.interruptedThisCast = false;
+
+        var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
+        if (!chainId.HasValue) return;
+
+        var go = hierarchy.GetGameObject(chainId.Value);
+        if (go == null || !go.TryGetComponent(out AreaEffectPD chain)) return;
+
+        // dealDamage: false — no damage source at all, just knockback (its own independent gate in Cast(),
+        // see its own doc comment for why that no longer requires dealDamage), and stun (onEnemyHit, same
+        // layering shape ShieldBreakBurstAugment's own Stun uses). No more heal-per-hit (see class doc
+        // comment). interrupt: true — this stun is meant to cancel whatever attack an enemy is mid-sequence
+        // on, not just land and wait for it to finish (see EnemyBasePD.Interrupt()'s own doc comment);
+        // Cast() applies it before knockback/onEnemyHit for exactly that reason. Every enemy this cast
+        // actually interrupts also gets IEnemyPD.InterruptTrueStun's own flat, CC-resist-immune bonus
+        // duration on top of the ordinary onEnemyHit Stun() below (this cast's own stunDuration passed
+        // through as the paired amount — see OnEnemyInterrupted/CharacterStatsPD.NotifyInterrupted's own
+        // doc comments) — an enemy NOT successfully interrupted (already uninterruptible this tick) still
+        // gets the plain onEnemyHit stun alone, no bonus.
+        chain.Launch(_stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
+            dealDamage: false, hasKnockback: true, knockback: knockback, interrupt: true,
+            onEnemyHit: enemy => enemy.Stun(stunDuration * _stats.AreaEffectPower),
+            onSuccessfulInterrupt: OnEnemyInterrupted,
+            vfxPerCast: true);
     }
 
     public void NotifyActivationBlocked() { }
 
     // Fired by AreaEffectCastHelper.Cast for every enemy this cast actually interrupted (see its own doc
-    // comment on onSuccessfulInterrupt) — feeds the generic SI/FSI events, gated to fire FSI at most once
-    // per Activate() via currentState.interruptedThisCast (FSI itself isn't used for anything stun-related
-    // here — InterruptTrueStun fires on every SI, see NotifyInterrupted's own doc comment). Passes this same
-    // cast's own (already AreaEffectPower/AbilityPower-scaled) stun duration as the paired-stun amount, added
-    // to InterruptTrueStun's flat portion for every enemy this cast successfully interrupts. The onEnemyHit
-    // Stun() call below still fires independently for every hit enemy regardless (including this one) —
-    // ApplyStun's own Mathf.Max semantics mean the two calls can never fight each other; whichever produces
-    // the longer duration simply wins.
+    // comment on onSuccessfulInterrupt) — feeds the generic SI/FSI events, gated to fire FSI at most once per
+    // AoE trigger via currentState.interruptedThisCast (FSI itself isn't used for anything stun-related here
+    // — InterruptTrueStun fires on every SI, see NotifyInterrupted's own doc comment). Passes this same
+    // cast's own (AreaEffectPower-scaled) stun duration as the paired-stun amount, added to InterruptTrueStun's
+    // flat portion for every enemy this cast successfully interrupts. The onEnemyHit Stun() call in TriggerAoE
+    // still fires independently for every hit enemy regardless (including this one) — ApplyStun's own
+    // Mathf.Max semantics mean the two calls can never fight each other; whichever produces the longer
+    // duration simply wins.
+    //
+    // Uses currentState directly (not a ref state param) — safe because this fires asynchronously from the
+    // spawned AreaEffectPD chain's own Simulate() context (its own multi-cast retrigger timing), not
+    // synchronously within this ability's own Simulate(), so by the time it runs, currentState is once again
+    // just this ability's own latest state, not a replayed one — same established pattern this file already
+    // used before the rework.
     private void OnEnemyInterrupted(IEnemyPD enemy) =>
-        _stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast, stunDuration * (_stats.AreaEffectPower + _stats.AbilityPower - 1f));
+        _stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast, stunDuration * _stats.AreaEffectPower);
 
     protected override void Simulate(ref State state, float delta)
     {
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
-        if (state.cooldownTimer > 0f) state.cooldownTimer -= delta;
+
+        // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole active
+        // window below) or only once that window ends (state.isActive false) — see the field's own doc
+        // comment. Either way Activate() already set cooldownTimer to its full value at cast time.
+        if (state.cooldownTimer > 0f && (cooldownStartsOnCast || !state.isActive))
+            state.cooldownTimer -= delta;
+
+        if (!state.isActive) return;
+
+        state.activeTimer -= delta;
+        // Death force-ends the buff early — see ExeBigAxeAbilityPD.Simulate()'s own identical comment for the
+        // full reasoning (same shape here: a dead caster gets nothing from these stats, and the cooldown
+        // otherwise couldn't start ticking until this window ends anyway).
+        bool forceEndOnDeath = _stats != null && _stats.IsDead;
+        if (state.activeTimer > 0f && !forceEndOnDeath) return;
+
+        // Fired BEFORE EndBuff, deliberately — TriggerAoE's own radius reads Stats.RangeScalingAoEBase, which
+        // now factors in bonusSizePercent (see that property's own doc comment), so the AoE needs to go off
+        // while the Size buff is still actually applied to get its full radius. Triggering it after EndBuff
+        // would silently shrink the natural-end AoE back down before it even fires (2026-08-23 fix — the
+        // recast path was never affected, since a recast always fires TriggerAoE while the buff is still
+        // fully up by construction). Only fires here if an earlier recast hasn't already triggered it this
+        // cast — see State.aoeTriggered's own doc comment.
+        if (!state.aoeTriggered) TriggerAoE(ref state);
+        EndBuff(ref state);
     }
 }

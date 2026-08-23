@@ -13,15 +13,16 @@ MonoBehaviour:
   m_Name: PhantomBladeOnHighrollAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#00FF87>Gamble</color>
-  description: '<color=#FFA000>Every Second:</color> <color=#00FF87>Roll Luck</color>.
-
-    <color=#FFA000>If
-    <color=#00FF87>Highroll</color>:</color> <color=#FFA000>Summon</color> <color=#8C8C8C>{bladeCount}</color>
-    <color=#8C8C8C>Phantom Blades</color> piercing the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{BaseDamageMultiplierPercent}%
+  description: '<color=#FFA000>Every 5 seconds:</color> <color=#FFA000>Summon</color>
+    <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
+    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{BaseDamageMultiplierPercent}%
     Strength</color>) damage</color>.
 
-    <color=#8C8C8C>+10% Phantom Blade Damage
-    and Size</color>'
+    <color=#FFA000>On Strike <color=#00FF87>Highroll</color>:</color>
+    <color=#FFA000>Reduce</color> the <color=#FFA000>cooldown</color> by <color=#FFA000>2.5s</color>.
+
+    <color=#8C8C8C>+10%
+    Phantom Blade Damage and Size</color>'
   icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   effectPrefab: {fileID: 8748499469201271292, guid: f1af1f7f19560704886a7d29f7e96d26, type: 3}
   multiplayerOnly: 0

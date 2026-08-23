@@ -334,13 +334,13 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     {
         _hitTargets.Add(enemy);
 
-        // AbilityPower scales damage — read LIVE off _stats here (not snapshotted at throw time), same
-        // reasoning as RogueSpinAbilityPD's own BaseDamage(): this is an ongoing in-flight effect that can
-        // land several hits over its lifetime (piercing on crit), not a one-shot buff grant, so each hit
-        // should reflect AbilityPower at the moment it actually lands.
+        // Strength read LIVE off _stats here (not snapshotted at throw time), same reasoning
+        // RogueSpinAbilityPD's own BaseDamage() uses: this is an ongoing in-flight effect that can land
+        // several hits over its lifetime (piercing on crit), not a one-shot buff grant, so each hit should
+        // reflect Strength at the moment it actually lands.
         //
         // Anything that deals damage rolls luck variance — no exceptions.
-        float baseDamage = _stats.Strength * _strengthPercent * _stats.AbilityPower;
+        float baseDamage = _stats.Strength * _strengthPercent;
         float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
         bool isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         // critDamageMultiplier only ever scales the CRIT contribution (this weapon's own extra crit-damage

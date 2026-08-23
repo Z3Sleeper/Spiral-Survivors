@@ -1,0 +1,213 @@
+using System.Collections.Generic;
+using PurrNet.Packing;
+using PurrNet.Pooling;
+using PurrNet.Prediction;
+using UnityEngine;
+
+// "Destroy the Spires" — DPSCheckPD's multi-target sibling. Spawns dummyCount DummyTargetPD instances, each
+// placed independently (same wallOffset/zoneRadius/avoidPlayersOnPlacement/playerOffset placement rules
+// DPSCheckPD uses), and succeeds once EVERY one of them has died. See DPSCheckPD's own class-level doc
+// comment for the shared reasoning this mirrors (dummy-as-genuine-IEnemyPD, tier/difficulty/coop scaling via
+// DummyTargetScalingPD, SilentDespawn-based Cleanup) — only the differences worth calling out are covered
+// here.
+//
+// Placement spread: each dummy after the first samples spreadSamples independent RandomPoint candidates and
+// keeps whichever ends up FARTHEST from every dummy THIS event has already placed (see PickSpreadPosition's
+// own doc comment) — same "tournament bias" shape RandomPoint's own outwardBiasSamples uses for centroid
+// avoidance, just biased toward siblings instead, since RandomPoint has no way to know about them itself.
+//
+// Progress: unlike DPSCheckPD (which reads one dummy's live CurrentHealth/MaxHealth directly, no State
+// mirroring needed), each dummy's own MaxHealth gets SNAPSHOTTED once, into predicted State, right after
+// ConfigureSpawn — see dummyMaxHealthSnapshots' own doc comment for why a live re-read per dummy would
+// actually be WRONG here: a dummy that's already died and been deleted would silently drop out of the total
+// denominator, making the overall percentage jump BACKWARD the instant its corpse gets cleaned up.
+public class DestroyTheTargetsPD : EventBasePD<DestroyTheTargetsPD.State>
+{
+    public struct State : IPredictedData<State>, IDuplicate<State>
+    {
+        public EventBaseState b;
+        public DisposableList<PredictedObjectID> dummyIds;
+        // Snapshotted once per dummy (same index as dummyIds), right after ConfigureSpawn/tier-scaling — see
+        // this class's own doc comment for why this can't just be re-read live off each dummy's own
+        // MaxHealth every frame.
+        public DisposableList<float> dummyMaxHealthSnapshots;
+        public void Dispose()
+        {
+            dummyIds.Dispose();
+            dummyMaxHealthSnapshots.Dispose();
+        }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.b = b.Duplicate();
+            copy.dummyIds = dummyIds.Duplicate();
+            copy.dummyMaxHealthSnapshots = dummyMaxHealthSnapshots.Duplicate();
+            return copy;
+        }
+    }
+
+    protected override ref EventBaseState GetBase(ref State state) => ref state.b;
+
+    protected override State GetInitialState() => new()
+    {
+        dummyIds = DisposableList<PredictedObjectID>.Create(dummyCount),
+        dummyMaxHealthSnapshots = DisposableList<float>.Create(dummyCount),
+    };
+
+    [Header("Target")]
+    // Typed as DummyTargetPD directly — see DPSCheckPD's own identical field for the reasoning.
+    [SerializeField] private DummyTargetPD dummyPrefab;
+    [SerializeField] private int dummyCount = 5;
+
+    [Header("Placement")]
+    [SerializeField] private float wallOffset = 10f;
+    [SerializeField] private float zoneRadius = 1f;
+    // How many independent candidate points to sample per dummy (after the first) before picking whichever
+    // ends up farthest from every ALREADY-PLACED dummy this same event has spawned so far — see
+    // PickSpreadPosition's own doc comment.
+    [SerializeField] private int spreadSamples = 5;
+
+    // Reused across every OnEventStart call (2026-08-21) rather than a fresh List<> each time — same
+    // "persistent scratch collection, cleared and reused" convention KingOrbiterPD._grabCandidates already
+    // establishes for this exact kind of per-call candidate scratch work.
+    private readonly List<Vector3> _placedPositionsScratch = new();
+
+    public override void OnEventStart(PlayableAreaPD playableArea, int currentTier)
+    {
+        // Shows the shared event description panel — see EventBasePD.OnEventStart's own doc comment.
+        base.OnEventStart(playableArea, currentTier);
+
+        currentState.dummyIds.Clear();
+        currentState.dummyMaxHealthSnapshots.Clear();
+        currentState.b.succeeded = false;
+        _placedPositionsScratch.Clear();
+
+        if (dummyPrefab == null) return;
+
+        for (int i = 0; i < dummyCount; i++)
+        {
+            Vector3 spawnPos = playableArea != null ? PickSpreadPosition(playableArea) : transform.position;
+            _placedPositionsScratch.Add(spawnPos);
+
+            var id = hierarchy.Create(dummyPrefab.gameObject, spawnPos, Quaternion.identity);
+            if (!id.HasValue) continue;
+
+            currentState.dummyIds.Add(id.Value);
+
+            float maxHealth = 0f;
+            var go = hierarchy.GetGameObject(id.Value);
+            if (go != null && go.TryGetComponent(out IEnemyPD dummy))
+            {
+                DummyTargetScalingPD.ApplyTierScaling(dummy, currentTier);
+                maxHealth = dummy.MaxHealth;
+            }
+            currentState.dummyMaxHealthSnapshots.Add(maxHealth);
+        }
+    }
+
+    // Samples spreadSamples independent RandomPoint candidates and returns whichever has the GREATEST
+    // MINIMUM distance to every dummy already placed this pass (_placedPositionsScratch) — same "tournament
+    // bias" shape as PlayableAreaPD.RandomPoint's own outwardBiasSamples (see that field's own doc comment),
+    // just biased toward spreading dummies apart from EACH OTHER instead of away from the arena's own
+    // centroid. The very FIRST dummy has nothing to compare against yet — trivially takes whatever
+    // RandomPoint's own first candidate is, same as calling this with spreadSamples effectively 1.
+    private Vector3 PickSpreadPosition(PlayableAreaPD playableArea)
+    {
+        Vector3 best = playableArea.RandomPoint(wallOffset, zoneRadius, avoidPlayers: avoidPlayersOnPlacement, playerOffset: playerOffset);
+        if (_placedPositionsScratch.Count == 0) return best;
+
+        float bestMinDistSq = MinDistanceSqToAny(best, _placedPositionsScratch);
+        for (int i = 1; i < spreadSamples; i++)
+        {
+            Vector3 candidate = playableArea.RandomPoint(wallOffset, zoneRadius, avoidPlayers: avoidPlayersOnPlacement, playerOffset: playerOffset);
+            float candidateMinDistSq = MinDistanceSqToAny(candidate, _placedPositionsScratch);
+            if (candidateMinDistSq > bestMinDistSq)
+            {
+                best = candidate;
+                bestMinDistSq = candidateMinDistSq;
+            }
+        }
+        return best;
+    }
+
+    private static float MinDistanceSqToAny(Vector3 point, List<Vector3> others)
+    {
+        float minSq = float.MaxValue;
+        for (int i = 0; i < others.Count; i++)
+        {
+            float distSq = (point - others[i]).sqrMagnitude;
+            if (distSq < minSq) minSq = distSq;
+        }
+        return minSq;
+    }
+
+    protected override void Simulate(ref State state, float delta)
+    {
+        // Ticks elapsedTime (drives the description panel's own flash tell) — required, see EventBasePD.
+        // Simulate's own doc comment.
+        base.Simulate(ref state, delta);
+
+        if (state.b.succeeded) return; // already resolving/resolved
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+        if (state.dummyIds.Count == 0) return; // nothing spawned (e.g. dummyPrefab was null) — never succeeds
+
+        // Every entry in dummyIds corresponds to an ACTUALLY-created dummy (only ever added on a successful
+        // hierarchy.Create() above), so a null GameObject here can only mean "already died and got cleaned
+        // up" — never "never existed." Bails the instant ANY dummy is still alive; only reaches success once
+        // every single one is confirmed dead or gone.
+        for (int i = 0; i < state.dummyIds.Count; i++)
+        {
+            var go = hierarchy.GetGameObject(state.dummyIds[i]);
+            if (go != null && go.TryGetComponent(out IEnemyPD dummy) && !dummy._isDead) return;
+        }
+
+        state.b.succeeded = true;
+
+        // Resolves itself immediately rather than waiting out EnemySpawnerPD's own flat eventDuration
+        // timeout — safe to call from here, see CaptureThePointPD.Simulate()'s own identical precedent/doc
+        // comment for why (ResolveEvent() only ever mutates predicted State, the actual destroy is deferred
+        // to verified state via EventBasePD's own UpdateView).
+        if (EventManagerPD.instance != null) EventManagerPD.instance.ResolveEvent();
+    }
+
+    // Wipes every dummy that's still alive if the event resolved WITHOUT all of them dying (timeout
+    // failure) — see DPSCheckPD.Cleanup's own doc comment for the full SilentDespawn reasoning, identical
+    // here just looped over every entry. Already internally guarded against an enemy that's already
+    // dead/wiped, so calling it unconditionally on every entry is safe for both outcomes.
+    public override void Cleanup()
+    {
+        base.Cleanup();
+
+        for (int i = 0; i < currentState.dummyIds.Count; i++)
+        {
+            var go = hierarchy.GetGameObject(currentState.dummyIds[i]);
+            if (go != null && go.TryGetComponent(out IEnemyPD dummy))
+                dummy.SilentDespawn();
+        }
+    }
+
+    // "Destroy the Spires!\nProgress: X%", X to 1 decimal place — same format/precision as DPSCheckPD's own
+    // GetEventDescription, just summed across every dummy instead of tracking one. totalMax is the SUM of
+    // the snapshotted max-health values (stable for the whole event, immune to a dummy's own deletion
+    // shrinking the denominator — see this class's own doc comment); totalCurrent only ever counts a STILL-
+    // ALIVE dummy's own live CurrentHealth, treating a dead/deleted one as fully depleted (0) — so the
+    // overall percentage can only ever climb, never jump backward as individual dummies get cleaned up.
+    protected override string GetEventDescription(State viewState)
+    {
+        float totalCurrent = 0f;
+        float totalMax = 0f;
+
+        for (int i = 0; i < viewState.dummyIds.Count; i++)
+        {
+            totalMax += i < viewState.dummyMaxHealthSnapshots.Count ? viewState.dummyMaxHealthSnapshots[i] : 0f;
+
+            var go = hierarchy.GetGameObject(viewState.dummyIds[i]);
+            if (go != null && go.TryGetComponent(out IEnemyPD dummy) && !dummy._isDead)
+                totalCurrent += Mathf.Max(0f, dummy.CurrentHealth);
+        }
+
+        float percent = totalMax > 0f ? Mathf.Clamp01(1f - totalCurrent / totalMax) * 100f : 0f;
+        return $"Destroy the Spires!\nProgress: {percent:F1}%";
+    }
+}

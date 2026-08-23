@@ -83,7 +83,12 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
             for (int i = 0; i < n; i++)
             {
                 var target = _sweepResults[i].collider.GetComponent<CharacterStatsPD>();
-                if (target == null || target.IsDead || target.IsInvincible) continue;
+                // No IsInvincible pre-check (2026-08-24 fix) — TakeDamage() already no-ops safely against
+                // invincibility on its own, AND is the only place Dodge credit gets awarded (see
+                // CharacterStatsPD.NotifyDodge's own doc comment); skipping the call here silently ate every
+                // Dodge this attack should have granted while the player was dash-invincible. The projectile
+                // now also correctly expires on an invincible-but-hit player instead of passing through them.
+                if (target == null || target.IsDead) continue;
                 target.TakeDamage(_damage);
                 state.expired = true;
                 break;

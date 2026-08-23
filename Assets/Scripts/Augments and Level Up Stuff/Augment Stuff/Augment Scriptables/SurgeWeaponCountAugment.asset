@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SurgeWeaponCountAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Secret Weapon</color>
-  description: '<color=#FFFF00>-50% Surge Cost</color>
+  description: '<color=#FFFF00>-25% Surge Cost</color>
 
     <color=#FFA000>While
     <color=#FFFF00>Surging</color>:</color> <color=#FFA000>+100% Weapons</color>.'

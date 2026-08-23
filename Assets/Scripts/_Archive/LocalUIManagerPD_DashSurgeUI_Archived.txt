@@ -1,0 +1,77 @@
+Archived 2026-08-21 — Dash and Surge/Energy UI removed from LocalUIManagerPD.cs (the screen-space local HUD)
+entirely, as part of the same UI cleanup pass that removed the ability UI (see
+LocalUIManagerPD_AbilityUI_Archived.txt in this same folder). Kept here verbatim in case this ever needs to
+come back. World-space PlayerUIWorldSpace.cs already has its own equivalent Dash (dashChargeCooldownImage +
+dashNotches, note: notches instead of a text number) and Energy (energyImage) UI — see that file's own
+UpdateDash/UpdateEnergy for the live, current version of the dash/energy display in this game.
+
+Not a .cs file on purpose — this must never compile (it references fields/types this project no longer
+declares once the removal lands). Plain reference text only.
+
+Also removed as a side effect: the private static SetColor(Image, Color) helper (sat next to SetFill/
+SetText/SetSlider) — UpdateEnergy below was its only caller in this file. Trivial to re-add if some future
+LocalUIManagerPD element needs it again:
+
+    private static void SetColor(Image image, Color value)
+    {
+        if (image != null && image.color != value)
+            image.color = value;
+    }
+
+════════════════════════════════════════════════════════════════════════════
+1. Field declarations (were directly among the other top-of-class [SerializeField] fields)
+════════════════════════════════════════════════════════════════════════════
+
+    [SerializeField] private Image dashChargeCooldownImage;
+    [SerializeField] private TextMeshProUGUI dashChargesText;
+    [SerializeField] private Image energyImage;
+    [SerializeField] private TextMeshProUGUI energyText;
+
+════════════════════════════════════════════════════════════════════════════
+2. SetPlayer initial-state lines (were at the end of the existing SetPlayer(CharacterStatsPD stats) method)
+════════════════════════════════════════════════════════════════════════════
+
+        dashChargeCooldownImage.fillAmount = 1f;
+        energyImage.fillAmount = 1f;
+
+════════════════════════════════════════════════════════════════════════════
+3. Update() call sites (were among the other per-frame Update* calls)
+════════════════════════════════════════════════════════════════════════════
+
+        UpdateDash();
+        UpdateEnergy();
+
+════════════════════════════════════════════════════════════════════════════
+4. Cached-display fields (were alongside this HUD's other *ForText cache fields)
+════════════════════════════════════════════════════════════════════════════
+
+    private int _lastDashChargesForText = -1;
+    private int _lastEnergyIntForText = -1;
+
+════════════════════════════════════════════════════════════════════════════
+5. UpdateDash() / UpdateEnergy() — full bodies
+════════════════════════════════════════════════════════════════════════════
+
+    private void UpdateDash()
+    {
+        SetFill(dashChargeCooldownImage, _controller.currentState.currentCharges < _stats.dashCharges
+            ? 1f - (_controller.currentState.chargeRegenTimer / _stats.DashCooldown)
+            : 1f);
+
+        if (_controller.currentState.currentCharges == _lastDashChargesForText) return;
+        _lastDashChargesForText = _controller.currentState.currentCharges;
+        SetText(dashChargesText, $"<b>{_controller.currentState.currentCharges}</b>");
+    }
+
+    private void UpdateEnergy()
+    {
+        SetFill(energyImage, _stats.UIEnergy < _stats.MaxEnergy
+            ? _stats.UIEnergy / _stats.MaxEnergy
+            : 1f);
+        SetColor(energyImage, _stats.UIIsSurging || _stats.UIEnergy < _stats.SurgeActivationThreshhold ? Color.red : Color.yellow);
+
+        int energyInt = (int)_stats.UIEnergy;
+        if (energyInt == _lastEnergyIntForText) return;
+        _lastEnergyIntForText = energyInt;
+        SetText(energyText, $"<b>{energyInt}</b>");
+    }

@@ -88,30 +88,24 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ae6cfe475954f38489e99930704d15e7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KnightBigBuffAbilityPD
-  icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}
-  abilityName: <color=#00FF00>Resolve</color>
+  icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
+  abilityName: <color=#FFFF00>Resolve</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    For
-    <color=#FFA000>{LiveDurationRatio}seconds</color>, gain <color=#FFA000>+{sizePercent}%
-    Size</color>, <color=#00FF00>+{maxHealthPercent}% Total Max Health</color>, <color=#3278FF>+{rangePercent}%
-    Total Range</color>, <color=#FF5000>+{strengthPercent}% Total Strength</color>,
-    <color=#8C8C8C>+{damageReductionPercent}% Damage Reduction</color> and <color=#FFA000>Taunt</color>
-    all enemies.
+    <color=#FFFF00>Berserk
+    Surge</color>
 
-    <color=#FFBE50><i>Ability Power increases Duration</i></color>'
+    <color=#FFA000><color=#FFFF00>Berserk Surge</color>:</color>
+    Gain full <color=#FFFF00>Energy</color>, become <color=#FFA000>Invincible</color>
+    and enter an <color=#FFA000>uncancellable</color> <color=#FFFF00>Surge</color>.
+    <color=#FF00FF>Shield</color> and <color=#FFFFFF>Death Prevention</color> timers
+    are paused during this.'
   cooldown: 20
   cooldownStartsOnCast: 0
-  slot: 1
+  slot: 0
   tags: []
   activeSurgeBlock: 0
-  isActionAbility: 0
-  duration: 8
-  sizePercent: 0.5
-  maxHealthPercent: 0.5
-  rangePercent: 0.5
-  strengthPercent: 0.5
-  damageReductionPercent: 0.5
+  isActionAbility: 1
 --- !u!114 &7584897366354843561
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -124,25 +118,33 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: eb60e9140a6cebc42a7375eaf1c4cc75, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KnightAreaStunHealAbilityPD
-  icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
-  abilityName: <color=#FFFF00>Battle Shout</color>
+  icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}
+  abilityName: <color=#00FF00>Steadfast</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
-    <color=#FFA000>(AoE)
-    Interrupt, Stun and Knockback</color> all nearby enemies in a <color=#3278FF>1.25x
-    Range radius</color> for <color=#FFA000>{LiveStunDurationRatio}seconds</color>
-    and <color=#7DFF00>Heal {LiveHealPercentRatio}%</color> <color=#00FF00>Max Health</color>
-    per enemy hit.'
-  cooldown: 10
+    Gain
+    <color=#FFA000>+50% Size</color>, <color=#3278FF>+50% Range</color>, <color=#00FF00>+{maxHealthPercent}%
+    Max Health</color> and <color=#FFA000>+{damageReductionPercent}% Damage Reduction</color>
+    for <color=#FFA000>{duration} seconds</color>.
+
+    <color=#FFA000>(AoE) On End
+    or Recast:</color> <color=#FFA000>Interrupt, Stun and Knockback</color> all nearby
+    enemies in a <color=#3278FF>1.25x Range radius</color> for <color=#FFA000>{LiveStunDurationRatio}seconds</color>.'
+  cooldown: 20
   cooldownStartsOnCast: 0
-  slot: 0
+  slot: 1
   tags:
   - AoE Effect
   activeSurgeBlock: 0
-  isActionAbility: 1
+  isActionAbility: 0
+  duration: 8
+  maxHealthPercent: 0.25
+  damageReductionPercent: 0.25
+  rangePercent: 0.5
+  sizePercent: 0.5
+  recastBlockDuration: 0.5
   radiusMultiplier: 1.25
-  stunDuration: 1.5
-  healPercentPerEnemy: 0.01
+  stunDuration: 2
   knockback: 10
   retriggerRate: 0.5
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}

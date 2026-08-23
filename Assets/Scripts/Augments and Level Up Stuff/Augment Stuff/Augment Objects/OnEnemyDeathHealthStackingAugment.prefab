@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e38affa656a1a9b4c9029f40c6910c2b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnEnemyDeathHealthStackingAugment
-  deathsPerStack: 25
+  deathsPerStack: 15
   bonusMaxHealthPerStack: 1

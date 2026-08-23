@@ -36,6 +36,10 @@ public class DamageNumber : MonoBehaviour
     [SerializeField] private float _enemyFontSize = 8f;
     [SerializeField] private float _nonPrioritySize = 4f;
     [SerializeField] private float _playerFontSize = 8f;
+    // Player Heal-only override of _playerFontSize (2026-08-21) — separate field/tunable, not a fraction of
+    // _playerFontSize, same "own dedicated field, not derived" convention _playerFontSize itself already
+    // uses relative to _enemyFontSize. Player Damage keeps using _playerFontSize unchanged.
+    [SerializeField] private float _playerHealFontSize = 3f;
     // Colors themselves are NOT here (2026-08-16) — moved to DamageNumberManager.ResolveEnemyDamageColor,
     // matching every other popup type (Player Damage/Heal/Status all resolve their own color in the manager
     // and pass the result in) instead of this prefab resolving isCrit/isHighroll into a color itself. Spawn()/
@@ -53,6 +57,12 @@ public class DamageNumber : MonoBehaviour
     [SerializeField] private float _statusDuration = 1f;
     [SerializeField] private float _statusFontSize = 6f;
     [SerializeField] private Color _statusColor = Color.white;
+
+    // Per-call override of _statusDuration for THIS status popup only (set once in InitStatus from its own
+    // durationMultiplier param) — never written back to _statusDuration itself, since that field is also read
+    // by AnimatePlayerNumber() for unrelated Player Damage/Heal numbers (see comment block above). AnimateStatus
+    // reads this instead of _statusDuration directly.
+    private float _effectiveStatusDuration;
 
     // Shared by every popup type.
     private DamageNumberManager _manager;
@@ -182,10 +192,11 @@ public class DamageNumber : MonoBehaviour
     // once by the caller (DamageNumberManager.RollStatusXOffset) and held fixed for the whole lifetime.
     // color overrides _statusColor for just this popup when provided (null uses _statusColor as-is) — see
     // CharacterStatsPD.NotifyStatusPopup's own doc comment for where a per-popup override originates.
-    public void InitStatus(string message, Vector3 worldPos, CharacterStatsPD target, float zRot, DamageNumberManager manager, Color? color = null)
+    public void InitStatus(string message, Vector3 worldPos, CharacterStatsPD target, float zRot, DamageNumberManager manager, Color? color = null, float durationMultiplier = 1f)
     {
         worldPos += new Vector3(0f, 0f, _spawnZOffset);
         _manager = manager;
+        _effectiveStatusDuration = _statusDuration * durationMultiplier;
         _statusTarget = target;
         _statusEnemyTarget = null;
         // YAxisMovers, not transform (2026-08-17, for consistency with Player Damage/Heal — see
@@ -204,10 +215,11 @@ public class DamageNumber : MonoBehaviour
     // Enemy overload — mirrors the CharacterStatsPD one above exactly, just tracking an IEnemyPD/Visuals
     // instead (with the extra SpawnGeneration staleness guard enemies need — see _statusEnemyTarget's own
     // doc comment). Called by DamageNumberManager.SpawnStatusOnEnemy.
-    public void InitStatus(string message, Vector3 worldPos, IEnemyPD target, float zRot, DamageNumberManager manager, Color? color = null)
+    public void InitStatus(string message, Vector3 worldPos, IEnemyPD target, float zRot, DamageNumberManager manager, Color? color = null, float durationMultiplier = 1f)
     {
         worldPos += new Vector3(0f, 0f, _spawnZOffset);
         _manager = manager;
+        _effectiveStatusDuration = _statusDuration * durationMultiplier;
         _statusTarget = null;
         _statusEnemyTarget = target;
         bool targetAlive = !DamageNumberManager.IsDestroyed(target);
@@ -266,7 +278,7 @@ public class DamageNumber : MonoBehaviour
         _text.text = (isHeal ? "+" : "-") + AugmentDescriptionFormatter.FormatLiveNumber(amount) + (isCrit ? "!" : "");
         _text.color = color;
         _text.fontStyle = FontStyles.Normal;
-        _text.fontSize = _playerFontSize;
+        _text.fontSize = isHeal ? _playerHealFontSize : _playerFontSize;
     }
 
     // Called by DamageNumberManager when a fresh Weapon-source group needs to bump every other currently-
@@ -426,7 +438,7 @@ public class DamageNumber : MonoBehaviour
         float elapsed = 0f;
         Vector3 basePos = initialPos;
 
-        while (elapsed < _statusDuration)
+        while (elapsed < _effectiveStatusDuration)
         {
             elapsed += Time.deltaTime;
             if (_statusTarget != null)
@@ -436,10 +448,10 @@ public class DamageNumber : MonoBehaviour
             else if (!DamageNumberManager.IsDestroyed(_statusEnemyTarget) && _statusEnemyTarget.SpawnGeneration == _statusEnemyTargetGeneration)
                 basePos = _statusEnemyTarget.Visuals.position + _statusFollowOffset;
 
-            float driftT = Mathf.Clamp01(elapsed / _statusDuration);
+            float driftT = Mathf.Clamp01(elapsed / _effectiveStatusDuration);
             transform.position = basePos + Vector3.up * (_statusMaxHeight * driftT);
 
-            _text.alpha = HalfDurationAlpha(elapsed, _statusDuration);
+            _text.alpha = HalfDurationAlpha(elapsed, _effectiveStatusDuration);
 
             // Camera-relative roll — LookRotation faces the camera same as Animate()'s own `transform.forward
             // = _cam.transform.forward` above, then the extra Euler appends _statusZRot as a LOCAL Z tilt on

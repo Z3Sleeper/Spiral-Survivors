@@ -1,10 +1,16 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// New tech, not a port. Every deathsPerStack enemy deaths (ANY enemy, any player's kill — same "reacts to
-// every death" scope as HealthRegenOnEnemyDeathAugment, not a per-kill event), grants
+// New tech, not a port. Every deathsPerStack enemy deaths (any enemy worth anything, any player's kill —
+// same "reacts to every death" scope as HealthRegenOnEnemyDeathAugment, not a per-kill event), grants
 // bonusMaxHealthPerStack * Stats.StackPower bonus max health. No cap — infinitely scales with how many
 // enemies happen to die over the course of a run.
+//
+// EXCLUDES 0-xpValue deaths specifically (2026-08-21) — see OnEnemyDeath's own doc comment. Currently the
+// only real-world case is EnemySpawnerPD's own boss-wave plebs (xpMultiplier 0 while a boss is alive), which
+// were contributing disproportionately to this augment's stacking relative to how little killing one is
+// actually worth. Deliberately scoped to just this augment's own handler, not the shared OnEnemyDeath event
+// — every other on-death reaction still fires on these deaths normally.
 //
 // EnemyBasePD's SilentDespawn (difficulty-pacing wipe, e.g. right before a boss spawns) deliberately never
 // calls RaiseOnEnemyDeath at all (see its own doc comment) — only a real Die() does — so a boss-spawn wipe
@@ -66,6 +72,16 @@ public class OnEnemyDeathHealthStackingAugment : AugmentEffectPD<OnEnemyDeathHea
 
     private void OnEnemyDeath(CharacterStatsPD killer, IEnemyPD enemy)
     {
+        // Excludes "worth nothing" deaths entirely (2026-08-21) — specifically EnemySpawnerPD's own
+        // boss-wave plebs (spawned with xpMultiplier 0 while a boss is alive, so xpValue reads 0 by the time
+        // they die), per explicit request: they were contributing disproportionately to this augment's own
+        // stacking relative to how little a real kill on one is actually worth, repeatedly forcing this
+        // augment's other numbers to be nerfed to compensate. Deliberately scoped to ONLY this handler, not
+        // CharacterStatsPD.OnEnemyDeath itself — every other OnEnemyDeath reaction (OnEnemyDeathHealthRegenAugment,
+        // OnKillLaunchEnemiesAugment, etc.) still fires on these deaths exactly as before; this one alone
+        // treats them as if they never happened at all — not counted toward deathCount, no partial credit.
+        if (enemy.XpValue <= 0f) return;
+
         currentState.deathCount++;
         if (currentState.deathCount < deathsPerStack) return;
 

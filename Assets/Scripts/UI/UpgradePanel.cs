@@ -113,9 +113,9 @@ public class UpgradePanel : MonoBehaviour
         int tier    = ProgressionManager.GetBaseStatTier(statType);
         int maxTier = ProgressionManager.GetMaxBaseTier(statType);
 
-        string color = tier >= maxTier                                              ? "#007700"
-                     : ProgressionManager.CanUpgradeBaseStat(statType)               ? "#000000"
-                     : ProgressionManager.IsTierAffordableButDifficultyLocked(statType) ? "#CC0000"
+        string color = tier >= maxTier                                    ? "#007700"
+                     : ProgressionManager.CanUpgradeBaseStat(statType)     ? "#000000"
+                     : ProgressionManager.IsTierDifficultyLocked(statType) ? "#CC0000"
                      : "#AA6600";
 
         buttonLabel.text = $"<color={color}>{label}\n({tier}/{maxTier})</color>";
@@ -132,6 +132,9 @@ public class UpgradePanel : MonoBehaviour
         StatType.TotalStrengthPercent => "%",
         StatType.MoveSpeedPercent  => "%",
         StatType.RevivePower       => "%",
+        // Fraction of MaxEnergy per second (2026-08-23 rework — see CharacterStatsPD.baseEnergyRegen's own
+        // doc comment), same "stored as a fraction, displayed *100" convention as the other %-unit stats.
+        StatType.EnergyRegen       => "%",
         _                          => ""
     };
 
@@ -140,7 +143,7 @@ public class UpgradePanel : MonoBehaviour
         int tier      = ProgressionManager.GetBaseStatTier(stat);
         int maxTier   = ProgressionManager.GetMaxBaseTier(stat);
         float perTier = ProgressionManager.GetBaseStatValuePerTier(stat);
-        float displayScale = (stat == StatType.RevivePower || stat == StatType.TotalStrengthPercent || stat == StatType.MaxShield || stat == StatType.MoveSpeedPercent) ? 100f : 1f;
+        float displayScale = (stat == StatType.RevivePower || stat == StatType.TotalStrengthPercent || stat == StatType.MaxShield || stat == StatType.MoveSpeedPercent || stat == StatType.EnergyRegen) ? 100f : 1f;
         float current = Mathf.Abs(perTier * tier)   * displayScale;
         float max     = Mathf.Abs(perTier * maxTier) * displayScale;
         float absPer  = Mathf.Abs(perTier)           * displayScale;
@@ -156,7 +159,7 @@ public class UpgradePanel : MonoBehaviour
             StatType.MoveSpeed         => $"Increases your Move Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.AttackSpeed       => $"Increases your Weapon Attack Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nAttack Speed is equivalent to revolutions per second.",
             StatType.HealthRegen       => $"Increases your Health Regen per second by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.EnergyRegen       => $"Increases your Energy Regen per second by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEnergy is used to activate Surge, reducing your Move Speed by 50% to double your Attack Speed.",
+            StatType.EnergyRegen       => $"Increases the percent of Max Energy that you regen per second by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEnergy is used to activate Surge, reducing your Move Speed by 50% to double your Attack Speed.",
             StatType.DashHaste         => $"Increases your Dash Haste by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEach 1 Dash Haste reduces your Dash Charge cooldown by 1%.\nYou are invulnerable while Dashing.",
             StatType.AbilityHaste      => $"Increases your Ability Haste by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEach 1 Ability Haste reduces your Ability cooldowns by 1%.",
             StatType.CritChance        => $"Increases the chance for your Weapon Strikes to Critically Strike by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nEach 1% Crit Chance over 100% is converted into 0.5% Crit Damage.",
@@ -207,17 +210,30 @@ public class UpgradePanel : MonoBehaviour
                 ? "0\npts"
                 : $"{FormatPoints(ProgressionManager.GetRefundAmount(stat))}\npts";
 
-        bool difficultyLocked = ProgressionManager.IsTierAffordableButDifficultyLocked(stat);
+        bool difficultyLocked = ProgressionManager.IsTierDifficultyLocked(stat);
+        // Same yellow-ish "can't afford" color RefreshButtonText's own per-stat list entries already use
+        // (#AA6600) — CanUpgradeBaseStat is that same method's own "affordable" check, reused here so both
+        // price fields agree with the list entry's own coloring for this exact stat.
+        bool canAffordOne = ProgressionManager.CanUpgradeBaseStat(stat);
+        const string maxedColor    = "#007700";
+        const string cantAffordColor = "#AA6600";
+        // Same red RefreshButtonText's own per-stat list entries already use for this exact state (#CC0000).
+        const string lockedColor = "#CC0000";
 
         if (currentPriceText != null)
-            currentPriceText.text = maxed ? "MAXED"
-                : difficultyLocked ? "Locked"
-                : $"{FormatPoints(ProgressionManager.GetBaseStatUpgradeCost(stat))}\npts";
+            currentPriceText.text = maxed ? $"<color={maxedColor}>MAXED</color>"
+                : difficultyLocked ? $"<color={lockedColor}>LOCKED</color>"
+                : canAffordOne ? $"{FormatPoints(ProgressionManager.GetBaseStatUpgradeCost(stat))}\npts"
+                : $"<color={cantAffordColor}>{FormatPoints(ProgressionManager.GetBaseStatUpgradeCost(stat))}\npts</color>";
 
         if (buyAllPriceText != null)
-            buyAllPriceText.text = maxed ? "MAXED"
-                : difficultyLocked ? "Locked"
-                : $"{FormatPoints(ProgressionManager.GetBuyAllCost(stat))}\npts";
+            buyAllPriceText.text = maxed ? $"<color={maxedColor}>MAXED</color>"
+                : difficultyLocked ? $"<color={lockedColor}>LOCKED</color>"
+                : canAffordOne ? $"{FormatPoints(ProgressionManager.GetBuyAllCost(stat))}\npts"
+                // Can't afford even ONE tier — GetBuyAllCost would read 0 here (nothing affordable to buy
+                // all of), so show the single-tier "buy one" price instead (same as currentPriceText's own
+                // can't-afford branch), still in the can't-afford color rather than a misleading "0 pts".
+                : $"<color={cantAffordColor}>{FormatPoints(ProgressionManager.GetBaseStatUpgradeCost(stat))}\npts</color>";
     }
 
     // All buttons — click to SELECT

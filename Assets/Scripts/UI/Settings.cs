@@ -13,6 +13,8 @@ public class Settings : MonoBehaviour
     [SerializeField] private TMP_InputField musicVolumeInput;
     [SerializeField] private TMP_Dropdown framerateDropdown;
     [SerializeField] private Toggle seeOtherPlayerDamageToggle;
+    [SerializeField] private Toggle controlsVisibilityToggle;
+    [SerializeField] private Toggle hideExpandedUIToggle;
     // GameAudioMixer — SFX/Music route through its exposed SFXVolume/MusicVolume float parameters (see
     // SFXMixerParam/MusicMixerParam below); Master stays on AudioListener.volume since Master's own group
     // volume isn't exposed to script.
@@ -23,6 +25,8 @@ public class Settings : MonoBehaviour
     private const string MusicVolumeKey = "MusicVolume";
     private const string FramerateKey = "TargetFramerate";
     private const string SeeOtherPlayerDamageKey = "SeeOtherPlayerDamage";
+    private const string ControlsVisibilityKey = "ControlsVisibility";
+    private const string HideExpandedUIKey = "HideExpandedUI";
     private static readonly int[] FramerateOptions = { 30, 60, 120, 144, -1 };
 
     // Must match the exposed parameter names on GameAudioMixer.mixer exactly (Edit > Expose to Script, or
@@ -38,6 +42,17 @@ public class Settings : MonoBehaviour
     private const float MasterDefaultPercent = 80f;
 
     public static bool SeeOtherPlayerDamage { get; private set; }
+    // Opt-out default (unlike SeeOtherPlayerDamage's opt-in) — a new "Controls" reminder panel should be
+    // visible out of the box for anyone who hasn't touched this setting yet, not hidden until they go find
+    // the toggle. Read by LocalUIManagerPD.Awake() (the live scene reference this static context can't
+    // reach — same "needs a live component" reasoning ApplySavedMixerVolumes already documents for the
+    // AudioMixer) and pushed live via LocalUIManagerPD.SetControlsVisible on change.
+    public static bool ControlsVisible { get; private set; } = true;
+    // Default true (checked) — new players get the compact HUD (world-space Dash/Energy/Ability UI only,
+    // ExpandedPlayerUI hidden) out of the box; opting into the old expanded LocalUI panel is an explicit
+    // choice, not the default. Read by LocalUIManagerPD.Awake() (the live scene reference this static
+    // context can't reach) and pushed live via LocalUIManagerPD.SetExpandedUIHidden on change.
+    public static bool HideExpandedUI { get; private set; } = true;
 
     // TODO: status popups (DamageNumberManager.SpawnStatusOnPlayer/SpawnStatusAtLocation) currently have no
     // visibility gating at all — every client always sees every player's popups. Add a SEPARATE toggle here
@@ -53,6 +68,8 @@ public class Settings : MonoBehaviour
         AudioListener.volume = PlayerPrefs.GetFloat(VolumeKey, MasterDefaultPercent) / 100f;
         Application.targetFrameRate = PlayerPrefs.GetInt(FramerateKey, -1);
         SeeOtherPlayerDamage = PlayerPrefs.GetInt(SeeOtherPlayerDamageKey, 0) == 1;
+        ControlsVisible = PlayerPrefs.GetInt(ControlsVisibilityKey, 1) == 1;
+        HideExpandedUI = PlayerPrefs.GetInt(HideExpandedUIKey, 1) == 1;
         // SFX/Music deliberately NOT applied here — this static callback has no live AudioMixer reference to
         // call SetFloat on (unlike AudioListener.volume/Application.targetFrameRate, which are global engine
         // state, not asset-instance state). See ApplySavedMixerVolumes' own doc comment for where/how they
@@ -76,6 +93,10 @@ public class Settings : MonoBehaviour
 
         if (seeOtherPlayerDamageToggle != null)
             seeOtherPlayerDamageToggle.SetIsOnWithoutNotify(SeeOtherPlayerDamage);
+        if (controlsVisibilityToggle != null)
+            controlsVisibilityToggle.SetIsOnWithoutNotify(ControlsVisible);
+        if (hideExpandedUIToggle != null)
+            hideExpandedUIToggle.SetIsOnWithoutNotify(HideExpandedUI);
     }
 
     // Wire the panel's own Back button to this instead of a scene-specific manager's OnSettingsBackClicked —
@@ -89,6 +110,27 @@ public class Settings : MonoBehaviour
         SeeOtherPlayerDamage = value;
         PlayerPrefs.SetInt(SeeOtherPlayerDamageKey, value ? 1 : 0);
         PlayerPrefs.Save();
+    }
+
+    public void OnControlsVisibilityChanged(bool value)
+    {
+        ControlsVisible = value;
+        PlayerPrefs.SetInt(ControlsVisibilityKey, value ? 1 : 0);
+        PlayerPrefs.Save();
+        // Pushes the change live for whichever player is currently in a match — see LocalUIManagerPD.
+        // SetControlsVisible's own doc comment. Settings can be opened outside a live match too (main menu/
+        // lobby), where instance is null — same harmless no-op every other cross-scene singleton reference
+        // in this codebase already treats that as.
+        LocalUIManagerPD.instance?.SetControlsVisible(value);
+    }
+
+    public void OnHideExpandedUIChanged(bool value)
+    {
+        HideExpandedUI = value;
+        PlayerPrefs.SetInt(HideExpandedUIKey, value ? 1 : 0);
+        PlayerPrefs.Save();
+        // Pushes the change live — see OnControlsVisibilityChanged's own identical null-safety comment.
+        LocalUIManagerPD.instance?.SetExpandedUIHidden(value);
     }
 
     public void OnFramerateChanged(int index)

@@ -85,6 +85,13 @@ public interface IEnemyPD
     bool _isDead { get; }
     float CurrentHealth { get; }
     float MaxHealth { get; }
+    // Trivial passthrough of the enemy's own xpValue field (post-ConfigureSpawn, so already reflects any
+    // xpMultiplier applied at spawn time — e.g. EnemySpawnerPD's own boss-wave plebs, spawned with
+    // xpMultiplier 0 while a boss is alive) — added specifically so an OnEnemyDeath reaction can identify
+    // and exclude a "worth nothing" enemy death from its own counting (see
+    // OnEnemyDeathHealthStackingAugment's own doc comment for the first consumer) without needing every
+    // future consumer to reach into EnemyBasePD directly.
+    float XpValue { get; }
     // Whether the specific hit that killed this enemy was a crit — read from an OnEnemyDeath reaction so a
     // kill-triggered effect (e.g. OnKillLaunchEnemiesAugment) can inherit the killing hit's crit status
     // instead of rolling its own independent chance.
@@ -547,7 +554,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public string enemyName = "Enemy";
 
     [Header("Stats")]
-    public float moveSpeed = 6f;
+    public float moveSpeed = 10f;
     [NonSerialized] public float baseMoveSpeed;
     // Does nothing on its own here — EnemyBasePD has no generic attack-cooldown system (every subclass owns
     // its own attack timing/state machine entirely independently), so a base
@@ -559,8 +566,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // already uses just below: it's slow-interaction infrastructure (see EffectiveAttackSpeed's own doc
     // comment), not something meant to be hand-tuned per enemy in the Inspector.
     [HideInInspector] public float attackSpeed = 1f;
-    public float backpedalSpeedDivisor = 3f;
-    public float maxHealth = 30f;
+    public float backpedalSpeedDivisor = 2.5f;
+    public float maxHealth = 75f;
     [NonSerialized] public float baseHealth;
     public float preferredRange = 0f;
     public float rangeToleranceFar = 0.3f;
@@ -588,24 +595,46 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // radius); separationForce deliberately does NOT (a harder shove isn't obviously "more correct" for a
     // bigger enemy the way a bigger detection radius is, and a flat force keeps the correction subtle
     // regardless of size).
+    // Briefly tried 5 (~1.5x tick rate) on 2026-08-21 to catch residual TL4 clumping, then dialed back to 8
+    // the same day — a higher tick RATE has an ongoing perf cost every enemy pays every tick regardless of
+    // whether it's actually clumped. SeparationForce got the same "try to fully fix it" treatment instead
+    // (see that field's own comment) and, after live testing, also landed back on its original value — the
+    // small residual TL4 clumping is accepted as-is rather than solved by either knob.
     private const int   SeparationCheckInterval = 8;
-    // Reverted to 1f (2026-08-12), then doubled to 2f (2026-08-15) — the declumping effect works well enough
-    // that enemies should actively SPACE OUT from each other, not just avoid touching. A radius bigger than
-    // the enemies' own footprint keeps them from clumping into each other in the first place, rather than
-    // reactively correcting it after the fact.
-    private const float SeparationRadiusPerSize = 2f;
+    // Reverted to 1f (2026-08-12), doubled to 2f (2026-08-15), then reverted back to 1f again (2026-08-21) —
+    // the 2f radius turned out to space enemies out more than actually wanted; back to "avoid clumping"
+    // rather than "actively space out."
+    private const float SeparationRadiusPerSize = 1f;
     // Used instead of SeparationRadiusPerSize above whenever an alive player is within this enemy's own
     // (normal-radius) declumping range — see RecomputeSeparationPush's own doc comment for why. Deliberately
     // much smaller than the normal radius: multiple enemies crowding a player need to still be "allowed" to
     // touch them, this only stops them overlapping too hard once that close, rather than pushing them away
     // from the player entirely.
     private const float SeparationRadiusPerSizeNearPlayer = 0.5f;
-    // Doubled (2026-08-21) from 8f — the bigger SeparationRadiusPerSize (2f, since 2026-08-15) meant a lot of
-    // overlapping enemies now had noticeably more distance to actually cover to fully separate, and the old
-    // force was tuned back when the radius was smaller, so at the new radius it read as a slow, gradual drift
-    // rather than a quick correction. A stronger push resolves that same distance faster, shrinking how long
-    // enemies visibly keep nudging once they should already be settled.
-    private const float SeparationForce = 16f;
+    // Round-tripped back to its original 8f (2026-08-21) after a same-day detour: briefly doubled to 16f
+    // (when SeparationRadiusPerSize was still 2f, to cover that radius's bigger distance), then to 32f after
+    // SeparationRadiusPerSize reverted to 1f but TL4 testing (Rogue's Vanish — go invisible, watch enemies
+    // keep sliding into each other afterward) still showed residual clumping. Live-tested progressively
+    // higher from there (up to 320f) and it got WORSE each step, not better — at 320f enemies visibly
+    // bounced off each other. Landed back on the original 8f as the actual best result. The remaining tiny
+    // bit of post-Vanish sliding at TL4 is accepted as-is, not a bug to keep chasing — see
+    // SeparationCheckInterval's own comment for why a higher tick RATE was also tried and reverted instead of
+    // chasing this further.
+    private const float SeparationForce = 8f;
+    // Baseline EffectiveMoveSpeed this SeparationForce was tuned against (2026-08-26) — HandleMovement's own
+    // pull-toward-target force scales directly with EffectiveMoveSpeed (dir * EffectiveMoveSpeed * delta *
+    // 5f), while SeparationForce above was a flat constant, so the two forces (both applied as
+    // AddForce(..., ForceMode.VelocityChange) every tick — separation and movement are directly competing
+    // accelerations on the same rigidbody) only stayed balanced at exactly this speed. A faster enemy's own
+    // movement force grew proportionally while separation stayed pinned, so declumping visibly weakened the
+    // faster an enemy got — confirmed live (user: "it naturally is less effective as enemies gain more
+    // movespeed"). RecomputeSeparationPush now scales SeparationForce by (EffectiveMoveSpeed /
+    // SeparationForceBaselineMoveSpeed) to keep the ratio between the two forces constant regardless of speed
+    // tier or an active slow (EffectiveMoveSpeed is already slow-adjusted, same value HandleMovement itself
+    // reads, so this stays correctly proportional while slowed too) — deliberately the flat, shared baseline
+    // of 10 (not each enemy's own individually-authored baseMoveSpeed/moveSpeed), per explicit design: a
+    // handful of enemies run slightly faster than 10 by default, and that's fine to ignore here.
+    private const float SeparationForceBaselineMoveSpeed = 10f;
     // Cached between checks (in EnemyBaseState.separationPush, not a plain field — see that field's own doc
     // comment) and re-applied as a small continuous force every tick in between — smoother-looking than an
     // abrupt kick only on the tick the check itself runs, and self-decays to zero once neighbors are far
@@ -687,6 +716,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Blitz) read this directly at their between-stage transitions to check IsInvisible before deciding
     // whether to reprioritize early.
     protected CharacterStatsPD _targetStats;
+
+    // Passive record only, no decision-making here (2026-08-22) — mirrors _targetStats.transform.position
+    // every tick _targetStats is non-null, decoupled from whatever governs _target/_targetStats itself
+    // (FindClosestTarget/FindRandomTarget, already invisibility-aware). Lets a subclass substitute this in
+    // for "no valid target right now" scenarios instead of the whole mechanic just fizzling out (see
+    // KingOrbiterPD's own ShootFlight usage) — this field alone doesn't change any existing behavior.
+    protected Vector3 lastKnownTargetPosition;
 
     // Public for cross-script reads (AddKnockbackVelocity, Stun()), not because it's meant to be hand-
     // tuned — it's fully derived from stunResistant at Awake() and, for state-driven enemies, reassigned
@@ -941,6 +977,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     public float MaxHealth => maxHealth;
 
+    public float XpValue => xpValue;
+
     public string EnemyName => enemyName;
 
     public PredictedObjectID ObjectId => id.objectId;
@@ -1121,17 +1159,29 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         var cooldowns = b.contactCooldowns;
         int ticks = Mathf.Max(1, Mathf.RoundToInt(ContactCooldownDuration / _currentDelta));
 
+        // Only a pleb actively IN MOTION toward/at a player — being Pulled in, or LaunchAlong'd during King
+        // Orbiter's Shot/Persistent Pleb Shot — counts as a dodgeable attack (2026-08-24, narrowed from the
+        // broader IsBeingHeld — Orbiting and the stationary Claimed/WaitingToOrbit sub-phases don't warn/
+        // telegraph a specific incoming hit the way Pulling/a launch does, "if it has an indicator, it can be
+        // dodged" per explicit design). Orbiting a claimed pleb around the boss stays ordinary passive
+        // contact — same exclusion a free-roaming pleb's own touch gets. launchActive is deliberately
+        // uncoupled from orbitPhase (see LaunchAlong's own doc comment), so it's checked independently here,
+        // not folded into the Pulling check.
+        bool isDodgeableAttack = b.orbitPhase == (int)EnemyOrbitPhase.Pulling || b.launchActive;
+        bool isPlebForDodge = spawnCategory == EnemySpawnCategory.Pleb && !isDodgeableAttack;
+        bool isPassiveForDodge = ContactDamageIsPassive && !isDodgeableAttack;
+
         for (int i = 0; i < cooldowns.Count; i++)
         {
             if (!cooldowns[i].player.Equals(player)) continue;
             if (cooldowns[i].remaining > 0) return;
             cooldowns[i] = new ContactCooldown { player = player, remaining = ticks };
-            stats.TakeDamage(GetDamage(), spawnCategory == EnemySpawnCategory.Pleb, isPassiveContact: ContactDamageIsPassive);
+            stats.TakeDamage(GetDamage(), isPlebForDodge, isPassiveContact: isPassiveForDodge);
             return;
         }
 
         cooldowns.Add(new ContactCooldown { player = player, remaining = ticks });
-        stats.TakeDamage(GetDamage(), spawnCategory == EnemySpawnCategory.Pleb, isPassiveContact: ContactDamageIsPassive);
+        stats.TakeDamage(GetDamage(), isPlebForDodge, isPassiveContact: isPassiveForDodge);
     }
 
     protected override void Destroyed()
@@ -1179,6 +1229,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             _spawnGeneration++;
             _target = null;
             _targetStats = null;
+            lastKnownTargetPosition = default;
             _wasDeadLastFrame = false;
             b.wiped = false;
             _wasWipedLastFrame = false;
@@ -1265,6 +1316,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // SilentDespawn's own "just gone" intent. No kill-launch equivalent to preserve here (a wipe has no
         // kill-launch interaction at all, unlike a real death) — a plain, unconditional return.
         if (b.wiped) return;
+
+        // Unconditional, ahead of the stun-freeze return below — see lastKnownTargetPosition's own doc
+        // comment. Runs regardless of stun/attack-lock, same reasoning as HandleSeparation right below: a
+        // passive record, not an action.
+        if (_targetStats != null) lastKnownTargetPosition = _targetStats.transform.position;
 
         // Unconditional, ahead of the stun-freeze return below — declumping is a passive spatial correction,
         // not an "action" a stun/attack-lock should block, and it should keep working even for an enemy
@@ -1456,6 +1512,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             b.orbitPhase = (int)EnemyOrbitPhase.None;
             return;
         }
+
+        // Orbiting at angularSpeedDegPerSec == 0 (2026-08-22 fix) skips this whole recompute-and-move —
+        // nothing legitimately updates once the angle stops advancing (only Orbiting itself ever advances
+        // orbitAngleDeg, right below), so re-deriving the "same" slot position from a fresh owner.transform.
+        // position read every tick was pure downside: any sub-tick noise in the OWNER's own position (or the
+        // angle-to-position trig round-trip) got reintroduced into this enemy's position every single tick,
+        // even though this enemy is supposed to be frozen in place — visible as a small constant vibration on
+        // anything reading this enemy's transform.position for its own purposes (e.g. KingOrbiterPD's own
+        // shot-aim tracking during its KnockbackWindup/ShootFlight hold, the case this was confirmed live
+        // against). Only the exact scenario a caller creates via SetOrbitAngularSpeed(0) while still
+        // Orbiting — WaitingToOrbit's own separate "frozen at the slot until BeginOrbiting() releases it"
+        // wait is untouched here, not confirmed safe to skip the same way.
+        if (b.orbitPhase == (int)EnemyOrbitPhase.Orbiting && b.orbitAngularSpeedDegPerSec == 0f)
+            return;
 
         Vector3 ownerPos = owner.transform.position;
 
@@ -2042,7 +2112,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // scale the resulting force with however many are found instead of staying a bounded "how hard am I
         // being pushed" value.
         if (combined.sqrMagnitude > 1f) combined.Normalize();
-        b.separationPush = combined * SeparationForce;
+        // Scaled by EffectiveMoveSpeed/SeparationForceBaselineMoveSpeed — see that field's own doc comment
+        // for why (keeps this force proportional to HandleMovement's own competing pull-toward-target force,
+        // regardless of this enemy's speed tier or an active slow).
+        b.separationPush = combined * SeparationForce * (EffectiveMoveSpeed / SeparationForceBaselineMoveSpeed);
     }
 
     // Alive-only (a dead player's corpse shouldn't shrink the radius — nothing left to "allow crowding
@@ -2517,8 +2590,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // "how much of normal speed remains" (e.g. 0.35 = a 65% slow), so the amount actually being taken away
     // is (1 - multiplier) — that's the piece crowdControlResist shrinks, then the result is converted back
     // into a multiplier. This is the same "convert to amount-removed, scale, convert back" shape
-    // ArcherArrowRainAbilityPD's own AreaEffectPower/AbilityPower slow scaling uses, so resist stacks with
-    // it the same intuitive way (a resist can only ever pull a slow BACK toward 1x, never past it).
+    // ArcherArrowRainAbilityPD's own AreaEffectPower slow scaling uses, so resist stacks with it the same
+    // intuitive way (a resist can only ever pull a slow BACK toward 1x, never past it).
     //
     // Also now doubles as an attack-speed slow — see EffectiveAttackSpeed's own doc comment — since this is
     // the one shared multiplier both EffectiveMoveSpeed and EffectiveAttackSpeed read.
@@ -2546,9 +2619,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (_isDead || stunResistant) return;
 
         // 90% is the max possible slow (10% speed floor) — clamped here, not at each call site, so any
-        // caller can safely send an arbitrarily extreme value (e.g. a stacked 999% slow from AreaEffectPower/
-        // AbilityPower scaling) without needing its own clamp, and so the strength-comparison logic right
-        // below always compares already-clamped values.
+        // caller can safely send an arbitrarily extreme value (e.g. a stacked 999% slow from AreaEffectPower
+        // scaling) without needing its own clamp, and so the strength-comparison logic right below always
+        // compares already-clamped values.
         multiplier = Mathf.Max(0.1f, multiplier);
 
         // A weaker slow (multiplier closer to 1) landing while a stronger one is still active doesn't water

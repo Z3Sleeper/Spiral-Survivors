@@ -52,9 +52,6 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     private bool _hasKnockback;
     private float? _knockback;
     private bool _interrupt;
-    // 1f (neutral) default — see AreaEffectCastHelper.Cast's own doc comment on the identical parameter.
-    // Only a real IAbilityPD implementer (e.g. ArcherArrowRainAbilityPD) ever passes something else in.
-    private float _abilityPower = 1f;
     private Action<IEnemyPD> _onEnemyHit;
     private Action<CharacterStatsPD> _onAllyHit;
     // Fired once per cast with the total enemies/allies hit that cast — e.g. KnightAreaStunHealAbilityPD
@@ -93,7 +90,6 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         bool targetAllies = false, bool dealDamage = true, float damagePercent = 0f, float onHitPowerPercent = 0f,
         bool notifyOnHit = true,
         bool hasKnockback = false, float? knockback = null, bool interrupt = false,
-        float abilityPower = 1f,
         Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null,
         Action<IEnemyPD> onSuccessfulInterrupt = null,
         bool overrideHitSfx = false, AudioClip hitSfxOverride = null, bool vfxPerCast = false)
@@ -117,7 +113,6 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         _hasKnockback = hasKnockback;
         _knockback = knockback;
         _interrupt = interrupt;
-        _abilityPower = abilityPower;
         _onEnemyHit = onEnemyHit;
         _onAllyHit = onAllyHit;
         _onCastComplete = onCastComplete;
@@ -168,7 +163,6 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
             targetAllies: _targetAllies, dealDamage: _dealDamage, damagePercent: _damagePercent, onHitPowerPercent: _onHitPowerPercent,
             notifyOnHit: _notifyOnHit,
             hasKnockback: _hasKnockback, knockback: _knockback, interrupt: _interrupt,
-            abilityPower: _abilityPower,
             onEnemyHit: _onEnemyHit, onAllyHit: _onAllyHit, onCastComplete: _onCastComplete,
             onSuccessfulInterrupt: _onSuccessfulInterrupt,
             overrideHitSfx: _overrideHitSfx, hitSfxOverride: _hitSfxOverride);

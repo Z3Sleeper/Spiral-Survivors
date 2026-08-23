@@ -45,3 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeDualWeildAugment
   bonusWeaponCountMultiplier: 2
+  surgeCostPercentReduction: 0.25

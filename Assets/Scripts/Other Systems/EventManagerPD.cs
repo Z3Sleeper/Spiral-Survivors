@@ -37,14 +37,21 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
     protected override void LateAwake() => instance = this;
 
     // Nothing to simulate here directly — the active event's own PredictedIdentity runs its own Simulate()
-    // independently once spawned.
+    // independently once spawned. An event that wants to resolve EARLY (before EnemySpawnerPD's own flat
+    // eventDuration timeout) just calls EventManagerPD.instance.ResolveEvent() on itself directly, the
+    // instant it succeeds (see CaptureThePointPD.Simulate() for the precedent, and ResolveEvent()'s own doc
+    // comment for why that's safe — it never destroys anything synchronously, so there's no same-tick
+    // self-deletion hazard in doing that).
     protected override void Simulate(ref State state, float delta) { }
 
     // Called by EnemySpawnerPD once per Tier Cycle, at the halfway point of its pre-boss Quarters window —
     // see EnemySpawnerPD's own "Mid-cycle event trigger" doc comment. Picks a random event prefab and spawns
     // it, then calls its own OnEventStart() hook. hierarchy.Create() (not plain Instantiate()) — deterministic
     // and idempotent under replay, same reasoning every other Simulate()-context spawn in this codebase uses.
-    public void StartEvent()
+    // currentTier — EnemySpawnerPD's own _currentTierNumber at the moment it decided to trigger this event
+    // (see its own "Mid-cycle event trigger" doc comment for the call site) — threaded straight through to
+    // every event's own OnEventStart unconditionally, see IEventPD.OnEventStart's own doc comment for why.
+    public void StartEvent(int currentTier)
     {
         if (eventPrefabs == null || eventPrefabs.Length == 0) return;
 
@@ -56,14 +63,23 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
         if (go == null || !go.TryGetComponent(out IEventPD ev)) return;
 
         currentState.activeEventId = id.Value;
-        ev.OnEventStart();
+        ev.OnEventStart(PlayableAreaPD.instance, currentTier);
     }
 
-    // Called by EnemySpawnerPD a flat, hardcoded 1 minute (eventDuration) after StartEvent() — see the same
-    // doc comment. Reads the active event's own Succeeded flag (defaults false — see EventBasePD's own doc
-    // comment for why that's already correct for an early/timed-out resolve), triggers the pseudo-level-up
-    // bonus augment round on success, lets the event clean up anything it spawned via OnEventResolve(), then
-    // despawns the event itself.
+    // Called from TWO places — remember this whenever changing it: (1) EnemySpawnerPD, a flat, hardcoded 1
+    // minute (eventDuration) after StartEvent(), for the "ran out of time" case; (2) the active event itself,
+    // directly, the instant it decides it succeeded early (see CaptureThePointPD.Simulate() for the
+    // precedent). Reads the active event's own Succeeded flag (defaults false — see EventBasePD's own doc
+    // comment for why that's already correct for a timed-out resolve), triggers the pseudo-level-up bonus
+    // augment round on success, then runs Cleanup() + MarkResolved() — see EventBasePD's own class-level doc
+    // comment for why this does NOT destroy the event itself here (that's deferred to verified state, in
+    // EventBasePD's own UpdateView).
+    //
+    // Idempotent by construction, not by an extra explicit guard: the FIRST call to actually find a live
+    // event (whichever of the two callers gets there first) clears activeEventId to default at its own end,
+    // so the OTHER caller's later call finds hierarchy.GetGameObject(default) returning null and is a
+    // harmless no-op — same sentinel convention this codebase already relies on elsewhere (e.g.
+    // KingOrbiterPD's own default-PredictedObjectID checks).
     public void ResolveEvent()
     {
         var go = hierarchy.GetGameObject(currentState.activeEventId);
@@ -72,8 +88,8 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
             if (ev.Succeeded && AugmentManagerPD.instance != null)
                 AugmentManagerPD.instance.TriggerBonusAugmentRound();
 
-            ev.OnEventResolve();
-            hierarchy.Delete(go);
+            ev.Cleanup();
+            ev.MarkResolved();
         }
 
         currentState.activeEventId = default;

@@ -14,9 +14,9 @@ using UnityEngine;
 //
 // The buff timer is armed directly inside the PredictedEvent listener (OnDeathPrevented) — safe, since
 // PredictedEvent guarantees a listener fires exactly once per real occurrence regardless of resimulation,
-// same convention ShieldBreakFrenzyAugment's own (now-reworked) buff used. The actual grant/revert of the
-// move speed bonus only happens off a CONFIRMED transition in verified state (UpdateView), not directly off
-// the timer ticking in Simulate() — a raw Simulate()-detected transition isn't safe to act on directly
+// same convention DeathPreventedBerserkAugment's own OnDeathPrevented reacts off. The actual grant/revert of
+// the move speed bonus only happens off a CONFIRMED transition in verified state (UpdateView), not directly
+// off the timer ticking in Simulate() — a raw Simulate()-detected transition isn't safe to act on directly
 // (double-fire risk during a client's own in-place resimulation pass, see AugmentEffectPD's own doc
 // comment) — guarded by _moveSpeedGrantedView so it fires exactly once per real activation and once per
 // real expiry. Invisibility itself is only ever GRANTED here (a duration contribution, on the rising edge),

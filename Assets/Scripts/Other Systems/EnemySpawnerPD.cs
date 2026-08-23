@@ -59,8 +59,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         // 0 the instant a boss spawns, since Quarters only cover the pre-boss portion of a Tier Cycle.
         public int spawnPhase;
         // Mid-cycle event scaffolding (2026-08-24) — see the "Mid-cycle event trigger" block in Simulate()
-        // for the full flow. eventStartedThisCycle is a one-shot guard so the 50%-of-Tier-Cycle trigger only
-        // ever fires once per Tier Cycle; eventActive is true from StartEvent() until ResolveEvent() fires;
+        // for the full flow. eventStartedThisCycle is a one-shot guard so the trigger only ever fires once
+        // per Tier Cycle; eventActive is true from StartEvent() until ResolveEvent() fires;
         // eventResolveTimer counts down while eventActive (flat eventDuration for now — see that field's own
         // doc comment for why this is a placeholder, not real event-driven resolution).
         public bool  eventStartedThisCycle;
@@ -140,7 +140,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // Flat placeholder duration between StartEvent() and ResolveEvent() (see the "Mid-cycle event trigger"
     // block in Simulate()) — a real event will eventually decide its own resolution instead of this fixed 1
     // minute, once actual event TYPES exist (see EventManagerPD's own doc comment). Trigger point itself
-    // (50% of a Tier Cycle's pre-boss window) is NOT a separate tunable — deliberately hardcoded against
+    // (60s into a Tier Cycle's pre-boss window, 2026-08-21 — moved back from 90s, see the "Mid-cycle event
+    // trigger" block's own doc comment for why) is NOT a separate tunable — deliberately hardcoded against
     // cycleInterval directly in Simulate(), same as the Quarter escalation thresholds right above it.
     [SerializeField] private float eventDuration = 60f;
 
@@ -168,10 +169,11 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // at every difficulty from 3 up. Simple flat multiplier (2x = doubled), not a per-level growth curve like
     // the generic stat scalars — explicit design, this is a standalone tier-3-specific bump, not a formula.
     private float threatLevel3EliteCountMultiplier = 2f;
-    // Threat Level 4's own unique modifier ("Spikies are 50% faster") — Pleb category specifically, see
-    // SpawnEnemy's own doc comment for the exact composition (multiplies on top of the generic difficulty
-    // move-speed scalar, doesn't replace it). Same cumulative-from-this-level-up convention.
-    private float threatLevel4PlebMoveSpeedMultiplier = 1.5f;
+    // Threat Level 4's own unique modifier ("Spikies are 25% faster", lowered 2026-08-23 from 50%) — Pleb
+    // category specifically, see SpawnEnemy's own doc comment for the exact composition (multiplies on top
+    // of the generic difficulty move-speed scalar, doesn't replace it). Same cumulative-from-this-level-up
+    // convention.
+    private float threatLevel4PlebMoveSpeedMultiplier = 1.25f;
     // Threat Level 5's own unique modifier ("Enemies attack twice as often") — a flat halving of every
     // enemy's own attack-cooldown field, passed through ConfigureSpawn's new attackCooldownMultiplier
     // parameter (see IEnemyPD.ConfigureSpawn's own doc comment for why this can't be applied generically on
@@ -208,6 +210,15 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private float healthTierGrowth = 8f;
     [SerializeField] private float xpTierGrowth = 3f;
 
+    // Public passthroughs (2026-08-21) — lets anything outside this spawner (e.g. DPSCheckPD scaling its own
+    // dummy target's stats) replicate the EXACT SAME "1f + (tier - 1) * growth" formula this class applies to
+    // every spawned enemy, reading the live, single-source-of-truth value instead of hand-duplicating a
+    // magic number that could silently drift out of sync if these are ever retuned.
+    public float MoveSpeedTierGrowth => moveSpeedTierGrowth;
+    public float DamageTierGrowth    => damageTierGrowth;
+    public float HealthTierGrowth    => healthTierGrowth;
+    public float XpTierGrowth        => xpTierGrowth;
+
     [Header("Difficulty Scaling")]
     // Linear per difficulty level off GamePresets.instance.Difficulty (1-6), same "multiply base, no
     // exponential" convention every tier-growth field in this codebase already uses — level 1 = 1f (no-op
@@ -225,6 +236,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private float difficultyDamageGrowthPerLevel    = 0.5f;
     [SerializeField] private float difficultyHealthGrowthPerLevel    = 1f;
     [SerializeField] private float difficultyMoveSpeedGrowthPerLevel = 0.1f;
+
+    // Public passthroughs — same reasoning as MoveSpeedTierGrowth/DamageTierGrowth/HealthTierGrowth/
+    // XpTierGrowth above (2026-08-21, same change).
+    public float DifficultyDamageGrowthPerLevel    => difficultyDamageGrowthPerLevel;
+    public float DifficultyHealthGrowthPerLevel    => difficultyHealthGrowthPerLevel;
+    public float DifficultyMoveSpeedGrowthPerLevel => difficultyMoveSpeedGrowthPerLevel;
 
     // Cached once per Simulate() tick (see that method's own comment for exactly where) — plain fields, not
     // State, since they're fully re-derived from GamePresets.instance.Difficulty/state.bossesDefeated every
@@ -532,18 +549,23 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
 
         // ── Mid-cycle event trigger ──────────────────────────────────────────
-        // Fires once per Tier Cycle, at the same 50% threshold Quarter 3 escalates on above — scaffolding
-        // only for now (see EventManagerPD's own doc comment): no event-specific start/resolve logic, no
-        // success/failure, exists yet. Called as a plain direct method call, not through any event/broadcast
-        // system — Simulate() already runs identically and deterministically on every machine, so a direct
-        // call here is exactly as resimulation-safe as any other cross-identity call in this codebase (e.g.
-        // PausePD.SetPlayerReady).
-        if (!state.eventStartedThisCycle && state.cycleTimer < cycleInterval * 0.5f)
+        // Fires once per Tier Cycle, 60s into its pre-boss window (2026-08-21 — moved back from 90s/the same
+        // 50% threshold Quarter 3 escalates on, which this used to deliberately coincide with). At
+        // cycleInterval's own default of 180s, 90s-elapsed put the event's own fixed 60s window running
+        // right through Q4's fastest spawn rates and the tail of the elite pack — genuinely too punishing to
+        // delay completion on, especially TL3+ where elite spawns are doubled, since the threat of escalating
+        // spawns is meant to incentivize finishing SOONER, not make later completion nearly impossible. 60s
+        // elapsed (cycleInterval * 2/3 remaining) now sits between Q2 and Q3, squarely in the middle of the
+        // elite spawn pack instead, decoupled from Q3's own threshold. Called as a plain direct method call,
+        // not through any event/broadcast system — Simulate() already runs identically and deterministically
+        // on every machine, so a direct call here is exactly as resimulation-safe as any other cross-identity
+        // call in this codebase (e.g. PausePD.SetPlayerReady).
+        if (!state.eventStartedThisCycle && state.cycleTimer < cycleInterval * (2f / 3f))
         {
             state.eventStartedThisCycle = true;
             state.eventActive = true;
             state.eventResolveTimer = eventDuration;
-            if (EventManagerPD.instance != null) EventManagerPD.instance.StartEvent();
+            if (EventManagerPD.instance != null) EventManagerPD.instance.StartEvent(_currentTierNumber);
         }
         if (state.eventActive)
         {
@@ -834,7 +856,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out IEnemyPD enemy))
         {
-            // Threat Level 4's own unique modifier ("Spikies are 50% faster") — Pleb category specifically
+            // Threat Level 4's own unique modifier ("Spikies are 25% faster") — Pleb category specifically
             // (Spike Gloom is the only pleb enemy type today, but this is a category-wide bump, not a
             // per-prefab one, per explicit design), multiplying ON TOP of the generic difficulty move-speed
             // scalar rather than replacing/being independent of it. Stacks with every HIGHER difficulty too,

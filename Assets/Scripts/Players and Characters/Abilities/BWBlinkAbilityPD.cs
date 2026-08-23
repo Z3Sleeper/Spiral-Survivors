@@ -38,12 +38,9 @@ using UnityEngine;
 // starts ticking the instant Blink is cast, running concurrently with the Move Speed buff, rather than only
 // starting once that buff ends. See the field's own doc comment for why.
 //
-// CharacterStatsPD.AbilityPower scales only the buff's own duration, same uniform convention every buff
-// ability in this codebase now follows (ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/RogueVanishAbilityPD) —
-// snapshotted at cast time so a live AbilityPower change mid-buff can't leave the active timer running
-// against a duration that no longer matches what was granted. moveSpeedTotalPercent itself is flat, not
-// AbilityPower-scaled — a buff's own strength and its duration both scaling off the same stat on the same
-// cast would double-dip.
+// No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedTotalPercent are both plain, fixed
+// values, snapshotted at cast time so a live Inspector change mid-buff can't leave the active timer running
+// against a duration that no longer matches what was granted.
 //
 // Death force-ends the buff early, same convention as every other buff this session (ExeBigAxeAbilityPD/
 // KnightBigBuffAbilityPD/RogueVanishAbilityPD) — see Simulate()'s own comment.
@@ -81,16 +78,6 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     public float duration = 2f;
     public float moveSpeedTotalPercent = 0.25f;
 
-    // Mirrors ApplyBuffAndCooldown's own _appliedDuration formula exactly. Outside a live match, falls back
-    // to the base field itself — exact at neutral AbilityPower (see ArcherFocusFireAbilityPD.
-    // LiveDurationRatio's own doc comment for why), so one token covers both.
-    public string LiveDurationRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? duration * stats.AbilityPower
-            : duration;
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
-    }
     // Invincibility grace granted the instant the teleport lands (see Activate()) — same GrantInvincibility
     // mechanism RogueSpinAbilityPD's own postActiveInvincibilityGrace uses, just at a different moment (right
     // after landing, not at the end of some later window) since it's the teleport itself that's disorienting,
@@ -112,11 +99,11 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     private PredictedTransform _predictedTransform;
     private PlayerControllerPD _controller;
 
-    // Flat — moveSpeedTotalPercent is not AbilityPower-scaled (see class doc comment), so this is just a
-    // plain snapshot of the field at cast time, reversed with the identical value at buff-end.
+    // Flat — not scaled by anything (see class doc comment), so this is just a plain snapshot of the field
+    // at cast time, reversed with the identical value at buff-end.
     private float _appliedMoveSpeedTotalPercent;
     // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
-    // this fixed rather than recomputing duration * AbilityPower live off a since-changed AbilityPower.
+    // this fixed rather than reading the raw duration field live, in case it changes mid-buff.
     private float _appliedDuration;
 
     protected override State GetInitialState() => default;
@@ -248,18 +235,15 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
 
     // Shared by a real cast (Activate(), above) and the auto-cast that fires when the Blade Dance finishes
     // on its own (AutoCastOnDanceReturn(), below) — everything about Blink EXCEPT the teleport itself: the
-    // Move Speed buff, its AbilityPower-scaled duration (same cast-time-snapshot convention as
-    // RogueVanishAbilityPD), the cooldown, the surge-block pairing, and the Ability Started notification.
-    // Kept as one shared method rather than duplicated across both call sites so the two can never drift out
-    // of sync — e.g. a future surge-block or AbilityPower-scaling change would otherwise need to be made
-    // twice.
+    // Move Speed buff, its duration (same cast-time-snapshot convention as RogueVanishAbilityPD), the
+    // cooldown, the surge-block pairing, and the Ability Started notification. Kept as one shared method
+    // rather than duplicated across both call sites so the two can never drift out of sync — e.g. a future
+    // surge-block change would otherwise need to be made twice.
     private void ApplyBuffAndCooldown()
     {
-        // AbilityPower's interpretation for this ability: grows only the buff's own duration — see class doc
-        // comment. moveSpeedTotalPercent itself is flat, not AbilityPower-scaled.
-        float abilityPower = _stats.AbilityPower;
+        // No AbilityPower scaling (removed 2026-08-23) — see class doc comment.
         _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent;
-        _appliedDuration              = duration * abilityPower;
+        _appliedDuration              = duration;
 
         currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;

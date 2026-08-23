@@ -97,15 +97,12 @@ MonoBehaviour:
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     For
-    <color=#FFA000>{LiveDurationRatio}seconds</color>, gain <color=#3278FF>+{weaponRangeTotalPercent}%
+    <color=#FFA000>{duration} seconds</color>, gain <color=#3278FF>+{weaponRangeTotalPercent}%
     Total Range</color>, <color=#FFA000>+{executeThresholdPercent}% Execute Threshold</color>
     and <color=#FF8700>+{critChancePercent}% Crit Chance</color>.
 
-    <color=#FFBE50><i>Ability
-    Power increases Duration</i></color>
-
-    <color=#FFBE50><i>Executes are 20%
-    effective vs Bosses</i></color>'
+    <color=#FFBE50><i>Executes
+    are 20% effective vs Bosses</i></color>'
   cooldown: 20
   cooldownStartsOnCast: 0
   slot: 1
@@ -114,7 +111,7 @@ MonoBehaviour:
   isActionAbility: 0
   duration: 8
   weaponRangeTotalPercent: 0.75
-  executeThresholdPercent: 0.25
+  executeThresholdPercent: 0.2
   critChancePercent: 0.3
 --- !u!114 &-5547753293085439714
 MonoBehaviour:

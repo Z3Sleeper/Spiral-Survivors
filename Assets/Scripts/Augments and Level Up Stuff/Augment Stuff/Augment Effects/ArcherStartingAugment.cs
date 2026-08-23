@@ -15,9 +15,10 @@ public class ArcherStartingAugment : AugmentEffectPD<ArcherStartingAugment.State
 
     // Author-facing as a direct multiplier (e.g. 8 = x8 Fire Rate) rather than the raw "Total tier" delta
     // CharacterStatsPD's shared fireRateTotalPercent accumulator actually stores — converted to that delta
-    // (multiplier - 1f) in OnApply() below, so the underlying accumulator (also temporarily added to/reversed
-    // by ArcherFocusFireAbilityPD's own AddFireRateTotalPercent calls) stays untouched and still purely
-    // additive; only this augment's own Inspector value reads as the intuitive end multiplier.
+    // (multiplier - 1f) in OnApply() below. NOT read/touched by ArcherFocusFireAbilityPD (2026-08-21) — that
+    // ability's own fire-rate penalty is a separate, standalone multiplicative term
+    // (focusFireRateMultiplier) applied against the fully-computed FireRate, specifically so it always takes
+    // its full intended percentage off regardless of how large THIS augment's own additive contribution is.
     [SerializeField] private float fireRateMultiplier = 8f;
     [SerializeField] private float projectileSpeedMultiplier = 20f;
 

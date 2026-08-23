@@ -327,6 +327,7 @@ public class DamageNumberManager : MonoBehaviour
         public IEnemyPD enemyTarget;
         public string customMessage;
         public Color? colorOverride;
+        public float durationMultiplier;
     }
 
     private readonly Dictionary<int, StatusShowtimeState> _statusShowtimeStates = new();
@@ -814,7 +815,7 @@ public class DamageNumberManager : MonoBehaviour
     // customMessage/colorOverride are only consulted for StatusPopupKind.Custom (or as an explicit override
     // on top of a known kind's own default) — see ResolveStatusMessage/ResolveStatusColor. Doesn't spawn
     // directly — see RequestStatusPopup for the showtime/queue gate every request goes through first.
-    public void SpawnStatusOnPlayer(StatusPopupKind kind, CharacterStatsPD target, string customMessage = null, Color? colorOverride = null)
+    public void SpawnStatusOnPlayer(StatusPopupKind kind, CharacterStatsPD target, string customMessage = null, Color? colorOverride = null, float durationMultiplier = 1f)
     {
         if (target == null) return;
         RequestStatusPopup(target.GetInstanceID(), new PendingStatusPopup
@@ -823,6 +824,7 @@ public class DamageNumberManager : MonoBehaviour
             playerTarget = target,
             customMessage = customMessage,
             colorOverride = colorOverride,
+            durationMultiplier = durationMultiplier,
         });
     }
 
@@ -831,7 +833,7 @@ public class DamageNumberManager : MonoBehaviour
     // SpawnStatusOnPlayer's own doc comment. Deliberately does NOT go through RequestStatusPopup's showtime/
     // queue gate — there's no persistent per-call target identity here to key it against (a fresh Vector3
     // every call), unlike the other two methods below.
-    public void SpawnStatusAtLocation(StatusPopupKind kind, Vector3 location, string customMessage = null, Color? colorOverride = null)
+    public void SpawnStatusAtLocation(StatusPopupKind kind, Vector3 location, string customMessage = null, Color? colorOverride = null, float durationMultiplier = 1f)
     {
         string message = ResolveStatusMessage(kind, customMessage);
         if (string.IsNullOrEmpty(message)) return;
@@ -844,7 +846,7 @@ public class DamageNumberManager : MonoBehaviour
         // Explicit CharacterStatsPD cast — a bare null is ambiguous now that InitStatus has both a
         // CharacterStatsPD and an IEnemyPD overload; either resolves identically for a fixed-location popup
         // (no target either way), this just breaks the tie.
-        num.InitStatus(message, worldPos, (CharacterStatsPD)null, zRot, this, color);
+        num.InitStatus(message, worldPos, (CharacterStatsPD)null, zRot, this, color, durationMultiplier);
     }
 
     // Enemy counterpart to SpawnStatusOnPlayer above — same continuous-follow/kind/message/color resolution,
@@ -853,7 +855,7 @@ public class DamageNumberManager : MonoBehaviour
     // needs the same SpawnGeneration staleness guard Damage's own enemy-following already uses, unlike a
     // player). EnemyBasePD.Stun()/Slow()/Interrupt() are the only callers today. Also routed through
     // RequestStatusPopup — see its own doc comment.
-    public void SpawnStatusOnEnemy(StatusPopupKind kind, IEnemyPD target, string customMessage = null, Color? colorOverride = null)
+    public void SpawnStatusOnEnemy(StatusPopupKind kind, IEnemyPD target, string customMessage = null, Color? colorOverride = null, float durationMultiplier = 1f)
     {
         if (IsDestroyed(target)) return;
         RequestStatusPopup(target.ObjectId.GetHashCode(), new PendingStatusPopup
@@ -862,6 +864,7 @@ public class DamageNumberManager : MonoBehaviour
             enemyTarget = target,
             customMessage = customMessage,
             colorOverride = colorOverride,
+            durationMultiplier = durationMultiplier,
         });
     }
 
@@ -922,7 +925,7 @@ public class DamageNumberManager : MonoBehaviour
         {
             // SizeOffsetMultiplier — see SpawnAndReleasePlayerNumber's own identical comment for why.
             Vector3 worldPos = pending.playerTarget.transform.position + new Vector3(xOffset, _playerStatusSpawnYOffset * SizeOffsetMultiplier(pending.playerTarget.bonusSizePercent), 0f);
-            num.InitStatus(message, worldPos, pending.playerTarget, zRot, this, color);
+            num.InitStatus(message, worldPos, pending.playerTarget, zRot, this, color, pending.durationMultiplier);
         }
         else if (!IsDestroyed(pending.enemyTarget))
         {
@@ -931,7 +934,7 @@ public class DamageNumberManager : MonoBehaviour
             // Stun/Slow/Interrupt popup pinned to the same height as a normal-sized enemy. Same convention as
             // everywhere else now — see SizeOffsetMultiplier's own doc comment for the rate/formula.
             Vector3 worldPos = pending.enemyTarget.Visuals.position + new Vector3(xOffset, _statusSpawnYOffset * SizeOffsetMultiplier(pending.enemyTarget.Size), 0f);
-            num.InitStatus(message, worldPos, pending.enemyTarget, zRot, this, color);
+            num.InitStatus(message, worldPos, pending.enemyTarget, zRot, this, color, pending.durationMultiplier);
         }
         else
         {

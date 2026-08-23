@@ -124,6 +124,18 @@ PrefabInstance:
       propertyPath: _damageNumberPlayerOffset
       value: 1.25
       objectReference: {fileID: 0}
+    - target: {fileID: 8980478713148434362, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8980478713148434362, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1.5
+      objectReference: {fileID: 0}
+    - target: {fileID: 8980478713148434362, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 16
+      objectReference: {fileID: 0}
     - target: {fileID: 8996800994791557460, guid: 9e5a5eb2c30511045ace6be1af595ad1, type: 3}
       propertyPath: m_LocalScale.x
       value: 1

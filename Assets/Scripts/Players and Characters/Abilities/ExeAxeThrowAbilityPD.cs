@@ -47,9 +47,9 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     [Header("Effect")]
     public float strengthPercent    = 2f;
 
-    // Baseline (unrolled) damage — this ability has no AbilityPower/AreaEffectPower scaling at all (see
-    // class doc comment), so this is a straight preview of strengthPercent * Strength, same "baseline, not
-    // a randomly-sampled roll" convention every other Live*Ratio in this codebase uses.
+    // Baseline (unrolled) damage — this ability has no AreaEffectPower scaling at all (see class doc
+    // comment), so this is a straight preview of strengthPercent * Strength, same "baseline, not a
+    // randomly-sampled roll" convention every other Live*Ratio in this codebase uses.
     public string LiveStrengthRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
             ? $"{AugmentDescriptionFormatter.FormatLiveNumber(strengthPercent * stats.Strength)} "

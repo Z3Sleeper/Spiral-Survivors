@@ -15,15 +15,11 @@ using UnityEngine;
 // chosen so the total damage dealt over one full rain comes out to exactly the ability's stated 500%
 // Unpenalized Strength (20 ticks * 25% = 500%, spaced 0.25s apart = 5s total).
 //
-// Two independent scaling multipliers, both AreaEffectPower AND AbilityPower, ADDITIVELY combined (each
-// stat's own bonus portion above its 1.0 neutral baseline sums with the other's, rather than the two
-// multiplying together — see AreaEffectCastHelper.Cast's own doc comment for the exact shape and why):
-// - Damage: AreaEffectPower is applied automatically inside Cast() itself (every "AoE Effects" family member
-//   gets this for free); AbilityPower is passed straight through to Launch()'s own abilityPower parameter
-//   (see SpawnChain) so the shared helper does the additive combine itself, rather than this ability
-//   pre-multiplying its own separate layer into strengthPercentPerTick.
+// AreaEffectPower scaling (no AbilityPower — removed 2026-08-23):
+// - Damage: applied automatically inside Cast() itself (every "AoE Effects" family member gets this for
+//   free) — no extra scaling needed from this ability.
 // - Slow: slowPercent (already "how much slow," an Inspector-friendly percent — see its own doc comment)
-//   gets scaled by both stats directly (same additive combine, hand-rolled here since Slow isn't something
+//   gets scaled by AreaEffectPower directly (hand-rolled here since Slow isn't something
 //   AreaEffectCastHelper knows about), then converted to the "speed remains" multiplier EnemyBasePD.Slow()
 //   actually takes right at the end — see SpawnChain's own comment. EnemyBasePD.Slow's own 90%-max clamp
 //   means it's safe to hand it an arbitrarily large scaled value without checking here first.
@@ -86,23 +82,21 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // alongside the live number below.
     public float TotalDamagePercent => tickCount * strengthPercentPerTick;
 
-    // Mirrors AreaEffectCastHelper.Cast's own damage formula exactly (areaAndAbilityPower = AreaEffectPower
-    // + AbilityPower - 1f, both stats' own bonus-over-neutral portions summed additively — see that method's
-    // own doc comment), summed across the whole rain, minus the luck/crit roll each tick independently rolls
-    // — baseline preview, not a randomly-sampled one, same convention as every augment's own Live*Ratio.
+    // Mirrors AreaEffectCastHelper.Cast's own damage formula exactly (owner.AreaEffectPower directly — see
+    // that method's own doc comment), summed across the whole rain, minus the luck/crit roll each tick
+    // independently rolls — baseline preview, not a randomly-sampled one, same convention as every augment's
+    // own Live*Ratio.
     public string LiveDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(tickCount * strengthPercentPerTick * stats.Strength * (stats.AreaEffectPower + stats.AbilityPower - 1f))} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(tickCount * strengthPercentPerTick * stats.Strength * stats.AreaEffectPower)} "
             : "";
 
     // Mirrors SpawnChain's own scaledSlowAmount formula exactly (see its own doc comment). Outside a live
-    // match, falls back to slowPercent itself — exact at neutral (both AreaEffectPower and AbilityPower at
-    // their own 1.0 baseline, see ArcherFocusFireAbilityPD.LiveDurationRatio's own doc comment for why this
-    // is precise, not approximate), so one token covers both contexts.
+    // match, falls back to slowPercent itself — exact at AreaEffectPower's own 1.0 baseline.
     public string LiveSlowRatio(CharacterStatsPD stats)
     {
         float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? slowPercent * (stats.AreaEffectPower + stats.AbilityPower - 1f)
+            ? slowPercent * stats.AreaEffectPower
             : slowPercent;
         return $"{AugmentDescriptionFormatter.FormatLivePercent(value)}";
     }
@@ -110,8 +104,8 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // the "how much speed remains" multiplier EnemyBasePD.Slow() itself takes, converted at the call site
     // in SpawnChain instead so this field reads the way you'd actually want to type a value into it.
     // Reapplied on every tick an enemy is still standing in the zone, so it effectively stays refreshed the
-    // whole time they remain inside, not just once on first contact. Scaled by AreaEffectPower/AbilityPower
-    // at cast time — see SpawnChain's own comment.
+    // whole time they remain inside, not just once on first contact. Scaled by AreaEffectPower at cast time
+    // — see SpawnChain's own comment.
     public float slowPercent = 0.35f;
     [SerializeField] private float slowDuration = 0.5f;
     // How long between each outer recast (a full repeat of the entire rain, at the same cast location) when
@@ -266,24 +260,17 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         float radius = castRadius * _stats.AreaEffectSize;
 
         // AreaEffectPower is already applied automatically inside Cast() itself (every "AoE Effects" family
-        // member gets this for free); AbilityPower is passed straight through to Launch() below instead of
-        // being pre-multiplied in here, so the two combine ADDITIVELY inside the shared helper (see
-        // AreaEffectCastHelper.Cast's own doc comment on its abilityPower parameter) rather than this
-        // ability hand-rolling its own separate multiplicative layer on top.
+        // member gets this for free) — no extra scaling needed from this ability.
 
-        // Slow strength (not duration) scales with AreaEffectPower AND AbilityPower too — scaling those UP
-        // means MORE slow, so this scales slowPercent (already "how much slow," see its own doc comment)
-        // directly, then converts to the "speed remains" multiplier EnemyBasePD.Slow() actually takes right
-        // at the end. EnemyBasePD.ApplySlow's own 90%-max clamp means this is safe to hand an arbitrarily
-        // large scaled value without checking here first. ADDITIVE, not multiplicative, per the user's own
-        // call — the two stats' own BONUS portions (each stat minus its own 1.0 neutral baseline) sum
-        // together into one combined multiplier, same "1 + sum of bonuses" shape every other Total-tier stat
-        // in this codebase already uses, rather than compounding as two separate multipliers. +30%
-        // AreaEffectPower and +30% AbilityPower together means +60% total (1 + 0.3 + 0.3 = 1.6x), and
-        // neutral (both at 100%/1.0, no bonuses) stays exactly 1x — NOT literally AreaEffectPower +
-        // AbilityPower added together raw, which would double the baseline even with zero bonuses on either
-        // stat (a first attempt at this got that wrong).
-        float scaledSlowAmount    = slowPercent * (_stats.AreaEffectPower + _stats.AbilityPower - 1f);
+        // Slow strength (not duration) scales with AreaEffectPower too — scaling it UP means MORE slow, so
+        // this scales slowPercent (already "how much slow," see its own doc comment) directly, then converts
+        // to the "speed remains" multiplier EnemyBasePD.Slow() actually takes right at the end.
+        // EnemyBasePD.ApplySlow's own 90%-max clamp means this is safe to hand an arbitrarily large scaled
+        // value without checking here first. Same "1 + bonus-over-neutral" shape every other Total-tier stat
+        // in this codebase uses — neutral (100%/1.0, no bonus) stays exactly 1x, +30% AreaEffectPower means
+        // +30% total, not a raw AreaEffectPower multiply (which would double the baseline even with zero
+        // bonus).
+        float scaledSlowAmount    = slowPercent * _stats.AreaEffectPower;
         float scaledSlowMultiplier = 1f - scaledSlowAmount;
 
         var chainId = hierarchy.Create(chainPrefab, position, Quaternion.identity);
@@ -298,7 +285,6 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(_stats, position, tickCount, tickInterval, radius, radiusVFXPrefab,
                 dealDamage: true, damagePercent: strengthPercentPerTick, notifyOnHit: false,
-                abilityPower: _stats.AbilityPower,
                 onEnemyHit: enemy => enemy.Slow(scaledSlowMultiplier, slowDuration),
                 overrideHitSfx: true);
     }

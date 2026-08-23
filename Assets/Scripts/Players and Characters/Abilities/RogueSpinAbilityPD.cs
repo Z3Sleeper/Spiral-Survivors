@@ -101,7 +101,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // Multishot).
     public string LiveDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * stats.WeaponStrength * stats.AttackSpeed * spinAbilityDamageMultiplier * stats.AbilityPower)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * stats.WeaponStrength * stats.AttackSpeed * spinAbilityDamageMultiplier)} "
             : "";
 
     private CharacterStatsPD    _stats;
@@ -178,9 +178,8 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     public bool AbilityIsActive => currentState.isActive;
     public bool HasActiveWindow => true;
     public float ActiveTimeRemaining => Mathf.Max(0f, currentState.activeTimer);
-    // No AbilityPower scaling on this ability's own duration (see Activate() — currentState.activeTimer is
-    // set straight from duration, unlike the buff abilities' own AbilityPower-scaled snapshots), so the raw
-    // field is already the correct total, no separate _appliedDuration needed.
+    // currentState.activeTimer is set straight from duration (see Activate()) — no scaling involved, so the
+    // raw field is already the correct total, no separate _appliedDuration needed.
     public float ActiveTimeDuration => duration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
@@ -474,17 +473,16 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // its own HIT COUNT with weapon count (hitCountPerWeapon/_effectiveHitCount) — pairing that with
     // WeaponStrength's own divide is exactly what a real multi-weapon setup already does (more instances,
     // each smaller, total roughly constant), not a double-penalty. Times the LIVE AttackSpeed (unrelated to
-    // spinRate, which is a flat, AttackSpeed-independent value now) times spinAbilityDamageMultiplier times
-    // the live CharacterStatsPD.AbilityPower (this ability's own interpretation of that stat: scales both
-    // damage sources below). Deliberately reads WeaponStrength/AttackSpeed/AbilityPower live, not
-    // snapshotted at cast time — unlike _facingYaw/_damageReach/_weaponCountAtcast above, none of these need
-    // to stay fixed for the whole active window.
-    private float BaseDamage() => _stats.WeaponStrength * _stats.AttackSpeed * spinAbilityDamageMultiplier * _stats.AbilityPower;
+    // spinRate, which is a flat, AttackSpeed-independent value now) times spinAbilityDamageMultiplier.
+    // Deliberately reads WeaponStrength/AttackSpeed live, not snapshotted at cast time — unlike
+    // _facingYaw/_damageReach/_weaponCountAtcast above, neither needs to stay fixed for the whole active
+    // window.
+    private float BaseDamage() => _stats.WeaponStrength * _stats.AttackSpeed * spinAbilityDamageMultiplier;
 
     // Same shape as BaseDamage() (same reasoning/exception), but WeaponOnHitPower instead of WeaponStrength
     // — the onHitPower this hit reports to onhit-triggered effects (via WeaponHitData/AllyStrikeData below),
     // not the damage the hit itself deals.
-    private float OnHitPowerForEffects() => _stats.WeaponOnHitPower * _stats.AttackSpeed * spinAbilityDamageMultiplier * _stats.AbilityPower;
+    private float OnHitPowerForEffects() => _stats.WeaponOnHitPower * _stats.AttackSpeed * spinAbilityDamageMultiplier;
 
     // Mirrors WeaponMeleePD.Hit() exactly, baseDamage swapped from Strength to BaseDamage().
     private void HitEnemy(IEnemyPD enemy)

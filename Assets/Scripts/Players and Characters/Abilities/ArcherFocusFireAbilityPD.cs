@@ -28,15 +28,13 @@ using UnityEngine;
 // Never touches player movement — only weapon orbit/firing — so ForcesSpecialAction is false, same as
 // RogueVanishAbilityPD/KnightBigBuffAbilityPD.
 //
-// Also applies a -fireRatePenaltyPercent hit to CharacterStatsPD.FireRate for the whole window (the tradeoff
-// for never-miss continuous fire) via AddFireRateTotalPercent, reversed by the identical amount at end.
-// CharacterStatsPD.AbilityPower scales only the window's own DURATION here (appliedDuration = duration *
-// AbilityPower), same uniform "AbilityPower extends a buff's length" convention every buff ability in this
-// codebase now follows (ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/RogueVanishAbilityPD/BWBlinkAbilityPD).
-// The Fire Rate penalty itself is deliberately NOT also AbilityPower-scaled — a buff's own strength and its
-// duration double-dipping the same stat on the same cast reads as a much bigger AP payoff than intended, so
-// only one of the two ever scales; fireRatePenaltyPercent is a flat, fixed value.
-// Duration snapshotted at cast time (_appliedDuration) — a live AbilityPower change mid-window must not
+// Also multiplies CharacterStatsPD.FireRate by (1 - fireRatePenaltyPercent) for the whole window (the
+// tradeoff for never-miss continuous fire) via SetFocusFireRateMultiplier — a genuine percent-of-TOTAL
+// reduction (2026-08-21 fix; see CharacterStatsPD.focusFireRateMultiplier's own doc comment for why an
+// earlier additive-stacking version under-delivered once other fire-rate bonuses were involved), gated
+// entirely on ContinuousFire so no separate reversal is needed at the window's end.
+// No AbilityPower scaling (removed 2026-08-23) — duration and fireRatePenaltyPercent are both plain, fixed
+// values. Duration snapshotted at cast time (_appliedDuration) so a live Inspector change mid-window can't
 // leave the active timer running against a duration that no longer matches what was granted.
 //
 // Recastable while already active — a second press ends the window immediately instead of being blocked by
@@ -76,18 +74,6 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     public float duration = 3f;
     public float fireRatePenaltyPercent = 0.5f;
 
-    // Mirrors _appliedDuration's own formula exactly (see class doc comment for AbilityPower's one
-    // interpretation here). Outside a live match (no stats to read AbilityPower off), falls back to the base
-    // field itself — mathematically identical to "what this would show at a neutral 1.0x Ability Power," not
-    // an approximation, since AbilityPower's own neutral value is 1 — so a single token can cleanly cover
-    // both contexts instead of needing a separate static fallback shown alongside it.
-    public string LiveDurationRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? duration * stats.AbilityPower
-            : duration;
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
-    }
     // Recast-to-cancel (see IsReady's own doc comment) is blocked for this long after a fresh cast — purely
     // a misclick guard, so a double-press/held-down button can't immediately end the window and burn the
     // whole cooldown for essentially nothing. Elapsed-since-cast is _appliedDuration - currentState.
@@ -99,15 +85,9 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     private PlayerControllerPD _controller;
     private WeaponManagerPD    _weaponManager;
 
-    // Flat — fireRatePenaltyPercent itself is not AbilityPower-scaled (see class doc comment), so this is
-    // just a plain snapshot of the field at cast time, reversed with the identical value at end.
-    private float _appliedFireRatePenaltyPercent;
-    // Snapshotted at cast time (duration * AbilityPower at that instant) — AbilityPower's one interpretation
-    // for this ability: grows the window's own length, same convention as every buff ability in this codebase
-    // now follows (ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/RogueVanishAbilityPD/BWBlinkAbilityPD). Also what
-    // IsReady's own recast-block elapsed-time math is measured against (see recastBlockDuration's own doc
-    // comment) rather than the raw, un-hasted duration field, so that math stays correct regardless of
-    // whatever AbilityPower actually was at the moment of cast.
+    // Snapshotted at cast time (the plain duration field, no scaling — see class doc comment) — protects
+    // against a live Inspector change mid-window. Also what IsReady's own recast-block elapsed-time math is
+    // measured against (see recastBlockDuration's own doc comment).
     private float _appliedDuration;
 
     protected override State GetInitialState() => default;
@@ -207,9 +187,8 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
             return;
         }
 
-        // AbilityPower's interpretation for this ability: grows the window's own length — see
-        // _appliedDuration's own doc comment.
-        _appliedDuration = duration * _stats.AbilityPower;
+        // No AbilityPower scaling (removed 2026-08-23) — see class doc comment.
+        _appliedDuration = duration;
 
         currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;
@@ -224,9 +203,13 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
         }
 
         _stats.SetContinuousFire(true);
-        // Flat — not AbilityPower-scaled (see class doc comment).
-        _appliedFireRatePenaltyPercent = fireRatePenaltyPercent;
-        _stats.AddFireRateTotalPercent(-_appliedFireRatePenaltyPercent);
+        // Multiplicative against the FULLY computed FireRate (2026-08-21 fix — see
+        // CharacterStatsPD.focusFireRateMultiplier's own doc comment for why this used to be an additive
+        // AddFireRateTotalPercent call, which got diluted into near-nothing by any other fire-rate bonus a
+        // player had stacked, instead of reliably taking fireRatePenaltyPercent off the TOTAL). Read straight
+        // off the Inspector field, no snapshot needed since there's nothing left to "reverse" (see
+        // EndFocusFire below).
+        _stats.SetFocusFireRateMultiplier(1f - fireRatePenaltyPercent);
         UpdateAutoAimAngle();
 
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
@@ -239,8 +222,10 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     {
         state.isActive = false;
         if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
+        // No separate fire-rate reversal needed — CharacterStatsPD.FireRate only ever reads
+        // focusFireRateMultiplier while ContinuousFire is true, so clearing that flag here already fully
+        // restores normal fire rate on its own (see focusFireRateMultiplier's own doc comment).
         _stats?.SetContinuousFire(false);
-        _stats?.AddFireRateTotalPercent(_appliedFireRatePenaltyPercent);
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
     }

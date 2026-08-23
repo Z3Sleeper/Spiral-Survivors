@@ -13,7 +13,7 @@ using UnityEngine;
 // leap, BWBlinkAbilityPD's teleport), just inverted: accumulation is SKIPPED while isDashing is true instead
 // of a sweep being ACTIVE while it's true.
 //
-// Unlike PhantomBladeOnCritAugment/PhantomBladeEnergyRegenAugment/PhantomBladeOnHealAugment, this can't use a
+// Unlike PhantomBladeOnCritAugment/PhantomBladeOnHealAugment, this can't use a
 // plain (non-State) accumulator field — there's no discrete PredictedEvent firing "you moved," so this reads
 // Stats.transform.position directly every tick, which means both distanceAccumulator and prevPos have to be
 // real predicted State to roll back correctly under resimulation (a plain field would double/triple-count on

@@ -21,11 +21,20 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 {
     public struct State : IPredictedData<State>
     {
-        // Ticks, not seconds — see EnemyBaseState.ContactCooldown.remaining's own doc comment for why (always
-        // mutates every tick, so an int's cheap zigzag-varint diff beats a float's flat 33-bit cost).
-        // Allowed to go arbitrarily negative (see the reset comment below), same as it always could as a
-        // float — an int just represents that identical "debt" in tick units instead of seconds.
-        public int fireTimer;
+        // Progress toward the next shot (0..1, one full fire cycle), incremented every tick by
+        // AttackSpeed*FireRate*delta — the CURRENT rate, re-read fresh every single tick (2026-08-21 fix).
+        // The old design instead baked a fixed tick-COUNT once, at the moment of the PREVIOUS shot, from
+        // whatever the rate happened to be right then, then just decremented it by a flat 1/tick — a rate
+        // change mid-cooldown (Surge, or any other Attack Speed/Fire Rate modifier) had zero effect until the
+        // NEXT shot finally recomputed it. A continuous, rate-weighted accumulator is the only mathematically
+        // correct way to handle a rate that changes mid-cycle (see WeaponRangedPD.LateSimulate's own comment
+        // for why a naive "recompute the tick threshold every tick" alternative is actually WRONG, not just a
+        // lesser fix) — same shape PhantomBladePassiveAugment's own state.timer already uses for its
+        // AttackSpeed-driven cooldown. A plain float, not fixed-point-int (2026-08-21, tried the fixed-point
+        // version first for network-diffing cheapness, reverted per explicit request — simplicity over a
+        // marginal bandwidth saving here, revisit if this specific field ever shows up as a real cost).
+        // Allowed to go arbitrarily negative — see the reset comment below (unchanged from the old design).
+        public float fireProgress;
         public DisposableList<HitCooldownEntry> hitCooldowns;
         public void Dispose()
         {
@@ -124,12 +133,19 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         transform.SetPositionAndRotation(ApplyHeightLift(orbitPos), Quaternion.LookRotation(outward));
 
         // Skipped entirely while _stats.IsWeaponsDisabled (e.g. the spin ability's leap) — the weapon keeps
-        // orbiting above (purely visual), it just never actually fires; fireTimer is deliberately left
+        // orbiting above (purely visual), it just never actually fires; fireProgress is deliberately left
         // untouched too, so it resumes exactly where it left off once re-enabled rather than losing progress.
         if (_stats.IsWeaponsDisabled) return;
 
-        state.fireTimer--;
-        if (state.fireTimer > 0) return;
+        // Re-reads AttackSpeed*FireRate fresh every tick, unlike the old design — see fireProgress's own doc
+        // comment for the full reasoning and why this is the mathematically correct approach (as opposed to,
+        // say, recomputing a tick-count THRESHOLD each tick and comparing elapsed ticks against it — that
+        // alternative is actually wrong: it would let a rate change reach BACKWARD and reweight ticks that
+        // already elapsed under the OLD rate, either firing too early or too late depending on which
+        // direction the rate changed, rather than correctly treating each past tick's contribution as fixed
+        // once it's already happened).
+        state.fireProgress += _stats.AttackSpeed * _stats.FireRate * delta;
+        if (state.fireProgress < 1f) return;
 
         if (_stats.ContinuousFire)
         {
@@ -138,12 +154,12 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
             // (set by ArcherFocusFireAbilityPD.UpdateAutoAimAngle alongside the aim angle itself) so it
             // doesn't fire blindly into empty space when nothing's actually in range. Deliberately NOT reset
             // on the no-target branch — same "hard reset only on an actual shot, let debt accumulate
-            // otherwise" reasoning FindTarget's own fireTimer reset below already uses, so a target coming
+            // otherwise" reasoning FindTarget's own fireProgress reset below already uses, so a target coming
             // back into range fires immediately instead of waiting out a fresh full interval. No per-target
             // hit cooldown bookkeeping either — there's no selected target to gate.
             if (!_stats.ContinuousFireHasTarget) return;
             Fire(transform.position + transform.forward * EffectiveWeaponRange);
-            state.fireTimer = Mathf.RoundToInt(1f / Mathf.Max(0.01f, _stats.AttackSpeed * _stats.FireRate) / delta);
+            state.fireProgress = 0f;
             return;
         }
 
@@ -151,10 +167,10 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
         HitCooldownMath.TryStart(state.hitCooldowns, target.ObjectId, HitCooldown, delta);
         Fire(hurtboxCenter);
-        // Hard reset, not += — fireTimer can drift arbitrarily negative while no target is in the forward
-        // ray (the common case for a thin raycast), and accumulating the cooldown on top of that debt
-        // instead of clearing it would cause a rapid-fire burst to pay it off once a target reappears.
-        state.fireTimer = Mathf.RoundToInt(1f / Mathf.Max(0.01f, _stats.AttackSpeed * _stats.FireRate) / delta);
+        // Hard reset, not -= 1f — fireProgress can drift arbitrarily high while no target is in the forward
+        // ray (the common case for a thin raycast), and preserving that overshoot instead of clearing it
+        // would cause a rapid-fire burst to pay it off once a target reappears.
+        state.fireProgress = 0f;
     }
 
     // ── Targeting ─────────────────────────────────────────────────────────────

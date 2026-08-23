@@ -185,12 +185,13 @@ MonoBehaviour:
     <color=#FF0050>Attack Speed</color> for the duration.
 
     <color=#FFBE50><i>Attack
-    Speed bonus scales with 100% Ability Haste x Ability Power</i></color>'
+    Speed bonus scales with 100% Ability Haste</i></color>'
   cooldown: 5
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 0
+  isActionAbility: 1
   castRangeMultiplier: 2
   travelSpeed: 50
   holdDuration: 3
@@ -213,18 +214,19 @@ MonoBehaviour:
 
     <color=#00FFFF>Blink</color>
     to your <color=#FFA000>Blades</color> and gain <color=#FFFFFF>+{moveSpeedTotalPercent}%
-    Total Move Speed</color> for <color=#FFA000>{LiveDurationRatio}seconds</color>.
+    Total Move Speed</color> for <color=#FFA000>{duration} seconds</color>.
 
     Only
     usable while <color=#FFB4FF>Blade Dance</color> is active.
 
     <color=#FFBE50><i>Autocasts
-    when Blade Dance ends. Ability Power increases Duration.</i></color>'
+    when Blade Dance ends</i></color>'
   cooldown: 5
   cooldownStartsOnCast: 1
   slot: 1
   tags: []
   activeSurgeBlock: 0
+  isActionAbility: 1
   duration: 2
   moveSpeedTotalPercent: 0.5
   postBlinkInvincibility: 0.05

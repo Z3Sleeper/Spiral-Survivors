@@ -311,7 +311,11 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         float halfWidth = stabWidth * 0.5f * size;
         foreach (var stats in CharacterStatsPD.All.Values)
         {
-            if (stats.IsDead || stats.IsInvincible) continue;
+            // No IsInvincible pre-check (2026-08-24 fix) — TakeDamage() already no-ops safely against
+            // invincibility on its own, AND is the only place Dodge credit gets awarded (see
+            // CharacterStatsPD.NotifyDodge's own doc comment); skipping the call here silently ate every
+            // Dodge this attack should have granted while the player was dash-invincible.
+            if (stats.IsDead) continue;
 
             Vector3 offset = stats.transform.position - origin;
             offset.y = 0f;

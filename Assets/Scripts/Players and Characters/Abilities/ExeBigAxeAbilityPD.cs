@@ -13,12 +13,10 @@ using UnityEngine;
 // itself (CharacterStatsPD.OuterXZMultiplier, WeaponAxePD's own read sites) is untouched and still fully
 // functional — just unused by this ability now — in case it's useful again later.
 //
-// CharacterStatsPD.AbilityPower scales only the buff's own duration, same uniform convention every buff
-// ability in this codebase now follows (RogueVanishAbilityPD/KnightBigBuffAbilityPD/BWBlinkAbilityPD) —
-// snapshotted at cast time so a live AbilityPower change mid-buff can't leave the active timer running
-// against a duration that no longer matches what was granted. The three grants themselves (Weapon Range/
-// Execute Threshold/Crit Chance) are flat, fixed values — deliberately NOT also AbilityPower-scaled, since a
-// buff's own strength and its duration both scaling off the same stat on the same cast would double-dip.
+// No AbilityPower scaling (removed 2026-08-23) — duration and the three grants themselves (Weapon Range/
+// Execute Threshold/Crit Chance) are all plain, fixed values, snapshotted at cast time so a live Inspector
+// change mid-buff can't leave the active timer running against a duration that no longer matches what was
+// granted.
 public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, IAbilityPD
 {
     public struct State : IPredictedData<State>
@@ -54,26 +52,15 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     public float executeThresholdPercent = 0.25f;
     public float critChancePercent       = 0.25f;
 
-    // Mirrors Activate()'s own _appliedDuration formula exactly (see class doc comment). Outside a live
-    // match, falls back to the base field itself — exact at neutral AbilityPower (see
-    // ArcherFocusFireAbilityPD.LiveDurationRatio's own doc comment for why), so one token covers both.
-    public string LiveDurationRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? duration * stats.AbilityPower
-            : duration;
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
-    }
-
     private CharacterStatsPD _stats;
 
-    // Flat — not AbilityPower-scaled (see class doc comment), so these are just plain snapshots of the
+    // Flat — not scaled by anything (see class doc comment), so these are just plain snapshots of the
     // fields at cast time, reversed with the identical values at buff-end.
     private float _appliedWeaponRangeTotalPercent;
     private float _appliedExecuteThreshold;
     private float _appliedCritChance;
     // Snapshotted alongside the others — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI
-    // needs this fixed rather than recomputing duration * AbilityPower live off a since-changed AbilityPower.
+    // needs this fixed rather than reading the raw duration field live, in case it changes mid-buff.
     private float _appliedDuration;
 
     protected override State GetInitialState() => default;
@@ -151,13 +138,11 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     {
         if (!IsReady || _stats == null) return;
 
-        // AbilityPower's interpretation for this ability: grows only the buff's own duration — see class doc
-        // comment. The three grants below are flat, not AbilityPower-scaled.
-        float abilityPower = _stats.AbilityPower;
+        // No AbilityPower scaling (removed 2026-08-23) — see class doc comment.
         _appliedWeaponRangeTotalPercent = weaponRangeTotalPercent;
         _appliedExecuteThreshold        = executeThresholdPercent;
         _appliedCritChance              = critChancePercent;
-        _appliedDuration                = duration * abilityPower;
+        _appliedDuration                = duration;
 
         currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;

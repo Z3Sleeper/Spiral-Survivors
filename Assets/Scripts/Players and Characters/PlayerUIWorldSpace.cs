@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public class PlayerUIWorldSpace : MonoBehaviour
 {
@@ -28,11 +29,18 @@ public class PlayerUIWorldSpace : MonoBehaviour
     [SerializeField] private Image ability1CDFill;
     [SerializeField] private GameObject ability1OnCooldownBG;
     [SerializeField] private Image ability1Icon;
+    // Countdown number in seconds (2026-08-21) — same shape LocalUIManagerPD's own (now-retired) ability
+    // cooldown text used: shown/hidden on the same onActualCooldown edge as ability1CDFill (both "how much
+    // cooldown is left" indicators, so they always change together — see UpdateAbility1's own
+    // _ability1CooldownTextShown toggle, independent of ability1CDFill's own so neither silently depends on
+    // the other being wired), text only rebuilt when the ROUNDED (0.1s) value actually changes.
+    [SerializeField] private TextMeshProUGUI ability1CooldownText;
     private bool _ability1CooldownUIShown;
     // Separate edge-detect from _ability1CooldownUIShown above — that one tracks the lockout-inclusive BG
     // visibility, but CDFill (transparent, sitting on top of the icon) should only show for actual
     // cooldown, not a lockout with nothing to deplete — see UpdateAbility1's own comment.
     private bool _ability1CDFillShown;
+    private bool _ability1CooldownTextShown;
     // DurationUI (DurationBG + DurationBar) — hidden by default in the prefab, shown only while
     // IAbilityPD.HasActiveWindow AND AbilityIsActive are both true (permanently never for an ability with no
     // active window at all — see IAbilityPD.HasActiveWindow's own doc comment), DurationBar's fillAmount
@@ -43,16 +51,25 @@ public class PlayerUIWorldSpace : MonoBehaviour
     private bool _ability1DurationUIShown;
 
     // Same shape as Ability1 UI above — both slots are functionally identical now (cooldown-gated
-    // IAbilityPD). No cooldown text here either, matching this world-space UI's existing textless design.
+    // IAbilityPD), so Ability2 gets the same cooldown-text treatment too.
     [Header("Ability2 UI")]
     [SerializeField] private Image ability2CDFill;
     [SerializeField] private GameObject ability2OnCooldownBG;
     [SerializeField] private Image ability2Icon;
+    [SerializeField] private TextMeshProUGUI ability2CooldownText;
     private bool _ability2CooldownUIShown;
     private bool _ability2CDFillShown;
+    private bool _ability2CooldownTextShown;
     [SerializeField] private GameObject ability2DurationUI;
     [SerializeField] private Image ability2DurationBar;
     private bool _ability2DurationUIShown;
+
+    // Cooldown countdown text genuinely changes almost every frame while active, so this can't eliminate
+    // most rebuilds — but the display only shows 1 decimal (":F1"), so caching the ROUNDED (0.1s) value still
+    // catches the frames where two different raw floats format to the identical string. Same convention
+    // LocalUIManagerPD's own (now-retired) ability cooldown text used.
+    private float _lastAbility1CooldownDisplay = float.NaN;
+    private float _lastAbility2CooldownDisplay = float.NaN;
 
     private CharacterStatsPD _stats;
     private PlayerControllerPD _controller;
@@ -161,6 +178,27 @@ public class PlayerUIWorldSpace : MonoBehaviour
             }
         }
 
+        // Independent of ability1CDFill above (own null-guard) — same onActualCooldown edge (both "how much
+        // cooldown is left" indicators, so they always change together), but shouldn't silently depend on
+        // the fill being wired. Text only rebuilt when the ROUNDED (0.1s) value actually changes.
+        if (ability1CooldownText != null)
+        {
+            if (onActualCooldown != _ability1CooldownTextShown)
+            {
+                _ability1CooldownTextShown = onActualCooldown;
+                ability1CooldownText.gameObject.SetActive(onActualCooldown);
+            }
+            if (onActualCooldown)
+            {
+                float rounded = Mathf.Round(_ability1.CooldownRemaining * 10f) / 10f;
+                if (rounded != _lastAbility1CooldownDisplay)
+                {
+                    _lastAbility1CooldownDisplay = rounded;
+                    ability1CooldownText.text = $"{_ability1.CooldownRemaining:F1}";
+                }
+            }
+        }
+
         // Shown more broadly than the fill above — any not-ready reason (real cooldown OR e.g.
         // BWBlinkAbilityPD's Blade-Dance gate), a hard lockout (a locking ability elsewhere is active, or
         // isSpecialMoving/stunned — see PlayerControllerPD.IsLockedOut's own doc comment), or blocked by
@@ -212,6 +250,25 @@ public class PlayerUIWorldSpace : MonoBehaviour
             {
                 _ability2CDFillShown = onActualCooldown;
                 ability2CDFill.gameObject.SetActive(onActualCooldown);
+            }
+        }
+
+        // See UpdateAbility1's own identical comment for the full reasoning.
+        if (ability2CooldownText != null)
+        {
+            if (onActualCooldown != _ability2CooldownTextShown)
+            {
+                _ability2CooldownTextShown = onActualCooldown;
+                ability2CooldownText.gameObject.SetActive(onActualCooldown);
+            }
+            if (onActualCooldown)
+            {
+                float rounded = Mathf.Round(_ability2.CooldownRemaining * 10f) / 10f;
+                if (rounded != _lastAbility2CooldownDisplay)
+                {
+                    _lastAbility2CooldownDisplay = rounded;
+                    ability2CooldownText.text = $"{_ability2.CooldownRemaining:F1}";
+                }
             }
         }
 

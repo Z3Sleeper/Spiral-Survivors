@@ -43,25 +43,14 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     public float duration = 3f;
     public float moveSpeedTotalPercent = 0.5f;
 
-    // Mirrors Activate()'s own _appliedDuration formula exactly. Outside a live match, falls back to the
-    // base field itself — exact at neutral AbilityPower (see ArcherFocusFireAbilityPD.LiveDurationRatio's
-    // own doc comment for why), so one token covers both.
-    public string LiveDurationRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? duration * stats.AbilityPower
-            : duration;
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
-    }
-
     private CharacterStatsPD _stats;
-    // Flat — moveSpeedTotalPercent is not AbilityPower-scaled (see Activate()'s own comment), so this is
-    // just a plain snapshot of the field at cast time rather than recomputed live at both Activate() and the
-    // end-of-active reversal — same "fixed for the whole active window" reasoning as RogueSpinAbilityPD's own
-    // cast-time snapshots (_weaponCountAtCast etc), just without any AbilityPower math involved here.
+    // Flat — not scaled by anything (see Activate()'s own comment), so this is just a plain snapshot of the
+    // field at cast time rather than recomputed live at both Activate() and the end-of-active reversal — same
+    // "fixed for the whole active window" reasoning as RogueSpinAbilityPD's own cast-time snapshots
+    // (_weaponCountAtCast etc).
     private float _appliedMoveSpeedTotalPercent;
     // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
-    // this fixed rather than recomputing duration * AbilityPower live off a since-changed AbilityPower.
+    // this fixed rather than reading the raw duration field live, in case it changes mid-buff.
     private float _appliedDuration;
 
     // The local-only screen tint toggle routes through PredictedEvent, not a raw call directly in
@@ -163,14 +152,10 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     {
         if (!IsReady || _stats == null) return;
 
-        // AbilityPower's interpretation for this ability: grows only the buff's own duration, same uniform
-        // convention every buff ability in this codebase now follows (ExeBigAxeAbilityPD/
-        // KnightBigBuffAbilityPD/BWBlinkAbilityPD). moveSpeedTotalPercent itself is flat, not AbilityPower-
-        // scaled — a buff's own strength and its duration both scaling off the same stat on the same cast
-        // would double-dip.
-        float abilityPower = _stats.AbilityPower;
+        // No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedTotalPercent are both plain,
+        // fixed values now.
         _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent;
-        _appliedDuration              = duration * abilityPower;
+        _appliedDuration              = duration;
 
         currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;

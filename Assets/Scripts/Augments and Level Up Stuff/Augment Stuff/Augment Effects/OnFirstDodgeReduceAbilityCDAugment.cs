@@ -6,7 +6,8 @@ using UnityEngine;
 // why only the FIRST dodge of a given dash counts here, same SI/FSI-family "once per activation" shape),
 // shaves time off both class abilities' remaining cooldowns — reductionPercent of EACH ability's own
 // BaseCooldownDuration individually, same "per-ability base" shape OnDashStartedReduceAbilityCDAugment/
-// OnAbilityStartReduceDashCDAugment/OnStrikeReduceAbilityCDAugment already use. Default 0.3 (30%).
+// OnAbilityStartReduceDashCDAugment/OnStrikeReduceAbilityCDAugment already use. Default 0.45 (45%, buffed
+// 2026-08-23 from 30%).
 //
 // Reduces via IAbilityPD.ReduceCooldownFlat, not ReduceCooldownPercentRemaining/ReduceCooldownPercentTotal —
 // the percent here is of the ability's fixed BASE cooldown (a flat seconds amount once resolved per ability),
@@ -23,7 +24,7 @@ public class OnFirstDodgeReduceAbilityCDAugment : AugmentEffectPD<OnFirstDodgeRe
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
     // {reductionPercent}/{LiveCooldownReduction} directly in the description text — see its own doc comment
     // (only public fields/properties/methods are checked).
-    public float reductionPercent = 0.3f;
+    public float reductionPercent = 0.45f;
 
     // Cached once — Ability1/Ability2 are permanent one-per-character fixtures for the whole match, same
     // convention OnDashStartedReduceAbilityCDAugment/OnStrikeReduceAbilityCDAugment's own caches use.

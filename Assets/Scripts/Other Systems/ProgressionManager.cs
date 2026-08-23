@@ -5,10 +5,10 @@ using UnityEngine;
 
 public static class ProgressionManager
 {
-    private const int    CurrentSaveVersion = 7;
+    private const int    CurrentSaveVersion = 8;
     private const string SaveFileName       = "progression.json";
 
-    private const int   BaseFee       = 50;
+    private const int   BaseFee       = 20;
     private const float FeeMultiplier = 1.1f;
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
@@ -77,10 +77,13 @@ public static class ProgressionManager
         { 0, 250, 500, 750 };
     private static readonly int[] LuckUnlockDifficulty =
         { 0, 0, 0, 0 };
+    // 4 tiers (2026-08-23, was 3) — matches +2.5%/tier * 4 = +10% total from the shop, landing exactly on
+    // the intended 10% base -> 20% fully-upgraded target (see GetBaseStatValuePerTier's own EnergyRegen
+    // entry). Same {0, 250, 500, 750} cost curve as DashHaste/AbilityHaste/CritChance's own 4-tier arrays.
     private static readonly int[] EnergyRegenCosts =
-        { 0, 250, 500 };
+        { 0, 250, 500, 750 };
     private static readonly int[] EnergyRegenUnlockDifficulty =
-        { 0, 0, 0 };
+        { 0, 0, 0, 0 };
     private static readonly int[] DashHasteCosts =
         { 0, 250, 500, 750 };
     private static readonly int[] DashHasteUnlockDifficulty =
@@ -158,9 +161,9 @@ public static class ProgressionManager
     private static readonly int[] MoveSpeedPercentUnlockDifficulty =
         { 2, 3, 4, 5, 6 };
     private static readonly int[] StrengthPerLevelCosts =
-        { 5000, 7500, 11250, 16875, 37969, 56953, 192217, 288325, 1459646, 2189469 };
+        { 5000, 7500, 16875, 56953, 288325 };
     private static readonly int[] StrengthPerLevelUnlockDifficulty =
-        { 2, 2, 3, 3, 4, 4, 5, 5, 6, 6 };
+        { 2, 3, 4, 5, 6 };
 
     private static string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
 
@@ -358,7 +361,7 @@ public static class ProgressionManager
     public static long AvailablePoints => Data.totalPoints - Data.spentPoints;
     public static int  BoughtUpgrades  => Data.boughtUpgrades;
 
-    public static bool IsShopUnlocked => TotalPoints >= 50;
+    public static bool IsShopUnlocked => TotalPoints >= 20;
 
     public static int HighestUnlockedDifficulty => Data.highestUnlockedDifficulty;
 
@@ -459,7 +462,10 @@ public static class ProgressionManager
         StatType.MoveSpeed         => 1f,
         StatType.AttackSpeed       => 10f,
         StatType.HealthRegen       => 0.2f,
-        StatType.EnergyRegen       => 2f,
+        // Fraction of MaxEnergy per second, not flat units (2026-08-23 rework — see
+        // CharacterStatsPD.baseEnergyRegen's own doc comment). 0.025 = +2.5% per tier, 4 tiers max
+        // (EnergyRegenCosts) = +10% total, landing on the intended 10% base -> 20% fully-upgraded target.
+        StatType.EnergyRegen       => 0.025f,
         StatType.DashHaste         => 10f,
         StatType.CritChance        => 5f,
         StatType.WeaponRange       => 1f,
@@ -503,15 +509,17 @@ public static class ProgressionManager
             && HighestUnlockedDifficulty >= GetTierRequiredDifficulty(statType, tier);
     }
 
-    // The specific "you could afford this right now, but the tier itself isn't unlocked yet" state —
+    // Whether this stat's NEXT tier is gated behind a Threat Level the player hasn't unlocked yet —
     // distinct from CanUpgradeBaseStat's own false (which doesn't say WHY), for UpgradePanel to show a
-    // dedicated "Locked" state instead of just a greyed-out price.
-    public static bool IsTierAffordableButDifficultyLocked(StatType statType)
+    // dedicated "Locked" state instead of just a greyed-out price. Deliberately independent of affordability
+    // (2026-08-23, was: only true if ALSO currently affordable) — "locked" is meant to take priority over
+    // "can't afford" as the shown reason regardless of whether the player happens to have enough points,
+    // not just when both happen to be true at once.
+    public static bool IsTierDifficultyLocked(StatType statType)
     {
         int tier = GetBaseStatTier(statType);
         if (tier >= GetMaxBaseTier(statType)) return false;
-        return AvailablePoints >= GetBaseStatUpgradeCost(statType)
-            && HighestUnlockedDifficulty < GetTierRequiredDifficulty(statType, tier);
+        return HighestUnlockedDifficulty < GetTierRequiredDifficulty(statType, tier);
     }
 
     // Used to flag the "Upgrade Shop" button itself (not the individual stat buttons inside it) whenever
@@ -616,11 +624,6 @@ public static class ProgressionManager
     {
         StatType.DashCharges,
         StatType.DeathPrevention,
-        StatType.StrengthPerLevel,
-        StatType.TotalStrengthPercent,
-        StatType.MoveSpeedPercent,
-        StatType.LevelUpStats,
-        StatType.LevelUpOptions,
         StatType.HealthRegen,
         StatType.MaxShield,
         StatType.ShieldRechargeTime,
@@ -638,42 +641,48 @@ public static class ProgressionManager
         StatType.MaxEnergy,
         StatType.RevivePower,
         StatType.ReviveTimePenalty,
+        StatType.StrengthPerLevel,
+        StatType.TotalStrengthPercent,
+        StatType.MoveSpeedPercent,
+        StatType.LevelUpStats,
+        StatType.LevelUpOptions,
     };
 
     // Repeatedly buys whatever's currently affordable, one purchase at a time: among affordable+unlocked
-    // stats, prioritizes the LOWEST current tier first (spreads investment broadly instead of dumping
-    // everything into whichever stat happens to be cheapest), and among stats tied for that lowest tier,
-    // the MOST expensive one (so a cheaper affordable purchase in that same tier group isn't left on the
-    // table just because a pricier one in the group got bought first and ate the budget). Ties on BOTH of
-    // those break by AutoBuyPriority's own order (see its own doc comment) — the strict `<`/`>` comparisons
-    // below mean whichever candidate is iterated first never gets replaced by an exact tie, so iterating
-    // AutoBuyPriority in order is what makes "first" mean "earlier in that list" rather than "whatever
-    // Enum.GetValues happened to return first." Re-evaluates from scratch after every single purchase, not
-    // just once up front — GetBaseStatUpgradeCost's feePart scales off BoughtUpgrades, which increases with
-    // every purchase, so which stat is "most expensive" (and even which stats remain affordable at all) can
-    // genuinely change mid-run. Returns how many purchases were made, purely informational for a caller
-    // that wants to report/log it.
+    // stats, prioritizes the CHEAPEST current tier first (2026-08-20 — used to prioritize lowest tier first,
+    // most-expensive-tied-tier second; flipped because the intended "buy these first" stats, being cheap,
+    // kept losing out to pricier stats at the same low tier and ending up under-bought), and among stats
+    // tied on cost, the LOWEST tier (so a stat genuinely behind on investment isn't skipped just because
+    // something else happens to cost the exact same right now). Ties on BOTH of those break by
+    // AutoBuyPriority's own order (see its own doc comment) — the strict `<`/`>` comparisons below mean
+    // whichever candidate is iterated first never gets replaced by an exact tie, so iterating AutoBuyPriority
+    // in order is what makes "first" mean "earlier in that list" rather than "whatever Enum.GetValues
+    // happened to return first." Re-evaluates from scratch after every single purchase, not just once up
+    // front — GetBaseStatUpgradeCost's feePart scales off BoughtUpgrades, which increases with every
+    // purchase, so which stat is cheapest (and even which stats remain affordable at all) can genuinely
+    // change mid-run. Returns how many purchases were made, purely informational for a caller that wants to
+    // report/log it.
     public static int AutoBuy()
     {
         int purchased = 0;
         while (true)
         {
             StatType? best     = null;
+            long      bestCost = long.MaxValue;
             int       bestTier = int.MaxValue;
-            long      bestCost = -1;
 
             foreach (StatType stat in AutoBuyPriority)
             {
                 if (!IsStatUnlocked(stat) || !CanUpgradeBaseStat(stat)) continue;
 
-                int  tier = GetBaseStatTier(stat);
                 long cost = GetBaseStatUpgradeCost(stat);
-                if (tier > bestTier) continue;
-                if (tier < bestTier || cost > bestCost)
+                int  tier = GetBaseStatTier(stat);
+                if (cost > bestCost) continue;
+                if (cost < bestCost || tier < bestTier)
                 {
                     best     = stat;
-                    bestTier = tier;
                     bestCost = cost;
+                    bestTier = tier;
                 }
             }
 

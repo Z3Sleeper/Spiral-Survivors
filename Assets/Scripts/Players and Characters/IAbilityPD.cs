@@ -100,7 +100,7 @@ public interface IAbilityPD
     bool HasActiveWindow { get; }
 
     // Only meaningful while AbilityIsActive AND HasActiveWindow are both true — how much of the active
-    // window is left, and how long the window was in total (AbilityPower/haste-scaled, matching whatever was
+    // window is left, and how long the window was in total (haste-scaled, matching whatever was
     // actually granted at cast time, same "Effective/Applied" convention CooldownRemaining/CooldownDuration
     // already use). ActiveTimeRemaining / ActiveTimeDuration gives a UI fill ratio that counts DOWN from 1 to
     // 0 over the window, same direction CooldownRemaining/CooldownDuration's own fill already counts. Return

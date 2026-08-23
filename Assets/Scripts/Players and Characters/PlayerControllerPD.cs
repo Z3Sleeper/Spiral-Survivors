@@ -347,15 +347,16 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             // Purely local UI toggle, not part of the networked/predicted Input struct — matches old
             // PlayerController's identical direct (un-networked) LocalUIManager calls, since this only
             // ever affects this machine's own UI display, never simulation state. Holding Tab shows the
-            // expanded stats panel (hiding the compact one) and the augment list; releasing reverses both.
+            // stats panel (inactive by default — statsUIExpanded retired 2026-08-21, this is now the only
+            // stats panel) and the augment list; releasing hides both.
             if (_input.Player.Tab.WasPressedThisFrame())
             {
-                LocalUIManagerPD.instance?.SetStatsExpanded(true);
+                LocalUIManagerPD.instance?.SetStatsVisible(true);
                 LocalUIManagerPD.instance?.SetAugmentListVisible(true);
             }
             else if (_input.Player.Tab.WasReleasedThisFrame())
             {
-                LocalUIManagerPD.instance?.SetStatsExpanded(false);
+                LocalUIManagerPD.instance?.SetStatsVisible(false);
                 LocalUIManagerPD.instance?.SetAugmentListVisible(false);
             }
         }
@@ -819,8 +820,20 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             cancelledSomething = true;
         }
 
-        // Status popup only for an actual committed-action cancel (dash, or a CA ability's
-        // StartSpecialMovement window) — never for a no-op call (nothing currently mid-action).
+        // A Berserk Surge (2026-08-23) is interruptible — unlike a normal Surge (blocked outright by
+        // forcedSurge via TryEndSurge()), a hard interrupt landing here can cut one short via ForceEndSurge()
+        // (see its own doc comment for the forcedSurge reset + BerserkSurgeEndGrace hand-off this correctly
+        // triggers, same as a natural energy-depletion end). This is what makes KnightBigBuffAbilityPD's own
+        // buff (which only ever ends via the resulting _onSurgeEnded, see its own class doc comment) end
+        // early on an interrupt instead of running until Berserk naturally drains dry.
+        if (_stats != null && _stats.IsForcedSurging)
+        {
+            _stats.ForceEndSurge();
+            cancelledSomething = true;
+        }
+
+        // Status popup only for an actual committed-action cancel (dash, a CA ability's StartSpecialMovement
+        // window, or a Berserk Surge cut short) — never for a no-op call (nothing currently mid-action).
         if (cancelledSomething) _stats?.NotifyStatusPopup(DamageNumberManager.StatusPopupKind.Interrupted);
 
         return cancelledSomething;

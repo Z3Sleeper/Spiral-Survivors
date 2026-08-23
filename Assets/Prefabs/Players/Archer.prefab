@@ -97,12 +97,9 @@ MonoBehaviour:
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     <color=#FFA000>Auto-aim</color>
-    at the nearest enemy for <color=#FFA000>{LiveDurationRatio}seconds</color> with
-    <color=#FFA000>{fireRatePenaltyPercent}% reduced <color=#FF0050>Fire Rate</color></color>.
-    <color=#FFA000>Recast</color> to end.
-
-    <color=#FFBE50><i>Ability Power increases
-    Duration</i></color>'
+    at the nearest enemy for <color=#FFA000>{duration} seconds</color> with <color=#FFA000>{fireRatePenaltyPercent}%
+    reduced <color=#FF0050>Fire Rate</color></color>. <color=#FFA000>Recast</color>
+    to end.'
   cooldown: 8
   cooldownStartsOnCast: 0
   slot: 0
@@ -110,7 +107,7 @@ MonoBehaviour:
   activeSurgeBlock: 0
   isActionAbility: 0
   duration: 3
-  fireRatePenaltyPercent: 0.65
+  fireRatePenaltyPercent: 0.35
   recastBlockDuration: 0.5
 --- !u!114 &-8620584594776125514
 MonoBehaviour:
