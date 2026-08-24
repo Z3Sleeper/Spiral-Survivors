@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: DashCooldownReductionAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#00FFFF>Zoomies</color>
+  displayName: <color=#00FFFF>Accelerated</color>
   description: <color=#FFA000>Reduces</color> <color=#00FFFF>Dash Cooldown</color>
     by <color=#FFA000>30%</color>.
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
@@ -26,3 +26,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

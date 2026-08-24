@@ -13,14 +13,8 @@ MonoBehaviour:
   m_Name: FullEnergyBerserkSurgeAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>All Out</color>
-  description: 'When you <color=#FFFF00>Surge</color> with <color=#FFFF00>Full Energy</color>,
+  description: When you <color=#FFFF00>Surge</color> with <color=#FFFF00>Full Energy</color>,
     <color=#FFFF00>Berserk Surge</color> instead.
-
-    <color=#FFA000><color=#FFFF00>Berserk
-    Surge</color>:</color> Gain full <color=#FFFF00>Energy</color>, become <color=#FFA000>Invincible</color>
-    and enter an <color=#FFA000>uncancellable</color> <color=#FFFF00>Surge</color>.
-    <color=#FF00FF>Shield</color> and <color=#FFFFFF>Death Prevention</color> timers
-    are paused during this.'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 8167986082628723642, guid: 1c7c1c8cd84c83544b56f59cf4ea0c57, type: 3}
   multiplayerOnly: 0

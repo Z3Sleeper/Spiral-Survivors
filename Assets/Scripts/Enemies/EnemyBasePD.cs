@@ -572,6 +572,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public float preferredRange = 0f;
     public float rangeToleranceFar = 0.3f;
     public float rangeToleranceClose = 0.3f;
+    // Bounds-avoidance (2026-08-25) — see HandleMovement's own doc comment for the full steering shape.
+    // Deliberately an inset OFFSET from PlayableAreaPD's own polygon edge, not the literal edge itself —
+    // without this, enemies would settle into hugging the actual wall instead of staying meaningfully inside
+    // it, which reads just as wrong as wandering out entirely.
+    public float wallMargin = 5f;
+    // Caps how much bounds-avoidance can ever steer an enemy away from its actual target, even at maximum
+    // urgency (already outside the boundary) — see HandleMovement's own doc comment for why this deliberately
+    // never reaches a full 1.0 override.
+    public float maxBoundsBlendWeight = 0.75f;
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
@@ -1973,6 +1982,32 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         Vector3 toTarget = _target.position - transform.position;
         toTarget.y = 0;
         Vector3 dir = toTarget.normalized;
+
+        // Bounds-avoidance steering (2026-08-25) — blends `dir` toward PlayableAreaPD's own inward-safe
+        // direction as this enemy nears or crosses the playable area's boundary (inset by wallMargin, so it
+        // settles a real distance inside the wall rather than hugging the literal edge), so enemies stop
+        // wandering out and getting stuck needing a player to walk over and "coax" them back in. Always
+        // blends, capped at maxBoundsBlendWeight even at maximum urgency (already outside) — never a hard
+        // override, so an enemy never looks like it's fully ignoring its actual target just because it's near
+        // a wall. Strafes instead of steering straight inward when the inward direction and the direction to
+        // the target are roughly aligned (e.g. a Shooter backpedaling into a wall behind it) — otherwise
+        // "steer inward" would mean "charge straight at the player," exactly the failure mode this exists to
+        // avoid; the strafe picks whichever perpendicular of the inward direction is LESS aligned with the
+        // target direction, so it doesn't just become "approach from a different angle" either.
+        if (PlayableAreaPD.instance != null &&
+            PlayableAreaPD.instance.TryGetInwardSteering(transform.position, wallMargin, out Vector3 boundsDir, out float boundsUrgency))
+        {
+            Vector3 steerDir = boundsDir;
+            if (dir != Vector3.zero && Vector3.Dot(boundsDir, dir) > 0f)
+            {
+                Vector3 perpA = new Vector3(-boundsDir.z, 0f, boundsDir.x);
+                Vector3 perpB = -perpA;
+                steerDir = Vector3.Dot(perpA, dir) < Vector3.Dot(perpB, dir) ? perpA : perpB;
+            }
+
+            float boundsWeight = Mathf.Clamp01(boundsUrgency) * maxBoundsBlendWeight;
+            dir = Vector3.Slerp(dir, steerDir, boundsWeight).normalized;
+        }
 
         if (dir != Vector3.zero)
         {

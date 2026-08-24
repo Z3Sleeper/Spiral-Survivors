@@ -3,10 +3,15 @@ using UnityEngine;
 
 // Knight's second class ability, built on the IAbilityPD architecture. Reworked (2026-08-23) from a
 // fixed-duration self-buff into a Berserk Surge trigger: casting starts a Berserk Surge
-// (CharacterStatsPD.StartBerserkSurge — see its own doc comment for the full contract) — that's it, no stat
-// grants at all anymore. The Size/Weapon Range buffs this ability used to also grant moved over to
-// KnightAreaStunHealAbilityPD instead (2026-08-23, same day, per explicit user request — that ability now
-// owns every stat buff between the two, this one is purely the Berserk Surge trigger). All AbilityPower
+// (CharacterStatsPD.StartBerserkSurge — see its own doc comment for the full contract) and Taunts every
+// enemy (CharacterStatsPD.SetTaunting) for the same window — EnemyBasePD/EnemySpawnerPD already react to
+// SetTaunting immediately (wired ahead of this ability existing, see OnPlayerTauntChanged's own doc
+// comment), so this only needs to flip the flag on and back off. No other stat grants — the Size/Weapon
+// Range buffs this ability used to also grant moved over to KnightAreaStunHealAbilityPD instead (2026-08-23,
+// same day, per explicit user request — that ability owns every STAT buff between the two, this one is the
+// Berserk Surge trigger plus Taunt). Taunt itself was dropped in that same pass and re-added 2026-08-24 (the
+// user forgot it was never restored) — per explicit instruction it stays active for the SURGE's entire
+// duration, same event-driven window as everything else here, not a fixed timer of its own. All AbilityPower
 // scaling was already removed earlier the same day and never came back.
 //
 // Duration is event-driven, not timed: the buff ends the instant the resulting Berserk Surge itself ends
@@ -47,7 +52,7 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
 
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Resolve";
-    [SerializeField, TextArea] private string description = "Start a Berserk Surge.";
+    [SerializeField, TextArea] private string description = "Start a Berserk Surge and taunt all enemies for its duration.";
     public float cooldown = 20f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
     // throughout the buff window) — see Simulate(). true: cooldown starts ticking immediately at cast,
@@ -59,9 +64,9 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
-    // No longer grants any stat changes at all (see class doc comment) — this just tracks whether the
-    // resulting Berserk Surge is currently active, for cooldown/UI purposes. Exposed for live playtesting —
-    // see IAbilityPD.IsActionAbility's own doc comment.
+    // No stat changes granted (see class doc comment) — Taunt is a flag, not a stat. isActive tracks whether
+    // the resulting Berserk Surge is currently active, for cooldown/UI/Taunt-window purposes. Exposed for
+    // live playtesting — see IAbilityPD.IsActionAbility's own doc comment.
     [SerializeField] private bool isActionAbility = false;
 
     private CharacterStatsPD _stats;
@@ -177,6 +182,7 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
         // StartBerserkSurge() safely piggybacks onto an already-active Surge (normal or Berserk) rather than
         // double-firing anything — see its own doc comment. The whole point of this ability now.
         _stats.StartBerserkSurge();
+        _stats.SetTaunting(true);
 
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
         // Skipped entirely at 0 (raw, un-hasted) cooldown — an ability that can be spammed with no downtime
@@ -201,9 +207,7 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     {
         state.isActive = false;
         if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
-        // Nothing to revert — this ability grants no stats (see class doc comment). Still needs to flip
-        // isActive false here regardless, so cooldown can start ticking (cooldownStartsOnCast=false) and the
-        // ability bar correctly reflects the Surge having ended.
+        _stats?.SetTaunting(false);
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);

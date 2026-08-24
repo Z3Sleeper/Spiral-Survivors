@@ -678,7 +678,7 @@ MonoBehaviour:
   deathPreventionInvincibilityDuration: 2
   deathPreventionRepeatReductionMultiplier: 0.75
   baseMaxEnergy: 50
-  baseEnergyRegen: 0.1
+  baseEnergyRegen: 0.05
   baseSurgeCost: 2
   surgeMoveSpeedMulti: 1
   surgeAttackSpeedMulti: 2

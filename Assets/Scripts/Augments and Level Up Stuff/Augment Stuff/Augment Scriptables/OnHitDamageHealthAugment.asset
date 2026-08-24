@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: OnHitDamageHealthAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FF00>Punching Down</color>
-  description: '<color=#FFA000>On Hit:</color> Deal <color=#FFA000>{LiveBonusHealthRatio}</color><color=#FFA000>(5
+  description: '<color=#FFA000>On Hit:</color> Deal <color=#FFA000>{LiveBonusHealthRatio}</color><color=#FFA000>(<color=#FF5000>{onHitStrengthPercent}</color>
     + <color=#00FF00>{onHitBonusHealthPercent}% Bonus Health</color>)</color> <color=#FFA000>damage</color>.
 
 '
@@ -29,3 +29,4 @@ MonoBehaviour:
   - On-Hit Effect
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

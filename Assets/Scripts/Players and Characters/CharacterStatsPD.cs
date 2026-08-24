@@ -279,8 +279,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // Fraction of MaxEnergy regenerated per second (2026-08-23 rework — was a flat units/sec value; a flat
     // rate made a higher MaxEnergy investment effectively SLOWER to refill, the opposite of the intent, so
     // this and bonusEnergyRegenFlat below are both now fractions of MaxEnergy instead — see EnergyRegen's
-    // own doc comment for the full formula). 0.10f = 10% of MaxEnergy per second at base.
-    public float baseEnergyRegen = 0.10f;
+    // own doc comment for the full formula). 0.05f = 5% of MaxEnergy per second at base (nerfed 2026-08-24
+    // from 10% — Energy Regen was too consistently available at 10%+shop, letting players Surge almost
+    // whenever with no real energy management; also makes energy-granting augments meaningfully more
+    // valuable by comparison).
+    public float baseEnergyRegen = 0.05f;
 
     [Header("Surge")]
     public float baseSurgeCost = 2f;
@@ -429,6 +432,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     public float attackSpeedFlat => currentState.attackSpeedFlat;
     public float attackSpeedTotalPercent => currentState.attackSpeedTotalPercent != 0f ? currentState.attackSpeedTotalPercent : 1f;
     public float attackSpeedPenalty => currentState.attackSpeedPenalty != 0f ? currentState.attackSpeedPenalty : 1f;
+    // Conversion-source bookkeeping (2026-08-24, HealthToAttackSpeedAugment) — same tier/shape as
+    // convertedHealthRegenFlat, see ConvertedAttackSpeed's own doc comment for the full reasoning.
+    public float convertedAttackSpeedFlat => currentState.convertedAttackSpeedFlat;
 
     public int bonusWeaponCountFlat => currentState.bonusWeaponCountFlat;
     public int weaponCountMultiplier => currentState.weaponCountMultiplier != 0 ? currentState.weaponCountMultiplier : 1;
@@ -749,6 +755,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // grants. attackSpeedPenalty deliberately keeps its own "multiplies everything, outside both tiers"
     // position — unlike Strength's bonusStrengthPenalty, no in-run system currently needs this reconsidered.
     public float AttackSpeed => (baseAttackSpeed + attackSpeedFlat) * attackSpeedTotalPercent * attackSpeedPenalty * (currentState.isSurging ? SurgeAttackSpeedMultiplier : 1f);
+    // HealthToAttackSpeedAugment's own conversion-source bookkeeping — same "run the raw converted amount
+    // back through the SAME tiers the real grant is scaled by" shape ConvertedHealthRegen already uses (see
+    // its own doc comment), just against attackSpeedFlat's own tiers instead of HealthRegen's. Deliberately
+    // excludes the surging multiplier — that's a temporary, situational modifier, not a permanent-investment
+    // tier, so it plays no part in "how much of my base output came from a conversion" bookkeeping. Nothing
+    // reads this yet (no AttackSpeed-sourcing conversion augment exists), but it exists so a future one could
+    // safely exclude this augment's own contribution — same anti-feedback-loop reasoning as ConvertedHealthRegen.
+    public float ConvertedAttackSpeed => convertedAttackSpeedFlat * attackSpeedTotalPercent * attackSpeedPenalty;
     public float WeaponSpeed => AttackSpeed * 360f;
     // Overrides WeaponSpeed for the shared weaponOrbitAngle tick below when set — lets a special action
     // (e.g. the burst) spin weapons at a fixed, snapshotted rate instead of the live AttackSpeed-driven one,
@@ -1215,6 +1229,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         public float totalWeaponRadiusPenalty;
         public float attackSpeedFlat;
         public float attackSpeedPenalty;
+        // Conversion-source bookkeeping — see ConvertedAttackSpeed's own doc comment.
+        public float convertedAttackSpeedFlat;
         public int   bonusWeaponCountFlat;
         public int   weaponCountMultiplier;
         public float bonusWeaponRangeFlat;
@@ -2394,6 +2410,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // (entry.value * 0.01f * baseAttackSpeed) so a caller here can pass an intuitive fraction (e.g. 0.25 for
     // +25%) same as every other percent Add, even though what it grants under the hood is flat.
     public void AddAttackSpeedFlat(float amount) => ApplyStatChange(() => currentState.attackSpeedFlat += amount * baseAttackSpeed);
+    // Conversion-source bookkeeping, not a real stat grant — see ConvertedAttackSpeed's own doc comment. A
+    // conversion augment that grants AttackSpeed (e.g. HealthToAttackSpeedAugment) should call this alongside
+    // AddAttackSpeedFlat, with the identical delta both times. Same *baseAttackSpeed multiply as
+    // AddAttackSpeedFlat itself, so the two stay in matched absolute units — plain +=, not ApplyStatChange,
+    // same "doesn't touch Max Health/Energy" reasoning as AddConvertedHealth/AddConvertedHealthRegen.
+    public void AddConvertedAttackSpeed(float amount) => currentState.convertedAttackSpeedFlat += amount * baseAttackSpeed;
     public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedFlat += amount);
     // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
     public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedPercent += amount);

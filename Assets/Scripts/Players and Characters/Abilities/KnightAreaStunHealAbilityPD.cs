@@ -23,11 +23,13 @@ using UnityEngine;
 // early anymore — the Max Health/Damage Reduction grant stays up for the full duration regardless of when
 // the AoE actually fires. Exactly one AoE trigger per cast: State.aoeTriggered is set the instant TriggerAoE()
 // runs (recast or natural end, whichever happens first) and gates the OTHER path out — a natural expiry after
-// an early recast does nothing further, and a second recast press after the first (IsReady still allows it,
-// past recastBlockDuration) is a no-op too. Deliberate, explicit design intent (user's own words): lets a
-// player trigger the stun right away if they'd rather interrupt a key enemy attack or clear a horde off them
-// immediately, without sacrificing the rest of the buff's duration to do it. recastBlockDuration is a short
-// misclick guard, same shape/reasoning as ArcherFocusFireAbilityPD's own — a double-press/held-down button
+// an early recast does nothing further, and IsReady itself now reads false the instant aoeTriggered flips
+// (2026-08-24 — was previously still "ready," just silently no-oping deeper inside Activate()) so the ability
+// icon greys out immediately once the recast's own utility is spent, rather than staying lit for a press that
+// does nothing. Deliberate, explicit design intent (user's own words): lets a player trigger the stun right
+// away if they'd rather interrupt a key enemy attack or clear a horde off them immediately, without
+// sacrificing the rest of the buff's duration to do it. recastBlockDuration is a short misclick guard, same
+// shape/reasoning as ArcherFocusFireAbilityPD's own — a double-press/held-down button
 // can't immediately burn the early-trigger for essentially nothing. EndBuff()/TriggerAoE() are the single
 // shared reversal/payoff every ending path (natural expiry, death, recast) calls, so they can never drift
 // apart.
@@ -156,11 +158,20 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     public Sprite Icon => icon;
     // True during the active window too (not just off cooldown), but only once recastBlockDuration has
     // elapsed since the cast that started it — see that field's own doc comment for why (misclick guard).
-    // Same "two distinct ready conditions" shape as ArcherFocusFireAbilityPD's own recast, though unlike that
-    // ability a press here while active doesn't gate on aoeTriggered — it's still allowed through, Activate()
-    // itself just no-ops if the AoE already went off this cast (see its own comment).
+    // Same "two distinct ready conditions" shape as ArcherFocusFireAbilityPD's own recast. The active-window
+    // branch ALSO requires !aoeTriggered (2026-08-24 addition) — once a recast (or the natural end) has
+    // already fired the AoE this cast, pressing again is a guaranteed no-op (see Activate()'s own guard), so
+    // IsReady correctly reads false for the rest of the buff window instead of staying "ready" for an action
+    // that does nothing. Driving LocalUIManagerPD's own showBG = !IsReady, this is what greys the ability
+    // icon out immediately after a recast — an icon that isn't greyed out is supposed to promise "pressing
+    // this does something," so once the recast's own utility is spent, the icon needs to say so even though
+    // the buff itself (AbilityIsActive) is still genuinely running underneath (the duration bar stays up).
+    // Scoped to ONLY this first branch, not the whole expression — the second branch (off cooldown, fully
+    // inactive) must stay independent of aoeTriggered, or the ability would never read ready again after its
+    // cooldown finishes (aoeTriggered only resets at the START of the next fresh Activate() cast, which itself
+    // requires IsReady to be true first — anding it in globally would deadlock the ability permanently unready).
     public bool IsReady => _stats != null && (
-        (currentState.isActive && _appliedDuration - currentState.activeTimer >= recastBlockDuration)
+        (currentState.isActive && !currentState.aoeTriggered && _appliedDuration - currentState.activeTimer >= recastBlockDuration)
         || (!currentState.isActive && currentState.cooldownTimer <= 0f));
     public bool IsActive => currentState.isActive;
     // Only ever flips stat totals — never touches movement, so it never locks dash or the other ability slot

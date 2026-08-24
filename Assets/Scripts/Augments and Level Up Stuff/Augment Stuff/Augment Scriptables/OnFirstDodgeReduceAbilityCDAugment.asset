@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: OnFirstDodgeReduceAbilityCDAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#00FFFF>Dodge Caster</color>
+  displayName: <color=#00FFFF>Tempo Shift</color>
   description: <color=#FFA000>On First <color=#FFFFFF>Dodge</color> per <color=#00FFFF>Dash</color>:</color>
     <color=#FFA000>Reduce</color> your <color=#FFB4FF>Ability</color> <color=#FFA000>cooldowns</color>
     by <color=#FFB4FF>{LiveCooldownReduction}</color><color=#FFA000>seconds</color>

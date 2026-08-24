@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 611a90ba641a9ea4a85804185108500d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnStrikeEnergyRegenAugment
-  onStrikeEnergyRegenPercent: 0.25
-  surgeEffectivenessMultiplier: 0.5
+  energyPerStrike: 2
+  surgeEffectivenessMultiplier: 0.25

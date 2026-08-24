@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#00FF87>Opportunist</color>
   description: <color=#FFA000>On Strike <color=#00FF87>Highroll</color>:</color>
     <color=#FFA000>Reduce</color> your <color=#00FFFF>Dash</color> <color=#FFA000>cooldown</color>
-    by <color=#00FFFF>{LiveCooldownReduction}</color><color=#FFA000>seconds</color>.
+    by <color=#00FFFF>{flatCooldownReduction}</color><color=#FFA000>seconds</color>.
   icon: {fileID: 21300000, guid: 54bfb18c2afc7fa47a776cef5702eb37, type: 3}
   effectPrefab: {fileID: 2564253875725748355, guid: a2020a64f0e78514fae861e5195786bc, type: 3}
   multiplayerOnly: 0

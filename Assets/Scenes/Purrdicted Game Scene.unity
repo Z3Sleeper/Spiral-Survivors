@@ -6366,17 +6366,9 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 7685389594053259208, guid: f93604916ca9af647a319aaf3e3fa2fb, type: 3}
-      propertyPath: tier1.boss.Array.size
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7685389594053259208, guid: f93604916ca9af647a319aaf3e3fa2fb, type: 3}
       propertyPath: spawnPoints.Array.size
       value: 16
       objectReference: {fileID: 0}
-    - target: {fileID: 7685389594053259208, guid: f93604916ca9af647a319aaf3e3fa2fb, type: 3}
-      propertyPath: 'tier1.boss.Array.data[0]'
-      value: 
-      objectReference: {fileID: 1597157536724350220, guid: f40d7c9d0afd77d479fe49841ff194cd, type: 3}
     - target: {fileID: 7685389594053259208, guid: f93604916ca9af647a319aaf3e3fa2fb, type: 3}
       propertyPath: 'spawnPoints.Array.data[0]'
       value: 

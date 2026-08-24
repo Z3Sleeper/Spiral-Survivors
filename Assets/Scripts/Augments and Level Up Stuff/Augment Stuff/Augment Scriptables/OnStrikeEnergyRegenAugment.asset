@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: OnStrikeEnergyRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energy Reaping</color>
-  description: '<color=#FFA000>On Strike:</color> Gain <color=#FFFF00>{LiveEnergyRegenRatio}
+  description: '<color=#FFA000>On Strike:</color> Gain <color=#FFFF00>{energyPerStrike}
     Energy</color>.
 
-    <color=#FFBE50><i>50% effective while Surging</i></color>'
+    <color=#FFBE50><i>25% effective while Surging</i></color>'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 3653572354511512405, guid: ee7c8a3b3d6237b428c279beda5f781e, type: 3}
   multiplayerOnly: 0

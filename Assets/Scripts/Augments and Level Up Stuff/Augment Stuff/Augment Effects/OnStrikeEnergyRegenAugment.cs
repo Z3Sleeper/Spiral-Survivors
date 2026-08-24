@@ -20,8 +20,8 @@ public class OnStrikeEnergyRegenAugment : AugmentEffectPD<OnStrikeEnergyRegenAug
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    public float energyPerStrike = 1f;
-    // 0.1f = 10% of normal effectiveness while Surging (i.e. 90% less) — see class doc comment.
+    public float energyPerStrike = 2f;
+    // 0.25f = 25% of normal effectiveness while Surging (i.e. 75% less) — see class doc comment.
     [SerializeField] private float surgeEffectivenessMultiplier = 0.25f;
 
     // Baseline gain at 100% OnHitPower, non-Surging (varies hit-to-hit, so it's not baked into the preview —

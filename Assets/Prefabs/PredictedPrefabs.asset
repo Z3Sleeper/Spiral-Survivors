@@ -587,3 +587,19 @@ MonoBehaviour:
     pooling:
       usePooling: 0
       initialSize: 0
+  - prefab: {fileID: 6997735243338499676, guid: 1207f52effd095941b1aa83209213fde, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 1190377972986386458, guid: a21a1bc79d46fc64b871e4484539cc33, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 4950951142174310994, guid: a279fcfe39b2e6b46b2b096bd4fe1c64, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 571046921584681139, guid: fb6465a779d8b724b8d3adbd6bd027aa, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0

@@ -77,9 +77,10 @@ public static class ProgressionManager
         { 0, 250, 500, 750 };
     private static readonly int[] LuckUnlockDifficulty =
         { 0, 0, 0, 0 };
-    // 4 tiers (2026-08-23, was 3) — matches +2.5%/tier * 4 = +10% total from the shop, landing exactly on
-    // the intended 10% base -> 20% fully-upgraded target (see GetBaseStatValuePerTier's own EnergyRegen
-    // entry). Same {0, 250, 500, 750} cost curve as DashHaste/AbilityHaste/CritChance's own 4-tier arrays.
+    // 4 tiers (2026-08-23, was 3) — matches +1.25%/tier * 4 = +5% total from the shop (retuned 2026-08-24
+    // from +2.5%/tier alongside baseEnergyRegen's own 10% -> 5% nerf), landing exactly on the intended 5%
+    // base -> 10% fully-upgraded target (see GetBaseStatValuePerTier's own EnergyRegen entry). Same
+    // {0, 250, 500, 750} cost curve as DashHaste/AbilityHaste/CritChance's own 4-tier arrays.
     private static readonly int[] EnergyRegenCosts =
         { 0, 250, 500, 750 };
     private static readonly int[] EnergyRegenUnlockDifficulty =
@@ -463,9 +464,10 @@ public static class ProgressionManager
         StatType.AttackSpeed       => 10f,
         StatType.HealthRegen       => 0.2f,
         // Fraction of MaxEnergy per second, not flat units (2026-08-23 rework — see
-        // CharacterStatsPD.baseEnergyRegen's own doc comment). 0.025 = +2.5% per tier, 4 tiers max
-        // (EnergyRegenCosts) = +10% total, landing on the intended 10% base -> 20% fully-upgraded target.
-        StatType.EnergyRegen       => 0.025f,
+        // CharacterStatsPD.baseEnergyRegen's own doc comment). 0.0125 = +1.25% per tier (nerfed 2026-08-24
+        // from 2.5%, alongside baseEnergyRegen's own 10% -> 5% nerf), 4 tiers max (EnergyRegenCosts) = +5%
+        // total, landing on 5% base -> 10% fully-upgraded target.
+        StatType.EnergyRegen       => 0.0125f,
         StatType.DashHaste         => 10f,
         StatType.CritChance        => 5f,
         StatType.WeaponRange       => 1f,

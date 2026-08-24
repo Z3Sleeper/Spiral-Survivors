@@ -240,6 +240,73 @@ public class PlayableAreaPD : MonoBehaviour
 
     private static Vector2 ToXZ(Vector3 v) => new Vector2(v.x, v.z);
 
+    // General-purpose "steer this position back toward safety" query — added for EnemyBasePD.HandleMovement's
+    // own bounds-avoidance (2026-08-25), but deliberately generic (just Vector3 in, Vector3 direction + 0-1
+    // urgency out), no enemy-specific concept leaking in here. Cheap AABB pre-check first (GetBounds is O(n)
+    // over the boundary but the boundary itself is only ever a handful of wall-corner points, and this whole
+    // method is skipped entirely — the common case, most positions most of the time — the instant the AABB
+    // check alone proves the position is nowhere near any edge, before ever touching the real polygon math).
+    //
+    // inwardDir points toward the polygon interior when the position is already safely-ish placed (i.e. the
+    // direction AWAY from the nearest edge), but FLIPS to point toward the boundary itself when the position
+    // has wandered fully outside the polygon (the direction TOWARD the nearest edge, i.e. back across it) —
+    // both cases reduce to the exact same "closestEdgePoint minus/plus position" formula, just with the sign
+    // of "which side of the edge am I on" flipped, so callers never need to special-case "am I outside" for
+    // themselves.
+    //
+    // urgency01 is 0 exactly at wallMargin's own distance from the edge, ramping linearly to 1 the instant the
+    // position crosses the edge itself (0 distance) — deliberately NOT continuing past 1 once actually
+    // outside, so a badly-stuck position doesn't get an ever-growing "more urgent than urgent" value a caller
+    // would have to clamp itself.
+    //
+    // Returns false (no steering needed, inwardDir/urgency both left at their default zero) when the position
+    // is already more than wallMargin inside the boundary — the overwhelmingly common case for anything
+    // spawned/wandering well away from a wall.
+    public bool TryGetInwardSteering(Vector3 position, float wallMargin, out Vector3 inwardDir, out float urgency01)
+    {
+        inwardDir = Vector3.zero;
+        urgency01 = 0f;
+        if (outerBoundary == null || outerBoundary.Length < 3) return false;
+
+        Vector2 p = ToXZ(position);
+
+        // Cheap reject: well inside the boundary's own bounding box, margin included on every side — can't
+        // possibly be within wallMargin of any real edge, so skip the polygon math entirely.
+        GetBounds(outerBoundary, out float minX, out float maxX, out float minZ, out float maxZ);
+        if (p.x > minX + wallMargin && p.x < maxX - wallMargin && p.y > minZ + wallMargin && p.y < maxZ - wallMargin)
+            return false;
+
+        bool isOutside = !PointInPolygon(p, outerBoundary);
+
+        float minDistSq = float.MaxValue;
+        Vector2 closest = default;
+        int n = outerBoundary.Length;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+        {
+            if (outerBoundary[i] == null || outerBoundary[j] == null) continue;
+            Vector2 a = ToXZ(outerBoundary[j].position);
+            Vector2 b = ToXZ(outerBoundary[i].position);
+            Vector2 ab = b - a;
+            float lenSq = ab.sqrMagnitude;
+            float t = lenSq > 0.0001f ? Mathf.Clamp01(Vector2.Dot(p - a, ab) / lenSq) : 0f;
+            Vector2 candidate = a + ab * t;
+            float distSq = (p - candidate).sqrMagnitude;
+            if (distSq < minDistSq) { minDistSq = distSq; closest = candidate; }
+        }
+        if (minDistSq == float.MaxValue) return false;
+
+        float dist = Mathf.Sqrt(minDistSq);
+        if (!isOutside && dist >= wallMargin) return false;
+
+        // Outside: point TOWARD the nearest edge (back across it). Inside-but-too-close: point AWAY from it
+        // (deeper into the interior) — see this method's own doc comment for why both collapse to one formula.
+        Vector2 dir2D = isOutside ? (closest - p) : (p - closest);
+        if (dir2D.sqrMagnitude > 0.0001f) inwardDir = new Vector3(dir2D.x, 0f, dir2D.y).normalized;
+
+        urgency01 = isOutside ? 1f : Mathf.Clamp01((wallMargin - dist) / wallMargin);
+        return true;
+    }
+
     // Editor-only visualization — draws the outer boundary (cyan) and every inner obstruction (red) as
     // closed loops, matching exactly what RandomPoint() actually reasons about, so plotting points in the
     // Scene view shows the real resulting shape immediately.

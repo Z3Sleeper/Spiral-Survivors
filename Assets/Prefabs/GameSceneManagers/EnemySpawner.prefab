@@ -164,13 +164,14 @@ MonoBehaviour:
   spawnIntervalQ3: 2
   spawnIntervalQ4: 1
   cycleInterval: 180
+  eventDuration: 60
   eliteSpawnTimeFirstPercent: 0.25
   eliteSpawnTimeLastPercent: 0.75
   eliteSpawnRampRatio: 0.8
   baseEliteCount: 10
   moveSpeedTierGrowth: 0.25
   damageTierGrowth: 0.5
-  healthTierGrowth: 8
+  healthTierGrowth: 4
   xpTierGrowth: 3
   difficultyDamageGrowthPerLevel: 0.5
   difficultyHealthGrowthPerLevel: 1
