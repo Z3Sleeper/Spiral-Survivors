@@ -377,6 +377,13 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public float slowTimer;
     public float slowMultiplier;
     public bool atPreferredRange;
+    // Set the first tick a BACKPEDALING enemy (distToTarget < preferredRange) is found truly outside the
+    // playable area's raw boundary — see HandleMovement's own doc comment for the full bounds-restriction
+    // design this drives. Cleared either once this enemy has walked back past wallMargin (hysteresis — see
+    // that same comment) or the instant it no longer wants to backpedal at all (distToTarget >= preferredRange,
+    // checked every tick regardless of position). Never touched by melee enemies (preferredRange == 0) —
+    // they always chase, this scenario can't apply to them.
+    public bool boundsRestricted;
     // Hard gate on HandleMovement — see IEnemyPD.SetMovementDisabled's own doc comment for the full
     // reasoning (why this exists, who's expected to call it, and what it does/doesn't affect).
     public bool movementDisabled;
@@ -572,15 +579,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public float preferredRange = 0f;
     public float rangeToleranceFar = 0.3f;
     public float rangeToleranceClose = 0.3f;
-    // Bounds-avoidance (2026-08-25) — see HandleMovement's own doc comment for the full steering shape.
-    // Deliberately an inset OFFSET from PlayableAreaPD's own polygon edge, not the literal edge itself —
-    // without this, enemies would settle into hugging the actual wall instead of staying meaningfully inside
-    // it, which reads just as wrong as wandering out entirely.
-    public float wallMargin = 5f;
-    // Caps how much bounds-avoidance can ever steer an enemy away from its actual target, even at maximum
-    // urgency (already outside the boundary) — see HandleMovement's own doc comment for why this deliberately
-    // never reaches a full 1.0 override.
-    public float maxBoundsBlendWeight = 0.75f;
+    // Bounds-restriction (2026-08-25, reworked same day) — see HandleMovement's own doc comment for the full
+    // design. Deliberately an inset OFFSET from PlayableAreaPD's own polygon edge, not the literal edge
+    // itself — both the "truly outside" trigger and the "cleared the margin" release read off this same
+    // value, so it doubles as the hysteresis buffer's own width. Halved from 5 (2026-08-25) — 5 read as an
+    // oversized buffer regardless of the hysteresis rework.
+    public float wallMargin = 2.5f;
+    // How far off the true inward direction a bounds-restricted enemy's strafe sits, in degrees — see
+    // HandleMovement's own strafe-computation comment for the exact slerp math this drives. 0 would be pure
+    // inward (no strafe at all); 90 would be a pure zero-progress perpendicular slide. Confirmed live: 45
+    // (down the middle) was too rigid, 75 (mostly sideways, small inward bias) is the confirmed value.
+    private const float StrafeAngleFromInwardDegrees = 75f;
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
@@ -1983,32 +1992,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         toTarget.y = 0;
         Vector3 dir = toTarget.normalized;
 
-        // Bounds-avoidance steering (2026-08-25) — blends `dir` toward PlayableAreaPD's own inward-safe
-        // direction as this enemy nears or crosses the playable area's boundary (inset by wallMargin, so it
-        // settles a real distance inside the wall rather than hugging the literal edge), so enemies stop
-        // wandering out and getting stuck needing a player to walk over and "coax" them back in. Always
-        // blends, capped at maxBoundsBlendWeight even at maximum urgency (already outside) — never a hard
-        // override, so an enemy never looks like it's fully ignoring its actual target just because it's near
-        // a wall. Strafes instead of steering straight inward when the inward direction and the direction to
-        // the target are roughly aligned (e.g. a Shooter backpedaling into a wall behind it) — otherwise
-        // "steer inward" would mean "charge straight at the player," exactly the failure mode this exists to
-        // avoid; the strafe picks whichever perpendicular of the inward direction is LESS aligned with the
-        // target direction, so it doesn't just become "approach from a different angle" either.
-        if (PlayableAreaPD.instance != null &&
-            PlayableAreaPD.instance.TryGetInwardSteering(transform.position, wallMargin, out Vector3 boundsDir, out float boundsUrgency))
-        {
-            Vector3 steerDir = boundsDir;
-            if (dir != Vector3.zero && Vector3.Dot(boundsDir, dir) > 0f)
-            {
-                Vector3 perpA = new Vector3(-boundsDir.z, 0f, boundsDir.x);
-                Vector3 perpB = -perpA;
-                steerDir = Vector3.Dot(perpA, dir) < Vector3.Dot(perpB, dir) ? perpA : perpB;
-            }
-
-            float boundsWeight = Mathf.Clamp01(boundsUrgency) * maxBoundsBlendWeight;
-            dir = Vector3.Slerp(dir, steerDir, boundsWeight).normalized;
-        }
-
+        // Facing always tracks the real target direction, completely unaffected by bounds-restriction below
+        // — only the BACKPEDAL force (computed separately, see backpedalDir below) ever gets redirected. An
+        // enemy that's currently forced to strafe still visibly faces its target throughout, same as it
+        // always did.
         if (dir != Vector3.zero)
         {
             Quaternion targetRotation = Quaternion.LookRotation(dir);
@@ -2016,6 +2003,76 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
 
         float distToTarget = Vector3.Distance(transform.position, _target.position);
+
+        // Bounds-restriction (2026-08-25, reworked same day from an earlier always-on steering blend that
+        // funneled every spawning enemy into the map's corners — see this method's own git history for that
+        // shape if it's ever relevant again). Scoped ENTIRELY to backpedaling (an enemy actively trying to
+        // maintain/increase distance from its target, i.e. preferredRange > 0 and currently closer than
+        // that) — a chasing enemy (melee, or a ranged enemy currently wanting to close in) is never touched
+        // by any of this, moves exactly as it always did, walls included. That's deliberate: the only way an
+        // enemy can walk itself out of the arena in the first place is by backpedaling away from a player who
+        // keeps closing in, so restricting only that case is sufficient, and leaves the ordinary chase/attack
+        // feel completely unchanged for everything else — this is the "bully a kiting enemy out of bounds"
+        // mechanic, not a general arena-fence.
+        //
+        // b.boundsRestricted is a real predicted-State flag with hysteresis, not a live per-tick check: it's
+        // set the first tick a backpedaling enemy is found truly OUTSIDE the playable area's raw boundary
+        // (not merely within wallMargin of it — see below for why that distinction matters), and ONLY clears
+        // once this enemy has walked all the way back past wallMargin (TryGetInwardSteering itself returns
+        // false) — a one-way buffer: crossing back over the raw edge alone isn't enough, it has to clear the
+        // whole margin. Wanting to chase (distToTarget >= preferredRange) does NOT clear this flag — it just
+        // means nothing reads it this tick, since chasing always uses the plain, unrestricted target direction
+        // regardless of the flag's value. That distinction matters: an enemy that was flagged, chased partway
+        // back in, but stalled somewhere still inside the margin band (never actually reached safety) and then
+        // wants to backpedal AGAIN must still strafe, not freely retreat — if chasing had cleared the flag
+        // outright, this exact case would slip through since it's no longer technically outside the raw
+        // boundary either. While the flag is set, the backpedal force is redirected to a strafe direction
+        // instead of a straight retreat.
+        Vector3 backpedalDir = -dir;
+        if (preferredRange > 0 && distToTarget < preferredRange)
+        {
+            if (PlayableAreaPD.instance == null)
+            {
+                b.boundsRestricted = false;
+            }
+            else if (!PlayableAreaPD.instance.TryGetInwardSteering(transform.position, wallMargin, out Vector3 boundsDir, out float urgency01))
+            {
+                // Fully clear of the margin buffer (TryGetInwardSteering itself returns false once safely
+                // past it) — release.
+                b.boundsRestricted = false;
+            }
+            else
+            {
+                // urgency01 is exactly 1 only when truly outside the raw boundary (see TryGetInwardSteering's
+                // own doc comment) — anything less means still inside, just within the margin band, which
+                // should NOT newly trigger this (that was the earlier bug: treating the whole margin band as
+                // unsafe made it an unintentional no-go zone nothing would ever settle inside).
+                if (!b.boundsRestricted && urgency01 >= 0.999f)
+                    b.boundsRestricted = true;
+
+                if (b.boundsRestricted && boundsDir != Vector3.zero)
+                {
+                    // Pick whichever perpendicular of the inward direction faces further away from the
+                    // target (avoids "strafing" turning into "approaching from a slightly different angle"),
+                    // then blend it toward the true inward direction by StrafeAngleFromInwardDegrees — so
+                    // this is never a zero-progress pure perpendicular slide along the boundary; it's
+                    // guaranteed some real, positive movement back toward safety every tick it's active.
+                    // perpChosen sits exactly 90° from boundsDir, so slerping a fraction `t` of the way from
+                    // perpChosen TOWARD boundsDir lands `(1-t)*90°` away from boundsDir — solved for the
+                    // target angle below. 45° (t=0.5, straight down the middle) read as too rigid live —
+                    // 75° (mostly sideways, only a little inward bias) is the confirmed value.
+                    Vector3 perpA = new Vector3(-boundsDir.z, 0f, boundsDir.x);
+                    Vector3 perpB = -perpA;
+                    Vector3 perpChosen = Vector3.Dot(perpA, dir) < Vector3.Dot(perpB, dir) ? perpA : perpB;
+                    float strafeSlerpT = 1f - StrafeAngleFromInwardDegrees / 90f;
+                    backpedalDir = Vector3.Slerp(perpChosen, boundsDir, strafeSlerpT).normalized;
+                }
+            }
+        }
+        // else: not currently backpedaling this tick (chasing, melee, or exactly at preferred range) —
+        // b.boundsRestricted is deliberately left untouched here, not cleared — see its own doc comment
+        // above for why (chasing never reads it, so leaving it set costs nothing, and correctly preserves
+        // "hasn't reached real safety yet" across a temporary chase).
 
         if (preferredRange > 0)
         {
@@ -2029,7 +2086,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 else if (distToTarget < preferredRange - rangeToleranceClose)
                 {
                     b.atPreferredRange = false;
-                    _rigidbody.AddForce(-dir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(backpedalDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
                 }
             }
             else
@@ -2037,7 +2094,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 if (distToTarget > preferredRange)
                     _rigidbody.AddForce(dir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
                 else if (distToTarget < preferredRange)
-                    _rigidbody.AddForce(-dir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(backpedalDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
 
                 if (Mathf.Abs(distToTarget - preferredRange) <= 0.1f)
                     b.atPreferredRange = true;

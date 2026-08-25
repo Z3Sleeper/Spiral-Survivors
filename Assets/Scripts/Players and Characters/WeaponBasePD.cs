@@ -324,6 +324,12 @@ public static class WeaponVisualConstants
     // different ways this gets applied (LOCAL offset under an already-Size-scaled parent vs. an explicit
     // WORLD-space multiply, respectively — see each call site's own comment for why the two differ).
     public const float BaseMidHeightLift = 0.5f;
+
+    // An idle wobble sway (X/Z tilt + Y bob on the model, driven by a shared deterministic per-player clock)
+    // lived here from 2026-08-25 through the same day — fully reverted after live testing on Knight/Rogue/
+    // Bladeweaver/Axe showed it read as negligible-to-off-putting from a top-down view. Removed rather than
+    // left dormant/disabled — see project_pd_backlog memory (or git history around that date) for the full
+    // design/tuning history if this idea ever gets revisited.
 }
 
 // Non-generic, same reasoning as WeaponVisualConstants above — ExeAxeThrowProjectilePD (also deliberately

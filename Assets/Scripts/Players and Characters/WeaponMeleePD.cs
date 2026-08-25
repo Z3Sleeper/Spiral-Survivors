@@ -297,13 +297,15 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
     // Own version of WeaponBasePD.ApplyVisualAdjustments() — reuses the SAME (now protected) visualHeightTarget
     // field rather than a separate Inspector reference, since ApplyVisualAdjustments() itself is still used
-    // as-is by WeaponAxePD/WeaponRangedPD (still on the old orbit system) and shouldn't be touched. Only the
-    // position-lift half is needed (0 while flipped — the leap-arc/body-center lift already lives on root
-    // itself now, see LateSimulate's own ApplyHeightLift() call — vs. BaseMidHeightLift while flat, same as
-    // before) — the old system's own local-rotation tip (ModelTipRotation, calibrated for a LookRotation-
-    // based flip this script doesn't use) isn't needed at all under this rigid-composition approach: the
-    // model's own rest orientation already slices edge-first once tipped, confirmed live, and nothing here
-    // ever writes visualHeightTarget's rotation to anything else, so there's no reset to do.
+    // as-is by ExeAxeThrowProjectilePD (still on the old orbit system) and shouldn't be touched. Position-
+    // lift half: 0 while flipped — the leap-arc/body-center lift already lives on root itself now, see
+    // LateSimulate's own ApplyHeightLift() call — vs. BaseMidHeightLift while flat, same as before. The old
+    // system's own local-rotation tip (ModelTipRotation, calibrated for a LookRotation-based flip this
+    // script doesn't use) isn't needed at all under this rigid-composition approach — the model's own rest
+    // orientation already slices edge-first once tipped, confirmed live. (2026-08-25: an idle wobble sway
+    // used to live here too — tried, tuned, and fully reverted after live testing showed it read as
+    // negligible/off-putting from a top-down view; see project_pd_backlog memory for the full history if
+    // this ever gets revisited.)
     private void ApplyModelVisualAdjustments()
     {
         if (visualHeightTarget == null || _stats == null) return;

@@ -377,7 +377,9 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     // Same as WeaponMeleePD's own ApplyModelVisualAdjustments — see that method's own comment for why this
     // reuses WeaponBasePD's (protected) visualHeightTarget directly rather than a separate reference, and
-    // why the rotation half of the old ApplyVisualAdjustments() isn't needed at all here.
+    // why the rotation half of the old ApplyVisualAdjustments() isn't needed at all here. (2026-08-25: an
+    // idle wobble sway used to live here too — reverted fleet-wide after live testing, see WeaponMeleePD's
+    // own equivalent comment.)
     private void ApplyModelVisualAdjustments()
     {
         if (visualHeightTarget == null || _stats == null) return;

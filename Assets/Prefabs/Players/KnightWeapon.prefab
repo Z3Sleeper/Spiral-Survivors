@@ -305,7 +305,10 @@ MonoBehaviour:
   visualHeightTarget: {fileID: 6538681499716106083}
   meleeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
   orbitPivot: {fileID: 2899133381753418621}
-  modelVisualTarget: {fileID: 0}
+  wobblePositionAmplitude: 0.1
+  wobblePeriodSeconds: 2
+  wobbleDegreesXRangeScale: 10
+  wobbleDegreesZ: 15
 --- !u!114 &8198260059138025823
 MonoBehaviour:
   m_ObjectHideFlags: 0
