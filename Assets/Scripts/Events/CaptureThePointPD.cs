@@ -38,16 +38,12 @@ public class CaptureThePointPD : EventBasePD<CaptureThePointPD.State>
 
     [Header("Zone")]
     [SerializeField] private float zoneRadius = 5f;
-    // Extra breathing room beyond zoneRadius when picking where to place the zone — purely aesthetic ("don't
-    // want it ever hugging a wall"), separate from zoneRadius itself (which is the mandatory geometric
-    // requirement — the zone's own circle must always be fully inside the playable area regardless of this).
-    // Per-event, not a PlayableAreaPD-level setting, since different events may want different spacing.
-    [SerializeField] private float wallOffset = 5f;
     // Minimum fraction (0-1) of the zone's own circle that must be clear of every PlayableAreaPD inner
     // obstruction for a candidate placement to be valid — see PlayableAreaPD.RandomPoint's own doc comment.
     // Default 0.5 (at least half clear) lets a big zone legitimately overlap a small obstacle instead of
     // being blocked outright by it, while still rejecting a spot that's mostly sitting inside one. Does NOT
-    // apply to the outer boundary/walls — those stay a hard requirement regardless (see wallOffset above).
+    // apply to the outer boundary/walls — those stay a hard requirement regardless (see EventBasePD's own
+    // shared wallOffset field).
     [SerializeField] private float minUnobstructedFraction = 0.5f;
     // How many independent valid candidates PlayableAreaPD.RandomPoint samples before picking whichever one
     // ends up farthest from the playable area's own center — see that method's own doc comment for the full
@@ -73,9 +69,10 @@ public class CaptureThePointPD : EventBasePD<CaptureThePointPD.State>
 
     // Places the zone via PlayableAreaPD.RandomPoint (null-safe — see IEventPD.OnEventStart's own doc
     // comment; if no PlayableAreaPD exists yet, the zone just stays wherever EventManagerPD spawned it) —
-    // wallOffset keeps the zone's own circle a hard distance from any wall, minUnobstructedFraction lets it
-    // softly overlap a small inner obstruction (see PlayableAreaPD.RandomPoint's own doc comment for the
-    // full outer-vs-inner distinction). Resets all per-life State explicitly (defensive — matches this
+    // wallOffset (inherited from EventBasePD) keeps the zone's own CENTER a hard distance from any wall (its
+    // own edge is free to reach the wall itself), minUnobstructedFraction lets it softly overlap a small
+    // inner obstruction (see PlayableAreaPD.RandomPoint's own doc comment for the full outer-vs-inner
+    // distinction). Resets all per-life State explicitly (defensive — matches this
     // codebase's "reset on spawn regardless of whether pooling is actually involved" convention) rather than
     // trusting GetInitialState()'s own defaults alone.
     public override void OnEventStart(PlayableAreaPD playableArea, int currentTier)

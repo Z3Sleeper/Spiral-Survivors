@@ -3,14 +3,17 @@ using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Orbits its owner exactly like WeaponMeleePD (same shared OrbitalPosition() formula on WeaponBasePD<TState>)
-// but never touches anything directly — instead, every tick it raycasts forward (its current orbit-facing
-// direction) out to WeaponRange looking for an enemy hurtbox. If it finds one and isn't on cooldown, it
-// fires a WeaponRangedProjectilePD at that enemy's hurtbox bounds CENTER, not the raw raycast hit point —
-// since the ray is thin and the weapon is orbiting, the hit point is usually on the near/side edge of the
-// collider, which would cause frequent near-misses. If it finds one but IS on cooldown, it doesn't fire and
-// doesn't reset the cooldown, so it retries every subsequent tick until the cooldown clears. Ported from
-// the old WeaponBow.GetTargetPosition()/Fire().
+// Pivot-based orbit rework (2026-08-25) — see WeaponMeleePD's own doc comment for the full design/
+// PredictedTransform-on-Pivot contract, identical here. Unlike Melee/Axe, this weapon does no hit-detection
+// sweep of its own — every tick it just raycasts forward (its current orbit-facing direction — now read off
+// orbitPivot/hitboxTarget rather than this weapon's own root, which no longer carries the orbit facing at
+// all) out to WeaponRange looking for an enemy hurtbox. If it finds one and isn't on cooldown, it fires a
+// WeaponRangedProjectilePD at that enemy's hurtbox bounds CENTER, not the raw raycast hit point — since the
+// ray is thin and the weapon is orbiting, the hit point is usually on the near/side edge of the collider,
+// which would cause frequent near-misses. If it finds one but IS on cooldown, it doesn't fire and doesn't
+// reset the cooldown, so it retries every subsequent tick until the cooldown clears. Ported from the old
+// WeaponBow.GetTargetPosition()/Fire(), unchanged by this rework — only the orbit position/rotation math
+// itself changed.
 //
 // Enemies only, deliberately — this weapon never aims at an ally, so "hit ally, do something" augments
 // (OnStrikeHealAllyAugment etc.) only ever trigger off WeaponRangedProjectilePD's own flight-path sweep
@@ -46,6 +49,12 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
     [Header("Ranged")]
     [SerializeField] private GameObject projectilePrefab;
+
+    // See WeaponMeleePD's own orbitPivot field comment for the full contract — identical here.
+    [SerializeField] private Transform orbitPivot;
+
+    // Same sign/composition as WeaponMeleePD's own FlipTipRotation.
+    private static readonly Quaternion FlipTipRotation = Quaternion.Euler(0f, 0f, -90f);
 
     private bool _initialized;
 
@@ -91,7 +100,18 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     protected override void UpdateView(State viewState, State? verified)
     {
         if (!_initialized) TryInit();
-        ApplyVisualAdjustments();
+        ApplyModelVisualAdjustments();
+    }
+
+    // Same as WeaponMeleePD's own ApplyModelVisualAdjustments — see that method's own comment for why this
+    // reuses WeaponBasePD's (protected) visualHeightTarget directly rather than a separate reference, and
+    // why the rotation half of the old ApplyVisualAdjustments() isn't needed at all here.
+    private void ApplyModelVisualAdjustments()
+    {
+        if (visualHeightTarget == null || _stats == null) return;
+        Vector3 p = visualHeightTarget.localPosition;
+        float localLift = _stats.IsOrbitFlipped ? 0f : WeaponVisualConstants.BaseMidHeightLift;
+        visualHeightTarget.localPosition = new Vector3(p.x, localLift, p.z);
     }
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -101,6 +121,22 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     // in LateSimulate() instead of maintaining its own copy.
     protected override void Simulate(ref State state, float delta) { }
 
+    // WeaponBasePD.NominalOrbitRadius() is private — duplicated here, same as WeaponMeleePD's own copy.
+    private float NominalOrbitRadius()
+    {
+        float halfRange = rangeScaleTarget != null
+            ? designOrbit * RootScale.z
+            : (IsMelee ? RangeValue / 2f : 0.25f);
+        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
+        return weaponRadiusOffset + _stats.bonusSizePercent * 0.5f + halfRange;
+    }
+
+    private float SlotAngleOffset()
+    {
+        int total = _manager != null ? Mathf.Max(1, IsOuterTrack ? _manager.OuterWeaponCount : _manager.WeaponCount) : 1;
+        return 360f / total * SlotIndex;
+    }
+
     // Same post-physics-pass timing reasoning as WeaponMeleePD.LateSimulate() — _stats.transform.position
     // (and therefore this weapon's own orbital position) needs to reflect the player's current-tick,
     // post-physics position, not a tick-stale one.
@@ -108,6 +144,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
     {
         if (!_initialized || _stats == null || _stats.IsDead) return;
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+        if (orbitPivot == null) return;
 
         // Tick cooldowns here (deterministic, tick-based delta) rather than Time.deltaTime in UpdateView()
         // — see HitCooldownEntry's own doc comment for why the old approach was unsafe under resimulation:
@@ -115,22 +152,51 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         // different target than the original tick actually did — a guaranteed misprediction every time.
         HitCooldownMath.Tick(state.hitCooldowns);
 
-        // Outer-track weapons (OuterTrackAugment) spin the opposite direction — see
-        // WeaponMeleePD.LateSimulate's own angleSign comment for the full reasoning. No sub-arc sweep here
-        // (ranged just fires at whatever's in front of it), so no startAngle reconstruction needed.
-        //
         // ArcherFocusFireAbilityPD freezes the whole ring by substituting FocusFireAimAngle (cursor-derived,
         // shared by every weapon this owner has) for the normal ever-incrementing WeaponOrbitAngle — see
         // CharacterStatsPD.FocusFireAimAngle's own doc comment for why only the SHARED base changes here
-        // and each weapon's own SlotIndex offset (applied inside OrbitalPosition below) still does the rest.
-        float   baseAngle    = _stats.ContinuousFire ? _stats.FocusFireAimAngle : _stats.WeaponOrbitAngle;
-        float   currentAngle = (IsOuterTrack ? -1f : 1f) * baseAngle;
-        Vector3 origin = _stats.EffectiveOrbitOrigin;
-        Vector3 orbitPos = OrbitalPosition(currentAngle, origin);
-        Vector3 outward  = orbitPos - origin;
-        if (outward == Vector3.zero) return;
+        // and each weapon's own SlotIndex offset (via SlotAngleOffset below) still does the rest. See the
+        // +90 conversion below (currentAngle) for why FocusFireAimAngle specifically needs an extra fixed
+        // offset that WeaponOrbitAngle doesn't visibly need.
+        float baseAngle    = _stats.ContinuousFire ? _stats.FocusFireAimAngle : _stats.WeaponOrbitAngle;
+        float angleSign    = IsOuterTrack ? -1f : 1f;
+        // +90 (2026-08-25) — FocusFireAimAngle is computed as Atan2(dir.z, dir.x) (CharacterStatsPD.
+        // FocusFireAimAngle's own doc comment), the exact inverse of the OLD cos/sin orbit formula's own
+        // (cos θ, sin θ) position mapping — i.e. angle-zero there means world +Z, matching
+        // Quaternion.Euler(0,0,0)'s own forward. Plain WeaponOrbitAngle has no such external meaning (an
+        // arbitrary ever-incrementing counter), so this constant phase shift is invisible for the ordinary
+        // spin case — same rotation rate/direction either way, confirmed via Melee/Axe/Ranged's own already-
+        // validated orbit tests — but it matters the moment an angle source is tied to a REAL world direction
+        // like Focus Fire's aim, where a 90° convention mismatch is immediately visible (confirmed live: aim
+        // was a quarter-turn off from the actual target).
+        float currentAngle = 90f - (angleSign * baseAngle + SlotAngleOffset());
 
-        transform.SetPositionAndRotation(ApplyHeightLift(orbitPos), Quaternion.LookRotation(outward));
+        // Same FlipTipRotation composition as WeaponMeleePD — see its own comment.
+        Quaternion tip = _stats.IsOrbitFlipped
+            ? Quaternion.Euler(0f, _stats.OrbitFacingYaw, 0f) * FlipTipRotation
+            : Quaternion.identity;
+
+        float radius = NominalOrbitRadius();
+        if (radius <= 0.0001f) return;
+
+        // Root just tracks the origin and the sweep rotation — see WeaponMeleePD.LateSimulate's own comment
+        // for why ApplyHeightLift() is called unconditionally now (no flip-branching needed there at all).
+        // No sub-arc reconstruction here (unlike Melee/Axe) — this weapon does no hit-detection sweep of its
+        // own, just samples ONE current position/direction per tick for raycasting, so only the final angle
+        // matters, never an intermediate one.
+        Vector3 origin = _stats.EffectiveOrbitOrigin;
+        transform.position = ApplyHeightLift(origin);
+        transform.rotation = tip * Quaternion.Euler(0f, currentAngle, 0f);
+
+        // Counter-scaled by rootZ — see WeaponMeleePD.LateSimulate's own comment for the full reasoning.
+        float rootZ = transform.localScale.z;
+        orbitPivot.localPosition = new Vector3(0f, 0f, radius / Mathf.Max(0.0001f, rootZ));
+
+        // The effective firing/aiming point — hitboxTarget if a dedicated muzzle child is wired (e.g. the
+        // bow's own tip), orbitPivot itself otherwise. Everything below reads position/forward off THIS,
+        // never this weapon's own root transform directly — root no longer carries the orbit facing at all
+        // (that's what orbitPivot's own rotation, inherited from root, is for).
+        Transform muzzle = hitboxTarget != null ? hitboxTarget : orbitPivot;
 
         // Skipped entirely while _stats.IsWeaponsDisabled (e.g. the spin ability's leap) — the weapon keeps
         // orbiting above (purely visual), it just never actually fires; fireProgress is deliberately left
@@ -158,12 +224,12 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
             // back into range fires immediately instead of waiting out a fresh full interval. No per-target
             // hit cooldown bookkeeping either — there's no selected target to gate.
             if (!_stats.ContinuousFireHasTarget) return;
-            Fire(transform.position + transform.forward * EffectiveWeaponRange);
+            Fire(muzzle.position + muzzle.forward * EffectiveWeaponRange);
             state.fireProgress = 0f;
             return;
         }
 
-        if (!FindTarget(transform.position, transform.forward, state.hitCooldowns, out IEnemyPD target, out Vector3 hurtboxCenter)) return;
+        if (!FindTarget(muzzle.position, muzzle.forward, state.hitCooldowns, out IEnemyPD target, out Vector3 hurtboxCenter)) return;
 
         HitCooldownMath.TryStart(state.hitCooldowns, target.ObjectId, HitCooldown, delta);
         Fire(hurtboxCenter);
@@ -266,7 +332,11 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         int bonusShots = (int)rawMultishot;
         if (GameRandom.instance.NextFloat() < rawMultishot - bonusShots) bonusShots++;
 
-        Vector3 origin = transform.position;
+        // Same muzzle fallback as LateSimulate's own — recomputed fresh here rather than threaded through as
+        // a parameter, matching this codebase's existing "recompute hb/muzzle fresh at each use site"
+        // convention (e.g. WeaponAxePD.UpdateOuterBladeVisual's own hb).
+        Transform muzzle = hitboxTarget != null ? hitboxTarget : orbitPivot;
+        Vector3 origin = muzzle.position;
         Vector3 baseDir = (targetPosition - origin).normalized;
         MultishotMath.ComputeAngles(bonusShots, _stats.MultishotSpreadAngle, _multishotAngles);
 

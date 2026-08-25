@@ -15,7 +15,7 @@ PrefabInstance:
     - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: weaponPrefab
       value: 
-      objectReference: {fileID: 2942187867930129664, guid: 703925ce0460d234d95af3eef295b2e7, type: 3}
+      objectReference: {fileID: 2942187867930129664, guid: ec814f900baee3f4a95c9816bb5ef608, type: 3}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
       value: Knight

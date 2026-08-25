@@ -5,8 +5,9 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // "Destroy the Spires" — DPSCheckPD's multi-target sibling. Spawns dummyCount DummyTargetPD instances, each
-// placed independently (same wallOffset/zoneRadius/avoidPlayersOnPlacement/playerOffset placement rules
-// DPSCheckPD uses), and succeeds once EVERY one of them has died. See DPSCheckPD's own class-level doc
+// placed independently (same wallOffset/avoidPlayersOnPlacement/playerOffset — EventBasePD's own shared
+// fields — plus this event's own local zoneRadius, same placement rules DPSCheckPD uses), and succeeds once
+// EVERY one of them has died. See DPSCheckPD's own class-level doc
 // comment for the shared reasoning this mirrors (dummy-as-genuine-IEnemyPD, tier/difficulty/coop scaling via
 // DummyTargetScalingPD, SilentDespawn-based Cleanup) — only the differences worth calling out are covered
 // here.
@@ -61,7 +62,7 @@ public class DestroyTheTargetsPD : EventBasePD<DestroyTheTargetsPD.State>
     [SerializeField] private int dummyCount = 5;
 
     [Header("Placement")]
-    [SerializeField] private float wallOffset = 10f;
+    // wallOffset is EventBasePD's own shared field, not re-declared here.
     [SerializeField] private float zoneRadius = 1f;
     // How many independent candidate points to sample per dummy (after the first) before picking whichever
     // ends up farthest from every ALREADY-PLACED dummy this same event has spawned so far — see

@@ -42,9 +42,12 @@ public class PlayableAreaPD : MonoBehaviour
 
     // Uniform-ish random point for something of a given `zoneRadius` footprint (e.g. an event's own circular
     // zone) — two SEPARATE rules, not one shared margin:
-    //   1. Outer boundary is a HARD requirement: the candidate's own (zoneRadius + wallMargin)-inflated
-    //      footprint must stay fully inside outerBoundary, no exceptions — a zone should never hug or clip a
-    //      wall, however small the overlap.
+    //   1. Outer boundary is a HARD requirement, checked against the candidate's own CENTER only, not a
+    //      zoneRadius-inflated footprint (2026-08-25, was "(zoneRadius + wallMargin)-inflated footprint must
+    //      stay fully inside" — loosened to match minCenterDistance's own "center must clear it, edge is free
+    //      to dip in" shape below, per explicit user request): the center must be at least wallMargin from
+    //      the nearest edge. A large zone's own outer edge is allowed to reach the wall itself (even slightly
+    //      past it) as long as its center clears the margin.
     //   2. Inner obstructions are a SOFT requirement: at least `minUnobstructedFraction` (0-1, default 0.5 —
     //      "at least half clear") of the zone's own circle (radius = zoneRadius, wallMargin NOT included —
     //      see UnobstructedFraction's own doc comment for why) must be clear of every obstruction. This is
@@ -66,11 +69,23 @@ public class PlayableAreaPD : MonoBehaviour
     //
     // avoidPlayers/playerOffset (2026-08-21, opt-in — off by default, every existing caller unaffected): a
     // THIRD constraint, folded into the same rejection-sampling loop as the wall/obstruction checks above,
-    // using the identical "zoneRadius + margin" shape the wall check already establishes (outerMargin =
-    // zoneRadius + wallMargin) — a candidate is rejected if its own zoneRadius footprint would overlap a
-    // playerOffset-radius "personal space" circle around any currently alive player. See EventBasePD's own
-    // avoidPlayersOnPlacement/playerOffset fields for where a concrete event actually opts into this.
-    public Vector3 RandomPoint(float wallMargin, float zoneRadius, float minUnobstructedFraction = 0.5f, int maxAttempts = 30, int outwardBiasSamples = 1, bool avoidPlayers = false, float playerOffset = 0f)
+    // using its own "zoneRadius + margin" shape (unrelated to/unaffected by the wall check's own 2026-08-25
+    // loosening above, which now checks only the candidate's center) — a candidate is rejected if its own
+    // zoneRadius footprint would overlap a playerOffset-radius "personal space" circle around any currently
+    // alive player. See EventBasePD's own avoidPlayersOnPlacement/playerOffset fields for where a concrete
+    // event actually opts into this.
+    //
+    // minCenterDistance (2026-08-25) — a FOURTH, HARD constraint, mandatory by default (10) rather than
+    // opt-in: outwardBiasSamples above is only ever a SOFT tournament preference (picks the farthest of N
+    // valid candidates, but "too close to center" was still a perfectly valid candidate on its own, just a
+    // less-favored one) — in practice events kept landing near center anyway. This rejects any candidate
+    // whose CENTER point is within minCenterDistance of the boundary's own centroid outright, before it's
+    // ever eligible for the tournament — deliberately checked against the zone's own center, not its
+    // zoneRadius-inflated edge, so a large zone is allowed to have half its own footprint peek into that
+    // offset as long as its actual center clears it. Every existing caller gets this automatically (default
+    // 10, not 0) since the whole point is that it's mandatory, not something each event has to remember to
+    // opt into — pass 0 explicitly for a hypothetical future caller that genuinely doesn't want it.
+    public Vector3 RandomPoint(float wallMargin, float zoneRadius, float minUnobstructedFraction = 0.5f, int maxAttempts = 30, int outwardBiasSamples = 1, bool avoidPlayers = false, float playerOffset = 0f, float minCenterDistance = 10f)
     {
         Vector3 fallback = Centroid(outerBoundary);
         if (outerBoundary == null || outerBoundary.Length < 3) return fallback;
@@ -80,25 +95,29 @@ public class PlayableAreaPD : MonoBehaviour
 
         Vector2 center = ToXZ(fallback);
         int wantedSamples = Mathf.Max(1, outwardBiasSamples);
-        float outerMargin = zoneRadius + wallMargin;
 
         Vector2 bestCandidate = default;
         float bestDistSq = -1f;
         int validFound = 0;
 
+        float minCenterDistSq = minCenterDistance * minCenterDistance;
         for (int attempt = 0; attempt < maxAttempts && validFound < wantedSamples; attempt++)
         {
             float x = GameRandom.instance.NextFloat(minX, maxX);
             float z = GameRandom.instance.NextFloat(minZ, maxZ);
             var candidate = new Vector2(x, z);
 
+            float distSq = (candidate - center).sqrMagnitude;
+            if (distSq < minCenterDistSq) continue;
             if (!PointInPolygon(candidate, outerBoundary)) continue;
-            if (DistanceToPolygonEdges(candidate, outerBoundary) < outerMargin) continue;
+            // Checked against wallMargin alone now (2026-08-25, was zoneRadius + wallMargin) — see this
+            // method's own doc comment for why: only the candidate's CENTER needs to clear the wall, the
+            // zone's own edge is free to reach it (even slightly past).
+            if (DistanceToPolygonEdges(candidate, outerBoundary) < wallMargin) continue;
             if (UnobstructedFraction(candidate, zoneRadius) < minUnobstructedFraction) continue;
             if (avoidPlayers && !IsFarEnoughFromEveryPlayer(candidate, zoneRadius + playerOffset)) continue;
 
             validFound++;
-            float distSq = (candidate - center).sqrMagnitude;
             if (distSq > bestDistSq)
             {
                 bestDistSq = distSq;

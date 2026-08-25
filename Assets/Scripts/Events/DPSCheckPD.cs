@@ -7,11 +7,11 @@ using UnityEngine;
 // implements, and DummyTargetPD's own doc comment for why a dummy is a genuine IEnemyPD under the hood
 // (reuses its entire generic damage/health/death pipeline) rather than a separate parallel system.
 //
-// Placement: wallOffset/zoneRadius/avoidPlayersOnPlacement/playerOffset all feed straight into
-// PlayableAreaPD.RandomPoint in one call — "stay clear of walls" and "don't spawn on top of a player" are
-// both just zoneRadius-based overlap checks in that SAME rejection-sampling pass now (see RandomPoint's own
-// doc comment for the exact shape). avoidPlayersOnPlacement/playerOffset are EventBasePD's own shared,
-// opt-in fields (2026-08-21) — not re-declared here.
+// Placement: wallOffset/avoidPlayersOnPlacement/playerOffset (all EventBasePD's own shared fields, not
+// re-declared here) and this event's own local zoneRadius all feed straight into PlayableAreaPD.RandomPoint
+// in one call — "stay clear of walls" and "don't spawn on top of a player" are both just zoneRadius-based
+// overlap checks in that SAME rejection-sampling pass now (see RandomPoint's own doc comment for the exact
+// shape).
 //
 // Tier/Threat-Level/coop scaling: delegated entirely to DummyTargetScalingPD.ApplyTierScaling (2026-08-21,
 // pulled out to a shared static utility once DestroyTheTargetsPD needed the identical treatment — see that
@@ -49,9 +49,9 @@ public class DPSCheckPD : EventBasePD<DPSCheckPD.State>
     [SerializeField] private DummyTargetPD dummyPrefab;
 
     [Header("Placement")]
-    [SerializeField] private float wallOffset = 10f;
-    // The target's own footprint for BOTH of RandomPoint's overlap checks (wall clearance AND, when
-    // avoidPlayersOnPlacement is enabled on EventBasePD, player clearance) — per explicit design, 1f.
+    // The target's own footprint for RandomPoint's player-overlap check (when avoidPlayersOnPlacement is
+    // enabled on EventBasePD) — per explicit design, 1f. wallOffset is EventBasePD's own shared field, not
+    // re-declared here.
     [SerializeField] private float zoneRadius = 1f;
 
     public override void OnEventStart(PlayableAreaPD playableArea, int currentTier)

@@ -48,5 +48,5 @@ MonoBehaviour:
   avoidPlayersOnPlacement: 1
   playerOffset: 5
   dummyPrefab: {fileID: 3961009190734811448, guid: 1af823720c4f99046ae4ce5f6efc8b10, type: 3}
-  wallOffset: 10
+  wallOffset: 5
   zoneRadius: 4

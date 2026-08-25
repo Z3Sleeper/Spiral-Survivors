@@ -319,7 +319,11 @@ MonoBehaviour:
   travelTime: 0.5
   bladeHalfExtents: {x: 0.2, y: 0.1, z: 1.1414}
   _renderers:
-  - {fileID: 0}
+  - {fileID: 3271742700763148934}
+  - {fileID: 4066583747963975764}
+  - {fileID: 42549508322602881}
+  - {fileID: 1230640816757097958}
+  - {fileID: 5613993470342062763}
 --- !u!114 &571825129314863271
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -140,7 +140,7 @@ MonoBehaviour:
   avoidPlayersOnPlacement: 0
   playerOffset: 0
   zoneRadius: 10
-  wallOffset: 10
+  wallOffset: 5
   minUnobstructedFraction: 0.5
   outwardBiasSamples: 5
   zoneVisual: {fileID: 1956225685608033068}

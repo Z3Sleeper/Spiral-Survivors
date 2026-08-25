@@ -106,16 +106,23 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     // Shared, opt-in placement constraint (2026-08-21) — off by default, so an event that doesn't call
     // PlayableAreaPD.RandomPoint at all (or doesn't care) is unaffected. A concrete event's own OnEventStart
     // passes these straight through to RandomPoint's own avoidPlayers/playerOffset params (see that method's
-    // own doc comment for the exact "zoneRadius + playerOffset" overlap check this drives) alongside
-    // whatever zoneRadius/wallOffset fields that event already declares locally — those stay per-event since
-    // their meaning varies (e.g. CaptureThePointPD's own zoneRadius also sizes its visual circle), but
-    // "should placement avoid players, and by how much" is the same question for every event, so it lives
-    // here once instead of being re-declared per event.
+    // own doc comment for the exact "zoneRadius + playerOffset" overlap check this drives) alongside whatever
+    // zoneRadius field that event already declares locally — that one stays per-event since its meaning
+    // varies (e.g. CaptureThePointPD's own zoneRadius also sizes its visual circle), but "should placement
+    // avoid players, and by how much" is the same question for every event, so it lives here once instead of
+    // being re-declared per event.
     [Header("Placement")]
     [Tooltip("If enabled, a concrete event's own placement (via PlayableAreaPD.RandomPoint) also avoids spawning within playerOffset of any alive player's own zoneRadius footprint.")]
     [SerializeField] protected bool avoidPlayersOnPlacement = false;
     [Tooltip("Only used when Avoid Players On Placement is enabled — see its own tooltip.")]
     [SerializeField] protected float playerOffset = 0f;
+    // Hoisted up from being re-declared per event (2026-08-25) — unlike zoneRadius, wallOffset's own meaning
+    // ("how far this event's center should clear the wall, fed straight into PlayableAreaPD.RandomPoint's own
+    // wallMargin param — see its own doc comment for the 'center must clear it, edge is free to dip in'
+    // contract") never actually varies per event type, so there's no reason for every event to carry its own
+    // separate copy. All three existing events already agreed on 5f at the time of this move.
+    [Tooltip("How far a concrete event's own placement (via PlayableAreaPD.RandomPoint) keeps its CENTER from any wall — the zone's own edge is free to reach the wall itself, only the center is a hard requirement.")]
+    [SerializeField] protected float wallOffset = 5f;
 
     // Multiplies the announcement popup's own display duration on top of DamageNumber's shared, normal-status
     // baseline (see CharacterStatsPD.NotifyStatusPopup/StatusPopupData's own doc comments for the full

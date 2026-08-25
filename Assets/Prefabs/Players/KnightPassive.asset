@@ -79,7 +79,7 @@ MonoBehaviour:
   totalEnergyRegenPercent: 0
   totalEnergyRegenPenalty: 0
   bonusSurgeCostFlat: 0
-  bonusSurgeCostPercent: 0
+  surgeCostReductionPercent: 0
   surgeAttackSpeedPenalty: 0
   dashHaste: 0
   bonusDashHastePercent: 0

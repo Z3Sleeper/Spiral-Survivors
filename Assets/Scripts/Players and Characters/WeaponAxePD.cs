@@ -3,10 +3,14 @@ using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Orbits its owner exactly like WeaponMeleePD, but sweeps two zones per tick instead of one: a narrow
-// inner zone (the handle) and a much wider outer zone (the axehead). Only the axehead can crit and deals
-// full damage; the handle deals reduced damage and never crits. If an enemy overlaps both zones in the
-// same tick, it counts as an outer hit (outer wins the tie-break) — ported from the old WeaponAxe.cs.
+// Orbits its owner via the same pivot-based approach as WeaponMeleePD (2026-08-25 rework — see that class's
+// own doc comment for the full design/PredictedTransform-on-Pivot contract, identical here) — root tracks
+// the orbit origin and sweep rotation only, orbitPivot (its child) carries the live radius, Visuals/
+// hitboxTarget hang off orbitPivot. The ONLY thing that's Axe-specific is ComputeZones()/the hit-detection
+// shape below: two zones swept per tick instead of one — a narrow inner zone (the handle) and a much wider
+// outer zone (the axehead). Only the axehead can crit and deals full damage; the handle deals reduced
+// damage and never crits. If an enemy overlaps both zones in the same tick, it counts as an outer hit
+// (outer wins the tie-break) — ported from the old WeaponAxe.cs, unchanged by the pivot rework.
 public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 {
     public struct State : IPredictedData<State>
@@ -20,6 +24,9 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
             allyHitCooldowns.Dispose();
         }
     }
+
+    // See WeaponMeleePD's own orbitPivot field comment for the full contract — identical here.
+    [SerializeField] private Transform orbitPivot;
 
     [Header("Zone Half-Extents (normalized, multiplied by weapon scale)")]
     [SerializeField] private float innerXExtent = 0.1f;
@@ -38,6 +45,9 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     [SerializeField] private float innerDamageMultiplier = 0.5f;
     // Handle (inner) hits carry innately weaker on-hit-power in addition to their reduced damage.
     [SerializeField] private float innerOnHitPowerMultiplier = 0.25f;
+
+    // Same sign/composition as WeaponMeleePD's own FlipTipRotation — see that field's own comment.
+    private static readonly Quaternion FlipTipRotation = Quaternion.Euler(0f, 0f, -90f);
 
     private bool _initialized;
     private float _baseOuterBladeLocalScaleX;
@@ -96,8 +106,6 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         mgr.RegisterWeapon(this);
     }
 
-    // Destroyed(), not OnDestroy() — see WeaponMeleePD's own comment on the same change for why (pooled
-    // removal never reliably fired OnDestroy(), leaving a stale WeaponManagerPD entry behind).
     protected override void Destroyed()
     {
         if (_manager != null) _manager.UnregisterWeapon(this);
@@ -111,31 +119,59 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     // ── Simulation ────────────────────────────────────────────────────────────
 
-    // Empty — orbit angle is now ticked once, shared, on CharacterStatsPD (see
-    // CharacterStatsPD.State.weaponOrbitAngle's own doc comment); this weapon just reads _stats.WeaponOrbitAngle
-    // in LateSimulate() instead of maintaining its own copy.
     protected override void Simulate(ref State state, float delta) { }
+
+    // WeaponBasePD.NominalOrbitRadius() is private — duplicated here, same as WeaponMeleePD's own copy.
+    private float NominalOrbitRadius()
+    {
+        float halfRange = rangeScaleTarget != null
+            ? designOrbit * RootScale.z
+            : (IsMelee ? RangeValue / 2f : 0.25f);
+        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
+        return weaponRadiusOffset + _stats.bonusSizePercent * 0.5f + halfRange;
+    }
+
+    private float SlotAngleOffset()
+    {
+        int total = _manager != null ? Mathf.Max(1, IsOuterTrack ? _manager.OuterWeaponCount : _manager.WeaponCount) : 1;
+        return 360f / total * SlotIndex;
+    }
 
     protected override void LateSimulate(ref State state, float delta)
     {
         if (!_initialized || _stats == null || _stats.IsDead) return;
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+        if (orbitPivot == null) return;
 
         // Tick cooldowns here (deterministic, tick-based delta) rather than Time.deltaTime in UpdateView()
         // — see HitCooldownEntry's own doc comment for why the old approach was unsafe under resimulation.
         HitCooldownMath.Tick(state.hitCooldowns);
         HitCooldownMath.Tick(state.allyHitCooldowns);
 
-        // Outer-track weapons (OuterTrackAugment) spin the opposite direction — see
-        // WeaponMeleePD.LateSimulate's own angleSign comment for the full reasoning.
-        float   angleSign   = IsOuterTrack ? -1f : 1f;
-        float   currentAngle = angleSign * _stats.WeaponOrbitAngle;
-        Vector3 origin = _stats.EffectiveOrbitOrigin;
-        Vector3 orbitPos = OrbitalPosition(currentAngle, origin);
-        Vector3 outward  = orbitPos - origin;
-        if (outward == Vector3.zero) return;
+        // Same negation as WeaponMeleePD.LateSimulate's own currentAngle — see its own comment for why
+        // (axis-convention parity between this rigid-composition approach and the old cos/sin+LookRotation
+        // math).
+        float angleSign = IsOuterTrack ? -1f : 1f;
+        float currentAngle = -(angleSign * _stats.WeaponOrbitAngle + SlotAngleOffset());
 
-        Transform hb = hitboxTarget != null ? hitboxTarget : transform;
+        // Same FlipTipRotation composition as WeaponMeleePD — see its own comment.
+        Quaternion tip = _stats.IsOrbitFlipped
+            ? Quaternion.Euler(0f, _stats.OrbitFacingYaw, 0f) * FlipTipRotation
+            : Quaternion.identity;
+
+        float radius = NominalOrbitRadius();
+        if (radius <= 0.0001f) return;
+
+        // Root just tracks the origin — see WeaponMeleePD.LateSimulate's own comment for why ApplyHeightLift()
+        // is called unconditionally now (no flip-branching needed there at all).
+        Vector3 origin = _stats.EffectiveOrbitOrigin;
+        transform.position = ApplyHeightLift(origin);
+
+        // Counter-scaled by rootZ — see WeaponMeleePD.LateSimulate's own comment for the full reasoning.
+        float rootZ = transform.localScale.z;
+        orbitPivot.localPosition = new Vector3(0f, 0f, radius / Mathf.Max(0.0001f, rootZ));
+
+        Transform hb = hitboxTarget != null ? hitboxTarget : orbitPivot;
 
         _touchedThisTick.Clear();
         _outerHitsThisTick.Clear();
@@ -147,29 +183,25 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         if (state.prevSet)
         {
             // Same sub-arc reasoning as WeaponMeleePD.LateSimulate() — a straight sweep between this tick's
-            // start and end position is a chord across the orbit circle, not the arc itself, and can miss
-            // an enemy sitting on the arc between them at high enough rotation speed. Subdivide into
-            // intermediate stops along the true arc when needed (see SweepMath.ComputeSubArcCount()) —
-            // at normal speeds this is always exactly 1 segment, identical to a plain single sweep.
+            // start and end zone geometry is a chord across the orbit circle, not the arc itself, and can
+            // miss an enemy sitting on the arc between them at high enough rotation speed. Subdivide into
+            // intermediate stops along the true arc when needed (see SweepMath.ComputeSubArcCount()) — at
+            // normal speeds this is always exactly 1 segment, identical to a plain single sweep.
             float angleDelta = _stats.WeaponSpeed * delta;
-            // angle before this tick's movement — see WeaponMeleePD.LateSimulate's own startAngle comment.
-            float startAngle = currentAngle + angleSign * angleDelta;
+            float startAngle = currentAngle - angleSign * angleDelta;
             int   subArcs    = SweepMath.ComputeSubArcCount(angleDelta);
 
-            // Last tick's final zone geometry, before any movement this tick — same trick as
-            // WeaponMeleePD, hb still reflects last tick's transform here.
+            // Last tick's final zone geometry, before this tick's rotation is applied below — hb still
+            // reflects last tick's rotation here (root's rotation hasn't been touched yet this tick), same
+            // trick WeaponMeleePD's own prevCenter uses.
             var segZones = ComputeZones(hb);
 
             for (int step = 1; step <= subArcs; step++)
             {
-                bool    isLastStep = step == subArcs;
-                Vector3 stepPos = isLastStep
-                    ? orbitPos
-                    : OrbitalPosition(Mathf.Lerp(startAngle, currentAngle, step / (float)subArcs), origin);
-                Vector3 stepOutward = stepPos - origin;
-                if (stepOutward == Vector3.zero) continue;
+                bool  isLastStep = step == subArcs;
+                float stepAngle  = isLastStep ? currentAngle : Mathf.LerpAngle(startAngle, currentAngle, step / (float)subArcs);
 
-                transform.SetPositionAndRotation(ApplyHeightLift(stepPos), Quaternion.LookRotation(stepOutward));
+                transform.rotation = tip * Quaternion.Euler(0f, stepAngle, 0f);
                 var newSegZones = ComputeZones(hb);
 
                 Vector3 innerDelta = newSegZones.innerCenter - segZones.innerCenter;
@@ -221,7 +253,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         }
         else
         {
-            transform.SetPositionAndRotation(ApplyHeightLift(orbitPos), Quaternion.LookRotation(outward));
+            transform.rotation = tip * Quaternion.Euler(0f, currentAngle, 0f);
             zones = ComputeZones(hb);
         }
 
@@ -278,6 +310,8 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     // Recomputes both zones from the hitbox transform's CURRENT state — called twice per tick (once
     // before moving, for the previous-tick points; once after, for this tick's) and once per gizmo draw.
+    // Unchanged by the pivot rework — fully self-contained off hb's own live transform regardless of how
+    // it got positioned/rotated.
     private (Vector3 innerCenter, Vector3 innerExt, Vector3 outerPoint1, Vector3 outerPoint2, float capsuleRadius, Quaternion rot) ComputeZones(Transform hb)
     {
         Quaternion rot = hb.rotation;
@@ -333,12 +367,23 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     protected override void UpdateView(State viewState, State? verified)
     {
         if (!_initialized) TryInit();
-        ApplyVisualAdjustments();
+        ApplyModelVisualAdjustments();
 
         // Purely cosmetic (outer blade visual width) — render rate, not simulation, since it has no
         // gameplay effect and doesn't need to be replay-consistent.
         if (outerXZScalesWithRange && outerBladeVisual != null && _stats != null)
             UpdateOuterBladeVisual();
+    }
+
+    // Same as WeaponMeleePD's own ApplyModelVisualAdjustments — see that method's own comment for why this
+    // reuses WeaponBasePD's (protected) visualHeightTarget directly rather than a separate reference, and
+    // why the rotation half of the old ApplyVisualAdjustments() isn't needed at all here.
+    private void ApplyModelVisualAdjustments()
+    {
+        if (visualHeightTarget == null || _stats == null) return;
+        Vector3 p = visualHeightTarget.localPosition;
+        float localLift = _stats.IsOrbitFlipped ? 0f : WeaponVisualConstants.BaseMidHeightLift;
+        visualHeightTarget.localPosition = new Vector3(p.x, localLift, p.z);
     }
 
     private void UpdateOuterBladeVisual()

@@ -5266,7 +5266,6 @@ GameObject:
   - component: {fileID: 7965949495438917252}
   - component: {fileID: 9179460731510324500}
   - component: {fileID: 907166365888487978}
-  - component: {fileID: 1221250179474614144}
   m_Layer: 0
   m_Name: ExecutionerWeapon
   m_TagString: Untagged
@@ -5287,8 +5286,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 1
   m_Children:
-  - {fileID: 3964233350244192853}
-  - {fileID: 4623957236076310883}
+  - {fileID: 1946876040768958371}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &9179460731510324500
@@ -5317,8 +5315,24 @@ MonoBehaviour:
   hitboxTipScalesWithX: 0
   hitboxTipScalesWithY: 0
   hitboxTipScalesWithZ: 0
-  _renderers: []
+  _renderers:
+  - {fileID: 2820736293622115385}
+  - {fileID: 5150021955019228429}
+  - {fileID: 4976538654900428780}
+  - {fileID: 8447249266891435558}
+  - {fileID: 7648067231098058812}
+  - {fileID: 743178888628029977}
+  - {fileID: 9030270336061915617}
+  - {fileID: 705465992379767294}
+  - {fileID: 2757779599509732598}
+  - {fileID: 9104631335474985035}
+  - {fileID: 435851086826093832}
+  - {fileID: 7912948871920820921}
+  - {fileID: 7940778901345517782}
+  isRanged: 0
+  rangeMultiplier: 1
   visualHeightTarget: {fileID: 6538681499716106083}
+  orbitPivot: {fileID: 1946876040768958371}
   innerXExtent: 0.1
   outerXZExtent: 0.5
   yExtent: 0.1
@@ -5357,23 +5371,6 @@ MonoBehaviour:
   - {fileID: 5150021955019228429}
   tintedMaterialIndex: 0
   alpha: 1
---- !u!114 &1221250179474614144
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2942187867930129664}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 98dbb08343eac044895b9b52872bcb49, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
-  _graphics: {fileID: 3964233350244192853}
-  _floatAccuracy: 1
-  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
-  _unparentGraphics: 0
-  _characterControllerPatch: 0
 --- !u!1 &3057346110584056543
 GameObject:
   m_ObjectHideFlags: 0
@@ -10473,13 +10470,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4983042156987215106}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 6538681499716106083}
-  m_Father: {fileID: 7965949495438917252}
+  m_Father: {fileID: 1946876040768958371}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5193525223316718517
 GameObject:
@@ -10661,12 +10658,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 6838032805661041711}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 7965949495438917252}
+  m_Father: {fileID: 1946876040768958371}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &6900542589988237337
 GameObject:
@@ -10710,6 +10707,57 @@ Transform:
   - {fileID: 7615925401032823613}
   m_Father: {fileID: 6538681499716106083}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &7725745287454288243
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1946876040768958371}
+  - component: {fileID: 3150251855602333575}
+  m_Layer: 0
+  m_Name: Pivot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1946876040768958371
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7725745287454288243}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 3964233350244192853}
+  - {fileID: 4623957236076310883}
+  m_Father: {fileID: 7965949495438917252}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &3150251855602333575
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7725745287454288243}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 98dbb08343eac044895b9b52872bcb49, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: PurrNet.Prediction::PurrNet.Prediction.PredictedTransform
+  _graphics: {fileID: 3964233350244192853}
+  _floatAccuracy: 1
+  _interpolationSettings: {fileID: 11400000, guid: e17a3f2b4c6d8940b1e5f3a9c7d2b6e4, type: 2}
+  _unparentGraphics: 0
+  _characterControllerPatch: 0
 --- !u!1 &8105557099810617667
 GameObject:
   m_ObjectHideFlags: 0

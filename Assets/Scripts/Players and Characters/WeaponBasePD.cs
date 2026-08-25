@@ -590,7 +590,11 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // Visual-only target for the mid-height lift above — a dedicated child (e.g. the weapon's "Model"),
     // NOT this weapon's own root `transform` (that's the real, hitbox-relevant orbit position every
     // LateSimulate computes). Optional: weapons with nothing wired here simply never rise, no error.
-    [SerializeField] private Transform visualHeightTarget;
+    // protected (2026-08-25, was private) — WeaponMeleePD's own pivot-based orbit needs to apply its own
+    // rotation logic to this same transform (see its ApplyModelVisualAdjustments()'s own comment) without
+    // duplicating the Inspector reference; this is a pure accessibility widening, ApplyVisualAdjustments()
+    // itself is unchanged, so WeaponAxePD/WeaponRangedPD's own behavior is unaffected.
+    [SerializeField] protected Transform visualHeightTarget;
 
     // Local rotation visualHeightTarget's model tips to while _stats.IsOrbitFlipped — same flag
     // OrbitalPosition's own plane-tip uses (see its own doc comment), reused here rather than a separate
