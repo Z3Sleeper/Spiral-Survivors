@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: OnHitHealHealthRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Therapeutic Strikes</color>
-  description: <color=#FFA000>On Hit:</color> <color=#7DFF00>Heal</color> <color=#7DFF00>{LiveHealthRegenRatio}</color><color=#FFA000>(0.1
+  description: <color=#FFA000>On Hit:</color> <color=#7DFF00>Heal</color> <color=#7DFF00>{LiveHealthRegenRatio}</color><color=#FFA000>(0.8
     + <color=#7DFF00>{onHitHealPercent}% Health Regen</color>)</color> <color=#7DFF00>Health</color>.
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   effectPrefab: {fileID: 4271127026077503740, guid: 1e3887ea2479e1f4a9d45183236aac46, type: 3}

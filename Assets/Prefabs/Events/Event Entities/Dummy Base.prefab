@@ -537,15 +537,15 @@ MonoBehaviour:
   damage: 5
   xpValue: 0
   size: 2
-  contactColliderEnabled: 1
+  contactColliderEnabled: 0
   stunResistant: 1
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers: []
+  _renderers:
+  - {fileID: 4370519463698456403}
   _accentRenderers: []
   invulnerableShell: {fileID: 484935195704614788}
-  canDealContactDamage: 0
 --- !u!54 &-6973549993052189348
 Rigidbody:
   m_ObjectHideFlags: 0

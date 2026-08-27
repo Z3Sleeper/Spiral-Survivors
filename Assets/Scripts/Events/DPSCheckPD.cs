@@ -7,13 +7,14 @@ using UnityEngine;
 // implements, and DummyTargetPD's own doc comment for why a dummy is a genuine IEnemyPD under the hood
 // (reuses its entire generic damage/health/death pipeline) rather than a separate parallel system.
 //
-// Placement: wallOffset/avoidPlayersOnPlacement/playerOffset (all EventBasePD's own shared fields, not
-// re-declared here) and this event's own local zoneRadius all feed straight into PlayableAreaPD.RandomPoint
-// in one call — "stay clear of walls" and "don't spawn on top of a player" are both just zoneRadius-based
-// overlap checks in that SAME rejection-sampling pass now (see RandomPoint's own doc comment for the exact
-// shape).
+// Placement (2026-08-27): a single verbatim pick from EventManagerPD's own hand-authored eventSpawnPoints —
+// see EventManagerPD.TryGetEventSpawnPoint's own doc comment. avoidPlayersOnPlacement/playerOffset
+// (EventBasePD's own shared fields) plus this event's own local zoneRadius (now purely the avoid-players
+// footprint radius, no longer feeding a wall-margin/obstruction check that no longer exists) are passed
+// straight through. Was PlayableAreaPD.RandomPoint before this — see PlayableAreaPD.GetInsetPerimeter's own
+// doc comment for why that whole procedural-placement approach was abandoned project-wide.
 //
-// Tier/Threat-Level/coop scaling: delegated entirely to DummyTargetScalingPD.ApplyTierScaling (2026-08-21,
+// Tier/Threat-Level/coop scaling: delegated entirely to EventTargetScalingPD.ApplyTierScaling (2026-08-21,
 // pulled out to a shared static utility once DestroyTheTargetsPD needed the identical treatment — see that
 // class's own doc comment for the full formula).
 //
@@ -49,9 +50,8 @@ public class DPSCheckPD : EventBasePD<DPSCheckPD.State>
     [SerializeField] private DummyTargetPD dummyPrefab;
 
     [Header("Placement")]
-    // The target's own footprint for RandomPoint's player-overlap check (when avoidPlayersOnPlacement is
-    // enabled on EventBasePD) — per explicit design, 1f. wallOffset is EventBasePD's own shared field, not
-    // re-declared here.
+    // The target's own footprint for the avoid-players check (when avoidPlayersOnPlacement is enabled on
+    // EventBasePD) — per explicit design, 1f.
     [SerializeField] private float zoneRadius = 1f;
 
     public override void OnEventStart(PlayableAreaPD playableArea, int currentTier)
@@ -65,8 +65,8 @@ public class DPSCheckPD : EventBasePD<DPSCheckPD.State>
         if (dummyPrefab == null) return;
 
         Vector3 spawnPos = transform.position;
-        if (playableArea != null)
-            spawnPos = playableArea.RandomPoint(wallOffset, zoneRadius, avoidPlayers: avoidPlayersOnPlacement, playerOffset: playerOffset);
+        if (EventManagerPD.instance != null && EventManagerPD.instance.TryGetEventSpawnPoint(out var p, avoidPlayersOnPlacement, playerOffset, zoneRadius))
+            spawnPos = p;
 
         var id = hierarchy.Create(dummyPrefab.gameObject, spawnPos, Quaternion.identity);
         if (!id.HasValue) return;
@@ -74,7 +74,7 @@ public class DPSCheckPD : EventBasePD<DPSCheckPD.State>
         currentState.dummyId = id.Value;
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out IEnemyPD dummy))
-            DummyTargetScalingPD.ApplyTierScaling(dummy, currentTier);
+            EventTargetScalingPD.ApplyTierScaling(dummy, currentTier);
     }
 
     protected override void Simulate(ref State state, float delta)

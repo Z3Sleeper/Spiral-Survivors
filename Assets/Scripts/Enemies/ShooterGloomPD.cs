@@ -3,13 +3,39 @@ using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Ported from _OldSystemArchive/Enemies/ShooterGloom.cs. Waits at preferred range, fires on cooldown; if
-// the player gets too close first dashes away. The DashingAway/Windup/Shooting sequence for one shot (or
-// one multishot burst) is an "ongoing attack" (see EnemyBasePD.CaptureAttackAnchor) — it always resolves
-// against whichever target it committed to when it started, even if _target gets reassigned mid-sequence
-// (taunt/invisible). BetweenShots re-evaluates _target fresh for whether/where the NEXT shot in the chain
-// aims. Multishot uses the shared MultishotMath formula (WeaponBasePD.cs) — same behavior as the player's
-// own WeaponRangedPD.
+// Ported from _OldSystemArchive/Enemies/ShooterGloom.cs. Waits at preferred range, fires on cooldown. The
+// DashingAway/Windup/Shooting sequence for one shot (or one multishot burst) is an "ongoing attack" (see
+// EnemyBasePD.CaptureAttackAnchor) — it always resolves against whichever target it committed to when it
+// started, even if _target gets reassigned mid-sequence (taunt/invisible). Each shot re-commits fresh (see
+// CommitToCurrentTarget) for whether/where the NEXT shot in the chain aims. Multishot uses the shared
+// MultishotMath formula (WeaponBasePD.cs) — same behavior as the player's own WeaponRangedPD.
+//
+// Only the FIRST attack in a chain can dash away (2026-08-27) — every later shot in the same multishot
+// burst skips Windup entirely and goes straight from Shooting into a brief FirePause (see class doc comment
+// below) before firing again, with no range/dash check of its own. BetweenShots (a separate, longer 0.25s
+// state with its own FaceTargetSmooth) is gone — FirePause covers both roles now (the beat after a dash,
+// AND the beat between shots in a burst), under one committed-attack CC ruleset (CanBeInterrupted, not
+// isStunnable — an explicit choice: simpler than the old two-different-CC-rules-depending-on-state shape).
+//
+// Windup-first reorder (2026-08-26) — the "too close, dash away" check used to run BEFORE Windup even
+// started, meaning a Shooter caught up close would evade first and only become vulnerable/interruptible
+// once already safely at range. Now Windup always runs first (stationary, interruptible — see
+// CanBeInterrupted) regardless of distance, and the range check only happens right at the END of Windup:
+// too close means dash away THEN fire immediately (no second windup), otherwise fire immediately in place.
+// Both branches funnel through the same EnterShooting(). This is deliberate — it's what makes this enemy
+// reliably interruptible up close for the first time (explicit design goal), while keeping the dash-away
+// evasion for whenever the player closes distance during the windup itself.
+//
+// Live-tracks a committed target during Windup instead of a frozen anchor position (2026-08-26) — matches
+// BlitzGloomPD/KingSpikePD's own established _windupTrackedTarget pattern (captured once, at the exact
+// moment Windup begins, from _targetStats — "the commit moment," never re-read live off _targetStats
+// afterward, so a taunt landing mid-Windup can't redirect an already-started attack onto the new taunting
+// player; confirmed this is the consistent rule across every other enemy with windup-tracking before this
+// one got it). Unlike Blitz/KingSpike, tracking here is NOT rate-capped — explicit design choice, this
+// enemy just has plain instant tracking, both for the cosmetic Windup-facing and for the real aim direction
+// (re-snapped fresh in EnterShooting, right before firing, in both the dash and no-dash branches) — a much
+// longer windupDuration (the whole point of this change) would otherwise leave the shot aimed at a long-
+// stale position if it kept using the old anchor-snapshotted-at-Windup-START value.
 public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -46,16 +72,22 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     [SerializeField] private float minAttackRange     = 8f;
     [SerializeField] private float windupDuration     = 0.25f;
     [SerializeField] private float shootDuration      = 0.1f;
-    [SerializeField] private float betweenShotPause   = 0.25f;
     [SerializeField] private float postShotPause      = 0.5f;
     [SerializeField] private int   shotsPerAttack     = 1;
     [SerializeField] private float shotDamageMultiplier = 1f;
     // Multiplier against baseMoveSpeed, matching every other dashing enemy's own dashSpeedMultiplier
-    // convention (see StartDashToPoint/StartDashToTarget callers) — NOT old's 33x, which was tuned against
+    // convention (see StartDashToPoint/StartOffsetChase callers) — NOT old's 33x, which was tuned against
     // old's differently-scaled move speed values.
     [SerializeField] private float dashSpeedMultiplier = 4f;
     // Extra clearance beyond exactly reaching minAttackRange, same buffer old's own EnterDash() used.
     [SerializeField] private float dashDistanceBuffer  = 0.5f;
+    // Shared fire-pause duration (2026-08-26, broadened 2026-08-27) — TWO roles now: (1) the beat between a
+    // dash-away landing and the actual fire (without this, the two resolved on the exact same tick,
+    // dashJustEnded routing straight into EnterShooting, which read as the dash and the shot going off
+    // simultaneously), and (2) the beat between shots in a multishot burst (replaces the old, separate,
+    // longer betweenShotPause — every shot past the first now skips Windup entirely and uses this same
+    // pause instead, see class doc comment). See FirePause's own case in HandleActiveState.
+    [SerializeField] private float firePauseDuration   = 0.1f;
 
     [Header("Projectile")]
     [SerializeField] private GameObject projectilePrefab;
@@ -102,7 +134,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     // Added onto multishotCount per tier above 1 — see OnConfigureSpawn().
     [SerializeField] private int multishotCountTierGrowth = 2;
 
-    public enum ShooterState { Moving, DashingAway, Windup, Shooting, BetweenShots, PostShot }
+    public enum ShooterState { Moving, DashingAway, Windup, FirePause, Shooting, PostShot }
 
     private ShooterState GetShooterState(ref State s) => (ShooterState)s.shooterStateId;
     private void SetShooterState(ref State s, ShooterState st) => s.shooterStateId = (int)st;
@@ -110,6 +142,21 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     // Scratch buffer for MultishotMath.ComputeAngles — static, immediately drained within one synchronous
     // call, same convention as WeaponRangedPD's own _multishotAngles.
     private static readonly List<float> _multishotAngles = new();
+
+    // The target this attack committed to, captured once at EnterWindup — see class doc comment for why
+    // (matches BlitzGloomPD._windupTrackedTarget/KingSpikePD._chargeWindupTrackedTarget exactly). Drives
+    // both Windup's own cosmetic facing and the real fire-aim direction, both via plain instant SnapFaceTarget
+    // calls (no rate cap, per explicit design — unlike Blitz/KingSpike's own rate-capped equivalents).
+    private CharacterStatsPD _windupTrackedTarget;
+    // Mirrors KingOrbiterPD's own _shotTargetLastKnownPosition — only refreshes while _windupTrackedTarget is
+    // actually alive+visible, held frozen otherwise (dead/invisible-without-taunting), and resumes live
+    // tracking the instant validity returns. SnapFaceTarget(CharacterStatsPD)'s own built-in no-op-on-invalid
+    // already gives the FACING calls this same freeze-for-free (tracking here is instant/uncapped, so the
+    // last valid tick already snapped exactly onto this same position) — but the range check (Windup case)
+    // and fire-aim (FireShots) read a position directly, with no such built-in guard, so they need this
+    // explicit fallback to avoid reading a dead/invisible target's transform live (which could have moved,
+    // respawned, or teleported since the moment it actually went invalid).
+    private Vector3 _windupTrackedTargetLastKnownPosition;
 
     protected override void OnAwake()
     {
@@ -168,7 +215,10 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
 
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
-        if (dashJustEnded) EnterWindup(ref state);
+        // Dash-away now happens AFTER Windup, immediately before firing (see class doc comment) — so
+        // finishing the dash goes into a brief FirePause, not back into a second Windup (and not straight
+        // into Shooting either — see firePauseDuration's own doc comment for why that pause exists).
+        if (dashJustEnded) EnterFirePause(ref state);
 
         var ss = GetShooterState(ref state);
 
@@ -187,27 +237,63 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 if (_target != null) HandleMovement(ref state, delta);
                 if (state.attackCooldownTimer <= 0f && TargetInRange())
                 {
-                    // Decrement/refill lives here (the actual start of the attempt — dash-away OR windup,
-                    // whichever runs first — not EnterShooting's own fire-resolve point) so an attempt
-                    // cancelled via Interrupt() mid-dash or mid-windup still counts against the budget. See
-                    // EnterMoving's own comment for why the reset moved here too.
+                    // Decrement/refill lives here (the actual start of the attempt, now always Windup — see
+                    // class doc comment) so an attempt cancelled via Interrupt() mid-windup/dash still
+                    // counts against the budget. See EnterMoving's own comment for why the reset moved here
+                    // too.
                     if (state.shotsRemaining <= 0) state.shotsRemaining = shotsPerAttack;
                     state.shotsRemaining--;
                     // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
                     CaptureAttackAnchor(ref state);
-                    float dist = Vector3.Distance(transform.position, _target.position);
-                    if (dist < minAttackRange) EnterDashAway(ref state, dist);
-                    else                        EnterWindup(ref state);
+                    // Always Windup first now, regardless of range — the "too close" dash-away check moved
+                    // to the END of Windup (see the Windup case below and class doc comment).
+                    EnterWindup(ref state);
                 }
                 break;
 
             case ShooterState.DashingAway:
                 // Movement itself is driven by the base HandleDash() call in Simulate(); nothing to do here
-                // beyond wait for dashJustEnded (handled above) to advance to Windup.
+                // beyond wait for dashJustEnded (handled above) to advance into FirePause.
+                break;
+
+            case ShooterState.FirePause:
+                // Same live-tracking/refresh as Windup's own case below, just for this much shorter beat —
+                // keeps the body visibly re-aiming during the pause instead of sitting frozen at whatever
+                // angle the previous state ended on, and keeps _windupTrackedTargetLastKnownPosition
+                // maximally fresh right up until EnterShooting's own final refresh+fire. Reached either from
+                // a dash landing OR from Shooting's own chain-continuation branch below (every shot past the
+                // first) — no minAttackRange/dash check here either way; only the FIRST attack in a chain
+                // can ever dash (see class doc comment).
+                SnapFaceTarget(_windupTrackedTarget);
+                RefreshTrackedTargetLastKnownPosition();
+                if (state.shooterStateTimer <= 0f) EnterShooting(ref state);
                 break;
 
             case ShooterState.Windup:
-                if (state.shooterStateTimer <= 0f) EnterShooting(ref state);
+                // Instant (no rate cap, per explicit design — unlike Blitz/KingSpike's own rate-capped
+                // windup tracking) live facing toward the committed target for the whole Windup — purely
+                // cosmetic here (EnterShooting re-snaps for the real aim direction regardless), but keeps
+                // the body visibly locked onto whoever this attack is against the entire time it's
+                // vulnerable/interruptible, rather than sitting frozen at whatever angle Windup entry left
+                // it at. No-ops safely via SnapFaceTarget's own null/dead/invisible guard if the committed
+                // target became invalid mid-Windup. Only ever reached for the FIRST shot in a chain now
+                // (2026-08-27) — every later shot skips straight from Shooting into FirePause instead (see
+                // class doc comment), so the dash-check below can never fire for anything but shot #1.
+                SnapFaceTarget(_windupTrackedTarget);
+                // Must run even on the same tick Windup ends, before the range check below reads it.
+                RefreshTrackedTargetLastKnownPosition();
+                if (state.shooterStateTimer <= 0f)
+                {
+                    // Range check moved here from Moving (2026-08-26) — see class doc comment. Reads
+                    // _windupTrackedTargetLastKnownPosition (the committed target's last VALID position),
+                    // not a live transform read, so this stays frozen if the target died/vanished mid-Windup
+                    // instead of measuring against a dead body that may have since moved.
+                    float dist = _windupTrackedTarget != null
+                        ? Vector3.Distance(transform.position, _windupTrackedTargetLastKnownPosition)
+                        : float.MaxValue;
+                    if (dist < minAttackRange) EnterDashAway(ref state, dist);
+                    else                        EnterShooting(ref state);
+                }
                 break;
 
             case ShooterState.Shooting:
@@ -219,32 +305,28 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                     // just finished above, but stops the chain from continuing into another one, falling
                     // through to PostShot instead (a Slow does NOT stop the chain — see IsCrowdControlled's
                     // own doc comment, hard CC only).
-                    if (state.shotsRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenShots(ref state);
-                    else                                                EnterPostShot(ref state);
-                }
-                break;
-
-            case ShooterState.BetweenShots:
-                // No minAttackRange re-check here — the dash-away decision is made once, up front in
-                // Moving (see below), and this multishot burst commits to firing all of shotsPerAttack
-                // regardless of how close the target gets in between shots. Outside the ongoing window
-                // (ongoing ends the moment Shooting finishes) — safe to read live _target here.
-                if (state.shooterStateTimer <= betweenShotPause * 0.5f) FaceTargetSmooth(delta);
-                if (state.shooterStateTimer <= 0f)
-                {
-                    if (_target == null)
+                    if (state.shotsRemaining > 0 && IsTargetStillValid && !IsCrowdControlled)
                     {
-                        EnterPostShot(ref state);
+                        // Continuing the chain — skips Windup entirely (2026-08-27, explicit design: only
+                        // the FIRST attack can dash, every later one commits straight to firing after a
+                        // brief FirePause instead — see class doc comment). Decrement here, the actual start
+                        // of THIS shot's own mini-commitment, so an attempt cancelled mid-FirePause via
+                        // Interrupt() still counts against the budget — same reasoning the first shot's own
+                        // Moving-case trigger already uses. No refill-if-exhausted guard needed here (unlike
+                        // Moving/the old BetweenShots) — shotsRemaining > 0 is already this branch's own
+                        // entry condition, so it can never be <= 0 at this point.
+                        state.shotsRemaining--;
+                        CaptureAttackAnchor(ref state);
+                        // Re-commits to the current target fresh for this NEXT shot — same "each shot in a
+                        // burst re-evaluates target fresh" behavior the old BetweenShots→EnterWindup path
+                        // used to give for free, preserved explicitly now that this shot skips Windup
+                        // (which is where that re-commit used to happen).
+                        CommitToCurrentTarget();
+                        EnterFirePause(ref state);
                     }
                     else
                     {
-                        // Same refill-if-exhausted + decrement as the Moving case above — this is the other
-                        // funnel into a fresh attempt (continuing an existing burst rather than starting a
-                        // brand new one), same reasoning applies.
-                        if (state.shotsRemaining <= 0) state.shotsRemaining = shotsPerAttack;
-                        state.shotsRemaining--;
-                        CaptureAttackAnchor(ref state);
-                        EnterWindup(ref state);
+                        EnterPostShot(ref state);
                     }
                 }
                 break;
@@ -260,11 +342,13 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         // Windup is a stationary telegraphed-attack window — kinematic (Case 2, immovable but still
         // physically present), matching every other enemy's convention. DashingAway is fast movement,
         // handled entirely by the base dash primitives (collider-disabled instead, Case 1) — HandleDash
-        // already disables/re-enables _physicsCollider around the dash itself.
-        isStunnable = ss == ShooterState.Moving || ss == ShooterState.BetweenShots || ss == ShooterState.PostShot;
+        // already disables/re-enables _physicsCollider around the dash itself. FirePause is the same
+        // stationary-telegraph shape as Windup — it's still part of the same committed attack, whether it's
+        // the beat after landing a dash or the beat between shots in a burst (see class doc comment).
+        isStunnable = ss == ShooterState.Moving || ss == ShooterState.PostShot;
         if (_rigidbody != null)
         {
-            bool shouldBeKinematic = ss == ShooterState.Windup || ss == ShooterState.Shooting;
+            bool shouldBeKinematic = ss == ShooterState.Windup || ss == ShooterState.FirePause || ss == ShooterState.Shooting;
             if (shouldBeKinematic && !_rigidbody.isKinematic)
             {
                 _rigidbody.velocity = Vector3.zero;
@@ -285,7 +369,10 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     {
         SetShooterState(ref state, ShooterState.DashingAway);
 
-        Vector3 awayDir = transform.position - _target.position;
+        // _windupTrackedTargetLastKnownPosition, not a live transform read — see that field's own doc
+        // comment (stays frozen if the committed target died/vanished mid-Windup).
+        Vector3 targetPos = _windupTrackedTarget != null ? _windupTrackedTargetLastKnownPosition : transform.position;
+        Vector3 awayDir = transform.position - targetPos;
         awayDir.y = 0f;
         awayDir.Normalize();
         float dashDistance = (minAttackRange - currentDistance) + dashDistanceBuffer;
@@ -295,25 +382,64 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         StartDashToPoint(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, destination);
     }
 
+    // Reached from a dash landing (dashJustEnded), or from Shooting's own chain-continuation branch (every
+    // shot past the first) — both already commit/re-commit via CommitToCurrentTarget or EnterWindup before
+    // getting here, so this just snaps facing once immediately (matches EnterWindup's own immediate-snap
+    // convention, rather than waiting one tick for FirePause's own per-tick SnapFaceTarget call to catch up).
+    private void EnterFirePause(ref State state)
+    {
+        state.shooterStateTimer = firePauseDuration;
+        SnapFaceTarget(_windupTrackedTarget);
+        SetShooterState(ref state, ShooterState.FirePause);
+    }
+
+    // Captures _targetStats as this attack's committed target and seeds _windupTrackedTargetLastKnownPosition
+    // to match, in one step — shared by EnterWindup (the first shot in a chain) and Shooting's own chain-
+    // continuation branch (every later shot, which skips Windup entirely — see class doc comment), so both
+    // commit points stay identically seeded. See _windupTrackedTarget's own doc comment for why this needs
+    // to be captured once, not read live off _targetStats later.
+    private void CommitToCurrentTarget()
+    {
+        _windupTrackedTarget = _targetStats;
+        // Seeded immediately, not left at whatever the last attack's value was — see
+        // _windupTrackedTargetLastKnownPosition's own doc comment.
+        _windupTrackedTargetLastKnownPosition = _windupTrackedTarget != null ? _windupTrackedTarget.transform.position : transform.position;
+    }
+
     private void EnterWindup(ref State state)
     {
+        CommitToCurrentTarget();
         state.shooterStateTimer = windupDuration;
-        SnapFaceAnchor(ref state);
+        SnapFaceTarget(_windupTrackedTarget);
         SetShooterState(ref state, ShooterState.Windup);
     }
 
     private void EnterShooting(ref State state)
     {
         state.shooterStateTimer = shootDuration;
-        // Decrement moved to the attack-start sites (Moving/BetweenShots, above) — see their own comment.
+        // Decrement moved to the attack-start sites (Moving/Shooting's own chain-continuation branch,
+        // above) — see their own comment.
         SetShooterState(ref state, ShooterState.Shooting);
+        // One more refresh right before firing (2026-08-26) — covers the DashingAway window: unlike Windup,
+        // DashingAway has no tracking phase of its own, so if the committed target flickered invalid->valid
+        // (or valid->invalid) WHILE dashing, this is what actually catches it before the shot resolves,
+        // rather than firing at whatever position was last recorded back at the end of Windup. Both the
+        // dash-away-then-fire and fire-directly branches funnel through here, so both get this same freshest-
+        // possible check regardless of whether a dash happened at all.
+        RefreshTrackedTargetLastKnownPosition();
+        SnapFaceTarget(_windupTrackedTarget);
         FireShots(ref state);
     }
 
-    private void EnterBetweenShots(ref State state)
+    // Refreshes _windupTrackedTargetLastKnownPosition only while _windupTrackedTarget is actually valid
+    // right now — called from both the Windup case (every tick) and EnterShooting (one more time, right
+    // before firing — see its own comment for why that extra call matters). See
+    // _windupTrackedTargetLastKnownPosition's own doc comment for the freeze/resume behavior this gives.
+    private void RefreshTrackedTargetLastKnownPosition()
     {
-        state.shooterStateTimer = betweenShotPause;
-        SetShooterState(ref state, ShooterState.BetweenShots);
+        if (_windupTrackedTarget != null && !_windupTrackedTarget.IsDead &&
+            (!_windupTrackedTarget.IsInvisible || _windupTrackedTarget.IsTaunting))
+            _windupTrackedTargetLastKnownPosition = _windupTrackedTarget.transform.position;
     }
 
     private void EnterPostShot(ref State state)
@@ -339,7 +465,8 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         get
         {
             var ss = GetShooterState(ref currentState);
-            return ss == ShooterState.Windup || ss == ShooterState.DashingAway || ss == ShooterState.Shooting;
+            return ss == ShooterState.Windup || ss == ShooterState.DashingAway ||
+                   ss == ShooterState.FirePause || ss == ShooterState.Shooting;
         }
     }
 
@@ -360,16 +487,21 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
 
     // ── Firing ────────────────────────────────────────────────────────────────
 
-    // Aims at the captured attackAnchorPosition (see CaptureAttackAnchor's own doc comment), not live
-    // _target — this is the actual functional reason the anchor exists for Shooter specifically: unlike
+    // Aims at _windupTrackedTarget's live position (2026-08-26, was the anchor captured at Windup-START —
+    // see class doc comment for why that went stale once Windup got much longer), not live _target — this
+    // is the actual functional reason _windupTrackedTarget exists for Shooter specifically: unlike
     // Leaper/Dagger's position-based self-centered AoEs, a shot is a genuinely directional projectile that
-    // WOULD visibly redirect toward a different player mid-windup if it read _target live.
+    // WOULD visibly redirect toward a different player mid-windup if it read _target live. Computed directly
+    // from position math (not transform.forward) so it's correct the instant EnterShooting's own preceding
+    // SnapFaceTarget call runs — Rigidbody.MoveRotation doesn't apply until the next physics step (see
+    // BlitzGloomPD.TrackWindupTarget's own doc comment for the confirmed bug that reading transform.rotation
+    // synchronously after a MoveRotation call would reproduce).
     private void FireShots(ref State state)
     {
-        if (projectilePrefab == null) return;
+        if (projectilePrefab == null || _windupTrackedTarget == null) return;
 
         Vector3 origin  = transform.position;
-        Vector3 baseDir = state.b.attackAnchorPosition - origin;
+        Vector3 baseDir = _windupTrackedTargetLastKnownPosition - origin;
         baseDir.y = 0f;
         baseDir.Normalize();
         if (baseDir == Vector3.zero) return;
@@ -423,17 +555,11 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 _animator.Play(IdleHash, 0, 0f);
                 break;
             case ShooterState.Windup:
-                // Only the FIRST windup of an attack sequence plays the actual lower-into-firing-position
-                // clip — shotsRemaining == shotsPerAttack - 1 means no shot has fired yet this sequence
-                // (decrement now happens at the START of each attempt, not after each shot resolves — see
-                // the Moving/BetweenShots CaptureAttackAnchor sites — so the first windup's own decrement
-                // already dropped a fresh shotsPerAttack by exactly one). Repeat windups between shots in
-                // the same multishot burst skip the Play call entirely: the weapon is already at firing
-                // level from the previous Shoot's recoil, and forcing WindupHash to restart at frame 0
-                // (which begins at the raised idle pose) would teleport it back up mid-burst instead of
-                // holding position between shots.
-                if (viewState.shotsRemaining == shotsPerAttack - 1)
-                    _animator.Play(WindupHash, 0, 0f);
+                // Unconditional now (2026-08-27) — Windup is only ever reached for the FIRST shot in a
+                // chain (every later shot skips it entirely, going straight from Shooting into FirePause —
+                // see class doc comment), so there's no more "repeat windup mid-burst" case to guard
+                // against; the raise-into-firing-position clip always plays exactly once per chain.
+                _animator.Play(WindupHash, 0, 0f);
                 break;
             case ShooterState.Shooting:
                 _animator.Play(ShootHash, 0, 0f);
@@ -465,5 +591,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         // explicitly here avoids even a one-tick window where a freshly-reused instance reads as kinematic.
         if (_rigidbody != null) _rigidbody.isKinematic = false;
         _lastVisualState = (ShooterState)(-1);
+        _windupTrackedTarget = null;
+        _windupTrackedTargetLastKnownPosition = default;
     }
 }

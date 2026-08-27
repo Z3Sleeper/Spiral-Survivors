@@ -381,7 +381,19 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // WeaponManagerPD's IWeaponPD-typed access.
     Transform IWeaponPD.hitboxTarget    => hitboxTarget;
     Transform IWeaponPD.rangeScaleTarget => rangeScaleTarget;
-    [SerializeField] protected float     tipOffset        = 0f;
+
+    // Back-tip-to-front-tip scale target — e.g. a blade trail particle system that needs to span the whole
+    // weapon, from wherever a back-of-hilt decoration's own point renders (if any — see hitboxBackTip) all
+    // the way to wherever the front tip decoration's own point renders (see hitboxTip). Far edge is rangePart
+    // + hitboxTipOffset, near edge is _hiltEdgeLocal - hitboxBackTipOffset — both optionally growing with
+    // xRatio (see ScaleModel's own particleFarEdge/particleNearEdge comments for the full derivation). With
+    // no back decoration configured (hitboxBackTip unassigned), the near edge collapses back to plain
+    // _hiltEdgeLocal, i.e. this behaves exactly as it did before back-tip support existed. Deliberately writes
+    // to different local axes than every other target in this method (see ScaleModel's own comment) — this
+    // prefab's particle GameObject has its own rotation that puts X, not Z, as the axis Hierarchy scaling mode
+    // actually reads length from. Optional: leave unassigned for weapons that don't need this (e.g. Axe,
+    // whose own tip decoration already scales correctly on its own).
+    [SerializeField] public Transform particleRangeTarget;
     [SerializeField] public    float     xRangeScaleRatio = 0f;
     [SerializeField] public    Transform[] yScaleFollowers;
     [SerializeField] public    Transform[] xzScaleFollowers;
@@ -400,10 +412,40 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     [SerializeField] private bool      hitboxTipScalesWithY = false;
     [SerializeField] private bool      hitboxTipScalesWithZ = false;
 
+    // Same idea as hitboxTip above, mirrored to the OTHER end — a decoration on the back of the hilt (e.g.
+    // Bladeweaver's own back spike) that extends past the base hitbox/hb edge in the opposite direction.
+    // Unlike hitboxTip, this decoration's own position never moves with range (it sits on the hilt, not the
+    // blade) — only its scale grows if it's also in xzScaleFollowers, same as hitboxTip's own scalesWith
+    // bools mark. Optional — leave unassigned for weapons with no back decoration.
+    [SerializeField] private Transform hitboxBackTip;
+    [SerializeField] private float     hitboxBackTipOffset = 0f;
+    [SerializeField] private bool      hitboxBackTipScalesWithX = false;
+    [SerializeField] private bool      hitboxBackTipScalesWithY = false;
+    [SerializeField] private bool      hitboxBackTipScalesWithZ = false;
+
     // Every visible mesh piece on this weapon — see IWeaponPD.SetRenderersEnabled's own doc comment for why
     // this toggles Renderer.enabled rather than SetActive. Optional: leave empty and this weapon simply
     // never hides, no error.
     [SerializeField] private Renderer[] _renderers;
+
+    // Particle systems that should hide/show in lockstep with _renderers (e.g. on death) and freeze/resume
+    // with PausePD rather than running on Unity's own real-time playback while the game is paused. Unlike
+    // _renderers this is safe to Stop/Play outright (not just toggle a visibility flag) — these are plain
+    // child GameObjects, not PredictedIdentity-carrying ones, so nothing here risks stopping this weapon's
+    // own Simulate/LateSimulate the way SetActive(false) on the whole weapon would. Optional: leave empty
+    // for weapons with no particle effects to manage.
+    [SerializeField] private ParticleSystem[] weaponParticles;
+
+    // Optional emission-rate scaling for every entry in weaponParticles, driven by live WeaponRange (e.g.
+    // 40/s at 10 range up to 80/s at 50 range for Axe's headwind particles). Applied uniformly to all of
+    // them, not per-entry — every weapon that's used this so far wants the whole set moving together; a
+    // per-entry override can be added later if that stops being true. Opt-in: leave
+    // maxEmissionRange <= minEmissionRange (both default 0) and this is a complete no-op, every particle
+    // system's own authored/Inspector emission rate is left untouched.
+    [SerializeField] private float minEmissionRate  = 0f;
+    [SerializeField] private float maxEmissionRate  = 0f;
+    [SerializeField] private float minEmissionRange = 0f;
+    [SerializeField] private float maxEmissionRange = 0f;
 
     private float     _hiltEdgeLocal;
     private float     _baseRangeScaleX;
@@ -416,6 +458,8 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // Scene-view-measurable extension length at the prefab's authored scale, instead of a confusing
     // per-unit-scale constant the raw-current-scale approach would otherwise require.
     private Vector3   _hitboxTipBaseScale = Vector3.one;
+    // Same as _hitboxTipBaseScale above, for hitboxBackTip.
+    private Vector3   _hitboxBackTipBaseScale = Vector3.one;
     // Guards InitModelVisuals() below to a single real capture per GameObject instance — WeaponManagerPD
     // calls InitModelVisuals() from RegisterWeapon() on every logical spawn, including pooled reuse (since
     // LateAwake() re-fires then too). Without this, a reused instance would re-capture the "base" values
@@ -457,9 +501,41 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
 
     public void SetRenderersEnabled(bool value)
     {
-        if (_renderers == null) return;
-        for (int i = 0; i < _renderers.Length; i++)
-            if (_renderers[i] != null) _renderers[i].enabled = value;
+        if (_renderers != null)
+            for (int i = 0; i < _renderers.Length; i++)
+                if (_renderers[i] != null) _renderers[i].enabled = value;
+
+        if (weaponParticles != null)
+            for (int i = 0; i < weaponParticles.Length; i++)
+            {
+                if (weaponParticles[i] == null) continue;
+                if (value) weaponParticles[i].Play();
+                // Clears existing particles instantly rather than letting them fade out on their own — matches
+                // the instant-hide _renderers already gets, e.g. don't leave a trail hanging in the air after death.
+                else weaponParticles[i].Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            }
+    }
+
+    // Called every real frame (not gated to verified sim ticks — same reasoning ApplyVisualAdjustments's own
+    // doc comment gives for being safe off viewState) from each weapon subclass's own UpdateView(). Unlike
+    // the deterministic sim clock this project otherwise uses for anything that must render identically
+    // across clients (see the wobble-clock precedent in WeaponVisualConstants's own doc comment),
+    // weaponParticles are purely local cosmetic VFX — no gameplay/sync concern — so a plain per-client
+    // Pause()/Play() driven off PausePD is enough; nothing here needs to be predicted state.
+    protected void UpdateWeaponParticlePause()
+    {
+        if (weaponParticles == null) return;
+        bool paused = PausePD.instance != null && PausePD.instance.IsPaused;
+        for (int i = 0; i < weaponParticles.Length; i++)
+        {
+            var ps = weaponParticles[i];
+            if (ps == null) continue;
+            // isPlaying/isPaused guards mean a system already Stopped (e.g. weapon hidden via
+            // SetRenderersEnabled(false)) is never accidentally kicked back into emitting just because the
+            // game happened to pause/unpause while it was off.
+            if (paused && ps.isPlaying) ps.Pause();
+            else if (!paused && ps.isPaused) ps.Play();
+        }
     }
 
     public void InitModelVisuals()
@@ -505,22 +581,33 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         // scale), not just its local scale relative to its immediate parent.
         if (hitboxTip != null)
             _hitboxTipBaseScale = hitboxTip.lossyScale;
+        if (hitboxBackTip != null)
+            _hitboxBackTipBaseScale = hitboxBackTip.lossyScale;
     }
 
     public void ScaleModel(float range)
     {
-        if (rangeScaleTarget == null && rangeFollowers == null && (yScaleFollowers == null || yScaleFollowers.Length == 0)) return;
+        bool emissionScales = weaponParticles != null && maxEmissionRange > minEmissionRange;
+        if (!emissionScales && rangeScaleTarget == null && rangeFollowers == null && particleRangeTarget == null && (yScaleFollowers == null || yScaleFollowers.Length == 0)) return;
+
+        if (emissionScales)
+        {
+            float rate = Mathf.Lerp(minEmissionRate, maxEmissionRate, Mathf.InverseLerp(minEmissionRange, maxEmissionRange, range));
+            for (int i = 0; i < weaponParticles.Length; i++)
+            {
+                if (weaponParticles[i] == null) continue;
+                var emission = weaponParticles[i].emission;
+                emission.rateOverTime = rate;
+            }
+        }
+
         float rootZ       = transform.localScale.z;
         float rangePart   = range / rootZ - designOrbit;
-        // tipOffset divided by rootZ too, same as range above — it's a world-unit-at-authored-scale
-        // constant (like meleeHalfExtents/hitboxTipOffset), but visualFront itself is a LOCAL value Unity
-        // re-multiplies by rootZ when resolving rangeScaleTarget's world scale/position. Left undivided,
-        // tipOffset's effect came back out as tipOffset*rootZ in world space instead of staying constant —
-        // compounding with the weapon's own Size-driven scale, the same bug class as SetupWeaponRange's
-        // hitboxTarget position fix. Only looks like "tipOffset should just be 0" at whatever one size
-        // happens to cancel the error; every other size still drifts (confirmed: correct at one size, tip
-        // visibly overshoots the hitbox at a bigger one).
-        float visualFront = rangePart - tipOffset / rootZ;
+        // Was rangePart - tipOffset/rootZ — tipOffset itself removed (2026-08-26), confirmed unused/always 0
+        // on every weapon (an earlier attempt at this same "pull the tip mesh back" idea that never ended up
+        // doing what was wanted, kept at 0 rather than deleted at the time). hitboxTipOffset is the field
+        // that's actually meaningful here — see particleFarEdge's own comment below for where it's used.
+        float visualFront = rangePart;
 
         float xRatio = xRangeScaleRatio > 0f
             ? Mathf.Lerp(1f, range / Mathf.Max(0.001f, designOrbit * rootZ), xRangeScaleRatio)
@@ -537,6 +624,44 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         if (rangeFollowers != null)
             foreach (var f in rangeFollowers)
                 if (f != null) { var p = f.localPosition; f.localPosition = new Vector3(p.x, p.y, visualFront); }
+
+        // Far edge: rangePart + hitboxTipOffset (optionally growing with xRatio) — hitboxTipOffset, not the
+        // (now removed) tipOffset, is the tip decoration's own authored corner-to-center distance (0.2828 for
+        // a 0.4-side square rotated 45° — confirmed for Knight) — already the field GetHitboxTipExtraReach
+        // uses for the exact same "how far the tip decoration sticks out" measurement on the damage hitbox
+        // side. Near edge: _hiltEdgeLocal - hitboxBackTipOffset, same idea mirrored to a back-of-hilt
+        // decoration (see hitboxBackTip's own field comment) — collapses back to plain _hiltEdgeLocal when no
+        // back decoration is configured (hitboxBackTipOffset stays 0), so this is a strict superset of the
+        // pre-back-tip behavior, not a change for weapons without one. Both decorations are typically one of
+        // xzScaleFollowers, so their own corner distance grows proportionally with range too, by the exact
+        // same xRatio Blade's own width growth already uses above — a flat offset only holds at design range
+        // and falls further behind as the diamond gets proportionally chunkier. Growth on each end is gated
+        // independently on that end's own hitbox(Back)TipScalesWithX/Y/Z — the SAME per-weapon flags that
+        // already mark whether the damage hitbox's own tip reach scales with range at all. Which specific
+        // axis is checked doesn't matter here (that's purely a per-model quirk of which axis a given tip mesh
+        // happens to use, e.g. a cylinder tip needing Y instead of X/Z) — this only cares whether ANY of them
+        // opted in, since the particle offset is always grown via xRatio (never Y or Z; hitboxTip's own axis
+        // flags have no other bearing on this weapon's particle system) once a weapon has signaled that end's
+        // decoration scales with range at all. Divided by rootZ same as every other world-unit-at-authored-
+        // scale constant in this method — re-multiplied by rootZ once Unity resolves the local write to world
+        // space. Scale and position deliberately write to DIFFERENT axes here, unlike every other target in
+        // this method — the particle prefab's own Edge shape rotation puts X as the axis its Hierarchy-scaled
+        // LENGTH reads from, but the transform's own X POSITION moves it sideways (perpendicular to the
+        // blade) — Z is still correct for centering it along the blade's own length. Y stays whatever's
+        // authored on both.
+        if (particleRangeTarget != null)
+        {
+            bool  farScalesAtAll  = hitboxTipScalesWithX || hitboxTipScalesWithY || hitboxTipScalesWithZ;
+            bool  nearScalesAtAll = hitboxBackTipScalesWithX || hitboxBackTipScalesWithY || hitboxBackTipScalesWithZ;
+            float farGrowth       = farScalesAtAll ? xRatio : 1f;
+            float nearGrowth      = nearScalesAtAll ? xRatio : 1f;
+            float particleFarEdge  = rangePart + (hitboxTipOffset * farGrowth) / rootZ;
+            float particleNearEdge = _hiltEdgeLocal - (hitboxBackTipOffset * nearGrowth) / rootZ;
+            var s = particleRangeTarget.localScale;
+            particleRangeTarget.localScale = new Vector3(particleFarEdge - particleNearEdge, s.y, s.z);
+            var pp = particleRangeTarget.localPosition;
+            particleRangeTarget.localPosition = new Vector3(pp.x, pp.y, (particleNearEdge + particleFarEdge) / 2f);
+        }
 
         if (_baseYScales != null && xRangeScaleRatio > 0f)
             for (int i = 0; i < yScaleFollowers.Length; i++)
@@ -805,15 +930,26 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     // actually shrank as Size grew (xRatio's own formula divides by rootZ), the opposite of what a bigger
     // weapon's tip needs — confirmed against a screenshot where the hitbox/range indicator fell increasingly
     // short of the visual tip. lossyScale captures the tip's true world-space size, Size included.
-    protected float GetHitboxTipExtraReach()
+    protected float GetHitboxTipExtraReach() =>
+        ComputeTipExtraReach(hitboxTip, hitboxTipOffset, _hitboxTipBaseScale, hitboxTipScalesWithX, hitboxTipScalesWithY, hitboxTipScalesWithZ);
+
+    // Same measurement as GetHitboxTipExtraReach above, mirrored to hitboxBackTip — see its own field comment
+    // (a back-of-hilt decoration, e.g. Bladeweaver's own back spike) for why a separate pair of fields/method
+    // exists rather than reusing the front tip's. Consumed by WeaponMeleePD's own hit-detection box to extend
+    // it backward, NOT by GetOuterReach (which only measures forward reach for the range indicator — a back
+    // decoration isn't part of "how far forward this weapon reaches").
+    protected float GetHitboxBackTipExtraReach() =>
+        ComputeTipExtraReach(hitboxBackTip, hitboxBackTipOffset, _hitboxBackTipBaseScale, hitboxBackTipScalesWithX, hitboxBackTipScalesWithY, hitboxBackTipScalesWithZ);
+
+    private static float ComputeTipExtraReach(Transform tip, float offset, Vector3 baseScale, bool scalesX, bool scalesY, bool scalesZ)
     {
-        if (hitboxTip == null || hitboxTipOffset == 0f) return 0f;
+        if (tip == null || offset == 0f) return 0f;
 
         float ratio = 0f;
         int   axisCount = 0;
-        if (hitboxTipScalesWithX && _hitboxTipBaseScale.x > 0f) { ratio += hitboxTip.lossyScale.x / _hitboxTipBaseScale.x; axisCount++; }
-        if (hitboxTipScalesWithY && _hitboxTipBaseScale.y > 0f) { ratio += hitboxTip.lossyScale.y / _hitboxTipBaseScale.y; axisCount++; }
-        if (hitboxTipScalesWithZ && _hitboxTipBaseScale.z > 0f) { ratio += hitboxTip.lossyScale.z / _hitboxTipBaseScale.z; axisCount++; }
-        return hitboxTipOffset * (axisCount > 0 ? ratio / axisCount : 1f);
+        if (scalesX && baseScale.x > 0f) { ratio += tip.lossyScale.x / baseScale.x; axisCount++; }
+        if (scalesY && baseScale.y > 0f) { ratio += tip.lossyScale.y / baseScale.y; axisCount++; }
+        if (scalesZ && baseScale.z > 0f) { ratio += tip.lossyScale.z / baseScale.z; axisCount++; }
+        return offset * (axisCount > 0 ? ratio / axisCount : 1f);
     }
 }

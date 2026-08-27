@@ -91,6 +91,19 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     // visual now that hit detection is a SphereCastNonAlloc (see sphereRadius), which has no orientation to
     // drift in the first place.
     [SerializeField] private float spinSpeed = 720f; // degrees/sec — 720 = 2 full spins per second.
+    // Cosmetic-only particle systems (e.g. a trail/spin effect) — paused/resumed with PausePD in UpdateView()
+    // below, same reasoning as WeaponBasePD.UpdateWeaponParticlePause, just duplicated here in miniature
+    // rather than promoted to some new shared static utility, since this class deliberately isn't a
+    // WeaponBasePD subclass (see class doc comment) and this is its only consumer.
+    [SerializeField] private ParticleSystem[] particleSystems;
+    // Emission-rate range scaling — same shape/values as WeaponBasePD's own minEmissionRate/maxEmissionRate/
+    // minEmissionRange/maxEmissionRange (40/s at 10 range up to 80/s at 50 range), just applied ONCE at
+    // Launch() below instead of every ScaleModel() call — this projectile's own range is fixed for the whole
+    // throw (maxRange, the Launch() parameter), unlike an orbiting weapon's live WeaponRange.
+    [SerializeField] private float minEmissionRate  = 40f;
+    [SerializeField] private float maxEmissionRate  = 80f;
+    [SerializeField] private float minEmissionRange = 10f;
+    [SerializeField] private float maxEmissionRange = 50f;
 
     private CharacterStatsPD _stats;
     private Vector3 _baseScale;
@@ -205,6 +218,21 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
 
         _hiddenOnExpire = false;
         SetRenderersEnabled(true);
+
+        // See minEmissionRate's own field comment — same formula as WeaponBasePD.ScaleModel's own emission
+        // scaling, same stats.WeaponRange source too (not maxRange — this throw's own travel-distance cap,
+        // a different value), just applied once here instead of every ScaleModel() call since this
+        // projectile's own range is fixed for the whole throw.
+        if (particleSystems != null && maxEmissionRange > minEmissionRange)
+        {
+            float rate = Mathf.Lerp(minEmissionRate, maxEmissionRate, Mathf.InverseLerp(minEmissionRange, maxEmissionRange, stats.WeaponRange));
+            for (int i = 0; i < particleSystems.Length; i++)
+            {
+                if (particleSystems[i] == null) continue;
+                var emission = particleSystems[i].emission;
+                emission.rateOverTime = rate;
+            }
+        }
 
         foreach (var a in GetComponentsInChildren<PlayerColorApplicator>(true))
             a.Apply(stats.PlayerColor);
@@ -391,9 +419,28 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
             SetRenderersEnabled(false);
         }
 
+        UpdateParticlePause();
+
         // State-critical — only act on server-confirmed expiry, same reasoning as every other spawned
         // one-shot effect's deletion.
         if (verified.HasValue && verified.Value.expired)
             hierarchy.Delete(this);
+    }
+
+    // Every real frame (not gated to verified sim ticks — purely cosmetic, same reasoning
+    // WeaponBasePD.UpdateWeaponParticlePause's own doc comment gives). Pause()/Play() only, no Stop — this
+    // projectile is short-lived and self-deletes on expiry (see UpdateView above) rather than being
+    // hidden/reused, so there's no separate "off with renderers" state to keep in lockstep with here.
+    private void UpdateParticlePause()
+    {
+        if (particleSystems == null) return;
+        bool paused = PausePD.instance != null && PausePD.instance.IsPaused;
+        for (int i = 0; i < particleSystems.Length; i++)
+        {
+            var ps = particleSystems[i];
+            if (ps == null) continue;
+            if (paused && ps.isPlaying) ps.Pause();
+            else if (!paused && ps.isPaused) ps.Play();
+        }
     }
 }

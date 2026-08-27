@@ -189,9 +189,14 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             meleeHalfExtents.y * hb.lossyScale.y,
             meleeHalfExtents.z * hb.lossyScale.z);
 
+        // centerShift is the NET forward shift. Growing half.z by (tipExtra+backTipExtra)/2 while shifting
+        // center by (tipExtra-backTipExtra)/2 means the front edge only ever moves by tipExtra and the back
+        // edge only ever moves by backTipExtra — the growth term and the shift term cancel out for whichever
+        // end ISN'T being extended, so front/back extensions never interfere with each other.
         float tipExtra = GetHitboxTipExtraReach();
-        float centerShift = tipExtra * 0.5f;
-        half.z += centerShift;
+        float backTipExtra = GetHitboxBackTipExtraReach();
+        float centerShift = (tipExtra - backTipExtra) * 0.5f;
+        half.z += (tipExtra + backTipExtra) * 0.5f;
 
         _touchedThisTick.Clear();
         _touchedAlliesThisTick.Clear();
@@ -293,6 +298,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     {
         if (!_initialized) TryInit();
         ApplyModelVisualAdjustments();
+        UpdateWeaponParticlePause();
     }
 
     // Own version of WeaponBasePD.ApplyVisualAdjustments() — reuses the SAME (now protected) visualHeightTarget
@@ -351,8 +357,10 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             meleeHalfExtents.x * hb.lossyScale.x * xRatio,
             meleeHalfExtents.y * hb.lossyScale.y,
             meleeHalfExtents.z * hb.lossyScale.z);
-        float centerShift = GetHitboxTipExtraReach() * 0.5f;
-        half.z += centerShift;
+        float tipExtra = GetHitboxTipExtraReach();
+        float backTipExtra = GetHitboxBackTipExtraReach();
+        float centerShift = (tipExtra - backTipExtra) * 0.5f;
+        half.z += (tipExtra + backTipExtra) * 0.5f;
         Gizmos.color = new Color(1f, 0.5f, 0f, 0.4f);
         Matrix4x4 prev = Gizmos.matrix;
         Gizmos.matrix = Matrix4x4.TRS(hb.position, hb.rotation, Vector3.one);

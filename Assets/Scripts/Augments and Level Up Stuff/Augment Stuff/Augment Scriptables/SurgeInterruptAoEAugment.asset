@@ -14,12 +14,11 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Surge Parry</color>
   description: '<color=#FFA000>(AoE) On <color=#FFFF00>Surge</color> Start at <color=#FFFF00>Full
-    Energy</color>:</color> Deal <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>50%
-    Strength</color>) damage</color> and <color=#FFA000>Interrupt</color> enemies
-    in a <color=#3278FF>1.25x Range</color> radius.
+    Energy</color>:</color> <color=#FFA000>Interrupt</color> enemies in a <color=#3278FF>1.25x
+    Range</color> radius.
 
-    <color=#FFA000>On Interrupt:</color>
-    <color=#FF00FF>Recharge</color> your <color=#FF00FF>Shield</color>.'
+    <color=#FFA000>On Interrupt:</color> Gain <color=#FFFF00>Full
+    Energy</color>.'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 5067588024737065532, guid: 9a21b590bd813804bbcd336c0858c96d, type: 3}
   multiplayerOnly: 0
@@ -28,7 +27,8 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  tags: []
+  tags:
+  - AoE Effect
   requiredTags: []
   incompatibleTags: []
   unlockTag: 

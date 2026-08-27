@@ -368,6 +368,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     {
         if (!_initialized) TryInit();
         ApplyModelVisualAdjustments();
+        UpdateWeaponParticlePause();
 
         // Purely cosmetic (outer blade visual width) — render rate, not simulation, since it has no
         // gameplay effect and doesn't need to be replay-consistent.

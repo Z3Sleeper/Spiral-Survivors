@@ -7,7 +7,11 @@ using UnityEngine;
 // the mortar's own firing direction (see MortarHazardPD). The flying shell the player sees (see
 // MortarProjectileVFXPD) is purely cosmetic and has zero gameplay effect; Fire/PostFire's own durations are
 // deliberately uncorrelated with how long that shell takes to fly — the ONLY link between the hazard/shell
-// and the Mortar's own state machine is projectileTravelDuration (see its own field comment).
+// and the Mortar's own state machine is projectileTravelDuration (see its own field comment). The shell is no
+// longer spawned by THIS class's own Fire-state transition (2026-08-26) — MortarHazardPD spawns it itself,
+// off its own lock transition, so it stays correctly linked to the hazard even if this Mortar dies mid-Windup
+// (see MortarHazardPD's own class doc comment for the bug that fix addresses); projectileVfxPrefab and its
+// sibling fields below are still authored here, just forwarded into hazard.Launch() at SpawnHazard()-time.
 //
 // The DashingAway/Windup/Fire sequence for one strike (or a strikesPerAttack-repeated burst) is an "ongoing
 // attack" (see EnemyBasePD.CaptureAttackAnchor) — it always resolves against whichever target it committed
@@ -102,7 +106,8 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     [SerializeField] private GameObject projectileVfxPrefab; // carries MortarProjectileVFXPD
     [SerializeField] private float projectileArcHeight = 3f;
     // "Slight yz firing offset" — spawns slightly up and forward from the mortar's own root, never sideways.
-    // Both scale with `size` (Elite scaling) — see SpawnProjectileVfx.
+    // Both scale with `size` (Elite scaling) — see MortarHazardPD.SpawnProjectileVfx, which actually applies
+    // them now (forwarded into hazard.Launch() below, at SpawnHazard()-time).
     [SerializeField] private float projectileSpawnHeightOffset  = 1f;
     [SerializeField] private float projectileSpawnForwardOffset = 0f;
 
@@ -312,7 +317,8 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     {
         state.mortarStateTimer = fireDuration;
         SetMortarState(ref state, MortarState.Fire);
-        SpawnProjectileVfx(ref state);
+        // No longer spawns the projectile here (2026-08-26) — see MortarHazardPD's own class doc comment for
+        // why that moved onto the hazard's own lock transition instead.
     }
 
     private void EnterBetweenStrikes(ref State state)
@@ -402,35 +408,9 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         if (go != null && go.TryGetComponent(out MortarHazardPD hazard))
             hazard.Launch(windupDuration, projectileTravelDuration, hazardWidth * size, hazardDepth * size,
                 damage * strikeDamageMultiplier, _targetStats, transform.position, EffectiveAttackSpeed,
-                rotationRateDegPerSecond, distanceTrackingRateUnitsPerSecond);
-    }
-
-    // Aims at wherever the hazard itself actually locked (2026-08-21 — reads the hazard's own live transform,
-    // NOT state.b.attackAnchorPosition, which is only ever the STALE pre-Windup snapshot now that the hazard
-    // live-tracks and locks independently — see MortarHazardPD's own class doc comment). By the time this
-    // runs (EnterFire, right as Windup ends) the hazard has already locked, so this always matches exactly
-    // where the visible danger zone ended up, with zero risk of drifting out of sync with it. Falls back to
-    // the stale anchor only if the hazard object itself can't be resolved (e.g. hazardPrefab was never set).
-    private void SpawnProjectileVfx(ref State state)
-    {
-        if (projectileVfxPrefab == null) return;
-
-        Vector3 targetPos = state.b.attackAnchorPosition;
-        var hazardGo = hierarchy.GetGameObject(state.pendingHazardId);
-        if (hazardGo != null) targetPos = hazardGo.transform.position;
-        targetPos.y = 0f;
-        Vector3 fireDir = targetPos - transform.position;
-        fireDir.y = 0f;
-        if (fireDir.sqrMagnitude < 0.0001f) fireDir = transform.forward;
-        fireDir.Normalize();
-        Vector3 spawnPos = transform.position + Vector3.up * (projectileSpawnHeightOffset * size) + fireDir * (projectileSpawnForwardOffset * size);
-
-        var id = hierarchy.Create(projectileVfxPrefab, spawnPos, Quaternion.LookRotation(fireDir));
-        if (!id.HasValue) return;
-
-        var go = hierarchy.GetGameObject(id.Value);
-        if (go != null && go.TryGetComponent(out MortarProjectileVFXPD vfx))
-            vfx.Launch(spawnPos, targetPos, projectileTravelDuration, projectileArcHeight, size, TierAccentMaterial);
+                rotationRateDegPerSecond, distanceTrackingRateUnitsPerSecond,
+                projectileVfxPrefab, projectileArcHeight, projectileSpawnHeightOffset,
+                projectileSpawnForwardOffset, size, TierAccentMaterial);
     }
 
     // ── View ──────────────────────────────────────────────────────────────────

@@ -161,14 +161,17 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private float eliteSpawnRampRatio = 0.8f;
     // Total elites spawned across the whole cycle (not per-burst — deliberately NOT player-count-scaled;
     // see GameManagerPD.CoopToughnessScalar below for how co-op difficulty is handled instead). Tier1/threat-
-    // level1-authored baseline — see threatLevel3EliteCountMultiplier below for the Threat Level 3+ scale-up
-    // applied on top at BuildEliteSchedule()-time; this field itself is never mutated.
+    // level1-authored baseline, never mutated — no longer scaled by Threat Level 3 (was doubled there; see
+    // threatLevel3EliteStatMultiplier below for the 2026-08-26 rework: TL3 now doubles elite Health/Damage
+    // instead of elite spawn count).
     [SerializeField] private int baseEliteCount = 10;
-    // Threat Level 3's own unique modifier ("Elite Spawns are doubled") — stacks with every HIGHER difficulty
-    // too, same cumulative-not-standalone convention every other threat modifier uses, so this stays active
-    // at every difficulty from 3 up. Simple flat multiplier (2x = doubled), not a per-level growth curve like
-    // the generic stat scalars — explicit design, this is a standalone tier-3-specific bump, not a formula.
-    private float threatLevel3EliteCountMultiplier = 2f;
+    // Threat Level 3's own unique modifier — reworked 2026-08-26 from "Elite Spawns are doubled" (which
+    // scaled baseEliteCount in BuildEliteSchedule) to "Elite Health/Damage are doubled" instead, applied per-
+    // spawn in SpawnElite. Stacks with every HIGHER difficulty too, same cumulative-not-standalone convention
+    // every other threat modifier uses, so this stays active at every difficulty from 3 up. Simple flat
+    // multiplier (2x = doubled), not a per-level growth curve like the generic stat scalars — explicit
+    // design, this is a standalone tier-3-specific bump, not a formula.
+    private float threatLevel3EliteStatMultiplier = 2f;
     // Threat Level 4's own unique modifier ("Spikies are 25% faster", lowered 2026-08-23 from 50%) — Pleb
     // category specifically, see SpawnEnemy's own doc comment for the exact composition (multiplies on top
     // of the generic difficulty move-speed scalar, doesn't replace it). Same cumulative-from-this-level-up
@@ -365,21 +368,11 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         float firstRemaining = cycleInterval * (1f - eliteSpawnTimeFirstPercent);
         float lastRemaining  = cycleInterval * (1f - eliteSpawnTimeLastPercent);
 
-        // Read off GameManagerPD.Difficulty, NOT GamePresets directly (2026-08-21 fix) — GamePresets is a
-        // purely local, per-machine DDOL value (whatever THIS machine's own last-hosted difficulty was),
-        // never network-agreed. GameManagerPD.Difficulty is the actual single source of truth (the HOST's
-        // own GamePresets value, captured once server-side into replicated State — see its own doc
-        // comment), so every machine builds the exact same elite schedule instead of a client silently
-        // sizing its own _eliteSchedule array differently from everyone else. Called from Simulate()'s own
-        // state.isActive activation point (not Awake(), where it used to live) specifically because
-        // GameManagerPD's replicated value isn't meaningfully resolved that early — by the time
-        // LoadingScreenRevealed is true, it's long since settled on every machine.
-        int difficulty = GameManagerPD.instance != null ? GameManagerPD.instance.Difficulty : 1;
-        int effectiveEliteCount = difficulty >= 3
-            ? Mathf.RoundToInt(baseEliteCount * threatLevel3EliteCountMultiplier)
-            : baseEliteCount;
-
-        int n = Mathf.Max(1, effectiveEliteCount);
+        // Was also reading GameManagerPD.Difficulty here to double baseEliteCount at Threat Level 3+ — removed
+        // 2026-08-26, TL3's own modifier no longer touches elite COUNT at all (see
+        // threatLevel3EliteStatMultiplier's own doc comment for the rework: it doubles elite Health/Damage
+        // per-spawn instead, in SpawnElite). baseEliteCount is now used completely unconditionally here.
+        int n = Mathf.Max(1, baseEliteCount);
         _eliteSchedule = new float[n];
         if (n == 1) { _eliteSchedule[0] = lastRemaining; return; }
 
@@ -736,9 +729,13 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
     // Spawns exactly one elite per scheduled slot — count is fixed by baseEliteCount regardless of player
     // count (see field comment); co-op difficulty instead comes entirely from scaling each elite's own
-    // health/damage/XP by the same shared coopScale the caller already computed, which is what keeps
-    // total elite XP output consistent between solo and multiplayer instead of just throwing more bodies
-    // at a bigger group.
+    // health/XP by the same shared coopScale the caller already computed, which is what keeps total elite
+    // XP output consistent between solo and multiplayer instead of just throwing more bodies at a bigger
+    // group. Damage is deliberately NOT coop-scaled (2026-08-27 fix — was coopScale * eliteStatMultiplier
+    // before this, an oversight; damage output shouldn't climb just because more players joined, matching
+    // SpawnBosses' own identical health-and-XP-only, damage-flat convention). Threat Level 3+ additionally
+    // doubles Health/Damage only (not XP — see threatLevel3EliteStatMultiplier's own doc comment) — for
+    // damage this is now the ONLY multiplier applied, not stacked on top of coopScale anymore.
     private void SpawnElite(ref State state, in TierEnemies tier, float coopScale)
     {
         if (tier.elite == null || tier.elite.Length == 0 || state.currentSetIndices.Count == 0) return;
@@ -755,6 +752,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
         if (poolCount == 0) return;
 
+        float eliteStatMultiplier = _currentDifficulty >= 3 ? threatLevel3EliteStatMultiplier : 1f;
+
         int skip = GameRandom.instance.Next(poolCount);
         for (int j = 0; j < state.currentSetIndices.Count; j++)
         {
@@ -762,7 +761,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             if (idx >= tier.elite.Length || tier.elite[idx] == null) continue;
             if (skip == 0)
             {
-                SpawnEnemy(tier.elite[idx], EnemySpawnCategory.Elite, coopScale, coopScale, coopScale);
+                SpawnEnemy(tier.elite[idx], EnemySpawnCategory.Elite,
+                    coopScale * eliteStatMultiplier, eliteStatMultiplier, coopScale);
                 return;
             }
             skip--;
@@ -881,6 +881,14 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         return id;
     }
 
+    // Deliberately does NOT validate against PlayableAreaPD's boundary (2026-08-26 — a prior version of this
+    // method rejected/clamped candidates outside it, based on a misdiagnosis of a corner-clustering bug).
+    // Enemies are intentionally allowed to spawn beyond the boundary on purpose — so they walk in through
+    // the wall instead of visibly popping into existence inside a player's view. The actual fix for that
+    // corner-clustering bug lives on EnemyBasePD.boundsRestricted's own trigger instead: it only ever
+    // activates on an actual backpedal tick (matches the original design — see that field's own doc
+    // comment), so a freshly-spawned enemy that's just approaching/walking in through the wall never
+    // triggers strafing at all, regardless of how far outside the boundary it currently is.
     private Vector3 GetSpawnPosition()
     {
         if (spawnPoints != null && spawnPoints.Length >= 2)
@@ -891,8 +899,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
 
         // Fallback: ring around a random living player, retried until far enough from every player. Reads
-        // CharacterStatsPD.All directly — safe from Simulate() the same way EnemyBasePD.FindClosestTarget() reads
-        // it, since we're only reading each entry's own predicted currentState, not relying on the
+        // CharacterStatsPD.All directly — safe from Simulate() the same way EnemyBasePD.FindClosestTarget()
+        // reads it, since we're only reading each entry's own predicted currentState, not relying on the
         // dictionary's population timing.
         int aliveCount = 0;
         foreach (var p in CharacterStatsPD.All.Values)

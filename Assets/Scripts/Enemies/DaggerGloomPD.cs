@@ -152,7 +152,22 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
 
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
-        if (dashJustEnded) EnterWindup(ref state);
+        if (dashJustEnded)
+        {
+            // Re-captures the anchor to the target's CURRENT live position, right at the moment the dash
+            // ends — same fix as SpearGloomPD's own identical bug (2026-08-27): the dash itself
+            // (HandleOffsetChase) continuously re-tracks the live target the whole time it's running, but
+            // attackAnchorPosition was still whatever it was snapshotted to back at the ORIGINAL
+            // CaptureAttackAnchor call (attack-start, before the dash even began), so Windup's own
+            // SnapFaceAnchor below was facing a stale pre-dash position. Unlike Spear this doesn't affect
+            // EnterSpin's own damage (a self-centered radial AoE, not direction-dependent), which is why this
+            // was never visibly noticeable here — but the facing itself was still wrong, so fixed for
+            // consistency. Same target IDENTITY stays committed either way (_target/_targetStats untouched)
+            // — this only refreshes the POSITION snapshot. CaptureAttackAnchor's own null-guard makes this a
+            // safe no-op if the target died mid-dash.
+            CaptureAttackAnchor(ref state);
+            EnterWindup(ref state);
+        }
 
         var ss = GetDaggerState(ref state);
 
@@ -304,20 +319,19 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         SetDaggerState(ref state, DaggerState.BetweenSpins);
     }
 
-    // Dashes to a point BEHIND the target (through/past them from the current approach angle), not
-    // stopping short like SpearGloomPD's own dash — matches old DaggerGloom.DashBehindTarget, just
-    // computed once at dash-start (like every other dash in this rebuild) rather than re-tracked every
-    // frame against a possibly-still-moving target.
+    // Chases a point BEHIND the target (through/past them, continuing along the live dasher→target
+    // bearing), not stopping short like SpearGloomPD's own chase — matches old DaggerGloom.DashBehindTarget's
+    // intent, but continuously re-tracked every tick now (2026-08-26, was a point snapshotted once at
+    // dash-start via StartDashToPoint — a fast player could just outrun a snapshotted destination) instead
+    // of computed once and left to go stale.
     private void EnterDashToTarget(ref State state)
     {
-        if (_target == null) return;
-        Vector3 dir = _target.position - transform.position;
-        dir.y = 0f;
-        dir.Normalize();
-        Vector3 behindPoint = _target.position + dir * (preferredRange / 4f);
         SetDaggerState(ref state, DaggerState.DashingToTarget);
         // EffectiveMoveSpeed, not baseMoveSpeed (2026-08-13) — see BlitzGloomPD.EnterBlitz's own comment.
-        StartDashToPoint(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, behindPoint);
+        // 0° — continues straight past the target's own live position instead of stopping at/before it,
+        // ending up on its far side from wherever Dagger approached from. See
+        // EnemyBasePD.StartOffsetChase's own doc comment for the full angular convention.
+        StartOffsetChase(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, preferredRange / 4f, 0f);
     }
 
     private void EnterPostSpin(ref State state)

@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d57dcf568e9a34c4b88152bebc17d092, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnFirstDodgeGainCritChanceAugment
-  critChancePercent: 0.3
+  critChancePercent: 0.6
   duration: 5

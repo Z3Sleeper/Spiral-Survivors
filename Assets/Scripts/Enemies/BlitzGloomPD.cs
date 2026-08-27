@@ -321,7 +321,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         SetBlitzState(ref state, BlitzState.Blitzing);
         // EffectiveMoveSpeed, not baseMoveSpeed (2026-08-13) — so this scales with Boss enrage stacking and
         // stays proportionate to whatever EnemySpawnerPD's own tier scaling did to moveSpeed, same as every
-        // other dashing enemy's own dash-speed formula (see EnemyBasePD.StartDashToTarget's own doc comment).
+        // other dashing enemy's own dash-speed formula (see EnemyBasePD.StartDashToPoint's own doc comment).
         StartDashToPoint(ref state, EffectiveMoveSpeed * blitzSpeedMultiplier, endPoint);
     }
 

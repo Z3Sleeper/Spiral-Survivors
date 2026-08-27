@@ -281,7 +281,7 @@ MonoBehaviour:
   rangeScaleTarget: {fileID: 1776253383228023903}
   rangeFollowers:
   - {fileID: 1719263058978148157}
-  tipOffset: 0
+  particleRangeTarget: {fileID: 4554438242735333035}
   xRangeScaleRatio: 0.1
   yScaleFollowers:
   - {fileID: 7916714521472660137}
@@ -294,21 +294,24 @@ MonoBehaviour:
   hitboxTipScalesWithX: 1
   hitboxTipScalesWithY: 0
   hitboxTipScalesWithZ: 1
+  hitboxBackTip: {fileID: 0}
+  hitboxBackTipOffset: 0
+  hitboxBackTipScalesWithX: 0
+  hitboxBackTipScalesWithY: 0
+  hitboxBackTipScalesWithZ: 0
   _renderers:
   - {fileID: 8001060567344131347}
   - {fileID: 4639130679624453648}
   - {fileID: 3786925024616806588}
   - {fileID: 8667004372245903466}
   - {fileID: 3231712233815679040}
+  weaponParticles:
+  - {fileID: 7799689323431798566}
   isRanged: 0
   rangeMultiplier: 1
   visualHeightTarget: {fileID: 6538681499716106083}
   meleeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
   orbitPivot: {fileID: 2899133381753418621}
-  wobblePositionAmplitude: 0.1
-  wobblePeriodSeconds: 2
-  wobbleDegreesXRangeScale: 10
-  wobbleDegreesZ: 15
 --- !u!114 &8198260059138025823
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -362,8 +365,7 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0.165}
   m_LocalScale: {x: 0.4, y: 0.02, z: 0.67}
   m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 4554438242735333035}
+  m_Children: []
   m_Father: {fileID: 6538681499716106083}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &8032378966158031243
@@ -451,10 +453,10 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.5, y: -0.5, z: 0.5, w: 0.5}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1.4925373, y: 2.5, z: 50}
+  m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 1776253383228023903}
+  m_Father: {fileID: 6538681499716106083}
   m_LocalEulerAnglesHint: {x: 90, y: 0, z: 90}
 --- !u!198 &7799689323431798566
 ParticleSystem:
@@ -1093,7 +1095,7 @@ ParticleSystem:
     boxThickness: {x: 0, y: 0, z: 0}
     radiusThickness: 1
     donutRadius: 0.2
-    m_Position: {x: 0.1414, y: -0, z: -0}
+    m_Position: {x: 0, y: -0, z: -0}
     m_Rotation: {x: -0, y: 0, z: 0}
     m_Scale: {x: 1, y: 1, z: 1}
     placementMode: 0
@@ -1174,7 +1176,7 @@ ParticleSystem:
     sphericalDirectionAmount: 0
     randomPositionAmount: 0
     radius:
-      value: 0.4764
+      value: 0.5
       mode: 0
       spread: 0
       speed:
@@ -5347,6 +5349,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 4554438242735333035}
   - {fileID: 1776253383228023903}
   - {fileID: 1719263058978148157}
   - {fileID: 7916714521472660137}

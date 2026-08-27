@@ -11,10 +11,15 @@ using UnityEngine;
 // The "neutral, not a real hostile enemy" feel comes mostly from what this class DOESN'T do (no AI/self-
 // movement, immune to CC) plus, by design, at the CALL SITE, not in this script: never spawned through
 // EnemySpawnerPD, so it never joins ActiveEnemies/spawn-cap tracking or gets targeted by other enemies' own
-// logic. Contact damage is Inspector-toggleable (off by default) rather than hardcoded, since some future
-// dummy variant may deliberately want to punish players for standing in it — see canDealContactDamage's own
-// comment. Spawn it directly via hierarchy.Create() from whatever event/system wants one, same as
-// CaptureThePointPD spawns its own zone.
+// logic. Contact damage: no CanContactDamage override here at all (2026-08-26, was a dedicated
+// canDealContactDamage Inspector bool) — EnemyBasePD's own contactColliderEnabled field already controls
+// this generically (enables/disables the "ContactDamageCollider" child's own Collider component directly,
+// see EnemyBasePD.Awake's own transform.Find("ContactDamageCollider") lookup), and a prefab with no
+// ContactDamageCollider child at all never gets an OnTriggerEnter/Stay callback to begin with regardless of
+// that bool's value — so a second, class-level gate on top was redundant. A dummy prefab that wants contact
+// damage just wires up the child and leaves contactColliderEnabled at its own default (true); one that
+// doesn't want it just never wires up the child. Spawn it directly via hierarchy.Create() from whatever
+// event/system wants one, same as CaptureThePointPD spawns its own zone.
 //
 // Compatible with OnKillLaunchEnemiesAugment (verified 2026-08-20) — HandleKillLaunch moves a corpse via
 // _rigidbody.MovePosition(), the CORRECT Unity API for a kinematic body, not a workaround; StartKillLaunch
@@ -51,15 +56,6 @@ public class DummyTargetPD : EnemyBasePD<DummyTargetPD.State>
     // unless this is overridden). This is what actually makes the dummy stationary; HandleMovement itself is
     // never reached.
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false) { }
-
-    // Off by default (matches "neutral, doesn't fight back" for a plain punching-bag target), but Inspector-
-    // tunable per prefab, not hardcoded off — some future dummy variant may deliberately want to punish
-    // players for standing in it (2026-08-20, per explicit design). Wire up a "ContactDamageCollider" child
-    // (see EnemyBasePD.Awake's own transform.Find("ContactDamageCollider") lookup) if you enable this on a
-    // given prefab — see IEnemyPD.CanContactDamage's own doc comment for the gate this controls.
-    [Header("Dummy Settings")]
-    [SerializeField] private bool canDealContactDamage = false;
-    public override bool CanContactDamage => canDealContactDamage;
 
     protected override void OnAwake()
     {

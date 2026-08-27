@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::OnKillLaunchEnemiesAugment
   launchSpeed: 20
   launchDistance: 10
-  damagePercent: 0.3
+  damagePercent: 1

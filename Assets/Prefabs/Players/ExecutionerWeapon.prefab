@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 5403018837995814691}
   - component: {fileID: 4976538654900428780}
   m_Layer: 0
-  m_Name: Particle System
+  m_Name: Particle System Left
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5304,7 +5304,7 @@ MonoBehaviour:
   hitboxTarget: {fileID: 4623957236076310883}
   rangeScaleTarget: {fileID: 6538681499716106083}
   rangeFollowers: []
-  tipOffset: 0
+  particleRangeTarget: {fileID: 0}
   xRangeScaleRatio: 0.1
   yScaleFollowers:
   - {fileID: 6929856999581411320}
@@ -5315,6 +5315,11 @@ MonoBehaviour:
   hitboxTipScalesWithX: 0
   hitboxTipScalesWithY: 0
   hitboxTipScalesWithZ: 0
+  hitboxBackTip: {fileID: 0}
+  hitboxBackTipOffset: 0
+  hitboxBackTipScalesWithX: 0
+  hitboxBackTipScalesWithY: 0
+  hitboxBackTipScalesWithZ: 0
   _renderers:
   - {fileID: 2820736293622115385}
   - {fileID: 5150021955019228429}
@@ -5329,6 +5334,9 @@ MonoBehaviour:
   - {fileID: 435851086826093832}
   - {fileID: 7912948871920820921}
   - {fileID: 7940778901345517782}
+  weaponParticles:
+  - {fileID: 5403018837995814691}
+  - {fileID: 7470580545439469240}
   isRanged: 0
   rangeMultiplier: 1
   visualHeightTarget: {fileID: 6538681499716106083}
@@ -5563,7 +5571,7 @@ GameObject:
   - component: {fileID: 7470580545439469240}
   - component: {fileID: 8447249266891435558}
   m_Layer: 0
-  m_Name: Particle System (1)
+  m_Name: Particle System Right
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

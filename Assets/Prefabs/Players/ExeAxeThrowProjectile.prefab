@@ -372,7 +372,7 @@ GameObject:
   - component: {fileID: 8388190693487065069}
   - component: {fileID: 480434563877437540}
   m_Layer: 0
-  m_Name: Particle System
+  m_Name: Particle System Left
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5317,11 +5317,13 @@ MonoBehaviour:
   - {fileID: 3281861446792973146}
   - {fileID: 8520737353316060949}
   visualHeightTarget: {fileID: 1756998077258277713}
-  rangeScaleTarget: {fileID: 1756998077258277713}
   rangeScaleMultiplier: 1
   yScaleFollowers:
   - {fileID: 4766916561861743277}
   spinSpeed: 720
+  particleSystems:
+  - {fileID: 8388190693487065069}
+  - {fileID: 4981104190417431645}
 --- !u!114 &3650817367354450114
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5503,7 +5505,7 @@ GameObject:
   - component: {fileID: 4981104190417431645}
   - component: {fileID: 4367436257287909193}
   m_Layer: 0
-  m_Name: Particle System (1)
+  m_Name: Particle System Right
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

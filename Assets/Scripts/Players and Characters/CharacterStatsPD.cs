@@ -92,7 +92,50 @@ public struct StrikeHighrollData
     public float onHitPower;
 }
 
-public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
+// Shared "can be attacked by an enemy" contract for anything on the player's side of combat — mirrors
+// IEnemyPD (the shared "can be attacked by a player" contract, see EnemyBasePD.cs) but deliberately
+// excludes every player-exclusive mechanic (shield, damage reduction, dodge credit, surge, execute
+// threshold, revive, ally-heal, progression/class identity — see CharacterStatsPD itself for all of
+// those). Only the members enemy attacks actually touch today are here, confirmed by reading every
+// current enemy damage/targeting site. CharacterStatsPD implements it below; a future ally-unit class
+// (deliberately NOT an EnemyBasePD/IEnemyPD subclass) will too, once it exists.
+public interface IFriendlyPD
+{
+    bool IsDead { get; }
+    bool IsInvisible { get; }
+    bool IsTaunting { get; }
+    bool IsInvincible { get; }
+    Transform transform { get; }
+    PredictedObjectID ObjectId { get; }
+
+    // isCrit/attacker mirror IEnemyPD.TakeDamage's own shape for symmetry — no enemy attack rolls a
+    // crit against a friendly today (isCrit is always passed false), reserved for later
+    // cosmetic/display use, not wired to any damage multiplier yet.
+    void TakeDamage(float damage, bool isCrit, PredictedObjectID attacker);
+    void AddKnockbackVelocity(Vector3 impulse);
+    void Stun(float duration);
+    void Slow(float multiplier, float duration);
+    bool Interrupt();
+    void InterruptTrueStun(float duration);
+}
+
+// Neutral registry for anything that implements IFriendlyPD — parallels CharacterStatsPD.All (which
+// stays exactly as-is, PlayerID-keyed, for everything that isn't about "what can an enemy attack") but
+// can hold both players and future ally units, since allies aren't owned by a connected PlayerID. Not
+// owned by CharacterStatsPD itself — same "neutral third party" shape IEnemyPD's own registry uses
+// (EnemySpawnerPD, not any specific enemy subclass) — since a future ally class registering into
+// something literally owned by CharacterStatsPD would read backwards. Plain List, not a Dictionary —
+// every existing enemy-attack targeting site enumerates player candidates rather than looking one up
+// by key, so a list matches the actual consumption pattern.
+public static class FriendlyTargetRegistryPD
+{
+    public static readonly List<IFriendlyPD> All = new();
+
+    public static void Register(IFriendlyPD friendly) => All.Add(friendly);
+    public static void Unregister(IFriendlyPD friendly) => All.Remove(friendly);
+}
+
+public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFriendlyPD
 {
     public static readonly Dictionary<PlayerID, CharacterStatsPD> All = new();
 
@@ -1974,6 +2017,27 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
     // NotifyDodge's own doc comments for what this subscription drives.
     private PlayerControllerPD _controller;
 
+    // ── IFriendlyPD ───────────────────────────────────────────────────────────
+    // IsDead/IsInvisible/IsTaunting/IsInvincible/transform/Slow already exist elsewhere on this class
+    // with matching signatures and need no extra code here — see IFriendlyPD's own doc comment.
+
+    // Trivial passthrough, same shape as EnemyBasePD.ObjectId => id.objectId — id is inherited from the
+    // same PredictedIdentity<TState> base both classes extend.
+    public PredictedObjectID ObjectId => id.objectId;
+
+    // Narrower adapter for IFriendlyPD — isPleb/isPassiveContact (the full TakeDamage overload's own
+    // params, below) are Dodge-credit bookkeeping, meaningless for a non-player attacker; isCrit/
+    // attacker are accepted for interface symmetry but not used yet (see IFriendlyPD's own comment).
+    void IFriendlyPD.TakeDamage(float damage, bool isCrit, PredictedObjectID attacker) => TakeDamage(damage);
+
+    // Forwarders to the sibling PlayerControllerPD — null-guarded since _controller isn't guaranteed
+    // resolved yet (see its own field comment above; same lazy-resolution convention this class
+    // already uses everywhere else it touches _controller).
+    public void AddKnockbackVelocity(Vector3 impulse) => _controller?.Knockback(impulse);
+    public void Stun(float duration) => _controller?.Stun(duration);
+    public bool Interrupt() => _controller != null && _controller.Interrupt();
+    public void InterruptTrueStun(float duration) => _controller?.InterruptTrueStun(duration);
+
     protected override void Simulate(ref State state, float delta)
     {
         _currentDelta = delta;
@@ -2262,6 +2326,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>
         {
             All.Remove(owner.Value);
             RefreshAnyValidTargetExists();
+            FriendlyTargetRegistryPD.Unregister(this);
         }
     }
 

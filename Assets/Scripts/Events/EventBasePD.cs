@@ -27,13 +27,14 @@ public interface IEventPD
     PredictedObjectID ObjectId { get; }
     // Called once by EventManagerPD.StartEvent() immediately after spawning — the concrete event's own
     // "begin doing my actual event-specific thing" hook (spawn hazards/enemies, arm a timer, whatever this
-    // particular event needs). playableArea is passed in explicitly (see PlayableAreaPD's own doc comment)
-    // rather than read off a global singleton inline — an event that needs to place something (a zone, a
-    // spawn point, whatever) calls playableArea.RandomPoint(...) itself, with whatever margin makes sense
-    // for ITS OWN geometry (e.g. its own zone radius) — EventManagerPD deliberately doesn't need to know
-    // that, it just hands the area over. Can be null if no PlayableAreaPD exists in the scene yet — same
-    // "missing optional cross-scene singleton is a harmless no-op" convention as everywhere else in this
-    // codebase; an event that cares about placement should null-check before using it.
+    // particular event needs). playableArea is passed in explicitly (see PlayableAreaPD's own doc comment),
+    // and stays on this signature even though every concrete event's own PLACEMENT now goes through
+    // EventManagerPD.instance's own hand-authored eventSpawnPoints/spawnAreas/patrolGraph instead
+    // (2026-08-27 — see PlayableAreaPD.GetInsetPerimeter's own doc comment for why the old
+    // PlayableAreaPD.RandomPoint-based approach was abandoned project-wide) — a future event doing something
+    // ELSE with the raw playable-area geometry (not placement) can still use this parameter. Can be null if
+    // no PlayableAreaPD exists in the scene yet — same "missing optional cross-scene singleton is a harmless
+    // no-op" convention as everywhere else in this codebase.
     // currentTier (2026-08-20) — EnemySpawnerPD's own _currentTierNumber at the moment this event started,
     // same raw tier-number convention as EnemyBasePD.ConfigureSpawn's own tier parameter (1-based). Handed
     // to EVERY event unconditionally, per explicit design — whether a given event does anything with it is
@@ -103,26 +104,21 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     [Tooltip("Shown to every player via a white status popup the instant this event starts. Leave blank to skip it.")]
     [SerializeField] private string startAnnouncement;
 
-    // Shared, opt-in placement constraint (2026-08-21) — off by default, so an event that doesn't call
-    // PlayableAreaPD.RandomPoint at all (or doesn't care) is unaffected. A concrete event's own OnEventStart
-    // passes these straight through to RandomPoint's own avoidPlayers/playerOffset params (see that method's
-    // own doc comment for the exact "zoneRadius + playerOffset" overlap check this drives) alongside whatever
-    // zoneRadius field that event already declares locally — that one stays per-event since its meaning
-    // varies (e.g. CaptureThePointPD's own zoneRadius also sizes its visual circle), but "should placement
-    // avoid players, and by how much" is the same question for every event, so it lives here once instead of
-    // being re-declared per event.
+    // Shared, opt-in placement constraint (2026-08-21) — off by default, so an event that doesn't place
+    // anything player-sensitive is unaffected. A concrete event's own OnEventStart passes these straight
+    // through to EventManagerPD.TryGetEventSpawnPoint/TryGetSpawnAreaPoint's own avoidPlayers/playerOffset
+    // params (see those methods' own doc comments for the exact overlap-check shape this drives) alongside
+    // whatever zoneRadius/footprint field that event already declares locally — that one stays per-event
+    // since its meaning varies (e.g. CaptureThePointPD's own zoneRadius also sizes its visual circle), but
+    // "should placement avoid players, and by how much" is the same question for every event, so it lives
+    // here once instead of being re-declared per event. wallOffset (the old "how far this event's center
+    // should clear the wall" knob) was removed from here 2026-08-27 — hand-authored spawn points/areas
+    // already account for wall clearance themselves, there's no margin math left for any event to feed.
     [Header("Placement")]
-    [Tooltip("If enabled, a concrete event's own placement (via PlayableAreaPD.RandomPoint) also avoids spawning within playerOffset of any alive player's own zoneRadius footprint.")]
+    [Tooltip("If enabled, a concrete event's own placement (via EventManagerPD's hand-authored spawn points/areas) also avoids spawning within playerOffset of any alive player's own footprint.")]
     [SerializeField] protected bool avoidPlayersOnPlacement = false;
     [Tooltip("Only used when Avoid Players On Placement is enabled — see its own tooltip.")]
     [SerializeField] protected float playerOffset = 0f;
-    // Hoisted up from being re-declared per event (2026-08-25) — unlike zoneRadius, wallOffset's own meaning
-    // ("how far this event's center should clear the wall, fed straight into PlayableAreaPD.RandomPoint's own
-    // wallMargin param — see its own doc comment for the 'center must clear it, edge is free to dip in'
-    // contract") never actually varies per event type, so there's no reason for every event to carry its own
-    // separate copy. All three existing events already agreed on 5f at the time of this move.
-    [Tooltip("How far a concrete event's own placement (via PlayableAreaPD.RandomPoint) keeps its CENTER from any wall — the zone's own edge is free to reach the wall itself, only the center is a hard requirement.")]
-    [SerializeField] protected float wallOffset = 5f;
 
     // Multiplies the announcement popup's own display duration on top of DamageNumber's shared, normal-status
     // baseline (see CharacterStatsPD.NotifyStatusPopup/StatusPopupData's own doc comments for the full

@@ -2,14 +2,30 @@ using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Ported from _OldSystemArchive/Enemies/LeaperGloom.cs — leaps to a point near the target (random angle,
-// fixed distance, matching KingSpikePD's remote-burst offset convention) and deals AoE damage on landing.
-// Old system's aoeHitbox (a trigger Collider, briefly enabled on landing) is replaced with a one-shot
-// distance check against CharacterStatsPD.All, matching KingSpikePD's Spike Burst / DaggerGloomPD's Spin —
-// cheaper than physics here since it's checking against a small, bounded, already-in-memory set (players).
-// The leap itself is a kinematic Vector3.Lerp (with a purely cosmetic sine-arc model bob), not the shared
-// dash primitives — old system disables the hurtbox entirely mid-air (can't be hit while airborne) but
-// deliberately leaves contact damage untouched, matched here via no CanContactDamage override.
+// Ported from _OldSystemArchive/Enemies/LeaperGloom.cs — leaps to the target's own live-tracked position and
+// deals AoE damage on landing. Old system's aoeHitbox (a trigger Collider, briefly enabled on landing) is
+// replaced with a one-shot distance check against CharacterStatsPD.All, matching KingSpikePD's Spike Burst /
+// DaggerGloomPD's Spin — cheaper than physics here since it's checking against a small, bounded, already-in-
+// memory set (players). The leap itself is a kinematic Vector3.Lerp (with a purely cosmetic sine-arc model
+// bob), not the shared dash primitives — old system disables the hurtbox entirely mid-air (can't be hit
+// while airborne) but deliberately leaves contact damage untouched, matched here via no CanContactDamage
+// override.
+//
+// Windup live-tracking (2026-08-26) — the leap target is no longer a fixed-radius random-angle offset picked
+// once at Windup entry (that offset existed purely so a large, easily-dodgeable landing radius could still be
+// avoided without a dash; now that the target is being live-tracked instead, an offset from their ACTUAL
+// landing spot would just make the leap less accurate for no reason, so it's gone — leapTarget converges
+// straight onto wherever the target actually is). Same two rate-capped-polar-tracking-relative-to-a-fixed-
+// origin shape as MortarHazardPD's own "attached" phase (rotationRateDegPerSecond for bearing,
+// distanceTrackingRateUnitsPerSecond for distance, both plain-delta not attack-speed-scaled — see
+// HandleActiveState's Windup case for why), just inlined directly into this enemy's own State/HandleActiveState
+// instead of a separate spawned hazard object, since there's no independent-of-the-firer lifetime need here
+// (a leap's target is meaningless once this Leaper itself is gone). Tracking freezes automatically the instant
+// Windup hands off to Leaping — HandleActiveState only ever writes state.leapTarget from the Windup case.
+// Tracks _windupTrackedTarget (captured once at EnterWindup, see its own doc comment), not live
+// _target/_targetStats (2026-08-26 fix) — matches BlitzGloomPD/KingSpikePD/ShooterGloomPD's own identical
+// "commit to whoever this attack started against, immune to a taunt reassigning the target mid-Windup"
+// convention, confirmed as the consistent rule across every enemy with windup-tracking in this codebase.
 public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -25,8 +41,15 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         public float   attackElapsed;
         public float   attackCooldownTimer;
         public Vector3 leapStart;
-        public Vector3 leapTarget;            // locked in at Windup entry, reused through Leaping/Landing
+        public Vector3 leapTarget;            // live-tracked through Windup, frozen the instant Leaping begins
         public int     leapsRemaining;
+        // Current tracked bearing/distance from leapStart during Windup — same CompressedFloat/rate-cap shape
+        // as MortarHazardPD.State's identical fields, needed in predicted State (not a plain field) for the
+        // same reason: MoveTowardsAngle/MoveTowards read their own previous value every tick, which a
+        // rollback replay must restore correctly. Meaningless outside Windup (leapTarget itself is what
+        // matters once Leaping locks it).
+        public CompressedFloat facingAngleDeg;
+        public CompressedFloat trackedDistance;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
         public State Duplicate()
@@ -66,13 +89,32 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     [SerializeField] private float windupDuration   = 0.4f;
     [SerializeField] private float leapDuration     = 0.4f;
     [SerializeField] private float leapArcHeight    = 3f;
+    // Reshapes the vertical bob's timing WITHOUT touching horizontal leap speed or any of the actual
+    // gameplay timing (hit resolution is still purely state.stateTimer-driven) — purely cosmetic, per
+    // explicit design. 1 = plain sine (the old default — already a little fast-in/fast-out, but mild).
+    // Values < 1 raise Mathf.Sin(t * pi) to a fractional power, which pulls the whole curve toward a fast
+    // rise off the ground, a long flat hang near the peak, then a fast drop back down — smaller values
+    // exaggerate this further (e.g. 0.3 is a much snappier hop-like takeoff/landing than 0.7). Values > 1
+    // do the opposite (slow, floaty edges; quick pass through the middle). See UpdateView's own arc-bob
+    // block for the actual Mathf.Pow application.
+    [SerializeField] private float leapArcExponent  = 0.5f;
     [SerializeField] private float postLeapPause    = 0.5f;
     [SerializeField] private float landingDuration  = 0.1f;
     // Tier1-authored baseline, scaled per tier by leapsPerAttackTierGrowth below (applied in
     // OnConfigureSpawn()). See _authoredLeapsPerAttack's own doc comment for why this needs the
     // snapshot-and-reset treatment instead of just incrementing this field directly.
     [SerializeField] private int   leapsPerAttack   = 1;
-    [SerializeField] private float leapOffsetRadius = 2f;
+    // Max bearing turn rate for leapTarget's own live-tracking during Windup (2026-08-26) — copied from
+    // MortarGloomPD's identical rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45 base, 0.2
+    // tier growth), same tier1-authored-baseline treatment as strikesPerAttack has there. See class doc
+    // comment and HandleActiveState's Windup case for the tracking math itself.
+    [SerializeField] private float rotationRateDegPerSecond = 45f;
+    private float _authoredRotationRateDegPerSecond;
+    // Max rate the tracked DISTANCE (from leapStart) can close/open during Windup — same rate-cap idea as
+    // rotationRateDegPerSecond above, just for the radial component instead of the angular one, copied from
+    // MortarGloomPD's identical distanceTrackingRateUnitsPerSecond.
+    [SerializeField] private float distanceTrackingRateUnitsPerSecond = 10f;
+    private float _authoredDistanceTrackingRateUnitsPerSecond;
 
     [Header("Attack Cooldown")]
     [SerializeField] private float attackCooldown = 5f;
@@ -84,11 +126,23 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     [Header("Tier Scaling")]
     // Added onto leapsPerAttack per tier above 1 — see OnConfigureSpawn().
     [SerializeField] private int leapsPerAttackTierGrowth = 1;
+    // Same linear-per-tier shape as every other *TierGrowth field — shared by both rotationRateDegPerSecond
+    // and distanceTrackingRateUnitsPerSecond above, same reuse convention MortarGloomPD's own identical pair
+    // already uses (see distanceTrackingRateUnitsPerSecond's doc comment there).
+    [SerializeField] private float rotationRateDegPerSecondTierGrowth = 0.2f;
 
     // Captured once in OnAwake(), reset back onto leapsPerAttack every pooled reuse in LateAwake() —
     // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
     // pattern established for the identical attack-count fields on Blitz/Dagger/Mortar/Spear.
     private int _authoredLeapsPerAttack;
+
+    // The target this attack committed to, captured once at EnterWindup — matches BlitzGloomPD.
+    // _windupTrackedTarget/KingSpikePD._chargeWindupTrackedTarget/ShooterGloomPD._windupTrackedTarget
+    // exactly (2026-08-26 fix — this used to read live _target/_targetStats directly, which was the one
+    // enemy inconsistent with the rest of the codebase's "an ongoing attack stays committed to whoever it
+    // started against, immune to a taunt reassigning _target mid-Windup" rule). Drives the Windup tracking
+    // block in HandleActiveState below.
+    private CharacterStatsPD _windupTrackedTarget;
 
     // Bobbed vertically (cosmetic only) during Leaping — deliberately a dedicated wrapper (YAxisMovers),
     // not the raw model mesh transform directly: PurrDiction's PredictedTransform tracks a hurtbox/root
@@ -122,6 +176,8 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         base.OnAwake();
         _authoredLeapsPerAttack = leapsPerAttack;
         _authoredAttackCooldown = attackCooldown;
+        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
+        _authoredDistanceTrackingRateUnitsPerSecond = distanceTrackingRateUnitsPerSecond;
     }
 
     protected override void LateAwake()
@@ -133,6 +189,8 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // doc comment.
         leapsPerAttack = _authoredLeapsPerAttack;
         attackCooldown = _authoredAttackCooldown;
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
+        distanceTrackingRateUnitsPerSecond = _authoredDistanceTrackingRateUnitsPerSecond;
 
         // Null-coalesced, not unconditional — LateAwake() re-fires on every pooled reuse, but by that
         // point the indicator could already be unparented from a previous life interrupted mid-leap (e.g.
@@ -171,6 +229,10 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     {
         base.OnConfigureSpawn();
         leapsPerAttack += (spawnTier - 1) * leapsPerAttackTierGrowth;
+        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        // Reuses rotationRateDegPerSecondTierGrowth itself (not a separate *TierGrowth field) — see
+        // MortarGloomPD.distanceTrackingRateUnitsPerSecond's own identical doc comment.
+        distanceTrackingRateUnitsPerSecond = _authoredDistanceTrackingRateUnitsPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
@@ -226,6 +288,39 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
             case LeapState.Windup:
                 state.attackElapsed += delta * EffectiveAttackSpeed;
+                // Live-tracks _windupTrackedTarget's position (the committed target, captured once at
+                // EnterWindup — see that field's own doc comment), NOT live _target/_targetStats
+                // (2026-08-26 fix — this used to read those directly, meaning a taunt landing mid-Windup
+                // could redirect an already-started leap, inconsistent with every other tracked-windup enemy
+                // in this codebase). Rate-capped exactly like MortarHazardPD's own "attached" phase — plain
+                // delta, NOT delta * EffectiveAttackSpeed, since this is a fixed real-world tracking speed
+                // independent of how fast this Leaper's own Windup timer happens to be counting down (see
+                // MortarHazardPD.LateSimulate's identical choice). Holds the last tracked target/bearing/
+                // distance (no teleport-to-stale-null) if the committed target died/went invisible-without-
+                // taunting mid-Windup — the rate-capped MoveTowardsAngle/MoveTowards simply stop advancing
+                // while this condition is false, which IS the "freeze at last known position" behavior (same
+                // mechanism MortarHazardPD's own tracking relies on), and resumes live the instant validity
+                // returns.
+                if (_windupTrackedTarget != null && !_windupTrackedTarget.IsDead &&
+                    (!_windupTrackedTarget.IsInvisible || _windupTrackedTarget.IsTaunting))
+                {
+                    Vector3 targetPos = _windupTrackedTarget.transform.position;
+                    targetPos.y = 0f;
+                    Vector3 toTarget = targetPos - state.leapStart;
+                    toTarget.y = 0f;
+                    float targetDistance = toTarget.magnitude;
+                    if (targetDistance > 0.0001f)
+                    {
+                        float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+                        state.facingAngleDeg = Mathf.MoveTowardsAngle(state.facingAngleDeg, targetAngle, rotationRateDegPerSecond * delta);
+                        state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, distanceTrackingRateUnitsPerSecond * delta);
+
+                        float rad = state.facingAngleDeg * Mathf.Deg2Rad;
+                        Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
+                        state.leapTarget = state.leapStart + dir * state.trackedDistance;
+                        _leapTargetSnapshot = state.leapTarget;
+                    }
+                }
                 if (state.stateTimer <= 0f) EnterLeap(ref state);
                 break;
 
@@ -316,6 +411,11 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     {
         if (_target == null) return;
 
+        // Captured here — the commit moment for this leap — not read live off _targetStats later; matches
+        // BlitzGloomPD/KingSpikePD/ShooterGloomPD's own identical _windupTrackedTarget pattern. See that
+        // field's own doc comment.
+        _windupTrackedTarget = _targetStats;
+
         // Decrement lives HERE — the actual START of one leap attempt — not at landing (EnterPostLand,
         // where it used to live). A leap cancelled mid-windup or mid-air via Interrupt() now still counts
         // against the budget, since leapsRemaining already dropped the instant this ran. Refill-if-exhausted
@@ -328,17 +428,29 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         if (state.leapsRemaining <= 0) state.leapsRemaining = leapsPerAttack;
         state.leapsRemaining--;
 
-        // Fixed-radius, random-angle offset — matches KingSpikePD's remote-burst offset (a uniform random
-        // angle at a FIXED distance, not old's Random.insideUnitCircle.normalized equivalent, ported to
-        // GameRandom for determinism). * size (2026-08-20) — raw world-space math, bypasses the scaled
-        // transform hierarchy entirely, so needs this explicit multiply to scale proportionally with an
-        // Elite's bigger size, same "* size" precedent landRadius's own hit-check already uses below.
-        float   angle  = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
-        Vector3 offset = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * leapOffsetRadius * size;
-        state.leapTarget = _target.position + offset;
+        // leapStart doubles as the tracking origin for the whole Windup (this Leaper is kinematic/stationary
+        // throughout Windup — see the isWindupOrLeap kinematic block below — so it never needs re-reading
+        // live), moved here from EnterLeap (2026-08-26) since live-tracking now needs it from the very start
+        // of Windup, not just at the Windup->Leaping handoff.
+        state.leapStart = transform.position;
+
+        // Seeds the tracked bearing/distance to match _windupTrackedTarget's CURRENT position relative to
+        // leapStart — same seeding MortarHazardPD.Launch() does for its own identical tracking fields, so
+        // the first tracked Windup tick's rate-capped MoveTowardsAngle/MoveTowards starts from the real
+        // current bearing/range instead of snapping in from a stale (or zeroed) previous life's value.
+        Vector3 targetPos = _windupTrackedTarget.transform.position;
+        targetPos.y = 0f;
+        Vector3 toTarget = targetPos - state.leapStart;
+        toTarget.y = 0f;
+        if (toTarget.sqrMagnitude > 0.0001f)
+            state.facingAngleDeg = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
+        state.trackedDistance = toTarget.magnitude;
+        state.leapTarget = targetPos;
         _leapTargetSnapshot = state.leapTarget;
 
-        SnapFaceTarget(ref state);
+        // CharacterStatsPD overload (not the ref-state one) — faces _windupTrackedTarget specifically, not
+        // whatever live _target currently is, same reasoning as the rest of this method.
+        SnapFaceTarget(_windupTrackedTarget);
         state.stateTimer    = windupDuration;
         state.attackElapsed = 0f;
         SetLeapState(ref state, LeapState.Windup);
@@ -346,7 +458,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
 
     private void EnterLeap(ref State state)
     {
-        state.leapStart  = transform.position;
+        // leapStart already set at EnterWindup (this Leaper never moves during Windup) — leapTarget is
+        // whatever the Windup case's live-tracking last wrote, now permanently frozen since nothing else
+        // writes it from here on. This is the whole "lock the indicator and leap target area" moment.
         state.stateTimer = leapDuration;
         SetLeapState(ref state, LeapState.Leaping);
     }
@@ -490,7 +604,10 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         var ss = (LeapState)viewState.stateId;
         if (_windupIndicator != null && (ss == LeapState.Windup || ss == LeapState.Leaping))
             _windupIndicator.transform.position = new Vector3(_leapTargetSnapshot.x, 0.05f, _leapTargetSnapshot.z);
-        if (_windupIndicator != null) IndicatorMath.ApplyRadialTransform(_windupIndicator.transform, landRadius);
+        // * size (2026-08-26 fix) — matches the actual landing hit-check's own landRadius * size below; the
+        // indicator wasn't scaling with Elite size at all (unlike DaggerGloomPD's spinRadius * size), so an
+        // Elite Leaper's true damage radius silently reached past its own drawn circle.
+        if (_windupIndicator != null) IndicatorMath.ApplyRadialTransform(_windupIndicator.transform, landRadius * size);
 
         // Purely cosmetic arc bob — safe off viewState (a transient misprediction here is an imperceptible
         // visual wobble, not a discrete value that needs to be exactly right).
@@ -499,7 +616,10 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
             if (ss == LeapState.Leaping)
             {
                 float t = 1f - Mathf.Clamp01(viewState.stateTimer / leapDuration);
-                float arcY = Mathf.Sin(t * Mathf.PI) * leapArcHeight;
+                // Mathf.Sin(t*pi) is already in [0,1] for t in [0,1], so raising it to leapArcExponent is
+                // always well-defined — see that field's own doc comment for the fast-liftoff/slow-arc/
+                // fast-landing shape this gives at exponent < 1.
+                float arcY = Mathf.Pow(Mathf.Sin(t * Mathf.PI), leapArcExponent) * leapArcHeight;
                 _yAxisMovers.localPosition = _yAxisMoversRestPosition + new Vector3(0f, arcY, 0f);
             }
             else
@@ -607,5 +727,6 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         if (_hurtbox != null)         _hurtbox.enabled         = true;
         _lastVisualState = (LeapState)(-1);
+        _windupTrackedTarget = null;
     }
 }

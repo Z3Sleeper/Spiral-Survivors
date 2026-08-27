@@ -352,7 +352,7 @@ MonoBehaviour:
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
   maxHealth: 7500
-  preferredRange: 5.5
+  preferredRange: 10
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
   damage: 5
@@ -379,10 +379,10 @@ MonoBehaviour:
   innerOrbitRadius: 2
   innerOrbitAngularSpeed: 120
   middleCount: 3
-  middleOrbitRadius: 5.5
+  middleOrbitRadius: 6
   middleOrbitAngularSpeed: 60
   outerCount: 4
-  outerOrbitRadius: 9
+  outerOrbitRadius: 10
   outerOrbitAngularSpeed: 30
   orbitDuration: 10
   knockbackChargeTime: 1.5

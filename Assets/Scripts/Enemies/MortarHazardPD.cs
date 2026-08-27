@@ -8,6 +8,16 @@ using UnityEngine;
 // mid-Windup, where MortarGloomPD.OnInterrupted() can actively Cancel() it (see that class's own doc comment
 // for why cancellation is phase-gated rather than blanket-never).
 //
+// Also spawns the cosmetic MortarProjectileVFXPD shell itself now (2026-08-26, was MortarGloomPD.EnterFire())
+// — right at the "Attached" -> "Fired" lock transition below, driven by this hazard's own independent timer.
+// The old approach spawned the shell from the MORTAR's own state-machine transition, which only runs while
+// the Mortar is alive and still ticking HandleActiveState() — if the Mortar died mid-Windup, this hazard (per
+// the independence described above) would still lock and deal damage on schedule, but the Mortar's own
+// EnterFire() would never fire, so the cosmetic shell silently never spawned even though the hit landed.
+// Tying the spawn to this hazard's own lock instead gives it the exact same "keeps going regardless of the
+// firer's fate" guarantee the damage already has — see SpawnProjectileVfx's own doc comment for the position
+// math, which uses _firerPosition (a snapshot) instead of the Mortar's live transform for the same reason.
+//
 // Two explicit, separately-paced phases (2026-08-21, replacing a single combined chargeTimer) — matches the
 // user's own "attached" vs. "fired" framing:
 // 1. "Attached" (windupTimer, !locked): live-tracks the committed target's position, same "follow the player
@@ -92,6 +102,17 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     // comment.
     private float _distanceTrackingRateUnitsPerSecond = 10f;
 
+    // Cosmetic shell spawn info — all one-time snapshots at Launch(), same "firer could die/get pooled-and-
+    // reused mid-track" reasoning as the tracking-rate fields above. size/tierAccentMaterial in particular
+    // used to be read live off the Mortar at Fire-time (MortarGloomPD.size/TierAccentMaterial); reading them
+    // NOW, at spawn, instead means this hazard never needs the Mortar to still exist by the time it locks.
+    private GameObject _projectileVfxPrefab;
+    private float _projectileArcHeight;
+    private float _projectileSpawnHeightOffset;
+    private float _projectileSpawnForwardOffset;
+    private float _size = 1f;
+    private Material _tierAccentMaterial;
+
     // Live-tracking inputs (2026-08-21) — see class doc comment. _trackedTarget is the SPECIFIC player this
     // strike committed to (captured by the caller at spawn time, immune to MortarGloomPD's own _targetStats
     // possibly being reassigned to someone else mid-Windup — same "commit once, keep reading that same
@@ -108,7 +129,10 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     // class doc comment; trackedTarget may be null (no live tracking, stays exactly where spawned).
     public void Launch(float windupDuration, float fireDuration, float width, float depth, float damage,
         CharacterStatsPD trackedTarget = null, Vector3 firerPosition = default, float windupAttackSpeed = 1f,
-        float rotationRateDegPerSecond = 45f, float distanceTrackingRateUnitsPerSecond = 10f)
+        float rotationRateDegPerSecond = 45f, float distanceTrackingRateUnitsPerSecond = 10f,
+        GameObject projectileVfxPrefab = null, float projectileArcHeight = 0f,
+        float projectileSpawnHeightOffset = 0f, float projectileSpawnForwardOffset = 0f,
+        float size = 1f, Material tierAccentMaterial = null)
     {
         _halfWidth = width * 0.5f;
         _halfDepth = depth * 0.5f;
@@ -118,6 +142,12 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         _windupAttackSpeed = Mathf.Max(0.0001f, windupAttackSpeed);
         _rotationRateDegPerSecond = rotationRateDegPerSecond;
         _distanceTrackingRateUnitsPerSecond = distanceTrackingRateUnitsPerSecond;
+        _projectileVfxPrefab = projectileVfxPrefab;
+        _projectileArcHeight = projectileArcHeight;
+        _projectileSpawnHeightOffset  = projectileSpawnHeightOffset;
+        _projectileSpawnForwardOffset = projectileSpawnForwardOffset;
+        _size = size;
+        _tierAccentMaterial = tierAccentMaterial;
 
         currentState.windupTimer = windupDuration;
         currentState.fireTimer   = fireDuration;
@@ -207,6 +237,7 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
             state.windupTimer -= delta * _windupAttackSpeed;
             if (state.windupTimer > 0f) return;
             state.locked = true; // permanently freezes tracking from here on — see class doc comment
+            SpawnProjectileVfx(); // right at the lock transition — see class doc comment for why here
         }
 
         // "Fired" phase — always raw, unscaled delta, per explicit design (see class doc comment).
@@ -226,6 +257,36 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
             if (stats != null && !stats.IsDead) stats.TakeDamage(_damage);
         }
         state.expired = true;
+    }
+
+    // Spawns the cosmetic MortarProjectileVFXPD shell — moved here from MortarGloomPD.EnterFire() (2026-08-26,
+    // see class doc comment for why) so it fires off THIS hazard's own lock transition instead of the firing
+    // Mortar's own (possibly-frozen-by-death) state machine. Position math ported as-is from the old
+    // MortarGloomPD.SpawnProjectileVfx(), just reading _firerPosition (this hazard's own one-time snapshot of
+    // where the Mortar stood at spawn) instead of the Mortar's live transform.position, and this hazard's own
+    // (now-locked) transform.position as the landing point instead of a separate hazardGo lookup — this
+    // hazard doesn't need to ask "where did my own hazard land", it just IS the hazard.
+    private void SpawnProjectileVfx()
+    {
+        if (_projectileVfxPrefab == null) return;
+
+        Vector3 targetPos = transform.position; // already locked at this exact point
+        targetPos.y = 0f;
+        Vector3 fireDir = targetPos - _firerPosition;
+        fireDir.y = 0f;
+        // Degenerate fallback (target position coincides with the firer's) — this hazard's own forward is
+        // already meaningfully oriented toward its landing point (see Launch()'s own Quaternion.LookRotation),
+        // same role transform.forward played on the old Mortar-side version.
+        if (fireDir.sqrMagnitude < 0.0001f) fireDir = transform.forward;
+        fireDir.Normalize();
+        Vector3 spawnPos = _firerPosition + Vector3.up * (_projectileSpawnHeightOffset * _size) + fireDir * (_projectileSpawnForwardOffset * _size);
+
+        var id = hierarchy.Create(_projectileVfxPrefab, spawnPos, Quaternion.LookRotation(fireDir));
+        if (!id.HasValue) return;
+
+        var go = hierarchy.GetGameObject(id.Value);
+        if (go != null && go.TryGetComponent(out MortarProjectileVFXPD vfx))
+            vfx.Launch(spawnPos, targetPos, _fireDuration, _projectileArcHeight, _size, _tierAccentMaterial);
     }
 
     // Combined 0-1 progress across BOTH phases (elapsed time in each, not clock time — a scaled-down/up

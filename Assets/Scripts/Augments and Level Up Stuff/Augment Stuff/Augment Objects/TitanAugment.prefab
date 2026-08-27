@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ca77074e19f53c447b9dcc7b6977360d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TitanAugment
-  bonusSizePercent: 0.1
-  weaponRangeTotalPercent: 0.1
-  bonusMaxHealthPercent: 0.1
+  bonusSizePercent: 0.15
+  weaponRangeTotalPercent: 0.15
+  bonusMaxHealthPercent: 0.15

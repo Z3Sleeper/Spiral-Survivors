@@ -26,14 +26,17 @@ public static class ProgressionManager
     //    L=1 regardless of its real UnlockDifficulty number — TL0 and TL1 both collapse to L=1, since neither
     //    has a unique modifier of its own). Two shapes, depending on how many tiers that stat unlocks per
     //    Threat Level:
-    //    - TWO tiers per level (LevelUpStatsCosts/TotalStrengthPercentCosts/StrengthPerLevelCosts, pairing
-    //      mirrors their own UnlockDifficulty's {2,2,3,3,4,4,5,5,6,6} shape): pair 1 = (seed, seed*1.5).
-    //      Within any pair, the second tier is always its own pair's first tier * 1.5. Crossing into pair L
-    //      (L=2,3,4,5): that pair's first tier = previous pair's SECOND tier * 1.5^(L-1) — the crossing
-    //      exponent grows every time a new Threat Level is crossed, it does not stay constant.
-    //    - ONE tier per level (MoveSpeedPercentCosts, and Strength's own gated tail — see below): tier 1 =
-    //      seed; tier L (L=2,3,4,5) = tier(L-1) * 1.5^(L-1) — same growing-exponent crossing rule, applied to
-    //      every single tier since there's no "pair" to hold a within-level step.
+    //    - TWO tiers per level (LevelUpStatsCosts/TotalStrengthPercentCosts, pairing mirrors their own
+    //      UnlockDifficulty's {2,2,3,3,4,4,5,5,6,6} shape): pair 1 = (seed, seed*1.5). Within any pair, the
+    //      second tier is always its own pair's first tier * 1.5. Crossing into pair L (L=2,3,4,5): that
+    //      pair's first tier = previous pair's SECOND tier * 1.5^(L-1) — the crossing exponent grows every
+    //      time a new Threat Level is crossed, it does not stay constant.
+    //    - ONE tier per level (MoveSpeedPercentCosts/StrengthPerLevelCosts, and Strength's own gated tail —
+    //      see below): tier 1 = seed; tier L (L=2,3,4,5) = tier(L-1) * 1.5^(L-1) — same growing-exponent
+    //      crossing rule, applied to every single tier since there's no "pair" to hold a within-level step.
+    //      StrengthPerLevelCosts used to be the 10-entry two-tiers-per-level shape too (matching
+    //      UnlockDifficulty {2,2,3,3,4,4,5,5,6,6}) before being cut down to 5 tiers/UnlockDifficulty
+    //      {2,3,4,5,6} — it's this one-tier-per-level shape now, not the two-tier one.
     //    1.5 isn't a power of 2, so a long enough chain eventually can't stay an exact integer — rounded
     //    (half up) only where unavoidable; every other entry is exact. Extend either shape's exact pattern
     //    (same growing exponent, L+1 next) if any of these arrays ever needs more tiers.
@@ -145,24 +148,30 @@ public static class ProgressionManager
         { 3000 };
     private static readonly int[] DeathPreventionUnlockDifficulty =
         { 0 };
+    // 2026-08-26: every seed below halved (LevelUpStats 4000->2000, LevelUpOptions/MoveSpeedPercent/
+    // StrengthPerLevel 5000->2500, TotalStrengthPercent 10000->5000) — later Threat-Level-gated tiers had
+    // grown too expensive. Rest of each chain re-derived from its own halved seed using rule 1's exact
+    // geometric formula above (still rounded half-up only where unavoidable) — not a flat halving of every
+    // entry, since the growing 1.5^(L-1) crossing exponent means a flat halve-everything pass would drift
+    // off the documented formula by the later tiers.
     private static readonly int[] LevelUpStatsCosts =
-        { 4000, 6000, 9000, 13500, 30375, 45563, 153773, 230660, 1167717, 1751576 };
+        { 2000, 3000, 4500, 6750, 15188, 22781, 76887, 115330, 583859, 875788 };
     private static readonly int[] LevelUpStatsUnlockDifficulty =
         { 2, 2, 3, 3, 4, 4, 5, 5, 6, 6 };
     private static readonly int[] LevelUpOptionsCosts =
-        { 5000, 7500 };
+        { 2500, 3750 };
     private static readonly int[] LevelUpOptionsUnlockDifficulty =
         { 3, 3 };
     private static readonly int[] TotalStrengthPercentCosts =
-        { 10000, 15000, 22500, 33750, 75938, 113906, 384434, 576650, 2919293, 4378939 };
+        { 5000, 7500, 11250, 16875, 37969, 56953, 192217, 288325, 1459646, 2189469 };
     private static readonly int[] TotalStrengthPercentUnlockDifficulty =
         { 2, 2, 3, 3, 4, 4, 5, 5, 6, 6 };
     private static readonly int[] MoveSpeedPercentCosts =
-        { 5000, 7500, 16875, 56953, 288325 };
+        { 2500, 3750, 8438, 28477, 144163 };
     private static readonly int[] MoveSpeedPercentUnlockDifficulty =
         { 2, 3, 4, 5, 6 };
     private static readonly int[] StrengthPerLevelCosts =
-        { 5000, 7500, 16875, 56953, 288325 };
+        { 2500, 3750, 8438, 28477, 144163 };
     private static readonly int[] StrengthPerLevelUnlockDifficulty =
         { 2, 3, 4, 5, 6 };
 

@@ -142,6 +142,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
             {
                 CharacterStatsPD.All[owner.Value] = stats;
                 CharacterStatsPD.RefreshAnyValidTargetExists();
+                FriendlyTargetRegistryPD.Register(stats);
                 _registeredInAll = true;
             }
 
@@ -222,6 +223,12 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
             // only ever contain live players. Same risk category as the enemy Active*Count drift: no
             // domain reload means this never resets, and unlike a plain counter, a stale entry here is a
             // dangling Component reference other code might dereference mid-Simulate().
+            //
+            // Looked up BEFORE removal so FriendlyTargetRegistryPD (which isn't PlayerID-keyed) still has a
+            // reference to unregister — Remove() below only drops the All dictionary entry, it doesn't
+            // destroy the object.
+            if (CharacterStatsPD.All.TryGetValue(owner.Value, out var stats))
+                FriendlyTargetRegistryPD.Unregister(stats);
             CharacterStatsPD.All.Remove(owner.Value);
             CharacterStatsPD.RefreshAnyValidTargetExists();
         }

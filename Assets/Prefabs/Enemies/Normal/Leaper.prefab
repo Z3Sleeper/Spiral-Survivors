@@ -610,15 +610,18 @@ MonoBehaviour:
   invulnerableShell: {fileID: 7331312534044633561}
   landDamageMultiplier: 1
   landRadius: 3
-  windupDuration: 0.4
-  leapDuration: 0.4
+  windupDuration: 1
+  leapDuration: 0.75
   leapArcHeight: 3
+  leapArcExponent: 0.3
   postLeapPause: 0.5
   landingDuration: 0.1
   leapsPerAttack: 1
-  leapOffsetRadius: 2
+  rotationRateDegPerSecond: 45
+  distanceTrackingRateUnitsPerSecond: 10
   attackCooldown: 5
   leapsPerAttackTierGrowth: 1
+  rotationRateDegPerSecondTierGrowth: 0.2
   _yAxisMovers: {fileID: 2271060463906041925}
   _windupIndicator: {fileID: 5598621953610581262}
   _windupFill: {fileID: 5898573493204495563}

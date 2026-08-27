@@ -18,15 +18,36 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         public int     ricochetsRemaining;
         public float   currentDamage;
         public float   currentOnHitPower;
-        // Set once max range is reached; the actual hierarchy.Delete() is deferred to UpdateView() off
-        // verified state, same pattern as EnemyBasePD's death handling — deleting directly from
-        // LateSimulate() would be acting on a not-yet-confirmed tick.
+        // Set once max range is reached — gameplay ceases (LateSimulate stops moving/hit-testing) and
+        // renderers hide the same tick (see UpdateView), but the object itself stays alive a bit longer —
+        // see expiredTimer/readyToDelete below for why.
         public bool    expired;
+        // Counts down (simulated delta, ticked in LateSimulate — NOT real time) from postExpireLingerDuration
+        // once expired goes true. Exists purely so the cosmetic trail particle system (its own authored
+        // lifetime is roughly this same duration) has time to finish drawing itself out to wherever the arrow
+        // actually vanished, instead of abruptly cutting off mid-trail the instant the arrow itself disappears.
+        public float   expiredTimer;
+        // Set once expiredTimer reaches 0 — the actual hierarchy.Delete() is deferred to UpdateView() off
+        // verified state (same pattern as EnemyBasePD's death handling — deleting directly from
+        // LateSimulate() would be acting on a not-yet-confirmed tick), gated on THIS instead of `expired`
+        // directly so the object survives the extra linger window before actually being deleted/pooled.
+        public bool    readyToDelete;
         public void Dispose() { }
     }
 
     [SerializeField] private Vector3 arrowHalfExtents = new(0.1f, 0.1f, 0.25f);
     [SerializeField] private Renderer[] _renderers;
+    // How much longer this projectile stays alive (simulated time) after expiring/hiding before actually
+    // deleting — see State.expiredTimer's own comment. Tunable, not a hardcoded const, since it's meant to
+    // roughly match the trail particle system's own authored "Start Lifetime" — retune together if that
+    // ever changes.
+    [SerializeField] private float postExpireLingerDuration = 0.5f;
+    // Cosmetic-only trail particle system(s) — paused/resumed with PausePD in UpdateView() below, same
+    // shape as ExeAxeThrowProjectilePD's own UpdateParticlePause (duplicated here rather than shared, same
+    // "this class isn't a WeaponBasePD subclass" reasoning). No death/renderer linkage — unlike
+    // ExeAxeThrowProjectilePD, this one's whole reason for existing is to keep drawing itself out for a
+    // while AFTER the arrow itself hides, so it must not be Stopped alongside SetRenderersEnabled(false).
+    [SerializeField] private ParticleSystem[] particleSystems;
     // Visual-only target for the mid-height lift below — a dedicated child (e.g. this prefab's "Model", the
     // parent of every visible mesh piece), NOT this projectile's own root transform (that's the real,
     // hit-detection-relevant flight position LateSimulate() moves every tick). Optional: leave unassigned
@@ -152,9 +173,21 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
 
     protected override void LateSimulate(ref State state, float delta)
     {
-        if (state.expired) return;
-        if (_stats == null) { state.expired = true; return; } // shouldn't happen — Launch() always sets it
+        if (state.readyToDelete) return;
+        // shouldn't happen — Launch() always sets it — but still needs to go through the same linger window
+        // rather than skipping straight to deletion, in case anything ever reads state mid-linger.
+        if (_stats == null) { state.expired = true; state.expiredTimer = postExpireLingerDuration; return; }
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+
+        if (state.expired)
+        {
+            // Gameplay already ceased and renderers already hidden (see UpdateView) — just count down the
+            // trail's own catch-up window (simulated delta, so this respects pause the same as everything
+            // else here) before actually deleting.
+            state.expiredTimer -= delta;
+            if (state.expiredTimer <= 0f) state.readyToDelete = true;
+            return;
+        }
 
         Vector3 prevPos = transform.position;
         Vector3 step    = state.direction * (_speed * delta);
@@ -193,7 +226,10 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         }
 
         if (state.distanceTravelled >= _maxRange)
+        {
             state.expired = true;
+            state.expiredTimer = postExpireLingerDuration;
+        }
     }
 
     // ── Hit / ricochet ────────────────────────────────────────────────────────
@@ -306,11 +342,31 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
             SetRenderersEnabled(false);
         }
 
-        // State-critical — only act on server-confirmed expiry, same reasoning as EnemyBasePD's death
+        UpdateParticlePause();
+
+        // State-critical — only act on server-confirmed readiness, same reasoning as EnemyBasePD's death
         // handling (an in-flight misprediction correction could otherwise delete/undelete this repeatedly).
-        if (verified.HasValue && verified.Value.expired)
+        // Gated on readyToDelete, not expired — see State.readyToDelete's own comment for the linger window
+        // this waits out first.
+        if (verified.HasValue && verified.Value.readyToDelete)
         {
             hierarchy.Delete(this);
+        }
+    }
+
+    // Every real frame (not gated to verified sim ticks — purely cosmetic, same reasoning
+    // WeaponBasePD.UpdateWeaponParticlePause's own doc comment gives). Pause()/Play() only, no Stop — see
+    // particleSystems' own field comment for why this must NOT be linked to SetRenderersEnabled here.
+    private void UpdateParticlePause()
+    {
+        if (particleSystems == null) return;
+        bool paused = PausePD.instance != null && PausePD.instance.IsPaused;
+        for (int i = 0; i < particleSystems.Length; i++)
+        {
+            var ps = particleSystems[i];
+            if (ps == null) continue;
+            if (paused && ps.isPlaying) ps.Pause();
+            else if (!paused && ps.isPaused) ps.Play();
         }
     }
 }

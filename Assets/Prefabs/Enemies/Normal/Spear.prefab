@@ -347,7 +347,7 @@ MonoBehaviour:
   betweenStabPause: 0.25
   postStabPause: 0.5
   attacksPerAttack: 1
-  dashSpeedMultiplier: 4
+  dashSpeedMultiplier: 2
   attackCooldown: 5
   attacksPerAttackTierGrowth: 1
   _windupIndicator: {fileID: 3368275256615124461}

@@ -12,14 +12,15 @@ using UnityEngine;
 // 1. (AoE Effects) On Surge Start ONLY, and ONLY if that Surge started at full energy (2026-08-24, was
 //    "every Surge Start AND every Surge End, unconditionally" — live-tested and found gamebreakingly
 //    strong, since a player could just repeatedly toggle Surge on/off for a free AoE burst every single
-//    time regardless of energy investment): deal damagePercent unpenalized Strength, apply normal player
-//    knockback (Stats.Knockback, unscaled — no augment-specific multiplier), and Interrupt every enemy in
-//    radius, via the shared AreaEffectCastHelper/AreaEffectPD chain (same one DashExplosionAugment/
-//    ShieldBreakBurstAugment use) — damage scales with Stats.AreaEffectPower, radius with
-//    Stats.AreaEffectSize (via Stats.RangeScalingAoEBase * radiusMultiplier, the standardized "AoE Effects"
-//    radius formula), and the whole cast repeats Stats.AreaEffectCount times. notifyOnHit: false (explicit
-//    design — this shouldn't combo with onhit-proc augments, matching ShieldBreakBurstAugment's own
-//    precedent).
+//    time regardless of energy investment): Interrupt every enemy in radius, via the shared
+//    AreaEffectCastHelper/AreaEffectPD chain (same one DashExplosionAugment/ShieldBreakBurstAugment use) —
+//    radius scales with Stats.AreaEffectSize (via Stats.RangeScalingAoEBase * radiusMultiplier, the
+//    standardized "AoE Effects" radius formula), and the whole cast repeats Stats.AreaEffectCount times.
+//    Pure interrupt only (2026-08-25, was also dealing damagePercent unpenalized Strength and applying
+//    normal player knockback — removed, this augment is interrupt-only now, no damage/knockback component
+//    at all) — dealDamage/hasKnockback both left at Launch()'s own default (false), same "leave it at
+//    default rather than pass it" convention AreaEffectCastHelper's own doc comment establishes for a
+//    non-damaging cast.
 //
 //    "Started at full energy" check mirrors FullEnergyBerserkSurgeAugment's own identical reconstruction —
 //    _onSurgeStarted fires AFTER StartSurge() has already deducted SurgeCost from currentState.energy, so
@@ -38,11 +39,11 @@ using UnityEngine;
 //
 // 2. Passive, always active regardless of Surge state: subscribes to the GENERIC SuccessfulInterrupt (SI)
 //    event — fires on EVERY successful interrupt, from ANY source (a dash, AxeThrow, Knight's stun heal,
-//    this augment's own AoE burst above, any future source too). Instantly recharges Shield to full
-//    (2026-08-23, was permanent stacking Energy Regen per interrupt — see CharacterStatsPD.RechargeShield's
-//    own doc comment). No cooldown/cap of its own — an interrupt landing while Shield's already full is
-//    just a harmless no-op, same as RechargeShield's own established behavior everywhere else it's called.
-//    Untouched by the 2026-08-24 fix above — this half was never the problem.
+//    this augment's own AoE burst above, any future source too). Instantly refills Energy to full
+//    (2026-08-25, was RechargeShield() — was permanent stacking Energy Regen before that — see
+//    CharacterStatsPD.GainEnergy's own clamped-gain shape). No cooldown/cap of its own — an interrupt
+//    landing while Energy's already full is just a harmless no-op, same shape GainEnergy already has
+//    everywhere else it's called. Untouched by the 2026-08-24 fix above — this half was never the problem.
 public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -54,7 +55,6 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
     }
 
     [Header("AoE Effect — On Surge Start (full energy only)")]
-    public float damagePercent = 0.5f;
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — standardized "AoE Effects" formula (see class
     // doc comment). 1 is the neutral default; tune per-augment feel without touching the WeaponRange/
     // AreaEffectSize scaling itself.
@@ -72,15 +72,6 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
     // the class itself isn't tied to any one augment.
     [Header("Chain (spawned on a qualifying Surge Start)")]
     [SerializeField] private GameObject chainPrefab;
-
-    // Mirrors AreaEffectCastHelper.Cast's own damage formula (Stats.AreaEffectPower directly — see that
-    // method's own doc comment), minus the luck/crit roll (baseline preview, not a randomly-sampled one — see
-    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention), for
-    // AugmentDescriptionFormatter's {LiveStrengthRatio} token.
-    public string LiveStrengthRatio(CharacterStatsPD stats) =>
-        AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * damagePercent * stats.AreaEffectPower)} "
-            : "";
 
     protected override void OnApply()
     {
@@ -122,8 +113,6 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                dealDamage: true, damagePercent: damagePercent, notifyOnHit: false,
-                hasKnockback: true, knockback: Stats.Knockback,
                 interrupt: true, onSuccessfulInterrupt: OnAoEInterrupt, vfxPerCast: true);
     }
 
@@ -133,5 +122,5 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
     private void OnAoEInterrupt(IEnemyPD enemy) => Stats.NotifyInterrupted(enemy, ref currentState.firedFsiThisBurst);
 
     // Fires on EVERY successful interrupt, any source — see class doc comment #2 for why SI, not FSI.
-    private void OnSuccessfulInterrupt() => Stats.RechargeShield();
+    private void OnSuccessfulInterrupt() => Stats.GainEnergy(Stats.MaxEnergy);
 }

@@ -151,7 +151,23 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
 
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
-        if (dashJustEnded) EnterWindup(ref state);
+        if (dashJustEnded)
+        {
+            // Re-captures the anchor to the target's CURRENT live position, right at the moment the dash
+            // ends (2026-08-27 fix) — the dash itself (HandleOffsetChase) continuously re-tracks the live
+            // target the whole time it's running, but attackAnchorPosition was still whatever it was
+            // snapshotted to back at the ORIGINAL CaptureAttackAnchor call (attack-start, before the dash
+            // even began). A fast/moving target could relocate substantially over the course of a dash, so
+            // Windup's own SnapFaceAnchor below and EnterStab's own hit-check direction were both aiming at
+            // a stale pre-dash position instead of where the target actually ended up — confirmed live:
+            // Spear visibly stabbed toward its own dash-offset direction rather than the player. Same target
+            // IDENTITY stays committed either way (_target/_targetStats untouched) — this only refreshes the
+            // POSITION snapshot, consistent with the "ongoing attack resolves against whoever it started
+            // against" rule; CaptureAttackAnchor's own null-guard makes this a safe no-op if the target died
+            // mid-dash.
+            CaptureAttackAnchor(ref state);
+            EnterWindup(ref state);
+        }
 
         var ss = GetSpearState(ref state);
 
@@ -339,11 +355,16 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     {
         SetSpearState(ref state, SpearState.DashingToTarget);
         // EffectiveMoveSpeed * dashSpeedMultiplier is the base, baked in once at dash start (2026-08-13 —
-        // was baseMoveSpeed, see BlitzGloomPD.EnterBlitz's own comment) — HandleDash itself ADDITIONALLY
-        // applies EffectiveAttackSpeed live, every tick, on top of that, so this dash speeds up/slows down
-        // in real time right alongside every other attack-speed-scaled part of this attack, not just at
-        // dash start.
-        StartDashToTarget(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, preferredRange / 2f);
+        // was baseMoveSpeed, see BlitzGloomPD.EnterBlitz's own comment) — HandleOffsetChase itself
+        // ADDITIONALLY applies EffectiveAttackSpeed live, every tick, on top of that, so this speeds up/
+        // slows down in real time right alongside every other attack-speed-scaled part of this attack, not
+        // just at dash start.
+        //
+        // 180° — chases a point BETWEEN Spear and the target (stops preferredRange/2f short of the target's
+        // own live position), continuously re-tracked instead of snapshotted once (2026-08-26, was
+        // StartDashToTarget — a fast player could just outrun a snapshotted destination). See
+        // EnemyBasePD.StartOffsetChase's own doc comment for the full angular convention.
+        StartOffsetChase(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, preferredRange / 2f, 180f);
     }
 
     private void EnterPostStab(ref State state)

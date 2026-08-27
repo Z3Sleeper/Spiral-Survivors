@@ -672,7 +672,7 @@ MonoBehaviour:
   betweenSpinPause: 0.25
   postSpinPause: 0.5
   attacksPerAttack: 1
-  dashSpeedMultiplier: 4
+  dashSpeedMultiplier: 2
   attackCooldown: 5
   attacksPerAttackTierGrowth: 1
   _windupIndicator: {fileID: 6342366828183147542}

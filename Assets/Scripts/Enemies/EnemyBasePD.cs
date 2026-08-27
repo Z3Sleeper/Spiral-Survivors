@@ -377,13 +377,29 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public float slowTimer;
     public float slowMultiplier;
     public bool atPreferredRange;
-    // Set the first tick a BACKPEDALING enemy (distToTarget < preferredRange) is found truly outside the
-    // playable area's raw boundary — see HandleMovement's own doc comment for the full bounds-restriction
-    // design this drives. Cleared either once this enemy has walked back past wallMargin (hysteresis — see
-    // that same comment) or the instant it no longer wants to backpedal at all (distToTarget >= preferredRange,
-    // checked every tick regardless of position). Never touched by melee enemies (preferredRange == 0) —
-    // they always chase, this scenario can't apply to them.
+    // Set the first tick an enemy with a preferredRange concept is found BOTH backpedaling AND truly outside
+    // the playable area's raw boundary — see HandleMovement's own doc comment for the full bounds-restriction
+    // design this drives, and for why the trigger is backpedal-gated (2026-08-26 fix — restores the original
+    // design intent: enemies are deliberately spawned outside the boundary on purpose, so a plain position-
+    // only trigger was wrongly firing on ordinary APPROACH too, e.g. immediately on spawn). Cleared only once
+    // this enemy has walked back past wallMargin (TryGetInwardSteering itself returns false) — the RELEASE
+    // check runs every tick regardless of approach-vs-retreat (only the initial TRIGGER is backpedal-gated),
+    // so an enemy that clears the margin purely by chase-strafing still correctly un-flags instead of staying
+    // stuck strafing long after it's actually safe. While set, BOTH approach and retreat movement strafe
+    // instead of moving straight at/away from the target. Never touched by melee enemies (preferredRange == 0)
+    // — they always chase, this scenario can't apply to them.
     public bool boundsRestricted;
+    // Locked the SAME tick boundsRestricted is first set, never re-derived until it clears (2026-08-26,
+    // fixes corner-clustering — see HandleMovement's own doc comment). Which of the two tangential
+    // perpendiculars to strafe along used to be re-decided every tick (whichever faced further from the
+    // target); near a polygon corner, the single-nearest-edge math PlayableAreaPD.TryGetInwardSteering uses
+    // can make its own returned direction swing sharply as the enemy crosses the corner's own bisector,
+    // and re-deciding "which perpendicular" every tick against a moving `dir` created a feedback loop
+    // (flip -> move -> flip back -> move back) that visibly stalled enemies right at corners. Locking this
+    // once and always resolving the SAME fixed side against whatever the current boundsDir happens to be
+    // keeps the wall-following geometry fully reactive (still correctly hugs whichever wall is actually
+    // nearest) while removing the unstable re-comparison that caused the oscillation.
+    public bool boundsStrafeClockwise;
     // Hard gate on HandleMovement — see IEnemyPD.SetMovementDisabled's own doc comment for the full
     // reasoning (why this exists, who's expected to call it, and what it does/doesn't affect).
     public bool movementDisabled;
@@ -437,6 +453,28 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public Vector3 dashDirection;
     public Vector3 dashDestination;
     public float    dashSpeed;
+    // Sibling to isDashing above (2026-08-26) — for StartOffsetChase/HandleOffsetChase, which chases a
+    // LIVE, target-relative offset point every tick instead of a destination snapshotted once at start
+    // (see those methods' own doc comments for the full "why" — the old dash-to-a-fixed-point shape let a
+    // fast player simply outrun it). Reuses dashSpeed above for its own speed; does NOT reuse
+    // dashDirection/dashDestination, since this recomputes both fresh every tick from live target position
+    // rather than persisting a stale snapshot across ticks.
+    public bool  isOffsetChasing;
+    public float chaseOffsetDistance;
+    // Locked the SAME tick StartOffsetChase is called, never re-derived afterward (2026-08-26 fix — used to
+    // be recomputed live every tick from the dasher's own CURRENT position relative to the target, which
+    // becomes unstable as the dasher closes distance: two nearby points produce a wildly swinging direction
+    // from small movements, collapsing the offset toward the target instead of holding a stable side — this
+    // was confirmed live as the exact reason DaggerGloomPD kept rushing the player and getting stuck at/
+    // inside them instead of ever reaching its intended far-side landing point). World-space unit direction
+    // (not the raw angle — the angle is only ever needed once, at the moment of locking, see
+    // StartOffsetChase's own doc comment) — HandleOffsetChase reads this directly every tick and applies it
+    // against the target's LIVE position, so the destination still slides along with a moving target; only
+    // the SIDE/direction of the offset itself is fixed, never the position it resolves to. 0° locks onto the
+    // dasher->target bearing at that instant (continues straight past the target, e.g. DaggerGloomPD, ending
+    // up on its far side); 180° is the opposite bearing (stops short, between the dasher and the target,
+    // e.g. SpearGloomPD); any other angle flanks to a side.
+    public Vector3 chaseLockedOffsetDir;
     // Captured once at the start of an "ongoing" attack (dash-to-target, or windup entered directly because
     // already in range) via EnemyBasePD.CaptureAttackAnchor — see that method's own doc comment. Facing
     // during the ongoing window reads THIS, not a live _target, so a mid-attack retarget (taunt/invisible)
@@ -583,13 +621,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // design. Deliberately an inset OFFSET from PlayableAreaPD's own polygon edge, not the literal edge
     // itself — both the "truly outside" trigger and the "cleared the margin" release read off this same
     // value, so it doubles as the hysteresis buffer's own width. Halved from 5 (2026-08-25) — 5 read as an
-    // oversized buffer regardless of the hysteresis rework.
-    public float wallMargin = 2.5f;
-    // How far off the true inward direction a bounds-restricted enemy's strafe sits, in degrees — see
-    // HandleMovement's own strafe-computation comment for the exact slerp math this drives. 0 would be pure
-    // inward (no strafe at all); 90 would be a pure zero-progress perpendicular slide. Confirmed live: 45
-    // (down the middle) was too rigid, 75 (mostly sideways, small inward bias) is the confirmed value.
-    private const float StrafeAngleFromInwardDegrees = 75f;
+    // oversized buffer regardless of the hysteresis rework. private const (2026-08-26, was a public field) —
+    // never tuned per-prefab in the Inspector in practice, so this is code-only now, same as
+    // StrafeRadialWeight below; not referenced anywhere outside this file.
+    private const float WallMargin = 2.5f;
+    // Weight of the radial (toward/away-from-target) component blended into a bounds-restricted enemy's
+    // strafe direction — see HandleMovement's own strafe-computation comment for the full model. Tangential
+    // weight is fixed at 1 (implicit); this purely tunes how much real toward/away progress a strafing enemy
+    // still makes on top of the always-present sideways motion — 0 would be a pure zero-progress perpendicular
+    // slide, 1 would weight radial equally with tangential. Fresh starting point (2026-08-26 full rework,
+    // replacing the old angle-slerp StrafeAngleFromInwardDegrees, confirmed too lenient live even at its last
+    // tuned value of 75° — the slerp had no actual guarantee against occasionally producing a net
+    // toward-target direction depending on arena geometry, which this vector-composition model closes by
+    // construction rather than by finding a better angle).
+    private const float StrafeRadialWeight = 0.5f;
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
@@ -777,7 +822,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // MortarGloomPD/ShooterGloomPD/SpearGloomPD's own dashSpeedMultiplier, KingSpikePD's ChargeSpeed) now
     // reads THIS too (2026-08-13 — used to bypass it entirely, reading baseMoveSpeed directly), baked in
     // once at dash start rather than live like HandleMovement's own per-tick read — see
-    // StartDashToTarget/StartDashToPoint's own doc comment for why: EnemySpawnerPD's tier scaling already
+    // StartDashToPoint/StartOffsetChase's own doc comments for why: EnemySpawnerPD's tier scaling already
     // multiplies baseMoveSpeed and moveSpeed in lockstep, but Boss enrage stacking ONLY ever lands on
     // moveSpeed (via this property), so a dash reading baseMoveSpeed directly never got any faster no
     // matter how enraged/stacked the boss got — confirmed live on King Spike's Charge, its actual threat.
@@ -1448,8 +1493,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (b.isDashing)
             HandleDash(ref state, delta);
 
-        if (!b.isDashing)
-            HandleActiveState(ref state, delta, wasDashing);
+        // Sibling to isDashing above, additive — see EnemyBaseState.isOffsetChasing's own doc comment.
+        // Every enemy that never calls StartOffsetChase leaves this permanently false, so this reduces to
+        // exactly the original isDashing-only behavior for them — zero risk to every other dasher.
+        bool wasOffsetChasing = b.isOffsetChasing;
+        if (b.isOffsetChasing)
+            HandleOffsetChase(ref state, delta);
+
+        if (!b.isDashing && !b.isOffsetChasing)
+            HandleActiveState(ref state, delta, wasDashing || wasOffsetChasing);
 
         // See IEnemyPD.SetKinematic's own doc comment for why this is a defensive re-assertion here rather
         // than an immediate write inside SetKinematic(true) itself — applied AFTER HandleActiveState so it
@@ -1993,8 +2045,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         Vector3 dir = toTarget.normalized;
 
         // Facing always tracks the real target direction, completely unaffected by bounds-restriction below
-        // — only the BACKPEDAL force (computed separately, see backpedalDir below) ever gets redirected. An
-        // enemy that's currently forced to strafe still visibly faces its target throughout, same as it
+        // — only the movement FORCE (approachDir/retreatDir, computed separately below) ever gets redirected.
+        // An enemy that's currently forced to strafe still visibly faces its target throughout, same as it
         // always did.
         if (dir != Vector3.zero)
         {
@@ -2004,38 +2056,52 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         float distToTarget = Vector3.Distance(transform.position, _target.position);
 
-        // Bounds-restriction (2026-08-25, reworked same day from an earlier always-on steering blend that
-        // funneled every spawning enemy into the map's corners — see this method's own git history for that
-        // shape if it's ever relevant again). Scoped ENTIRELY to backpedaling (an enemy actively trying to
-        // maintain/increase distance from its target, i.e. preferredRange > 0 and currently closer than
-        // that) — a chasing enemy (melee, or a ranged enemy currently wanting to close in) is never touched
-        // by any of this, moves exactly as it always did, walls included. That's deliberate: the only way an
-        // enemy can walk itself out of the arena in the first place is by backpedaling away from a player who
-        // keeps closing in, so restricting only that case is sufficient, and leaves the ordinary chase/attack
-        // feel completely unchanged for everything else — this is the "bully a kiting enemy out of bounds"
-        // mechanic, not a general arena-fence.
+        // Bounds-restriction (2026-08-25, reworked 2026-08-26 from an angle-slerp blend that only touched
+        // backpedaling and turned out to have no real guarantee against ever moving toward the target — see
+        // below). Still scoped to preferredRange > 0 (melee enemies have no preferredRange concept and can
+        // never walk themselves out of the arena via this mechanic at all), but no longer scoped to "currently
+        // backpedaling this tick" — a flagged enemy now strafes on BOTH approach and retreat ticks until it
+        // clears the margin, not just retreat ticks (see the 75°-too-lenient live finding this replaced: the
+        // old design let a chasing enemy bypass strafing entirely and walk straight at the player the instant
+        // distToTarget flipped past preferredRange, which looked like it un-stuck itself for free).
         //
-        // b.boundsRestricted is a real predicted-State flag with hysteresis, not a live per-tick check: it's
-        // set the first tick a backpedaling enemy is found truly OUTSIDE the playable area's raw boundary
-        // (not merely within wallMargin of it — see below for why that distinction matters), and ONLY clears
-        // once this enemy has walked all the way back past wallMargin (TryGetInwardSteering itself returns
-        // false) — a one-way buffer: crossing back over the raw edge alone isn't enough, it has to clear the
-        // whole margin. Wanting to chase (distToTarget >= preferredRange) does NOT clear this flag — it just
-        // means nothing reads it this tick, since chasing always uses the plain, unrestricted target direction
-        // regardless of the flag's value. That distinction matters: an enemy that was flagged, chased partway
-        // back in, but stalled somewhere still inside the margin band (never actually reached safety) and then
-        // wants to backpedal AGAIN must still strafe, not freely retreat — if chasing had cleared the flag
-        // outright, this exact case would slip through since it's no longer technically outside the raw
-        // boundary either. While the flag is set, the backpedal force is redirected to a strafe direction
-        // instead of a straight retreat.
-        Vector3 backpedalDir = -dir;
-        if (preferredRange > 0 && distToTarget < preferredRange)
+        // b.boundsRestricted is a real predicted-State flag with hysteresis, not a live per-tick check: set
+        // the first tick this enemy is found truly OUTSIDE the playable area's raw boundary (not merely
+        // within wallMargin of it — urgency01 is exactly 1 only then, see TryGetInwardSteering's own doc
+        // comment), cleared only once it's walked all the way back past wallMargin (TryGetInwardSteering
+        // itself returns false) — a one-way buffer, crossing back over the raw edge alone isn't enough.
+        // Checked/cleared every tick regardless of approach-vs-retreat now (previously gated behind
+        // "currently backpedaling"), so an enemy that clears the margin purely by chase-strafing still
+        // correctly un-flags instead of staying stuck strafing long after it's actually safe.
+        //
+        // The strafe direction itself is an explicit tangential+radial vector composition, not an angle
+        // blend toward the raw inward direction — the old slerp had no actual guarantee against introducing
+        // a toward-target component (if arena-inward happened to partially align with toward-the-player,
+        // slerping far enough toward it could do exactly that, which is what "still ran into the player"
+        // live turned out to be, not just a wrong-angle-number problem). tangential is one of the two
+        // perpendiculars of boundsDir — by construction it has ZERO radial (toward/away-from-target)
+        // component. The radial term is ADDED on top afterward, at reduced weight so strafing stays the
+        // dominant component of motion, and its SIGN always matches THIS branch's own actual intent (+dir
+        // approaching, -dir retreating) — never swapped. That's what makes "never moves toward the target
+        // while retreating" a guaranteed property of the retreat branch regardless of how StrafeRadialWeight
+        // gets tuned, rather than something that happens to hold at one specific angle and quietly breaks at
+        // another.
+        //
+        // WHICH perpendicular is only decided ONCE, the tick boundsRestricted first sets (whichever faces
+        // further from the target at that moment — see boundsStrafeClockwise's own doc comment for why
+        // re-deciding this every tick, against a live boundsDir that can swing sharply near a polygon
+        // corner, caused enemies to visibly oscillate/stall right at corners) — every later tick reuses that
+        // locked choice against a FRESHLY recomputed boundsDir, so it still correctly hugs whichever wall is
+        // actually nearest without re-litigating which side to strafe on.
+        Vector3 approachDir = dir;
+        Vector3 retreatDir  = -dir;
+        if (preferredRange > 0)
         {
             if (PlayableAreaPD.instance == null)
             {
                 b.boundsRestricted = false;
             }
-            else if (!PlayableAreaPD.instance.TryGetInwardSteering(transform.position, wallMargin, out Vector3 boundsDir, out float urgency01))
+            else if (!PlayableAreaPD.instance.TryGetInwardSteering(transform.position, WallMargin, out Vector3 boundsDir, out float urgency01))
             {
                 // Fully clear of the margin buffer (TryGetInwardSteering itself returns false once safely
                 // past it) — release.
@@ -2043,36 +2109,46 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             }
             else
             {
-                // urgency01 is exactly 1 only when truly outside the raw boundary (see TryGetInwardSteering's
-                // own doc comment) — anything less means still inside, just within the margin band, which
-                // should NOT newly trigger this (that was the earlier bug: treating the whole margin band as
-                // unsafe made it an unintentional no-go zone nothing would ever settle inside).
-                if (!b.boundsRestricted && urgency01 >= 0.999f)
+                // Only ever TRIGGERS on a backpedal tick (2026-08-26 fix — restores the original design:
+                // "don't initiate strafing unless they backpedaled while out of bounds or backpedaled to out
+                // of bounds"). Enemies are deliberately spawned outside the playable boundary on purpose (so
+                // they walk in through the wall instead of popping into view), and a plain position-only
+                // trigger was firing for that normal APPROACH too, making a fresh spawn immediately strafe
+                // instead of just walking in. isBackpedaling mirrors the exact same retreat condition the
+                // movement-decision block below uses (atPreferredRange ? distToTarget < preferredRange -
+                // rangeToleranceClose : distToTarget < preferredRange), evaluated fresh every tick — so a
+                // retreat that carries this enemy INTO the boundary still triggers the very tick it crosses
+                // (still "backpedaling" that same tick), covering "backpedaled to out of bounds" too, not
+                // just "backpedaled while ALREADY out of bounds". A fresh spawn placed close enough to
+                // already need to retreat immediately still correctly triggers — that's the same
+                // backpedaling-while-outside case the original design always wanted caught, spawn or not.
+                // urgency01 is exactly 1 only when truly outside the raw boundary — anything less means
+                // still inside, just within the margin band, which should NOT newly trigger this (that was
+                // the earlier bug: treating the whole margin band as unsafe made it an unintentional no-go
+                // zone nothing would ever settle inside).
+                bool isBackpedaling = b.atPreferredRange
+                    ? distToTarget < preferredRange - rangeToleranceClose
+                    : distToTarget < preferredRange;
+
+                if (!b.boundsRestricted && isBackpedaling && urgency01 >= 0.999f)
+                {
                     b.boundsRestricted = true;
+                    Vector3 lockPerpA = new Vector3(-boundsDir.z, 0f, boundsDir.x);
+                    Vector3 lockPerpB = -lockPerpA;
+                    b.boundsStrafeClockwise = Vector3.Dot(lockPerpA, dir) < Vector3.Dot(lockPerpB, dir);
+                }
 
                 if (b.boundsRestricted && boundsDir != Vector3.zero)
                 {
-                    // Pick whichever perpendicular of the inward direction faces further away from the
-                    // target (avoids "strafing" turning into "approaching from a slightly different angle"),
-                    // then blend it toward the true inward direction by StrafeAngleFromInwardDegrees — so
-                    // this is never a zero-progress pure perpendicular slide along the boundary; it's
-                    // guaranteed some real, positive movement back toward safety every tick it's active.
-                    // perpChosen sits exactly 90° from boundsDir, so slerping a fraction `t` of the way from
-                    // perpChosen TOWARD boundsDir lands `(1-t)*90°` away from boundsDir — solved for the
-                    // target angle below. 45° (t=0.5, straight down the middle) read as too rigid live —
-                    // 75° (mostly sideways, only a little inward bias) is the confirmed value.
                     Vector3 perpA = new Vector3(-boundsDir.z, 0f, boundsDir.x);
                     Vector3 perpB = -perpA;
-                    Vector3 perpChosen = Vector3.Dot(perpA, dir) < Vector3.Dot(perpB, dir) ? perpA : perpB;
-                    float strafeSlerpT = 1f - StrafeAngleFromInwardDegrees / 90f;
-                    backpedalDir = Vector3.Slerp(perpChosen, boundsDir, strafeSlerpT).normalized;
+                    Vector3 tangential = b.boundsStrafeClockwise ? perpA : perpB;
+
+                    approachDir = (tangential + dir  * StrafeRadialWeight).normalized;
+                    retreatDir  = (tangential + -dir * StrafeRadialWeight).normalized;
                 }
             }
         }
-        // else: not currently backpedaling this tick (chasing, melee, or exactly at preferred range) —
-        // b.boundsRestricted is deliberately left untouched here, not cleared — see its own doc comment
-        // above for why (chasing never reads it, so leaving it set costs nothing, and correctly preserves
-        // "hasn't reached real safety yet" across a temporary chase).
 
         if (preferredRange > 0)
         {
@@ -2081,20 +2157,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 if (distToTarget > preferredRange + rangeToleranceFar)
                 {
                     b.atPreferredRange = false;
-                    _rigidbody.AddForce(dir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(approachDir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
                 }
                 else if (distToTarget < preferredRange - rangeToleranceClose)
                 {
                     b.atPreferredRange = false;
-                    _rigidbody.AddForce(backpedalDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(retreatDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
                 }
             }
             else
             {
                 if (distToTarget > preferredRange)
-                    _rigidbody.AddForce(dir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(approachDir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
                 else if (distToTarget < preferredRange)
-                    _rigidbody.AddForce(backpedalDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
+                    _rigidbody.AddForce(retreatDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
 
                 if (Mathf.Abs(distToTarget - preferredRange) <= 0.1f)
                     b.atPreferredRange = true;
@@ -2234,21 +2310,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // StartDash call when attack speed changes mid-dash. Baked in once at dash-start, though — a slow or a
     // new enrage stack landing MID-dash doesn't retroactively change an already-launched dash's speed, only
     // the next one.
-    protected void StartDashToTarget(ref TState state, float speed, float stopDistance)
-    {
-        if (_target == null) return;
-        ref var b = ref GetBase(ref state);
-        Vector3 dir = (_target.position - transform.position);
-        dir.y = 0f;
-        dir.Normalize();
-        b.isDashing = true;
-        b.dashDirection = dir;
-        b.dashDestination = _target.position - dir * stopDistance;
-        b.dashDestination.y = transform.position.y;
-        b.dashSpeed = speed;
-        if (_physicsCollider != null) _physicsCollider.enabled = false;
-    }
-
+    //
+    // StartDashToTarget (dash to a point snapshotted from the target's position ONCE at dash-start) was
+    // removed here 2026-08-26 — its one caller, SpearGloomPD, migrated to StartOffsetChase below, which
+    // continuously re-tracks the target instead of snapshotting a point a fast player could just outrun.
+    // StartDashToPoint stays — genuinely different shape, a caller-computed FIXED world point (retreat
+    // points, charge endpoints), still actively used by MortarGloomPD/KingSpikePD/ShooterGloomPD/
+    // BlitzGloomPD.
     protected void StartDashToPoint(ref TState state, float speed, Vector3 destination)
     {
         ref var b = ref GetBase(ref state);
@@ -2278,9 +2346,79 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             return;
         }
 
-        // Live, not baked in at dash-start — see StartDashToTarget/StartDashToPoint's own doc comment.
+        // Live, not baked in at dash-start — see StartDashToPoint's own doc comment.
         _rigidbody.velocity = b.dashDirection * b.dashSpeed * EffectiveAttackSpeed;
         _rigidbody.MoveRotation(Quaternion.LookRotation(b.dashDirection));
+    }
+
+    // Chases a LIVE, target-relative offset POSITION every tick instead of a destination snapshotted once
+    // at start (see EnemyBaseState.isOffsetChasing's own doc comment for why — the old dash-to-a-fixed-point
+    // shape let a fast player simply outrun it). speed follows the same "already excludes attack-speed
+    // scaling" convention as StartDashToPoint's own speed param above — HandleOffsetChase applies
+    // EffectiveAttackSpeed live, every tick, same as HandleDash does.
+    //
+    // offsetDirectionDegrees is measured relative to the dasher→target bearing AT THIS EXACT MOMENT, rotated
+    // around the world-up axis, and LOCKED into b.chaseLockedOffsetDir from here on (2026-08-26 fix — see
+    // that field's own doc comment for the live-recompute instability this replaced). 0° locks onto
+    // continuing straight past the target (e.g. DaggerGloomPD, ending up on its far side from wherever it
+    // approached from); 180° locks onto stopping short, at a point BETWEEN the dasher and the target (e.g.
+    // SpearGloomPD); any other angle flanks to a side. Confirmed as the correct generalization by reading
+    // both enemies' old dash-to-a-snapshotted-point math: Spear dashed to
+    // `target.position - dir * stopDistance` (dir = dasher→target) which is exactly the 180° case;
+    // Dagger dashed to `target.position + dir * offset` which is exactly the 0° case — same formula, only
+    // the angle differs. Only the DIRECTION is locked here — HandleOffsetChase still re-applies it against
+    // the target's live position every tick, so the destination itself keeps tracking a moving target.
+    protected void StartOffsetChase(ref TState state, float speed, float offsetDistance, float offsetDirectionDegrees)
+    {
+        if (_target == null) return;
+        ref var b = ref GetBase(ref state);
+        b.isOffsetChasing = true;
+        b.dashSpeed = speed;
+        b.chaseOffsetDistance = offsetDistance;
+
+        Vector3 toTarget = _target.position - transform.position;
+        toTarget.y = 0f;
+        if (toTarget.sqrMagnitude < 0.0001f) toTarget = transform.forward;
+        toTarget.Normalize();
+        b.chaseLockedOffsetDir = Quaternion.AngleAxis(offsetDirectionDegrees, Vector3.up) * toTarget;
+
+        if (_physicsCollider != null) _physicsCollider.enabled = false;
+    }
+
+    // Small, not exposed — the only 3 params either caller needs are speed/distance/direction (above);
+    // arrival tolerance is an implementation detail, not something either enemy needs to tune per-attack.
+    private const float OffsetChaseArriveTolerance = 0.25f;
+
+    protected void HandleOffsetChase(ref TState state, float delta)
+    {
+        ref var b = ref GetBase(ref state);
+        if (_target == null || b.isDead)
+        {
+            b.isOffsetChasing = false;
+            _rigidbody.velocity = Vector3.zero;
+            if (_physicsCollider != null && !b.isDead) _physicsCollider.enabled = true;
+            return;
+        }
+
+        // b.chaseLockedOffsetDir was fixed once, back at StartOffsetChase — never re-derived here, see that
+        // field's own doc comment. Only the POSITION this resolves to tracks the target live (below).
+        Vector3 liveDestination = _target.position + b.chaseLockedOffsetDir * b.chaseOffsetDistance;
+
+        Vector3 toDestination = liveDestination - transform.position;
+        toDestination.y = 0f;
+
+        if (toDestination.magnitude <= OffsetChaseArriveTolerance)
+        {
+            b.isOffsetChasing = false;
+            _rigidbody.velocity = Vector3.zero;
+            if (_physicsCollider != null) _physicsCollider.enabled = true;
+            return;
+        }
+
+        Vector3 moveDir = toDestination.normalized;
+        // Live, same "not baked in at start" treatment HandleDash's own EffectiveAttackSpeed multiply uses.
+        _rigidbody.velocity = moveDir * b.dashSpeed * EffectiveAttackSpeed;
+        _rigidbody.MoveRotation(Quaternion.LookRotation(moveDir));
     }
 
     protected Vector3 SnapFaceTarget(ref TState state)
@@ -2753,6 +2891,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (_isDead || !CanBeInterrupted) return false;
 
         B.isDashing = false;
+        // Sibling to isDashing above — without this, interrupting an enemy mid-offset-chase (e.g. Spear/
+        // Dagger's own DashingToTarget state) would leave isOffsetChasing stuck true forever: Simulate()'s
+        // own tick loop only ever calls HandleActiveState once BOTH isDashing and isOffsetChasing read
+        // false, so a leaked true here would permanently block it from ever running again for this enemy.
+        B.isOffsetChasing = false;
 
         if (_rigidbody != null)
         {

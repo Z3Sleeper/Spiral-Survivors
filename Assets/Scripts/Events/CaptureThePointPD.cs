@@ -38,18 +38,6 @@ public class CaptureThePointPD : EventBasePD<CaptureThePointPD.State>
 
     [Header("Zone")]
     [SerializeField] private float zoneRadius = 5f;
-    // Minimum fraction (0-1) of the zone's own circle that must be clear of every PlayableAreaPD inner
-    // obstruction for a candidate placement to be valid — see PlayableAreaPD.RandomPoint's own doc comment.
-    // Default 0.5 (at least half clear) lets a big zone legitimately overlap a small obstacle instead of
-    // being blocked outright by it, while still rejecting a spot that's mostly sitting inside one. Does NOT
-    // apply to the outer boundary/walls — those stay a hard requirement regardless (see EventBasePD's own
-    // shared wallOffset field).
-    [SerializeField] private float minUnobstructedFraction = 0.5f;
-    // How many independent valid candidates PlayableAreaPD.RandomPoint samples before picking whichever one
-    // ends up farthest from the playable area's own center — see that method's own doc comment for the full
-    // "tournament bias" reasoning. 1 = no bias (whatever's found first); higher pulls the zone further toward
-    // the edges on average, with diminishing returns as it climbs.
-    [SerializeField] private int outwardBiasSamples = 5;
     // Radial indicator (a cylinder, same IndicatorMath.ApplyRadialTransform convention every other radius
     // telegraph in this codebase uses) — purely visual, sized once at OnEventStart since zoneRadius never
     // changes mid-event.
@@ -67,22 +55,22 @@ public class CaptureThePointPD : EventBasePD<CaptureThePointPD.State>
 
     private void Awake() => _predictedTransform = GetComponent<PredictedTransform>();
 
-    // Places the zone via PlayableAreaPD.RandomPoint (null-safe — see IEventPD.OnEventStart's own doc
-    // comment; if no PlayableAreaPD exists yet, the zone just stays wherever EventManagerPD spawned it) —
-    // wallOffset (inherited from EventBasePD) keeps the zone's own CENTER a hard distance from any wall (its
-    // own edge is free to reach the wall itself), minUnobstructedFraction lets it softly overlap a small
-    // inner obstruction (see PlayableAreaPD.RandomPoint's own doc comment for the full outer-vs-inner
-    // distinction). Resets all per-life State explicitly (defensive — matches this
-    // codebase's "reset on spawn regardless of whether pooling is actually involved" convention) rather than
-    // trusting GetInitialState()'s own defaults alone.
+    // Places the zone via a verbatim pick from EventManagerPD's own hand-authored eventSpawnPoints
+    // (2026-08-27 — was PlayableAreaPD.RandomPoint; see PlayableAreaPD.GetInsetPerimeter's own doc comment
+    // for why that whole procedural-placement approach was abandoned project-wide). Deliberately does NOT
+    // pass avoidPlayers — confirmed intentional, not the pre-existing RandomPoint call's omission carried
+    // forward by accident: this zone has no physical body/collider, so spawning on top of a player is
+    // harmless. Resets all per-life State explicitly (defensive — matches this codebase's "reset on spawn
+    // regardless of whether pooling is actually involved" convention) rather than trusting GetInitialState()'s
+    // own defaults alone.
     public override void OnEventStart(PlayableAreaPD playableArea, int currentTier)
     {
         // Shows the shared event description panel — see EventBasePD.OnEventStart's own doc comment.
         base.OnEventStart(playableArea, currentTier);
 
-        if (playableArea != null)
+        if (EventManagerPD.instance != null && EventManagerPD.instance.TryGetEventSpawnPoint(out var p))
         {
-            transform.position = playableArea.RandomPoint(wallOffset, zoneRadius, minUnobstructedFraction, outwardBiasSamples: outwardBiasSamples);
+            transform.position = p;
             // Required after any direct position assignment on an object with PredictedTransform — per
             // PurrNet's own guidance (https://purrnet.dev/docs/client-side-prediction/built-in-components/
             // predicted-transform), same fix BWBlinkAbilityPD.Activate() already applies for its own instant
