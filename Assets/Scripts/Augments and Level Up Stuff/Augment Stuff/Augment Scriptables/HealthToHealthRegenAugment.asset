@@ -13,9 +13,10 @@ MonoBehaviour:
   m_Name: HealthToHealthRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Persevere</color>
-  description: 'Gain <color=#7DFF00>{LiveBonusHealthRegenRatio}</color><color=#FFA000>(<color=#00FF00>{bonusHealthToHealthRegenPercent}%
-    of your Bonus Health</color>)</color> <color=#7DFF00>Health Regen</color>, <color=#FFA000>doubled</color>
-    while below half <color=#00FF00>Health</color>.
+  description: 'Gain <color=#7DFF00>{LiveBonusHealthRegenRatio}</color> <color=#7DFF00>Health
+    Regen</color> <color=#FFA000>(<color=#00FF00>{bonusHealthToHealthRegenPercent}%
+    of your Bonus Health</color>)</color>, <color=#FFA000>doubled</color> while below
+    half <color=#00FF00>Health</color>.
 
     <color=#00FF00>+20 Max Health</color>'
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
@@ -29,3 +30,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

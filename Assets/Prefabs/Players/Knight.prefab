@@ -94,12 +94,11 @@ MonoBehaviour:
 
     <color=#FFFF00>Berserk
     Surge</color> and <color=#FFA000>Taunt</color> enemies during it.'
-  cooldown: 20
+  cooldown: 30
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 0
-  isActionAbility: 1
 --- !u!114 &7584897366354843561
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -117,12 +116,12 @@ MonoBehaviour:
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     Gain
-    <color=#FFA000>+50% Size</color>, <color=#3278FF>+50% Range</color>, <color=#00FF00>+{maxHealthPercent}%
-    Max Health</color> and <color=#FFA000>+{damageReductionPercent}% Damage Reduction</color>
-    for <color=#FFA000>{duration} seconds</color>.
+    <color=#FFA000>+{sizePercent}% Size</color>, <color=#3278FF>+{rangePercent}%
+    Range</color> and <color=#00FF00>+{maxHealthPercent}% Max Health</color> for
+    <color=#FFA000>{duration} seconds</color>.
 
-    <color=#FFA000>(AoE) On End
-    or Recast:</color> <color=#FFA000>Interrupt, Stun and Knockback</color> all nearby
+    <color=#FFA000>(AoE) On End or
+    Recast:</color> <color=#FFA000>Interrupt, Stun and Knockback</color> all nearby
     enemies in a <color=#3278FF>1.25x Range radius</color> for <color=#FFA000>{LiveStunDurationRatio}seconds</color>.'
   cooldown: 20
   cooldownStartsOnCast: 0
@@ -130,10 +129,8 @@ MonoBehaviour:
   tags:
   - AoE Effect
   activeSurgeBlock: 0
-  isActionAbility: 0
   duration: 8
-  maxHealthPercent: 0.15
-  damageReductionPercent: 0.15
+  maxHealthPercent: 0.25
   rangePercent: 0.25
   sizePercent: 0.25
   recastBlockDuration: 0.5

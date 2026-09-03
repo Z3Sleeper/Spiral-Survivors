@@ -57,9 +57,6 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
-    // Action — see IAbilityPD.IsActionAbility's own doc comment (also ActiveSurgeBlock — the two flags are
-    // independent, this one just happens to be both). Exposed for live playtesting.
-    [SerializeField] private bool isActionAbility = true;
 
     [Header("Effect")]
     // Cast range = true weapon reach (orbit radius + blade length, already included — see
@@ -150,7 +147,6 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // comment), so it never locks dash or the other ability slot out while active.
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     public bool AbilityIsActive => GetPhase(ref currentState) != Phase.Idle;
     // True, but ActiveTimeRemaining/ActiveTimeDuration below don't map onto a single linear countdown the
     // way every other ability's does — Outbound/Return are travel-distance-driven (no fixed length, depends
@@ -287,6 +283,8 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     }
 
     public void NotifyActivationBlocked() { }
+    // Never sets its own ActiveSurgeBlock true — see IAbilityPD.CancelActiveWindow's own doc comment.
+    public void CancelActiveWindow() { }
 
     protected override void Simulate(ref State state, float delta)
     {

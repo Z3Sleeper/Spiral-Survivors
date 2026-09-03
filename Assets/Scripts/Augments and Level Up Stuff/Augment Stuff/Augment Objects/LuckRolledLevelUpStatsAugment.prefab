@@ -44,4 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f72599f098b0b0e4083bb8d2f085d004, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LuckRolledLevelUpStatsAugment
-  highrollBonusScale: 0.1
+  highrollBonusScale: 0.05
+  effectiveness: 0.5

@@ -31,6 +31,18 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
 
     [SerializeField] private Vector3 bladeHalfExtents = new(0.1f, 0.1f, 0.5f);
     [SerializeField] private Renderer[] _renderers;
+    // Whichever shader property actually drives this model's own base/tint color — URP Lit uses "_BaseColor",
+    // Built-in/most Unlit shaders use "_Color". Left Inspector-configurable rather than hardcoded since this
+    // script has no visibility into which shader the blade's own material actually uses — verify against the
+    // real material and retune here if the tint doesn't visibly apply.
+    [SerializeField] private string colorPropertyName = "_BaseColor";
+
+    // Reused across every SetColor call (both this instance's own repeated Summon()s via pooling, and every
+    // other PhantomBladePD instance) — MaterialPropertyBlock is a plain reusable buffer object, not
+    // per-material state, so a single static instance is safe and avoids a per-summon allocation. Applied via
+    // Renderer.SetPropertyBlock rather than Renderer.material (which would instantiate a unique material
+    // copy per blade — real GC/draw-call cost at swarm scale, see feedback_multiplayer_scale_reminder).
+    private static MaterialPropertyBlock _mpb;
 
     private CharacterStatsPD _owner;
     private Vector3 _baseScale;
@@ -68,7 +80,9 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // Called by whatever spawns this (e.g. PhantomBladeOnCritAugment) immediately after hierarchy.Create()
     // returns — synchronous and deterministic, same "mutate currentState right after Create()" pattern as
     // WeaponRangedProjectilePD.Launch(). damage/sizeMultiplier are captured once here, not re-read live
-    // later, matching old's Init()/ApplySize() baking size into speed/range once at spawn.
+    // later, matching old's Init()/ApplySize() baking size into speed/range once at spawn. color is purely
+    // cosmetic (ApplyColor) — lets each summoning augment tint its own blades distinctly, see
+    // PhantomBladeSummonHelper's own doc comment for where that per-augment color actually comes from.
     //
     // BaseSpawnRadius * sizeMultiplier is the same distance the caller used (or should use, via
     // BaseSpawnRadius directly) to place the spawn point away from the target, along the straight line the
@@ -76,9 +90,11 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // again to end up radius past it on the opposite side). Speed is derived from that distance and the
     // fixed travelTime, rather than travelTime being derived from a fixed speed, so every blade takes the
     // same time to finish its flight regardless of size.
-    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit, float baseDamageMultiplier)
+    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit, float baseDamageMultiplier, Color color)
     {
         float radius = BaseSpawnRadius * sizeMultiplier;
+
+        ApplyColor(color);
 
         _owner = owner;
         _damage = damage;
@@ -181,6 +197,25 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         if (_renderers == null) return;
         for (int i = 0; i < _renderers.Length; i++)
             if (_renderers[i] != null) _renderers[i].enabled = value;
+    }
+
+    // Re-applied every Summon() (2026-09-01) — lets each Phantom Blade augment tint its own blades a
+    // distinct color (PhantomBladeSummonHelper threads a per-augment Color through). SetPropertyBlock, not
+    // Renderer.material, so this never instantiates a unique material copy per blade (real cost at swarm
+    // scale — see feedback_multiplayer_scale_reminder) — every blade shares the same material asset, just
+    // with a per-renderer property override layered on top, same convention Unity's own per-instance-color
+    // examples use.
+    private void ApplyColor(Color color)
+    {
+        if (_renderers == null) return;
+        _mpb ??= new MaterialPropertyBlock();
+        for (int i = 0; i < _renderers.Length; i++)
+        {
+            if (_renderers[i] == null) continue;
+            _renderers[i].GetPropertyBlock(_mpb);
+            _mpb.SetColor(colorPropertyName, color);
+            _renderers[i].SetPropertyBlock(_mpb);
+        }
     }
 
     protected override void UpdateView(State viewState, State? verified)

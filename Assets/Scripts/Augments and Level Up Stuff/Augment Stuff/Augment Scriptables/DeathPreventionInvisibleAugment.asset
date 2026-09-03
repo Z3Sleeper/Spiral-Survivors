@@ -13,14 +13,14 @@ MonoBehaviour:
   m_Name: DeathPreventionInvisibleAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFFFF>Fakeout</color>
-  description: '<color=#FF0050>+60% Attack Speed</color> while <color=#FFA000>Invisible</color>.
+  description: '<color=#FF0050>+20% Attack Speed</color>, increased to <color=#FF0050>60%</color>
+    while <color=#FFA000>Invisible</color>.
 
-    Gain
-    <color=#FFFFFF>Death Prevention</color>.
+    Gain <color=#FFFFFF>Death Prevention</color>.
 
-    <color=#FFA000>On <color=#FFFFFF>Death
-    Prevented</color>:</color> Become <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>5
-    Move Speed</color> for <color=#FFA000>3 seconds</color>.
+    <color=#FFA000>On
+    <color=#FFFFFF>Death Prevented</color>:</color> Become <color=#FFA000>Invisible</color>
+    and gain <color=#FFFFFF>3 Move Speed</color> for <color=#FFA000>3 seconds</color>.
 
     <color=#FFBE50><i>If
     you already have Death Prevention, -25% cooldown.</i></color>'

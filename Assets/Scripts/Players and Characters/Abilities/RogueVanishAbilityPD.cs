@@ -35,29 +35,24 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
-    // Buff — only flips invisibility/movespeed for its own duration, doesn't otherwise act on the world.
-    // Exposed for live playtesting — see IAbilityPD.IsActionAbility's own doc comment.
-    [SerializeField] private bool isActionAbility = false;
 
     [Header("Effect")]
     public float duration = 3f;
-    public float moveSpeedTotalPercent = 0.5f;
+    // Flat, not Total-tier percent (2026-08-31, was moveSpeedTotalPercent) — user preference, flat over
+    // percent for stat buffs (see feedback_flat_over_percent_buffs). Renaming the field resets any
+    // Inspector-tuned override back to this default — intentional here, not an accidental loss, since the
+    // whole point of this change is moving off the old percent value entirely.
+    public float moveSpeedFlat = 3f;
 
     private CharacterStatsPD _stats;
-    // Flat — not scaled by anything (see Activate()'s own comment), so this is just a plain snapshot of the
-    // field at cast time rather than recomputed live at both Activate() and the end-of-active reversal — same
+    // Not scaled by anything (see Activate()'s own comment), so this is just a plain snapshot of the field
+    // at cast time rather than recomputed live at both Activate() and the end-of-active reversal — same
     // "fixed for the whole active window" reasoning as RogueSpinAbilityPD's own cast-time snapshots
     // (_weaponCountAtCast etc).
-    private float _appliedMoveSpeedTotalPercent;
+    private float _appliedMoveSpeedFlat;
     // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
     // this fixed rather than reading the raw duration field live, in case it changes mid-buff.
     private float _appliedDuration;
-
-    // The local-only screen tint toggle routes through PredictedEvent, not a raw call directly in
-    // Simulate()/Activate() — same reasoning as every other one-shot side effect in this codebase: a
-    // resimulated tick could otherwise retrigger it multiple times.
-    private PredictedEvent _onActiveStarted;
-    private PredictedEvent _onActiveEnded;
 
     protected override State GetInitialState() => default;
 
@@ -66,31 +61,12 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         _stats = GetComponent<CharacterStatsPD>();
     }
 
-    protected override void LateAwake()
-    {
-        base.LateAwake();
-        _onActiveStarted = new PredictedEvent(predictionManager, this);
-        _onActiveStarted.AddListener(() =>
-        {
-            // Only the local owning client's own screen shows the tint — LocalUIManagerPD is already
-            // scoped to whichever player this machine owns, so gating on isOwner here is sufficient.
-            if (isOwner) LocalUIManagerPD.instance?.SetInvisibleTintVisible(true);
-        });
-
-        _onActiveEnded = new PredictedEvent(predictionManager, this);
-        _onActiveEnded.AddListener(() =>
-        {
-            if (isOwner) LocalUIManagerPD.instance?.SetInvisibleTintVisible(false);
-        });
-    }
-
     public bool IsReady => _stats != null && !currentState.isActive && currentState.cooldownTimer <= 0f;
     public bool IsActive => currentState.isActive;
     // Only ever flips invisibility/movespeed — never touches movement, so it never locks dash or the
     // other ability slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole invisibility buff) — see
     // IAbilityPD.AbilityIsActive's own doc comment for why these are separate interface members even
     // though they agree here.
@@ -152,10 +128,10 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     {
         if (!IsReady || _stats == null) return;
 
-        // No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedTotalPercent are both plain,
+        // No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedFlat are both plain,
         // fixed values now.
-        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent;
-        _appliedDuration              = duration;
+        _appliedMoveSpeedFlat = moveSpeedFlat;
+        _appliedDuration      = duration;
 
         currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;
@@ -175,9 +151,8 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         // DeathPreventionInvisibleAugment) never gets cut short by this ability's own end-of-buff turning it
         // off early. See CharacterStatsPD.GrantInvisibility's own doc comment.
         _stats.GrantInvisibility(_appliedDuration);
-        _stats.AddMoveSpeedTotalPercent(_appliedMoveSpeedTotalPercent);
+        _stats.AddMoveSpeedFlat(_appliedMoveSpeedFlat);
 
-        _onActiveStarted.Invoke();
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
         // Skipped entirely at 0 (raw, un-hasted) cooldown — an ability that can be spammed with no downtime
         // shouldn't be firing "a real ability cast" notifications on every cycle (PhantomBladeOnAbilityStartAugment
@@ -186,6 +161,8 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     }
 
     public void NotifyActivationBlocked() { }
+    // Never sets its own ActiveSurgeBlock true — see IAbilityPD.CancelActiveWindow's own doc comment.
+    public void CancelActiveWindow() { }
 
     protected override void Simulate(ref State state, float delta)
     {
@@ -212,9 +189,10 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         // Invisibility itself is deliberately NOT turned off here — it's left to CharacterStatsPD's own
         // shared invisibleTimer to expire naturally (see GrantInvisibility's own doc comment), so it isn't
         // cut short if some other source is still relying on it. Only this ability's own Move Speed grant
-        // reverts here, since that's exclusively this ability's to give and take back.
-        _stats?.AddMoveSpeedTotalPercent(-_appliedMoveSpeedTotalPercent);
-        _onActiveEnded.Invoke();
+        // reverts here, since that's exclusively this ability's to give and take back. The screen tint/model
+        // fade are no longer this ability's own concern either (2026-08-31) — see CharacterStatsPD.
+        // UpdateView's own invisible-flag-driven block, which now handles both generically for any source.
+        _stats?.AddMoveSpeedFlat(-_appliedMoveSpeedFlat);
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);

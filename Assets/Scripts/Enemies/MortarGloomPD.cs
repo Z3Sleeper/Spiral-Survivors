@@ -94,12 +94,12 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     // Max rate the hazard's own tracked DISTANCE (from the firer) can close/open during Windup (2026-08-23)
     // — same rate-cap idea as rotationRateDegPerSecond above, just for the radial component instead of the
     // angular one ("Z tracking" — distance snapped instantly before this, only the bearing swing was
-    // capped). No established precedent to tune against yet, so this starts at 10 (player base move speed)
-    // and is expected to get retuned once actually tested. Tier-scaled by rotationRateDegPerSecondTierGrowth
+    // capped). Started at 10 (player base move speed), lowered to 5 (2026-08-28) after live testing — same
+    // change applied to LeaperGloomPD's identical field. Tier-scaled by rotationRateDegPerSecondTierGrowth
     // (2026-08-23) — deliberately reusing the SAME growth rate as rotationRateDegPerSecond rather than a
     // separate tunable, pending confirmation the two should actually tune identically; split into its own
     // *TierGrowth field later if not.
-    [SerializeField] private float distanceTrackingRateUnitsPerSecond = 10f;
+    [SerializeField] private float distanceTrackingRateUnitsPerSecond = 5f;
     private float _authoredDistanceTrackingRateUnitsPerSecond;
 
     [Header("Projectile VFX (cosmetic only — zero gameplay effect)")]
@@ -368,14 +368,35 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     // both untouched and letting the very next tick immediately re-windup with whatever strikes were left.
     protected override void OnInterrupted()
     {
-        if (GetMortarState(ref currentState) == MortarState.Windup)
-        {
-            var go = hierarchy.GetGameObject(currentState.pendingHazardId);
-            if (go != null && go.TryGetComponent(out MortarHazardPD hazard)) hazard.Cancel();
-        }
+        CancelPendingHazardIfWindingUp();
         currentState.strikesRemaining    = 0;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         EnterMoving(ref currentState);
+    }
+
+    // Shared by OnInterrupted() above and Die() below (2026-08-29) — the Mortar itself dying mid-Windup
+    // needs to cancel that strike's pending hazard for the exact same reason an interrupt does: without
+    // this, the hazard (which deliberately "lives independently... will still detonate even if the Mortar
+    // that spawned it has since died," per MortarHazardPD's own class doc comment) kept charging and firing
+    // a projectile from the dead Mortar's last position — live-tested, this was happening far too often to
+    // treat as an acceptable edge case. Windup-only gated, same as OnInterrupted's own check — during
+    // Fire/PostFire the hazard is already committed/permanent, so a death landing near-simultaneously with
+    // Fire is explicitly still fine to let ride (already addressed separately, per explicit design).
+    // Both call sites are Simulate()-context-safe for this predicted-state mutation (hazard.Cancel() writes
+    // currentState.cancelled): Interrupt() itself documents "mutates currentState out-of-band, from a
+    // different identity's own Simulate() call," and Die() is called synchronously from within TakeDamage(),
+    // also Simulate()-context — NOT from OnDeathStop()/UpdateView(), which would be unsafe.
+    private void CancelPendingHazardIfWindingUp()
+    {
+        if (GetMortarState(ref currentState) != MortarState.Windup) return;
+        var go = hierarchy.GetGameObject(currentState.pendingHazardId);
+        if (go != null && go.TryGetComponent(out MortarHazardPD hazard)) hazard.Cancel();
+    }
+
+    protected override void Die()
+    {
+        base.Die();
+        CancelPendingHazardIfWindingUp();
     }
 
     // ── Hazard + VFX spawn ──────────────────────────────────────────────────

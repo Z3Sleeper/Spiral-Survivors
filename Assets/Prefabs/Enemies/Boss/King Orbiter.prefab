@@ -348,15 +348,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::KingOrbiterPD
   _rigidbody: {fileID: 3081874023962065944}
   enemyName: King Orbiter
-  moveSpeed: 11
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
-  maxHealth: 7500
+  maxHealth: 5000
   preferredRange: 10
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 5
+  backpedalDisabled: 1
+  damage: 10
   xpValue: 500
+  pointsValue: 500
   size: 3
   contactColliderEnabled: 0
   stunResistant: 0
@@ -370,8 +372,8 @@ MonoBehaviour:
   invulnerableShell: {fileID: 6503409208411732999}
   pullDamageMultiplier: 2
   orbitDamageMultiplier: 1
-  shootingDamageMultiplier: 1
-  grabRadius: 25
+  shootingDamageMultiplier: 2
+  grabRadius: 40
   windupDuration: 1
   pullDuration: 0.25
   pullSequentialDelay: 0.25
@@ -392,18 +394,17 @@ MonoBehaviour:
   knockbackFill: {fileID: 2439814448506603801}
   shootingRange: 40
   shotWindupDuration: 1
-  shotSpeed: 50
+  shotSpeed: 30
   shootSequentialDelay: 0.25
-  rotationRateDegPerSecond: 45
+  rotationRateDegPerSecond: 30
   persistentShotInterval: 3
   attackCooldown: 5
   pullSequentialDelayTierGrowth: 0.2
   innerCountTierGrowth: 1
   middleCountTierGrowth: 2
   outerCountTierGrowth: 3
-  knockbackChargeTimeTierGrowth: 0.2
   shotSpeedTierGrowth: 0.2
-  rotationRateDegPerSecondTierGrowth: 0.2
+  rotationRateDegPerSecondTierGrowth: 0.05
   pullIndicatorTemplate: {fileID: 2918981062249959320}
   lineIndicatorPrefab: {fileID: 406232483664354483, guid: 693ec9794847820498ff377b98d29cf8, type: 3}
 --- !u!135 &2131989495178621505

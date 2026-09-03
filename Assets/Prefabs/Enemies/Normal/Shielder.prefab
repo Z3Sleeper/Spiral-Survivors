@@ -244,15 +244,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ShielderGloomPD
   _rigidbody: {fileID: 3342080922387083965}
   enemyName: Shielder
-  moveSpeed: 10
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
-  maxHealth: 150
+  maxHealth: 75
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  backpedalDisabled: 0
   damage: 5
   xpValue: 5
+  pointsValue: 5
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -266,17 +268,17 @@ MonoBehaviour:
   invulnerableShell: {fileID: 3093178901737976177}
   shieldPrefab: {fileID: 104351452379949711, guid: c3e2e5e625c4f434cacd43fbb31463dd, type: 3}
   orbitRadius: 0.75
-  rotationRateDegPerSecond: 45
+  rotationRateDegPerSecond: 30
   attackRange: 4
   attackWidth: 1.4
   windupDuration: 1
   releaseDuration: 0.1
-  shieldburstDamageMultiplier: 1
+  shieldburstDamageMultiplier: 2
   shieldContactDamageMultiplier: 0.5
   contactCooldownSeconds: 0.5
   attackCooldown: 5
-  rotationRateDegPerSecondTierGrowth: 0.2
-  attackRangeTierGrowth: 0.2
+  rotationRateDegPerSecondTierGrowth: 0.05
+  attackRangeTierGrowth: 0.5
 --- !u!135 &7102439950053945380
 SphereCollider:
   m_ObjectHideFlags: 0

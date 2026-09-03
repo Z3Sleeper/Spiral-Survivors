@@ -60,9 +60,6 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // nothing for a Surge block to actually bracket. Still exposed for interface consistency — see
     // IAbilityPD.ActiveSurgeBlock's own doc comment.
     [SerializeField] private bool activeSurgeBlock = false;
-    // Action — spawns real projectile/hazard damage over its own duration. Exposed for live playtesting —
-    // see IAbilityPD.IsActionAbility's own doc comment.
-    [SerializeField] private bool isActionAbility = true;
 
     [Header("Effect")]
     // Cast range = true weapon reach * this — 2x by default, so the rain can be dropped well past actual
@@ -145,7 +142,6 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // Never forces a special action — doesn't touch movement at all, and IsActive is always false anyway.
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     public bool AbilityIsActive => false;
     // No active window at all — instantaneous cast, see class doc comment.
     public bool HasActiveWindow => false;
@@ -228,6 +224,9 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     }
 
     public void NotifyActivationBlocked() { }
+    // Never sets its own ActiveSurgeBlock true, so PlayerControllerPD.CancelSurgeBlockingAbility() never has
+    // a real reason to call this — see IAbilityPD.CancelActiveWindow's own doc comment.
+    public void CancelActiveWindow() { }
 
     protected override void Simulate(ref State state, float delta)
     {

@@ -53,30 +53,25 @@ public interface IAbilityPD
     // alongside its own Activate()/end-of-active logic" precedent as NotifyDashStarted/NotifyDashEnded.
     bool ActiveSurgeBlock { get; }
 
-    // "Action" (true) vs "buff" (false) — a plain content categorization. Exposed as a tunable Inspector
-    // field on every concrete implementer (not hardcoded) specifically so it can be flipped live during
-    // playtesting to decide what should/shouldn't be allowed during a forced Surge, rather than needing a
-    // recompile per change — see each implementer's own isActionAbility field. Not otherwise state-dependent
-    // (never changes mid-match on its own). An action ability DOES something beyond granting stats/
-    // buff-states — a committed movement (RogueSpinAbilityPD, BWBlinkAbilityPD), spawning a projectile/
-    // hazard (ExeAxeThrowAbilityPD), or otherwise directly acting on the world. A buff ability only grants
-    // stat changes or a temporary buff state on the caster (ArcherFocusFireAbilityPD, KnightBigBuffAbilityPD,
-    // RogueVanishAbilityPD, ExeBigAxeAbilityPD) — nothing else happens. KnightAreaStunHealAbilityPD is a
-    // buff by explicit exception (does act on the world, but the user's own call is that it's fine to allow
-    // during a forced Surge anyway).
-    //
-    // Distinct from ActiveSurgeBlock just above (a completely different concern — "does this ability's own
-    // active window fight an in-progress Surge" — several buff abilities are also ActiveSurgeBlock, e.g.
-    // BWBladeDanceAbilityPD is an action AND blocks Surge; the two flags answer unrelated questions and
-    // deliberately don't derive from each other). PlayerControllerPD.Simulate() reads this alone (not
-    // ActiveSurgeBlock) to decide whether a Berserk-Surge-style forced Surge (CharacterStatsPD.
-    // IsForcedSurging) blocks this specific ability — buff abilities stay usable through a forced Surge,
-    // only action abilities are blocked. Dash itself is a deliberate exception — always allowed through a
-    // forced Surge regardless of this flag, the one action the player keeps the whole time (see
-    // PlayerControllerPD.Simulate()'s own dash-input comment). LocalUIManagerPD/PlayerUIWorldSpace read
-    // the identical condition to show the on-cooldown background while blocked this way, even though the
-    // ability's own CooldownRemaining/IsReady have nothing to do with why it's currently unusable.
-    bool IsActionAbility { get; }
+    // Retired (2026-08-31) — "action vs buff" used to gate whether dashing or a forced Surge blocked an
+    // ability's activation. Dash no longer blocks any ability at all, and Surge-blocking now uses
+    // ActiveSurgeBlock directly (the same flag an ability already uses to block Surge in the other
+    // direction), making this categorization fully redundant. See PlayerControllerPD.Simulate()'s own
+    // ability-activation block and CancelSurgeBlockingAbility for the current rules.
+
+    // "End my own active window right now, as a clean-but-forced cancel" (2026-08-31) — called by
+    // PlayerControllerPD.CancelSurgeBlockingAbility() the instant a Berserk Surge starts, on whichever
+    // ability slot is currently IsActive with its own ActiveSurgeBlock true (the reverse direction of
+    // ActiveSurgeBlock — an ability already force-ends Surge when IT activates; this is what makes Surge
+    // activating first cancel the ability instead). Distinct from NotifyActivationBlocked (a no-op-attempt
+    // notification, never actually active) and from PlayerControllerPD.Interrupt()'s own
+    // _onSpecialMovementInterrupted event (ForcesSpecialAction-scoped, not ActiveSurgeBlock-scoped — the two
+    // sets overlap today only by coincidence, since RogueSpinAbilityPD is currently the sole implementer of
+    // both). No-op for every implementer that never sets its own ActiveSurgeBlock true — only meaningful for
+    // one that does (currently only RogueSpinAbilityPD, which routes this into its own existing
+    // EndActiveWindow(interrupted: true) — see its own doc comment for why this uses interrupted: true,
+    // unlike PlayerControllerPD's own dash-cancel case).
+    void CancelActiveWindow();
 
     // True for the whole window this ability is "doing its thing" — RogueSpinAbilityPD's whole leap,
     // RogueVanishAbilityPD's whole invisibility/movespeed buff. Distinct from IsActive above: IsActive is

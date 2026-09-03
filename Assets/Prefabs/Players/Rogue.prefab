@@ -105,13 +105,12 @@ MonoBehaviour:
     <color=#FFA000>Invincibly</color> forward, <color=#FFA000>Striking</color> with
     your <color=#FFA000>Weapons</color> <color=#FFA000>5 times each</color>, dealing
     a total of <color=#FFA000>{LiveDamageRatio}</color><color=#FFA000>(75% Weapon
-    Strength x <color=#FF0050>Attack Speed</color>)</color>.'
-  cooldown: 12
+    Damage x <color=#FF0050>Attack Speed</color>)</color>.'
+  cooldown: 6
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 1
-  isActionAbility: 1
   duration: 0.75
   postActiveInvincibilityGrace: 0.2
   dashSpeed: 10
@@ -120,7 +119,7 @@ MonoBehaviour:
   damageRadiusSizeMultiplier: 1.5
   spinRate: 1080
   hitCountPerWeapon: 5
-  spinAbilityDamageMultiplier: 0.75
+  spinAbilityDamageMultiplier: 0.5
 --- !u!114 &-4890662838761607972
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -138,13 +137,12 @@ MonoBehaviour:
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     Become
-    <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>{moveSpeedTotalPercent}%
-    total Move Speed</color> for <color=#FFA000>{duration} seconds</color>.'
+    <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>{moveSpeedFlat}% total
+    Move Speed</color> for <color=#FFA000>{duration} seconds</color>.'
   cooldown: 20
   cooldownStartsOnCast: 0
   slot: 1
   tags: []
   activeSurgeBlock: 0
-  isActionAbility: 0
   duration: 3
-  moveSpeedTotalPercent: 0.25
+  moveSpeedFlat: 3

@@ -615,22 +615,26 @@ public class CharacterSelectUI : MonoBehaviour
         if (difficultyText != null) difficultyText.text = $"Threat Level {difficulty}";
         if (difficultyDescriptionText != null)
         {
-            // Matches EnemySpawnerPD's own three independent difficultyDamage/Health/MoveSpeedGrowthPerLevel
-            // rates exactly (50%/100%/20% per level as of 2026-08-20) — difficulty 1 is the no-op baseline
-            // (all three 0% here), not "difficulty * rate" (which would wrongly show a bonus at difficulty 1
-            // already). Empty at difficulty 1 rather than showing "+0%" for all three.
+            // Matches EnemySpawnerPD's own independent difficultyDamage/Health/MoveSpeed/AttackSpeedGrowthPerLevel
+            // rates exactly (20%/100%/10%/10% per level as of 2026-09-01, damage retuned down from 50% — see
+            // that field's own doc comment) — difficulty 1 is the no-op baseline (all 0% here), not
+            // "difficulty * rate" (which would wrongly show a bonus at difficulty 1 already). Empty at
+            // difficulty 1 rather than showing "+0%" for all.
             int levelsAboveBase = difficulty - 1;
-            int damagePercent    = levelsAboveBase * 50;
+            int damagePercent    = levelsAboveBase * 20;
             int healthPercent    = levelsAboveBase * 100;
+            // Move Speed and Attack Speed share this one variable/line (2026-08-31) since
+            // difficultyMoveSpeedGrowthPerLevel and difficultyAttackSpeedGrowthPerLevel happen to both be 10%
+            // today — coincidental, not a true pairing (same reasoning EnemySpawnerPD's own two separate
+            // fields exist for). If they're ever retuned to diverge, split this back into two percentages/
+            // two lines instead of assuming they stay equal.
             int moveSpeedPercent = levelsAboveBase * 10;
-            // Upgrade Points bonus (2026-08-24) — mirrors GameManagerPD.DifficultyPointMultiplier's own
-            // formula (pointsExponentialScalePerDifficultyLevel^levelsAboveBase) by VALUE, not read live off
-            // GameManagerPD itself — same "hardcoded to match" convention every other line in this block
-            // already uses, since this UI lives in a different scene from GameManagerPD. 1.5 is that field's
-            // own live-tuned value (confirmed against the game scene's GameManagerPD instance, 2026-08-24) —
-            // retune both together if it ever changes.
-            const float upgradePointsExponentialScale = 1.5f;
-            int upgradePointsPercent = Mathf.RoundToInt((Mathf.Pow(upgradePointsExponentialScale, levelsAboveBase) - 1f) * 100f);
+            // Upgrade Points bonus — mirrors GameManagerPD.DifficultyPointMultiplier's own formula by VALUE,
+            // not read live off GameManagerPD itself — same "hardcoded to match" convention every other line
+            // in this block already uses, since this UI lives in a different scene from GameManagerPD.
+            // Linear +100%/level (2026-08-29, reworked from an exponential 1.5^levelsAboveBase curve — see
+            // DifficultyPointMultiplier's own doc comment) — retune both together if it ever changes.
+            int upgradePointsPercent = levelsAboveBase * 100;
             string upgradePointsLine = levelsAboveBase > 0 ? $"<color=green>+{upgradePointsPercent}% increased Upgrade Points</color>\n" : "";
             // Threat Level 2's own unique modifier (CharacterStatsPD.ActivateDifficultyModifiers,
             // threatLevel2SlowMultiplier/Duration) — same "levelsAboveBase > 0" gate as the stat lines above
@@ -644,12 +648,13 @@ public class CharacterSelectUI : MonoBehaviour
             string threatLevel3Line = difficulty >= 3 ? "\nLevel 3: Double Elite Health and Damage." : "";
             // Threat Level 4's own unique modifier (EnemySpawnerPD.threatLevel4PlebMoveSpeedMultiplier).
             string threatLevel4Line = difficulty >= 4 ? "\nLevel 4: Spikies are 25% faster." : "";
-            // Threat Level 5's own unique modifier (EnemySpawnerPD.threatLevel5AttackCooldownMultiplier).
-            string threatLevel5Line = difficulty >= 5 ? "\nLevel 5: Enemies attack twice as often." : "";
+            // Threat Level 5's own unique modifier (EnemySpawnerPD.threatLevel5AttackCooldownMultiplier,
+            // nerfed 2026-09-01 from 0.5f/"twice as often" to 0.75f/"50% more often").
+            string threatLevel5Line = difficulty >= 5 ? "\nLevel 5: Enemies attack 50% more often." : "";
             // Threat Level 6's own unique modifier (EnemySpawnerPD.threatLevel6BossCount).
             string threatLevel6Line = difficulty >= 6 ? "\nLevel 6: Double Boss spawns." : "";
             difficultyDescriptionText.text = levelsAboveBase > 0
-                ? $"{upgradePointsLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
+                ? $"{upgradePointsLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed and Attack Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
                 : "";
         }
 

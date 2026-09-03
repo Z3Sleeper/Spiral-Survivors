@@ -573,6 +573,20 @@ public class DamageNumberManager : MonoBehaviour
     // PlayerDamagePool's own doc comment. Reserved for a future environmental/"other" damage source that
     // wants to fall into the nonpriority bucket instead of merging with ordinary enemy hits, same taxonomy
     // Spawn()'s own isPriority already uses for enemies.
+    // IFriendlyPD stub (2026-08-30, part of the CharacterStatsPD -> IFriendlyPD combat-targeting migration)
+    // — lets a caller that's already holding an IFriendlyPD (not necessarily a CharacterStatsPD) call this
+    // without needing its own type-check first. Downcasts and defers to the real implementation below for
+    // the only case that currently exists (a real player); a future non-player friendly just no-ops here —
+    // display shape for that isn't designed yet (same "stub for now" territory as OnStrikeHealAllyAugment's
+    // own identical downcast). GetInstanceID()/isOwner (both used below) deliberately aren't on IFriendlyPD
+    // itself — same reasoning IEnemyPD's own damage-number path already established for not exposing them
+    // on ITS interface either; see that path's own stackKey/attackerOwner-as-parameter shape.
+    public void SpawnPlayerDamage(float amount, IFriendlyPD target, PlayerDamagePool pool, bool isPriority = true)
+    {
+        if (target is CharacterStatsPD player) SpawnPlayerDamage(amount, player, pool, isPriority);
+        // TODO: non-player friendly damage-number display not designed yet.
+    }
+
     public void SpawnPlayerDamage(float amount, CharacterStatsPD target, PlayerDamagePool pool, bool isPriority = true)
     {
         if (amount <= 0f || target == null) return;
@@ -664,6 +678,14 @@ public class DamageNumberManager : MonoBehaviour
     // throttle window, same "shows the styling if ANY hit in the accumulated total qualified" rule Spawn()'s
     // own isCrit/isHighroll merge already uses for enemies. An instantly-popped heal just uses its own isCrit
     // directly (nothing to OR against — it's the only heal in that pop).
+    // IFriendlyPD stub — see SpawnPlayerDamage's own identical-shaped overload just above for the full
+    // reasoning.
+    public void SpawnPlayerHeal(float amount, IFriendlyPD target, bool isCrit = false, bool isPriority = true)
+    {
+        if (target is CharacterStatsPD player) SpawnPlayerHeal(amount, player, isCrit, isPriority);
+        // TODO: non-player friendly heal-number display not designed yet.
+    }
+
     public void SpawnPlayerHeal(float amount, CharacterStatsPD target, bool isCrit = false, bool isPriority = true)
     {
         if (amount <= 0f || target == null) return;
@@ -815,6 +837,13 @@ public class DamageNumberManager : MonoBehaviour
     // customMessage/colorOverride are only consulted for StatusPopupKind.Custom (or as an explicit override
     // on top of a known kind's own default) — see ResolveStatusMessage/ResolveStatusColor. Doesn't spawn
     // directly — see RequestStatusPopup for the showtime/queue gate every request goes through first.
+    // IFriendlyPD stub — see SpawnPlayerDamage's own identical-shaped overload for the full reasoning.
+    public void SpawnStatusOnPlayer(StatusPopupKind kind, IFriendlyPD target, string customMessage = null, Color? colorOverride = null, float durationMultiplier = 1f)
+    {
+        if (target is CharacterStatsPD player) SpawnStatusOnPlayer(kind, player, customMessage, colorOverride, durationMultiplier);
+        // TODO: non-player friendly status-popup display not designed yet.
+    }
+
     public void SpawnStatusOnPlayer(StatusPopupKind kind, CharacterStatsPD target, string customMessage = null, Color? colorOverride = null, float durationMultiplier = 1f)
     {
         if (target == null) return;

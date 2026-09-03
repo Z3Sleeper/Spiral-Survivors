@@ -59,6 +59,20 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
     // against any Vector3[] loop) — replaces the old GetInsetPerimeter(wallOffset)-derived path.
     [SerializeField] private Transform[] patrolGraph;
 
+    // Multiplies the event-start announcement popup's display duration (the floating "Event Name!" callout
+    // above every player's head — see EventBasePD.OnEventStart's own doc comment) on top of DamageNumber's
+    // shared, normal-status baseline — so this one-time "an event is starting NOW" callout lingers
+    // noticeably longer than a routine Stun/Slow/Dodge popup, per explicit design (2026-08-19). Lives here
+    // (2026-08-28), not on EventBasePD itself, because EVERY concrete event (DPSCheckPD, CaptureThePointPD,
+    // DestroyTheTargetsPD, PerimeterPatrolEventPD, ...) is its own separate prefab inheriting from
+    // EventBasePD — a field declared there would need tuning separately, per prefab, four-plus times over,
+    // instead of being one shared knob every event reads from this single central hub (same "one designer
+    // dial, not N duplicated copies" reasoning eventSpawnPoints/spawnAreas/patrolGraph above already follow).
+    [Header("Announcement")]
+    [Tooltip("Multiplies the event-start announcement popup's display duration on top of the normal status-popup baseline. Shared across every event.")]
+    [SerializeField] private float announcementDurationMultiplier = 2f;
+    public float AnnouncementDurationMultiplier => announcementDurationMultiplier;
+
     // Lazily built once — spawnAreas is static level-authored data, never changes at runtime, so there's no
     // invalidation logic needed beyond "computed yet or not." Index i's value is the CUMULATIVE polygon area
     // (PlayableAreaPD.PolygonArea, true shoelace-formula area, not a bounding-box proxy) of every area up to
@@ -202,9 +216,13 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
         return false;
     }
 
-    // Lazily sized to eventSpawnPoints.Length, reshuffled fresh every TryGetEventSpawnPoint call (Fisher-
-    // Yates in place) — reused rather than reallocated, same "persistent scratch collection" convention
-    // DestroyTheTargetsPD._placedPositionsScratch already establishes.
+    // Lazily sized to eventSpawnPoints.Length, ALLOCATION reused across calls (avoids GC churn) but CONTENT
+    // unconditionally reset to [0,1,2,...] at the top of every TryGetEventSpawnPoint call before shuffling —
+    // see that method's own comment for why the reset can't be skipped even when the array's already the
+    // right length. Same "persistent scratch collection" allocation-reuse convention
+    // DestroyTheTargetsPD._placedPositionsScratch establishes, but that field ALSO fully resets its own
+    // CONTENT (via .Clear()) every call — the allocation-reuse trick is only safe to copy if the content-reset
+    // comes with it.
     private int[] _eventSpawnPointOrderScratch;
 
     // Verbatim pick from eventSpawnPoints (see that field's own doc comment for why this is NOT edge-
@@ -214,16 +232,25 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
     // a handful of authored points (e.g. 9), random-with-replacement had a real, if small, chance of never
     // sampling a specific valid point at all within a fixed attempt budget, while redundantly re-trying
     // others. A Fisher-Yates shuffle over the actual point count guarantees every option gets checked.
+    //
+    // Simulation-safety note (2026-08-28 fix): _eventSpawnPointOrderScratch's CONTENT is reset to
+    // [0,1,2,...] unconditionally every call, not just when its length changes — this is a PLAIN field, not
+    // predicted State, so it does NOT roll back on a resimulation replay the way State would. If the shuffle
+    // below were applied on top of whatever order a PREVIOUS call happened to leave the array in (rather
+    // than a fixed, call-independent baseline), the result would depend on this field's entire mutation
+    // history rather than purely on this call's own GameRandom draws — meaning a replay of the same tick
+    // could produce a DIFFERENT pick than the original prediction did, even though GameRandom itself replays
+    // identically, since this array's accumulated-but-unrolled-back state wouldn't match. Resetting to the
+    // same baseline every time makes the shuffle a pure function of (point count, this call's own RNG
+    // draws) — nothing else — which is what actually makes it replay-safe.
     public bool TryGetEventSpawnPoint(out Vector3 point, bool avoidPlayers = false, float playerOffset = 0f, float footprintRadius = 0f)
     {
         point = default;
         if (eventSpawnPoints == null || eventSpawnPoints.Length == 0) return false;
 
         if (_eventSpawnPointOrderScratch == null || _eventSpawnPointOrderScratch.Length != eventSpawnPoints.Length)
-        {
             _eventSpawnPointOrderScratch = new int[eventSpawnPoints.Length];
-            for (int i = 0; i < _eventSpawnPointOrderScratch.Length; i++) _eventSpawnPointOrderScratch[i] = i;
-        }
+        for (int i = 0; i < _eventSpawnPointOrderScratch.Length; i++) _eventSpawnPointOrderScratch[i] = i;
 
         for (int i = _eventSpawnPointOrderScratch.Length - 1; i > 0; i--)
         {

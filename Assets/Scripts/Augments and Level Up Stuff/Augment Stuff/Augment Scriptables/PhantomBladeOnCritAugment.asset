@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: PhantomBladeOnCritAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#8C8C8C>Phantom</color> <color=#FF0000>Crit</color>
+  displayName: <color=#8C8C8C>Phantom</color> <color=#FF8700>Crit</color>
   description: '<color=#FFA000>Every 5 seconds:</color> <color=#FFA000>Summon</color>
     <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
     the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{BaseDamageMultiplierPercent}%

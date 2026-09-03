@@ -405,15 +405,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::OrbiterPD
   _rigidbody: {fileID: 3081874023962065944}
   enemyName: Orbiter
-  moveSpeed: 11
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
   maxHealth: 75
-  preferredRange: 2
+  preferredRange: 3
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 5
+  backpedalDisabled: 0
+  damage: 10
   xpValue: 5
+  pointsValue: 5
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -429,8 +431,8 @@ MonoBehaviour:
   windupDuration: 1
   pullDuration: 0.25
   pullSequentialDelay: 0.25
-  holdDuration: 3
-  holdOrbitRadius: 2
+  holdDuration: 5
+  holdOrbitRadius: 3
   holdOrbitAngularSpeed: 120
   pullDamageMultiplier: 1
   orbitDamageMultiplier: 0.5

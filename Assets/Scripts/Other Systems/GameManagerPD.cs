@@ -5,8 +5,10 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Per-connected-player "how long since they joined without finishing local setup" — see
-// GameManagerPD.TickSetupTimers's own doc comment for why this exists. Same shape as EnemyBasePD's
-// ContactCooldown (PlayerID + a float that ticks in predicted State).
+// GameManagerPD.TickSetupTimers's own doc comment for why this exists. Genuinely player-only (setup is a
+// connected-player concept), unlike EnemyBasePD's own ContactCooldown, which used to share this same
+// PlayerID + ticking-value shape but got rekeyed to PredictedObjectID (2026-08-30) so it works against any
+// IFriendlyPD, not just a connected player.
 public struct PlayerSetupTimer
 {
     public PlayerID player;
@@ -113,18 +115,11 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     [SerializeField] private float coopToughnessScalar = 0.5f;
 
     [Header("Upgrade Points")]
-    // Lets a harder level award more points per kill without having to also inflate enemy XP values
-    // (which would throw off the level-up pacing) for balance purposes. General-purpose manual tuning knob
-    // — composes with (multiplies alongside) pointsExponentialScalePerDifficultyLevel below, doesn't
-    // replace it.
+    // General-purpose manual tuning knob for overall points-per-kill balance, independent of Threat Level —
+    // composes with (multiplies alongside) DifficultyPointMultiplier below, doesn't replace it. Points are
+    // their own tracked value per enemy now (EnemyBasePD.pointsValue, 2026-08-29), no longer derived from XP
+    // at all, so this no longer needs to reason about XP/level-pacing side effects.
     [SerializeField] private float upgradePointMultiplier = 1f;
-    // Exponential, not linear — deliberately the ONE exception to the "multiply base, no exponential"
-    // convention every other difficulty/tier growth field in this codebase uses (see
-    // project_health_tier_growth_linear memory for why that convention exists elsewhere; explicit user call
-    // to go the other way here since each Threat Level compounds noticeably harder than the last, not just
-    // linearly). DifficultyPointMultiplier = pointsExponentialScalePerDifficultyLevel^(Difficulty-1), so
-    // difficulty 1 = 1x (no bonus) and the live 1.5 value reaches ~7.59x at difficulty 6.
-    [SerializeField] private float pointsExponentialScalePerDifficultyLevel = 1.5f;
 
     [Header("Connection Watchdog")]
     // A connected player whose own local one-time setup (PlayerDataPD's isOwner/verified-gated color +
@@ -363,8 +358,13 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     // independently visible/tunable — one's a manual balance knob, the other's fully derived from Difficulty.
     public void AwardUpgradePoints(float baseAmount) => LocalUpgradePointsTracker.instance.AddPoints(baseAmount * upgradePointMultiplier * DifficultyPointMultiplier);
 
-    // pointsExponentialScalePerDifficultyLevel^(Difficulty-1) — see that field's own doc comment.
-    private float DifficultyPointMultiplier => Mathf.Pow(pointsExponentialScalePerDifficultyLevel, Difficulty - 1);
+    // Linear +100% per Threat Level (2026-08-29, reworked from an exponential 1.5^(Difficulty-1) curve that
+    // reached ~7.59x at difficulty 6 — explicit design simplification, too much math for both the designer
+    // and players to reason about). Difficulty is already 1-indexed and matches Threat Level directly, so
+    // this needs no further transform: TL1 -> 1x (100%), TL2 -> 2x (200%), TL3 -> 3x (300%), etc. Now matches
+    // the "multiply base, no exponential" convention every other difficulty/tier growth field in this
+    // codebase already uses (see project_health_tier_growth_linear memory) — no longer an exception.
+    private float DifficultyPointMultiplier => Difficulty;
 
     // ── XP ─────────────────────────────────────────────────────────────────
 

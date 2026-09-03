@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: OnHitDamageHealthRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#7DFF00>Hearty Hits</color>
+  displayName: <color=#7DFF00>Sustained Strikes</color>
   description: <color=#FFA000>On Hit:</color> Deal <color=#FFA000>{LiveHealthRegenRatio}</color><color=#FFA000>(<color=#FF5000>{onHitStrengthPercent}%
     Strength</color> + <color=#7DFF00>{onHitHealthRegenPercent}% Health Regen</color>)</color>
     <color=#FFA000>damage</color>.

@@ -91,13 +91,25 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     [SerializeField] private float leapArcHeight    = 3f;
     // Reshapes the vertical bob's timing WITHOUT touching horizontal leap speed or any of the actual
     // gameplay timing (hit resolution is still purely state.stateTimer-driven) — purely cosmetic, per
-    // explicit design. 1 = plain sine (the old default — already a little fast-in/fast-out, but mild).
-    // Values < 1 raise Mathf.Sin(t * pi) to a fractional power, which pulls the whole curve toward a fast
-    // rise off the ground, a long flat hang near the peak, then a fast drop back down — smaller values
-    // exaggerate this further (e.g. 0.3 is a much snappier hop-like takeoff/landing than 0.7). Values > 1
-    // do the opposite (slow, floaty edges; quick pass through the middle). See UpdateView's own arc-bob
-    // block for the actual Mathf.Pow application.
-    [SerializeField] private float leapArcExponent  = 0.5f;
+    // explicit design. Piecewise (2026-08-28, replaces a single Mathf.Pow(sin, exponent) formula — that
+    // approach had a real, unfixable problem: sin(t*pi) behaves like a straight line near t=0/t=1, so
+    // raising it to any exponent below 1 gives the curve an INFINITE slope right at the edges — no exponent
+    // choice avoids this, they only differ in how fast the spike happens. A piecewise curve with an
+    // explicit, bounded edge duration/speed is the actual fix, not a tuning number).
+    //
+    // edgeFraction: the fraction of leapDuration spent on EACH of liftoff and landing (e.g. 0.2 = 20%
+    // liftoff + 20% landing + 60% hang in the middle). Within that window, height rises/falls LINEARLY —
+    // a genuine constant, finite, tunable speed (edgeHeightFraction * leapArcHeight / (edgeFraction *
+    // leapDuration)), not a mathematical spike. Clamped to 0.49 at read-time (UpdateView) so the two edge
+    // windows can never fully consume the hang phase.
+    [SerializeField] private float leapArcEdgeFraction = 0.2f;
+    // How much of the TOTAL arc height gets covered during the fast edge windows above — the remaining
+    // (1 - edgeHeightFraction) of the height happens during the slow hang phase in the middle, via a gentle
+    // sine arc spread across the large remaining time window. Where the fast edge meets the slow hang there
+    // IS a small, finite kink in speed (a straight ramp and a sine arc don't naturally match slopes at the
+    // handoff) — a deliberate simplification, not a bug; nowhere near the old formula's literal infinite
+    // spike, and not worth the extra complexity of a fully slope-matched stitch for a cosmetic bob.
+    [SerializeField] private float leapArcEdgeHeightFraction = 0.7f;
     [SerializeField] private float postLeapPause    = 0.5f;
     [SerializeField] private float landingDuration  = 0.1f;
     // Tier1-authored baseline, scaled per tier by leapsPerAttackTierGrowth below (applied in
@@ -113,7 +125,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     // Max rate the tracked DISTANCE (from leapStart) can close/open during Windup — same rate-cap idea as
     // rotationRateDegPerSecond above, just for the radial component instead of the angular one, copied from
     // MortarGloomPD's identical distanceTrackingRateUnitsPerSecond.
-    [SerializeField] private float distanceTrackingRateUnitsPerSecond = 10f;
+    [SerializeField] private float distanceTrackingRateUnitsPerSecond = 5f;
     private float _authoredDistanceTrackingRateUnitsPerSecond;
 
     [Header("Attack Cooldown")]
@@ -142,7 +154,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     // enemy inconsistent with the rest of the codebase's "an ongoing attack stays committed to whoever it
     // started against, immune to a taunt reassigning _target mid-Windup" rule). Drives the Windup tracking
     // block in HandleActiveState below.
-    private CharacterStatsPD _windupTrackedTarget;
+    private IFriendlyPD _windupTrackedTarget;
 
     // Bobbed vertically (cosmetic only) during Leaping — deliberately a dedicated wrapper (YAxisMovers),
     // not the raw model mesh transform directly: PurrDiction's PredictedTransform tracks a hurtbox/root
@@ -292,15 +304,15 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
                 // EnterWindup — see that field's own doc comment), NOT live _target/_targetStats
                 // (2026-08-26 fix — this used to read those directly, meaning a taunt landing mid-Windup
                 // could redirect an already-started leap, inconsistent with every other tracked-windup enemy
-                // in this codebase). Rate-capped exactly like MortarHazardPD's own "attached" phase — plain
-                // delta, NOT delta * EffectiveAttackSpeed, since this is a fixed real-world tracking speed
-                // independent of how fast this Leaper's own Windup timer happens to be counting down (see
-                // MortarHazardPD.LateSimulate's identical choice). Holds the last tracked target/bearing/
-                // distance (no teleport-to-stale-null) if the committed target died/went invisible-without-
-                // taunting mid-Windup — the rate-capped MoveTowardsAngle/MoveTowards simply stop advancing
-                // while this condition is false, which IS the "freeze at last known position" behavior (same
-                // mechanism MortarHazardPD's own tracking relies on), and resumes live the instant validity
-                // returns.
+                // in this codebase). Rate scaled by EffectiveAttackSpeed (2026-08-31, was plain delta — see
+                // EnemySpawnerPD.difficultyAttackSpeedGrowthPerLevel's own doc comment for why: a fixed
+                // real-world tracking speed while the windup ITSELF was speeding up meant re-aiming got
+                // relatively stiffer as attack speed climbed, same asymmetry fixed on every other tracked-
+                // windup enemy this same pass — MortarHazardPD's own "attached" phase got the identical
+                // change). Holds the last tracked target/bearing/distance (no teleport-to-stale-null) if the
+                // committed target died/went invisible-without-taunting mid-Windup — the rate-capped
+                // MoveTowardsAngle/MoveTowards simply stop advancing while this condition is false, which IS
+                // the "freeze at last known position" behavior, and resumes live the instant validity returns.
                 if (_windupTrackedTarget != null && !_windupTrackedTarget.IsDead &&
                     (!_windupTrackedTarget.IsInvisible || _windupTrackedTarget.IsTaunting))
                 {
@@ -312,8 +324,8 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
                     if (targetDistance > 0.0001f)
                     {
                         float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
-                        state.facingAngleDeg = Mathf.MoveTowardsAngle(state.facingAngleDeg, targetAngle, rotationRateDegPerSecond * delta);
-                        state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, distanceTrackingRateUnitsPerSecond * delta);
+                        state.facingAngleDeg = Mathf.MoveTowardsAngle(state.facingAngleDeg, targetAngle, rotationRateDegPerSecond * delta * EffectiveAttackSpeed);
+                        state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, distanceTrackingRateUnitsPerSecond * delta * EffectiveAttackSpeed);
 
                         float rad = state.facingAngleDeg * Mathf.Deg2Rad;
                         Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
@@ -465,6 +477,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         SetLeapState(ref state, LeapState.Leaping);
     }
 
+    // See SpearGloomPD._stabOverlapResults's own doc comment for the buffer-size reasoning.
+    private static readonly Collider[] _landOverlapResults = new Collider[8];
+
     private void EnterLanding(ref State state)
     {
         // Hard snap, correcting any residual lerp imprecision — matches old Land()'s direct position
@@ -478,20 +493,24 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         state.stateTimer = landingDuration;
         SetLeapState(ref state, LeapState.Landing);
 
-        // One-shot AoE resolve on landing, matching KingSpikePD.FireSpikeBurst/DaggerGloomPD.EnterSpin — a
-        // plain distance check against CharacterStatsPD.All rather than a physics trigger/collider.
+        // One-shot AoE resolve on landing via Physics.OverlapSphereNonAlloc against
+        // CombatLayerMasks.FriendlyHurtboxMask (2026-08-30, was a manual FriendlyTargetRegistryPD distance
+        // check) — see SpearGloomPD.EnterStab's own doc comment for why enemy AoE attacks now match every
+        // player weapon's own collider-query convention.
         // * size — matches SpearGloomPD/DaggerGloomPD's own size-scaled hit-check precedent.
         float   dmg    = damage * landDamageMultiplier;
         Vector3 origin = transform.position;
-        foreach (var stats in CharacterStatsPD.All.Values)
+
+        int n = Physics.OverlapSphereNonAlloc(origin, landRadius * size, _landOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
+        for (int i = 0; i < n; i++)
         {
+            var stats = _landOverlapResults[i].GetComponent<IFriendlyPD>();
             // No IsInvincible pre-check (2026-08-24 fix) — TakeDamage() already no-ops safely against
             // invincibility on its own, AND is the only place Dodge credit gets awarded (see
             // CharacterStatsPD.NotifyDodge's own doc comment); skipping the call here silently ate every
             // Dodge this attack should have granted while the player was dash-invincible.
-            if (stats.IsDead) continue;
-            if (Vector3.Distance(stats.transform.position, origin) <= landRadius * size)
-                stats.TakeDamage(dmg);
+            if (stats == null || stats.IsDead) continue;
+            stats.TakeDamage(dmg, false, ObjectId);
         }
     }
 
@@ -580,6 +599,36 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     // ── View ───────────────────────────────────────────────────────────────
     private LeapState _lastVisualState = (LeapState)(-1);
 
+    // Piecewise cosmetic arc-height curve — see leapArcEdgeFraction/leapArcEdgeHeightFraction's own doc
+    // comments for the full reasoning. t is the normalized 0-1 progress through the Leaping state
+    // (UpdateView's own responsibility to compute — this method is a pure function of t alone, no State
+    // reads, so it's safe to call from view code with no simulation-safety concerns).
+    private float ComputeLeapArcHeight(float t)
+    {
+        float edge = Mathf.Clamp(leapArcEdgeFraction, 0f, 0.49f);
+        if (edge <= 0f) return Mathf.Sin(t * Mathf.PI) * leapArcHeight; // degenerate — no edge phase, plain sine
+
+        float edgeHeight = leapArcEdgeHeightFraction * leapArcHeight;
+
+        if (t < edge)
+        {
+            // Liftoff — linear, constant speed: edgeHeight / (edge * leapDuration) units/sec.
+            return edgeHeight * (t / edge);
+        }
+        if (t > 1f - edge)
+        {
+            // Landing — mirror of liftoff.
+            return edgeHeight * ((1f - t) / edge);
+        }
+
+        // Hang — gentle sine arc covering the REMAINING height (edgeHeight up to leapArcHeight and back down
+        // to edgeHeight), spread across the large middle time window. hangSpan > 0 guaranteed since edge is
+        // clamped to at most 0.49 above.
+        float hangSpan = 1f - 2f * edge;
+        float localHang = (t - edge) / hangSpan;
+        return edgeHeight + (leapArcHeight - edgeHeight) * Mathf.Sin(localHang * Mathf.PI);
+    }
+
     protected override void UpdateView(State viewState, State? verified)
     {
         base.UpdateView(viewState, verified);
@@ -616,10 +665,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
             if (ss == LeapState.Leaping)
             {
                 float t = 1f - Mathf.Clamp01(viewState.stateTimer / leapDuration);
-                // Mathf.Sin(t*pi) is already in [0,1] for t in [0,1], so raising it to leapArcExponent is
-                // always well-defined — see that field's own doc comment for the fast-liftoff/slow-arc/
-                // fast-landing shape this gives at exponent < 1.
-                float arcY = Mathf.Pow(Mathf.Sin(t * Mathf.PI), leapArcExponent) * leapArcHeight;
+                float arcY = ComputeLeapArcHeight(t);
                 _yAxisMovers.localPosition = _yAxisMoversRestPosition + new Vector3(0f, arcY, 0f);
             }
             else

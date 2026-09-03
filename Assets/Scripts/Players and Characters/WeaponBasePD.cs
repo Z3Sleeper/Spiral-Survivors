@@ -61,15 +61,18 @@ public struct WeaponHitData
 
 // Shared payload for CharacterStatsPD._onAllyStrike — fired whenever any of this player's weapons touches
 // (not damages) an ally, so any "hit ally, do something" augment can subscribe once rather than each
-// needing its own copy of the weapon-side overlap-detection plumbing. A direct CharacterStatsPD reference
-// (not a PredictedObjectID, unlike WeaponHitData's enemy target) is safe here — unlike enemies,
-// CharacterStatsPD instances are never pooled/reused for a different player mid-match, so there's no
-// SpawnGeneration-style staleness risk to guard against. onHitPower carries the same per-hit
-// dropoff/penalty treatment as WeaponHitData (ricochet decay, axe handle penalty), so ally-strike effects
-// scale down the same way onhit-damage effects already do.
+// needing its own copy of the weapon-side overlap-detection plumbing. A direct IFriendlyPD reference
+// (2026-08-30 — was CharacterStatsPD directly; widened as part of the CharacterStatsPD -> IFriendlyPD
+// combat-targeting migration, so a future non-player ally can also be the "ally" a weapon touches) is safe
+// here the same way the old CharacterStatsPD-only version was — unlike enemies, neither CharacterStatsPD
+// nor any currently-planned IFriendlyPD implementer is pooled/reused for a different owner mid-match, so
+// there's no SpawnGeneration-style staleness risk to guard against (unlike WeaponHitData's enemy target,
+// which uses a PredictedObjectID specifically because enemies ARE pooled). onHitPower carries the same
+// per-hit dropoff/penalty treatment as WeaponHitData (ricochet decay, axe handle penalty), so ally-strike
+// effects scale down the same way onhit-damage effects already do.
 public struct AllyStrikeData
 {
-    public CharacterStatsPD ally;
+    public IFriendlyPD ally;
     public float onHitPower;
 }
 
@@ -225,9 +228,12 @@ public struct HitCooldownEntry
     public int remaining;
 }
 
+// target (2026-08-30, was PlayerID ally) — rekeyed to PredictedObjectID so ally-hit cooldown tracking works
+// against any IFriendlyPD (a future non-player ally has no PlayerID), same rekey EnemyBasePD.ContactCooldown
+// gets for the identical reason. See HitCooldownEntry's own doc comment for the ticks-not-seconds reasoning.
 public struct AllyHitCooldownEntry
 {
-    public PlayerID ally;
+    public PredictedObjectID target;
     public int remaining;
 }
 
@@ -279,18 +285,18 @@ public static class HitCooldownMath
         }
     }
 
-    public static bool TryStart(DisposableList<AllyHitCooldownEntry> cooldowns, PlayerID ally, float duration, float delta)
+    public static bool TryStart(DisposableList<AllyHitCooldownEntry> cooldowns, PredictedObjectID target, float duration, float delta)
     {
         for (int i = 0; i < cooldowns.Count; i++)
-            if (cooldowns[i].ally == ally) return false;
-        cooldowns.Add(new AllyHitCooldownEntry { ally = ally, remaining = Mathf.Max(1, Mathf.RoundToInt(duration / delta)) });
+            if (cooldowns[i].target.Equals(target)) return false;
+        cooldowns.Add(new AllyHitCooldownEntry { target = target, remaining = Mathf.Max(1, Mathf.RoundToInt(duration / delta)) });
         return true;
     }
 
-    public static bool IsOnCooldown(DisposableList<AllyHitCooldownEntry> cooldowns, PlayerID ally)
+    public static bool IsOnCooldown(DisposableList<AllyHitCooldownEntry> cooldowns, PredictedObjectID target)
     {
         for (int i = 0; i < cooldowns.Count; i++)
-            if (cooldowns[i].ally == ally) return true;
+            if (cooldowns[i].target.Equals(target)) return true;
         return false;
     }
 }
@@ -306,8 +312,12 @@ public static class CombatLayerMasks
     // Every weapon always queries this alongside EnemyHurtboxMask now — ally-hit detection ("canContactAllies")
     // is permanently on, not gated behind an enable flag (see CharacterStatsPD.NotifyAllyStrike's own doc
     // comment). Real friendly-fire damage was removed from the project entirely; a touched ally only ever
-    // fires the _onAllyStrike notification, never TakeDamage.
-    public static readonly int PlayerHurtboxMask = LayerMask.GetMask("Player");
+    // fires the _onAllyStrike notification, never TakeDamage. "Friendly" (2026-08-30, was "Player") — the
+    // Unity Layer itself was renamed so any future non-player IFriendlyPD implementer's own hurtbox collider
+    // lives on this same layer, not a player-specific one — see EnemyBasePD's own AoE-hit-check conversion
+    // (SpearGloomPD.EnterStab etc.) for why enemy attacks now query this directly too, instead of doing a
+    // manual FriendlyTargetRegistryPD distance/rectangle check.
+    public static readonly int FriendlyHurtboxMask = LayerMask.GetMask("Friendly");
 }
 
 // Non-generic home for constants shared across the weapon system regardless of TState — WeaponBasePD<TState>

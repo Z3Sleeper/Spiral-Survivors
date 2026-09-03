@@ -45,7 +45,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PerimeterPatrolEventPD
   startAnnouncement: Event Started!\nDefeat the Patrollers!
-  avoidPlayersOnPlacement: 0
-  playerOffset: 0
+  avoidPlayersOnPlacement: 1
+  playerOffset: 3
   enemyPrefab: {fileID: 563736548294382470, guid: 40a1b9e2e99137d45a94b7be26e47c2b, type: 3}
-  enemyCount: 1
+  enemyCount: 4

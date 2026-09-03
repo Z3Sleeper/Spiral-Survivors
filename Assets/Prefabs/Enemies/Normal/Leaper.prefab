@@ -587,15 +587,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LeaperGloomPD
   _rigidbody: {fileID: 7937238129674550036}
   enemyName: Leaper
-  moveSpeed: 12
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
   maxHealth: 75
   preferredRange: 5
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 5
+  backpedalDisabled: 0
+  damage: 10
   xpValue: 5
+  pointsValue: 5
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -609,19 +611,20 @@ MonoBehaviour:
   - {fileID: 7943450121013660069}
   invulnerableShell: {fileID: 7331312534044633561}
   landDamageMultiplier: 1
-  landRadius: 3
+  landRadius: 4
   windupDuration: 1
-  leapDuration: 0.75
+  leapDuration: 1
   leapArcHeight: 3
-  leapArcExponent: 0.3
+  leapArcEdgeFraction: 0.1
+  leapArcEdgeHeightFraction: 0.75
   postLeapPause: 0.5
   landingDuration: 0.1
   leapsPerAttack: 1
-  rotationRateDegPerSecond: 45
-  distanceTrackingRateUnitsPerSecond: 10
+  rotationRateDegPerSecond: 30
+  distanceTrackingRateUnitsPerSecond: 4
   attackCooldown: 5
   leapsPerAttackTierGrowth: 1
-  rotationRateDegPerSecondTierGrowth: 0.2
+  rotationRateDegPerSecondTierGrowth: 0.05
   _yAxisMovers: {fileID: 2271060463906041925}
   _windupIndicator: {fileID: 5598621953610581262}
   _windupFill: {fileID: 5898573493204495563}

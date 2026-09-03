@@ -103,7 +103,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 20, z: 0}
-  m_LocalScale: {x: 2.5, y: 0.1, z: 2.5}
+  m_LocalScale: {x: 5, y: 0.1, z: 5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 7508126291795954218}
@@ -676,7 +676,7 @@ MonoBehaviour:
   baseMaxShieldPercent: 0.05
   baseDeathPreventionTime: 30
   deathPreventionInvincibilityDuration: 2
-  deathPreventionRepeatReductionMultiplier: 0.75
+  deathPreventionRepeatReductionMultiplier: 0.8
   baseMaxEnergy: 50
   baseEnergyRegen: 0.05
   baseSurgeCost: 2
@@ -684,8 +684,8 @@ MonoBehaviour:
   surgeAttackSpeedMulti: 2
   baseDashCooldown: 5
   baseLuck: 0
-  baseLuckFloor: 0.5
-  baseLuckCeiling: 1.5
+  baseLuckFloor: 0.75
+  baseLuckCeiling: 1.25
   baseHighroll: 0.95
   baseHighrollBonus: 3
   baseKnockback: 5
@@ -699,6 +699,7 @@ MonoBehaviour:
   invisibleModelAlpha: 0.3
   _modelTransform: {fileID: 4644740684117971822}
   reviveTime: 3
+  _hurtboxCollider: {fileID: 0}
   unscaledSizeChildren:
   - {fileID: 5925581709578661190}
   - {fileID: 7530299037405727771}
@@ -3024,12 +3025,12 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 6880755517913024946}
   - {fileID: 6013572356293349534}
   - {fileID: 2939596523656778077}
   - {fileID: 3234991634684675924}
   - {fileID: 5370858241905616515}
   - {fileID: 2048209501438278354}
-  - {fileID: 6880755517913024946}
   m_Father: {fileID: 4433399181805987514}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &7902667982877346992

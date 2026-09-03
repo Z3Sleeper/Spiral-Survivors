@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: HealthRegenBasedOnCurrentEnergyAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Recharging</color>
-  description: Gain <color=#7DFF00>{LiveHealthRegenMaxBonus}</color><color=#FFA000>(<color=#7DFF00>1
-    + 60% Bonus Health Regen</color>)</color> when above <color=#FFFF00>50% Max Energy</color>.
+  description: Gain <color=#7DFF00>{LiveHealthRegenMaxBonus}</color> <color=#7DFF00>Health
+    Regen</color> while above <color=#FFFF00>75% Max Energy</color>.
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   effectPrefab: {fileID: 8105658999585896136, guid: 2a947dfd52f704c4da383bae6cf3b78f, type: 3}
   multiplayerOnly: 0
@@ -26,3 +26,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

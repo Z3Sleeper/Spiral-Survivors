@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7bbd5fdd8c9c6104293c69ed441b93dc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LuckAugment
-  bonusLuckFlat: 60
+  bonusLuckFlat: 30
   bonusLuckPercent: 0

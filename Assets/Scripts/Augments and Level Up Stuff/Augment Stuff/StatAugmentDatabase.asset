@@ -25,16 +25,10 @@ MonoBehaviour:
     value: 0.2
     prependText: +
     appendText: 
-  - statType: 2
-    displayName: Move Speed
-    color: {r: 1, g: 1, b: 1, a: 1}
-    value: 0.5
-    prependText: +
-    appendText: 
   - statType: 4
     displayName: Attack Speed
     color: {r: 1, g: 0, b: 0.3137255, a: 1}
-    value: 10
+    value: 5
     prependText: +
     appendText: '%'
   - statType: 9
@@ -58,7 +52,7 @@ MonoBehaviour:
   - statType: 19
     displayName: Luck
     color: {r: 0, g: 1, b: 0.5294118, a: 1}
-    value: 10
+    value: 5
     prependText: +
     appendText: 
   - statType: 24

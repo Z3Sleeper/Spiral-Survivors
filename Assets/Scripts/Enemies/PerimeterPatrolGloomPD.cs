@@ -13,14 +13,16 @@ using UnityEngine;
 // now follows too (see its own doc comment). This prefab simply not wiring up that child is what actually
 // keeps it damage-free; flip contactColliderEnabled / wire up the child later if that's ever wanted.
 //
-// Permanently kinematic (OnAwake) so it's immune to knockback DISPLACEMENT — same one-time-permanent-lock
-// precedent DummyTargetPD.OnAwake() already establishes — but deliberately does NOT set
-// stunResistant/isStunnable the way DummyTargetPD does, since this enemy should still be affected by
-// Stun/Slow and the micro-stun a knockback hit derives. Confirmed via EnemyBasePD.AddKnockbackVelocity's
-// own implementation: the velocity write is gated behind `!_rigidbody.isKinematic`, but the derived
-// ApplyStun() call right after it runs unconditionally regardless of kinematic state — so "immune to the
-// push, not the stun" is already exactly how a permanently-kinematic, still-stunnable enemy behaves, no
-// changes needed to AddKnockbackVelocity/Stun/Slow themselves.
+// Permanently kinematic (OnAwake + a per-tick Simulate() re-assertion, see below) so it's immune to knockback
+// DISPLACEMENT — same one-time-permanent-lock precedent DummyTargetPD.OnAwake()/Simulate() already
+// establishes — but deliberately does NOT set stunResistant/isStunnable the way DummyTargetPD does, since
+// this enemy should still be affected by Stun/Slow and the micro-stun a knockback hit derives. Confirmed via
+// EnemyBasePD.AddKnockbackVelocity's own implementation: the velocity write is gated behind
+// `!_rigidbody.isKinematic`, but the derived ApplyStun() call right after it runs unconditionally regardless
+// of kinematic state — so "immune to the push, not the stun" is already exactly how a permanently-kinematic,
+// still-stunnable enemy behaves, no changes needed to AddKnockbackVelocity/Stun/Slow themselves. The
+// per-tick Simulate() override exists because OnAwake's own lock alone was NOT actually sufficient — see
+// that override's own doc comment for the real bug this fixed (2026-08-29).
 //
 // A permanently-kinematic rigidbody can't be moved via AddForce/velocity at all (Unity no-ops it), so
 // HandleActiveState below moves it with _rigidbody.MovePosition() instead — the correct API for a
@@ -62,6 +64,23 @@ public class PerimeterPatrolGloomPD : EnemyBasePD<PerimeterPatrolGloomPD.State>
         base.OnAwake();
         // Permanent — see class doc comment. Deliberately does NOT touch stunResistant/isStunnable.
         if (_rigidbody != null) _rigidbody.isKinematic = true;
+    }
+
+    protected override void Simulate(ref State state, float delta)
+    {
+        base.Simulate(ref state, delta);
+
+        // Defensive per-tick re-assertion (2026-08-29 — real bug, confirmed via testing: this enemy WAS
+        // visibly getting knocked back despite OnAwake's own lock above) — same convention DummyTargetPD's
+        // own identical override already uses. Root cause: EnemyBasePD.Simulate()'s own pooled-respawn
+        // reset block unconditionally sets _rigidbody.isKinematic = false ("in case a previous life died
+        // mid-kill-launch") EVERY spawn, including the very first one — which runs AFTER OnAwake() already
+        // locked it true, silently undoing it before this enemy's first real tick. Nothing was ever
+        // re-locking it afterward, so it was never actually kinematic in practice. Runs AFTER base.Simulate()
+        // so it re-locks on the SAME tick anything else (the respawn reset, or a hypothetical future
+        // kill-launch path) un-locks it — cheap (a single bool check) every other tick, when it's already
+        // kinematic and this is a no-op.
+        if (_rigidbody != null && !_rigidbody.isKinematic) _rigidbody.isKinematic = true;
     }
 
     // Called by the spawning Event right after hierarchy.Create()/ConfigureSpawn — same "mutate right

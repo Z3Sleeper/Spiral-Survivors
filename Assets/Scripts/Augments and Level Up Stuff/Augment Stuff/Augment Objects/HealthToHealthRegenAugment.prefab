@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8b94b8e5778a4ed41934a921f3dfd52f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthToHealthRegenAugment
-  bonusHealthToHealthRegenPercent: 0.002
+  bonusHealthToHealthRegenPercent: 0.01
   belowHalfHealthMultiplier: 2
   maxHealthGrant: 20

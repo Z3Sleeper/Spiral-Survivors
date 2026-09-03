@@ -96,10 +96,10 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
 
     // Moved out of the old dedicated AreaEffectHealPD (now merged away) — onAllyHit is just "roll this
     // ally's heal and apply it," the same per-target extra shape ShieldBreakBurstAugment's Stun already uses
-    // via onEnemyHit, just for the ally-targeting side of AreaEffectCastHelper.Cast. CharacterStatsPD.All
-    // (what Cast's own targetAllies loop iterates) includes the caster themselves — no ally == owner
+    // via onEnemyHit, just for the ally-targeting side of AreaEffectCastHelper.Cast. FriendlyTargetRegistryPD.
+    // All (what Cast's own targetAllies loop iterates) includes the caster themselves — no ally == owner
     // exclusion there — so this fires for Stats too, not just genuinely other players.
-    private void RollAndHeal(CharacterStatsPD ally)
+    private void RollAndHeal(IFriendlyPD ally)
     {
         // baseHeal joins the scaled portion INSIDE the AreaEffectPower multiply — see its own field comment.
         float totalHeal = (baseHeal + Stats.HealthRegen * healthRegenMultiplier) * Stats.AreaEffectPower;
@@ -108,8 +108,11 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
         // genuinely different ally goes through HealFromAlly() instead (NOT scaled by the ally's own
         // HealPower), same "don't let a receiving ally's own stacked HealPower also amplify heals they
         // receive from someone else" reasoning OnStrikeHealAllyAugment's own identical swap uses (see
-        // CharacterStatsPD.HealFromAlly's own doc comment).
-        if (ally == Stats) ally.Heal(totalHeal);
-        else ally.HealFromAlly(totalHeal, Stats);
+        // CharacterStatsPD.HealFromAlly's own doc comment). Stub (2026-08-30) — HealFromAlly is
+        // CharacterStatsPD-specific, not on IFriendlyPD yet (ally was widened as part of the combat-targeting
+        // migration); same "stub for now" call as OnStrikeHealAllyAugment/DamageNumberManager's own
+        // IFriendlyPD overloads — a future non-player ally just doesn't get healed by this augment yet.
+        if (ReferenceEquals(ally, Stats)) Stats.Heal(totalHeal);
+        else if (ally is CharacterStatsPD player) player.HealFromAlly(totalHeal, Stats);
     }
 }

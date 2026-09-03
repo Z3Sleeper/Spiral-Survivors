@@ -74,7 +74,7 @@ public static class AreaEffectCastHelper
         bool dealDamage = false, float damagePercent = 0f, float onHitPowerPercent = 0f, bool notifyOnHit = true,
         bool hasKnockback = false, float? knockback = null,
         bool interrupt = false,
-        Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null,
+        Action<IEnemyPD> onEnemyHit = null, Action<IFriendlyPD> onAllyHit = null, Action<int> onCastComplete = null,
         Action<IEnemyPD> onSuccessfulInterrupt = null,
         bool overrideHitSfx = false, AudioClip hitSfxOverride = null)
     {
@@ -82,7 +82,7 @@ public static class AreaEffectCastHelper
 
         if (targetAllies)
         {
-            foreach (var ally in CharacterStatsPD.All.Values)
+            foreach (var ally in FriendlyTargetRegistryPD.All)
             {
                 if (ally.IsDead) continue;
                 if (Vector3.Distance(ally.transform.position, position) > radius) continue;

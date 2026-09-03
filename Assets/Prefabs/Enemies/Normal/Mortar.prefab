@@ -440,15 +440,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::MortarGloomPD
   _rigidbody: {fileID: 7050331330856468974}
   enemyName: Mortar
-  moveSpeed: 10
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
-  maxHealth: 7
+  maxHealth: 75
   preferredRange: 8
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 5
+  backpedalDisabled: 0
+  damage: 10
   xpValue: 5
+  pointsValue: 5
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -468,20 +470,21 @@ MonoBehaviour:
   postFireDuration: 0.5
   strikesPerAttack: 1
   strikeDamageMultiplier: 1
-  dashSpeedMultiplier: 4
+  dashSpeedMultiplier: 2
   dashDistanceBuffer: 0.5
   hazardPrefab: {fileID: 7216769449471555763, guid: 0bf3dab1eec5fe049848161732243cf8, type: 3}
   hazardWidth: 8
   hazardDepth: 2
   projectileTravelDuration: 0.5
-  rotationRateDegPerSecond: 45
+  rotationRateDegPerSecond: 30
+  distanceTrackingRateUnitsPerSecond: 4
   projectileVfxPrefab: {fileID: 2942187867930129664, guid: 601c590dfab61944b9497067dfd8e6e2, type: 3}
   projectileArcHeight: 3
   projectileSpawnHeightOffset: 1
   projectileSpawnForwardOffset: 0
   attackCooldown: 5
   strikesPerAttackTierGrowth: 1
-  rotationRateDegPerSecondTierGrowth: 0.2
+  rotationRateDegPerSecondTierGrowth: 0.05
 --- !u!135 &3908022877477359117
 SphereCollider:
   m_ObjectHideFlags: 0

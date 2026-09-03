@@ -97,6 +97,16 @@ public class WeaponManagerPD : MonoBehaviour
         }
         else
         {
+            // Explicit false, not just relying on a fresh instance's own default (2026-08-31 fix) — weapon
+            // instances go through pooled reuse here (see InitModelVisuals's own doc comment: RegisterWeapon
+            // runs "on every logical spawn, including pooled reuse"), so an instance that was an outer-track
+            // weapon in its PREVIOUS life would otherwise keep IsOuterTrack stuck true on this one, making
+            // OrbitalPosition (WeaponBasePD.cs) read the wrong radius offset AND the wrong track's slot
+            // count/spacing for it — landing this main-track weapon directly overlapping an outer-track one
+            // instead of on its own ring. Confirmed live: Knight with OuterTrack + SurgeWeaponCount, the
+            // Surge-spawned main-track weapon rendered on top of an outer-track weapon instead of opposite
+            // the original main-track one.
+            weapon.IsOuterTrack = false;
             weapon.SlotIndex = _weapons.Count;
             _weapons.Add(weapon);
         }

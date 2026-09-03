@@ -40,6 +40,14 @@ PrefabInstance:
       propertyPath: m_ConstrainProportionsScale
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 3812485605274019885, guid: 35237dad5e860b744967ccf635127c48, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3812485605274019885, guid: 35237dad5e860b744967ccf635127c48, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3908022877477359117, guid: 35237dad5e860b744967ccf635127c48, type: 3}
       propertyPath: m_Radius
       value: 0.75
@@ -59,6 +67,10 @@ PrefabInstance:
     - target: {fileID: 4787680634520385633, guid: 35237dad5e860b744967ccf635127c48, type: 3}
       propertyPath: maxHealth
       value: 375
+      objectReference: {fileID: 0}
+    - target: {fileID: 4787680634520385633, guid: 35237dad5e860b744967ccf635127c48, type: 3}
+      propertyPath: pointsValue
+      value: 25
       objectReference: {fileID: 0}
     - target: {fileID: 4787680634520385633, guid: 35237dad5e860b744967ccf635127c48, type: 3}
       propertyPath: sizeYOffset
@@ -83,10 +95,6 @@ PrefabInstance:
     - target: {fileID: 6142094079965303665, guid: 35237dad5e860b744967ccf635127c48, type: 3}
       propertyPath: m_LocalScale.z
       value: 1.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 6142094079965303665, guid: 35237dad5e860b744967ccf635127c48, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 16
       objectReference: {fileID: 0}
     - target: {fileID: 7839943648137112170, guid: 35237dad5e860b744967ccf635127c48, type: 3}
       propertyPath: m_LocalPosition.x

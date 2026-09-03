@@ -640,15 +640,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DaggerGloomPD
   _rigidbody: {fileID: 1021357975612536536}
   enemyName: Dagger
-  moveSpeed: 12
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
   maxHealth: 75
   preferredRange: 5
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 5
+  backpedalDisabled: 0
+  damage: 10
   xpValue: 5
+  pointsValue: 5
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -667,7 +669,7 @@ MonoBehaviour:
   invulnerableShell: {fileID: 3453602238434079299}
   spinDamageMultiplier: 1
   spinRadius: 3
-  windupDuration: 0.5
+  windupDuration: 1
   spinDuration: 0.1
   betweenSpinPause: 0.25
   postSpinPause: 0.5

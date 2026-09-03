@@ -5,8 +5,11 @@ using UnityEngine;
 // A standalone ground hazard spawned by MortarGloomPD at Windup entry — not IEnemyPD, not a weapon, same
 // category as RemoteSpikeBurstPD ("deliberately not X"). Lives independently of the Mortar once spawned: it
 // keeps ticking and will still detonate even if the Mortar that spawned it has since died, EXCEPT while still
-// mid-Windup, where MortarGloomPD.OnInterrupted() can actively Cancel() it (see that class's own doc comment
-// for why cancellation is phase-gated rather than blanket-never).
+// mid-Windup, where MortarGloomPD.CancelPendingHazardIfWindingUp() can actively Cancel() it — called from
+// BOTH OnInterrupted() (a real interrupt) and Die() (the Mortar itself dying mid-Windup, 2026-08-29 — was
+// previously NOT cancelled on death at all, so the hazard kept charging and fired a projectile from the dead
+// Mortar's last position) — see that method's own doc comment for why cancellation is phase-gated rather
+// than blanket-never.
 //
 // Also spawns the cosmetic MortarProjectileVFXPD shell itself now (2026-08-26, was MortarGloomPD.EnterFire())
 // — right at the "Attached" -> "Fired" lock transition below, driven by this hazard's own independent timer.
@@ -74,7 +77,8 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
 
     [SerializeField] private WindupFillPD _windupFill;
 
-    private static readonly Collider[] _hitResults = new Collider[8]; // hard cap of 4 players, generous margin
+    // See SpearGloomPD._stabOverlapResults's own doc comment for the buffer-size reasoning.
+    private static readonly Collider[] _fireOverlapResults = new Collider[8];
 
     private float _halfWidth;
     private float _halfDepth;
@@ -119,16 +123,17 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     // reference" contract EnemyBasePD.CaptureAttackAnchor already guarantees for the plain-Vector3 case).
     // _firerPosition is a one-time snapshot of the Mortar's own position at spawn (it's kinematic and doesn't
     // move again until well after this hazard has locked, so a live re-read is never actually needed).
-    private CharacterStatsPD _trackedTarget;
+    private IFriendlyPD _trackedTarget;
     private Vector3 _firerPosition;
 
     // Called immediately after hierarchy.Create() returns — same "mutate currentState right after Create()"
     // pattern as RemoteSpikeBurstPD.Launch(). Takes full width/depth (not half-extents) — friendlier to tune
-    // from the Inspector-facing caller; halved here into the half-extents Physics.OverlapBoxNonAlloc actually
-    // wants. trackedTarget/firerPosition/windupAttackSpeed drive the live-tracking-then-lock behavior — see
-    // class doc comment; trackedTarget may be null (no live tracking, stays exactly where spawned).
+    // from the Inspector-facing caller; halved here into the half-extents the manual oriented-rectangle hit
+    // check (LateSimulate's own "Fired" phase) actually wants. trackedTarget/firerPosition/windupAttackSpeed
+    // drive the live-tracking-then-lock behavior — see class doc comment; trackedTarget may be null (no live
+    // tracking, stays exactly where spawned).
     public void Launch(float windupDuration, float fireDuration, float width, float depth, float damage,
-        CharacterStatsPD trackedTarget = null, Vector3 firerPosition = default, float windupAttackSpeed = 1f,
+        IFriendlyPD trackedTarget = null, Vector3 firerPosition = default, float windupAttackSpeed = 1f,
         float rotationRateDegPerSecond = 45f, float distanceTrackingRateUnitsPerSecond = 10f,
         GameObject projectileVfxPrefab = null, float projectileArcHeight = 0f,
         float projectileSpawnHeightOffset = 0f, float projectileSpawnForwardOffset = 0f,
@@ -213,7 +218,13 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
             // ground hazard's full 2D position instead of just a body's own facing direction. Holds its last
             // position/bearing/distance (no teleport-to-stale-null) if the target's died/gone invisible-
             // without-taunting mid-Windup — same "freeze on invalid" convention EnemyBasePD.IsTargetStillValid's
-            // own callers already use.
+            // own callers already use. Rate scaled by _windupAttackSpeed (2026-08-31, was plain delta) — the
+            // same one-time Launch()-snapshotted firer attack speed state.windupTimer itself already uses just
+            // below, for the identical "firer could die/get pooled-and-reused mid-track" reason a live re-read
+            // isn't safe here (see that field's own doc comment). Was previously deliberately UNSCALED (same
+            // reasoning LeaperGloomPD's own Windup tracking used to have) — reversed so the tracking rate keeps
+            // pace with the now-compressed windup duration instead of getting relatively stiffer as attack
+            // speed climbs; see EnemySpawnerPD.difficultyAttackSpeedGrowthPerLevel's own doc comment.
             if (_trackedTarget != null && !_trackedTarget.IsDead &&
                 (!_trackedTarget.IsInvisible || _trackedTarget.IsTaunting))
             {
@@ -225,8 +236,8 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
                 if (targetDistance > 0.0001f)
                 {
                     float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
-                    state.facingAngleDeg = Mathf.MoveTowardsAngle(state.facingAngleDeg, targetAngle, _rotationRateDegPerSecond * delta);
-                    state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, _distanceTrackingRateUnitsPerSecond * delta);
+                    state.facingAngleDeg = Mathf.MoveTowardsAngle(state.facingAngleDeg, targetAngle, _rotationRateDegPerSecond * delta * _windupAttackSpeed);
+                    state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, _distanceTrackingRateUnitsPerSecond * delta * _windupAttackSpeed);
 
                     float rad = state.facingAngleDeg * Mathf.Deg2Rad;
                     Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
@@ -244,17 +255,34 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         state.fireTimer -= delta;
         if (state.fireTimer > 0f) return;
 
-        Vector3 half = new Vector3(_halfWidth, 2f, _halfDepth); // tall enough to catch any player hurtbox
-        int n = Physics.OverlapBoxNonAlloc(transform.position, half, _hitResults, transform.rotation, CombatLayerMasks.PlayerHurtboxMask);
+        // Physics.OverlapBoxNonAlloc against CombatLayerMasks.FriendlyHurtboxMask (2026-08-30, back to this
+        // hazard's own original approach before the 2026-08-28 detour through a manual FriendlyTargetRegistryPD
+        // check — see SpearGloomPD.EnterStab's own doc comment for why enemy AoE attacks across the board now
+        // match every player weapon's own collider-query convention; the manual math this briefly used is no
+        // longer needed anywhere).
+        Vector3 forward = transform.forward;
+        Vector3 center = transform.position;
+        // Y half-extent is a fixed generous constant — see SpearGloomPD._stabOverlapResults's own doc
+        // comment neighbor reasoning (every character's hurtbox collider sits at roughly the same
+        // ground-level height regardless of this hazard's own width/depth).
+        Vector3 halfExtents = new Vector3(_halfWidth, 2f, _halfDepth);
+        Quaternion rot = Quaternion.LookRotation(forward);
+
+        int n = Physics.OverlapBoxNonAlloc(center, halfExtents, _fireOverlapResults, rot, CombatLayerMasks.FriendlyHurtboxMask);
         for (int i = 0; i < n; i++)
         {
-            var stats = _hitResults[i].GetComponent<CharacterStatsPD>();
+            var stats = _fireOverlapResults[i].GetComponent<IFriendlyPD>();
             // No IsInvincible pre-check (2026-08-24 fix, was skipping the call entirely while invincible) —
             // TakeDamage() already no-ops safely against invincibility on its own, AND is the only place
             // Dodge credit gets awarded (see CharacterStatsPD.NotifyDodge's own doc comment); short-circuiting
             // here before ever calling it silently ate every Dodge this attack should have granted while the
             // player was dash-invincible.
-            if (stats != null && !stats.IsDead) stats.TakeDamage(_damage);
+            if (stats == null || stats.IsDead) continue;
+
+            // No firer-identity field on this hazard (only a snapshot _firerPosition — see class doc
+            // comment), so attacker is passed default — matches this interface param's "reserved for later,
+            // not wired to anything yet" status (see IFriendlyPD.TakeDamage's own doc comment).
+            stats.TakeDamage(_damage, false, default);
         }
         state.expired = true;
     }

@@ -29,6 +29,12 @@ public static class PhantomBladeSummonHelper
     // Shared by every "closest enemies" Phantom Blade augment (Passive/OnDash/OnDamaged/OnCrit) — was
     // duplicated as each augment's own local TargetSearchRadius const (all at 50f) before being centralized
     // and reduced here (2026-07-26), so the whole family's effective range changes in one place from now on.
+    //
+    // Every summon call also takes a Color now (2026-09-01) — purely cosmetic, applied via
+    // PhantomBladePD.ApplyColor, letting each summoning augment tint its own blades a distinct color via
+    // its own [SerializeField] bladeColor. Deliberately NOT carried through PhantomBladeSummonData —
+    // Carnival's own copy always uses ITS OWN bladeColor (explicit design), never the original summon's
+    // color.
     public const float TargetSearchRadius = 25f;
 
     // Physics.OverlapSphereNonAlloc does NOT return colliders in distance order — it fills this buffer in
@@ -69,7 +75,7 @@ public static class PhantomBladeSummonHelper
     // excess blades all target the closest one (index 0) instead, per the family's stated design (unique
     // targets are preferred, but never wasting a summon just because targets ran out).
     public static void SummonAtClosestEnemies(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, Vector3 origin, int summonCount, float baseDamageMultiplier)
+        CharacterStatsPD stats, Vector3 origin, int summonCount, float baseDamageMultiplier, Color color)
     {
         if (phantomBladePrefab == null || summonCount <= 0) return;
 
@@ -89,7 +95,7 @@ public static class PhantomBladeSummonHelper
         for (int i = 0; i < summonCount; i++)
         {
             var target = _found[i < _found.Count ? i : 0];
-            SummonAtTarget(hierarchy, phantomBladePrefab, stats, target, baseDamageMultiplier);
+            SummonAtTarget(hierarchy, phantomBladePrefab, stats, target, baseDamageMultiplier, color);
         }
     }
 
@@ -97,7 +103,7 @@ public static class PhantomBladeSummonHelper
     // tick, dash, onhit) — the one path that also notifies _onPhantomBladeSummon (unless notifySummon is
     // explicitly suppressed) so PhantomBladeCarnivalAugment (or any future listener) can react.
     public static void SummonAtTarget(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, IEnemyPD target, float baseDamageMultiplier, bool notifySummon = true)
+        CharacterStatsPD stats, IEnemyPD target, float baseDamageMultiplier, Color color, bool notifySummon = true)
     {
         // Two separate multiplicative layers, not one combined pool — every non-size Phantom Blade
         // augment's own +size% sums additively into phantomBladeSizeBonus first, then
@@ -122,7 +128,7 @@ public static class PhantomBladeSummonHelper
         float damage = rolled * stats.Strength
             * (1f + stats.phantomBladeDamageBonus) * stats.phantomBladeDamageBonusPercent * stats.phantomBladeDamagePenalty;
 
-        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, baseDamageMultiplier);
+        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, baseDamageMultiplier, color);
 
         // Structurally recursion-proof, not just guarded: SummonCopyAtTarget (below) never calls back into
         // SummonAtTarget, so there is no path from a copy back into this notify no matter how many
@@ -137,12 +143,15 @@ public static class PhantomBladeSummonHelper
     // its own fresh damage — PhantomBladeCarnivalAugment calls this specifically so its own secondary blade
     // can't recursively trigger another copy. baseDamageMultiplier is carried over from the original
     // summon's PhantomBladeSummonData so the copy's own onhit-trigger power (if PhantomBladeOnHitAugment is
-    // active) matches whichever augment originally summoned it exactly.
+    // active) matches whichever augment originally summoned it exactly. color is NOT carried over from the
+    // original summon, though (2026-09-01, explicit design) — PhantomBladeSummonData deliberately has no
+    // color field at all; Carnival always tints its own copy with its own bladeColor, regardless of which
+    // augment triggered the original.
     public static void SummonCopyAtTarget(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
         CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit,
-        float baseDamageMultiplier)
+        float baseDamageMultiplier, Color color)
     {
-        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, baseDamageMultiplier);
+        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, baseDamageMultiplier, color);
     }
 
     // Fixed-radius, random-angle offset around the target — matches old (Random.insideUnitCircle.normalized
@@ -151,7 +160,7 @@ public static class PhantomBladeSummonHelper
     // call (including a Carnival copy of the same primary summon) independently rolls its own fresh angle.
     private static void SpawnBlade(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
         CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit,
-        float baseDamageMultiplier)
+        float baseDamageMultiplier, Color color)
     {
         float radius = PhantomBladePD.BaseSpawnRadius * size;
         float angle     = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
@@ -163,6 +172,6 @@ public static class PhantomBladeSummonHelper
         if (!id.HasValue) return;
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out PhantomBladePD blade))
-            blade.Summon(stats, damage, size, isCrit, baseDamageMultiplier);
+            blade.Summon(stats, damage, size, isCrit, baseDamageMultiplier, color);
     }
 }

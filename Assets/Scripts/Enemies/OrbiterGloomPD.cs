@@ -265,7 +265,11 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             // UpdateView for how the same per-slot window math drives each indicator independently.
             case OrbiterState.Pulling:
             {
-                state.phaseTimer += delta;
+                // Scaled by EffectiveAttackSpeed (2026-08-31, was plain delta) — see
+                // KingOrbiterPD.HandleActiveState's own identical Pulling-case change for why (the
+                // dispatch/release thresholds below stay fixed constants; this only changes how fast
+                // phaseTimer climbs toward them).
+                state.phaseTimer += delta * EffectiveAttackSpeed;
                 int count = state.heldPlebs.Count;
 
                 // While loop, not if — guards against a single tick's delta covering more than one
@@ -278,13 +282,15 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                     state.pullSequenceIndex++;
                 }
 
-                // Every held pleb has been dispatched AND the last one's own pullDuration has elapsed —
-                // vulnerable again the instant it starts actually chasing with its now-orbiting plebs —
-                // only isStunnable (below) stays off through Holding, per explicit design: a genuine
-                // "hit it with an interrupt to stop it" counter-play window, not a full invincibility
-                // window like Pulling was.
-                if (count > 0 && state.pullSequenceIndex >= count &&
-                    state.phaseTimer >= (count - 1) * pullSequentialDelay + windupDuration + pullDuration)
+                // Every held pleb has been dispatched AND has actually arrived at its own orbit slot (see
+                // AllArrivedAtOrbitSlot below — 2026-08-31, replaced a phaseTimer-threshold ESTIMATE of when
+                // the last-dispatched pleb should have finished pulling in, same fix as
+                // KingOrbiterPD.HandleActiveState's own identical Pulling-case change; see
+                // IEnemyPD.IsWaitingToOrbit's own doc comment for why) — vulnerable again the instant it
+                // starts actually chasing with its now-orbiting plebs — only isStunnable (below) stays off
+                // through Holding, per explicit design: a genuine "hit it with an interrupt to stop it"
+                // counter-play window, not a full invincibility window like Pulling was.
+                if (count > 0 && state.pullSequenceIndex >= count && AllArrivedAtOrbitSlot(state.heldPlebs))
                 {
                     SetHurtboxDisabled(false);
                     // Pull -> orbit damage multiplier switch — see pullDamageMultiplier/orbitDamageMultiplier's
@@ -432,6 +438,21 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         // something that no longer resolves.
         if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
             enemy.OrbitTarget(ObjectId, transform.position, EffectiveHoldOrbitRadius, pullDuration, holdOrbitAngularSpeed, SlotAngleDeg(i, count));
+    }
+
+    // Direct-state gate (2026-08-31) for HandleActiveState's own Pulling-case release check — see
+    // KingOrbiterPD.AllArrivedAtOrbitSlot's own identical doc comment for the full reasoning (queries each
+    // pleb's own IsWaitingToOrbit directly instead of estimating from a parallel time formula; a dead/
+    // unresolvable member is treated as non-blocking rather than stalling release forever).
+    private bool AllArrivedAtOrbitSlot(DisposableList<PredictedObjectID> held)
+    {
+        for (int i = 0; i < held.Count; i++)
+        {
+            var go = hierarchy.GetGameObject(held[i]);
+            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+            if (!enemy.IsWaitingToOrbit) return false;
+        }
+        return true;
     }
 
     // Reverses every effect DispatchPull/TryStartGrab applied, on whichever plebs are currently held regardless

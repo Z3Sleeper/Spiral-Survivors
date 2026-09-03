@@ -1,12 +1,17 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Passive: +60% (flat, not Total) Attack Speed for the whole time the user is invisible, from ANY source — Stats.
-// IsInvisible/_onInvisibleChanged is a single shared flag (CharacterStatsPD.GrantInvisibility), so this
+// Passive: +20% (flat, not Total) Attack Speed permanently on pick, extended to a total +60% for the whole
+// time the user is invisible, from ANY source (2026-08-31 — was +60% ONLY while invisible, no baseline at
+// all; that left this augment's entire payoff locked behind actually going invisible, same "no immediate
+// incentive" gap DeathPreventedBerserkAugment's own Max Energy grant fixes). The two numbers are meant to
+// read as ONE bonus, not stacked — +20% baseline, growing to +60% (not +80%) while invisible; see
+// ExtraAttackSpeedWhileInvisible's own doc comment for how that's computed. Stats.IsInvisible/
+// _onInvisibleChanged is a single shared flag (CharacterStatsPD.GrantInvisibility), so the extra portion
 // reacts identically whether invisibility came from this augment's own death-prevented grant below,
-// RogueVanishAbilityPD, or any future source. Granted immediately if already invisible at pick time, same
-// "don't wait for the next natural transition" convention as DeathPreventionShieldDRAugment's own
-// already-shielded check.
+// RogueVanishAbilityPD, or any future source. The extra portion is granted immediately if already invisible
+// at pick time, same "don't wait for the next natural transition" convention as DeathPreventionShieldDRAugment's
+// own already-shielded check.
 //
 // Also activates CharacterStatsPD's Death Prevention mechanic (Stats.ActivateDeathPreventions() — see its
 // own doc comment for the "already active elsewhere, shrink the grant timer instead" stacking rule). On a
@@ -34,11 +39,20 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
         public void Dispose() { }
     }
 
-    // AddAttackSpeedFlat takes an intuitive fraction of baseAttackSpeed (e.g. 0.6 for +60%), despite the
-    // "Flat" name — see that method's own doc comment. Not a Total-tier multiplier.
+    // AddAttackSpeedFlat takes an intuitive fraction of baseAttackSpeed (e.g. 0.2 for +20%), despite the
+    // "Flat" name — see that method's own doc comment. Not a Total-tier multiplier. Granted unconditionally,
+    // permanently, the instant this augment is picked.
+    [SerializeField] private float baseAttackSpeedFlat           = 0.2f;
+    // The TOTAL desired Attack Speed bonus while invisible (not an additional stack on top of the baseline
+    // above) — ExtraAttackSpeedWhileInvisible derives the actual incremental grant from the difference
+    // between this and baseAttackSpeedFlat, so retuning either field independently keeps composing correctly.
     [SerializeField] private float attackSpeedFlatWhileInvisible = 0.6f;
     [SerializeField] private float onSaveMoveSpeedFlat                   = 5f;
     [SerializeField] private float onSaveDuration                       = 3f;
+
+    // The actual amount granted/reverted by OnInvisibleChanged — see attackSpeedFlatWhileInvisible's own doc
+    // comment for why this is a difference, not the raw field.
+    private float ExtraAttackSpeedWhileInvisible => attackSpeedFlatWhileInvisible - baseAttackSpeedFlat;
 
     // Plain, not State — mutated only from the _onInvisibleChanged listener callback, which (like every
     // PredictedEvent in this class) fires exactly once per real occurrence regardless of resimulation.
@@ -54,10 +68,13 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
         Stats.AddDeathPreventedListener(OnDeathPrevented);
         Stats.ActivateDeathPreventions();
 
+        // Permanent baseline — see class doc comment.
+        Stats.AddAttackSpeedFlat(baseAttackSpeedFlat);
+
         if (Stats.IsInvisible)
         {
             _attackSpeedGranted = true;
-            Stats.AddAttackSpeedFlat(attackSpeedFlatWhileInvisible);
+            Stats.AddAttackSpeedFlat(ExtraAttackSpeedWhileInvisible);
         }
     }
 
@@ -73,7 +90,7 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
     {
         if (invisible == _attackSpeedGranted) return;
         _attackSpeedGranted = invisible;
-        Stats.AddAttackSpeedFlat(invisible ? attackSpeedFlatWhileInvisible : -attackSpeedFlatWhileInvisible);
+        Stats.AddAttackSpeedFlat(invisible ? ExtraAttackSpeedWhileInvisible : -ExtraAttackSpeedWhileInvisible);
     }
 
     private void OnDeathPrevented() => currentState.buffTimer = onSaveDuration;

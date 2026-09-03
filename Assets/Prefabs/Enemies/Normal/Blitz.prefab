@@ -406,15 +406,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BlitzGloomPD
   _rigidbody: {fileID: 3081874023962065944}
   enemyName: Blitz
-  moveSpeed: 10
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
   maxHealth: 75
   preferredRange: 5
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 7.5
+  backpedalDisabled: 0
+  damage: 10
   xpValue: 5
+  pointsValue: 5
   size: 1
   contactColliderEnabled: 1
   stunResistant: 0
@@ -431,12 +433,12 @@ MonoBehaviour:
   windupDuration: 1
   postBlitzPause: 0.5
   blitzDistance: 12
-  blitzSpeedMultiplier: 3.5
+  blitzSpeedMultiplier: 3
   blitzesPerAttack: 1
-  rotationRateDegPerSecond: 45
+  rotationRateDegPerSecond: 30
   attackCooldown: 5
   blitzesPerAttackTierGrowth: 1
-  rotationRateDegPerSecondTierGrowth: 0.2
+  rotationRateDegPerSecondTierGrowth: 0.05
   windupIndicator: {fileID: 1078640085709494109}
   windupFill: {fileID: 519605576584556137}
 --- !u!135 &2131989495178621505

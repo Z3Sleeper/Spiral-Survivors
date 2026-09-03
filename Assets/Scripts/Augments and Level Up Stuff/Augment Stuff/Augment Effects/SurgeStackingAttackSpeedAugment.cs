@@ -17,8 +17,17 @@ using UnityEngine;
 // Recomputes its OWN total contribution from scratch on every stack-count change (removing exactly what it
 // last applied, then reapplying fresh against the CURRENT StackPower) rather than incrementally adding per
 // stack — same "re-derive fully, don't incrementally adjust" principle as CharacterStatsPD.AddSizePercent.
-// This keeps it exactly reversible with zero drift, and self-corrects if StackPower itself changes (e.g. a
-// later StackPowerAugment pick) by the next time this augment's own stack count changes.
+// This keeps it exactly reversible with zero drift. ALSO reapplies immediately the instant StackPower itself
+// changes (2026-09-02, CharacterStatsPD.AddStackPowerChangedListener/OnStackPowerChanged below) — a
+// StackPowerAugment picked mid-run now retroactively boosts every stack already earned right away, not on a
+// delay tied to the next stack tick. That one is a PredictedEvent-driven direct mutation (safe — same
+// "guaranteed exactly once per real occurrence" reasoning every other PredictedEvent listener's direct Stats
+// mutation already relies on in this codebase), independent of the verified-gated UpdateView path above,
+// which stays exactly as it was for the stack-COUNT-change case specifically.
+//
+// Also grants a flat +25 Max Energy, unconditionally in OnApply() (2026-08-31, same shape/reasoning as
+// SurgeWeaponCountAugment's own bonusMaxEnergyFlat) — a permanent, always-on grant, not gated behind Surge
+// start/end like the stacking Attack Speed above.
 public class SurgeStackingAttackSpeedAugment : AugmentEffectPD<SurgeStackingAttackSpeedAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -31,11 +40,29 @@ public class SurgeStackingAttackSpeedAugment : AugmentEffectPD<SurgeStackingAtta
     [SerializeField] private float stackInterval    = 1f;
     [SerializeField] private int   maxStacks         = 10;
     [SerializeField] private float attackSpeedFlat     = 0.25f;
+    // Permanent, unconditional grant (2026-08-31) — same +25 Max Energy shape/reasoning as
+    // SurgeWeaponCountAugment's own bonusMaxEnergyFlat: more Surge uptime per full-to-empty cycle, granted
+    // once in OnApply() rather than gated behind Surge start/end like the stacking Attack Speed above.
+    [SerializeField] private float bonusMaxEnergyFlat = 25f;
 
     // Plain view-layer bookkeeping, not State — tracks what this effect has ACTUALLY applied to
     // CharacterStatsPD so it can be reversed exactly, same role as EnemyBasePD's _wasDeadLastFrame.
     private int   _lastStackCount;
     private float _lastAppliedBonus;
+
+    protected override void OnApply()
+    {
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
+        // Re-values every already-earned stack the instant StackPower itself changes (2026-09-02) — see
+        // class doc comment.
+        Stats.AddStackPowerChangedListener(OnStackPowerChanged);
+    }
+
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+        if (Stats != null) Stats.RemoveStackPowerChangedListener(OnStackPowerChanged);
+    }
 
     protected override void Simulate(ref State state, float delta)
     {
@@ -69,9 +96,29 @@ public class SurgeStackingAttackSpeedAugment : AugmentEffectPD<SurgeStackingAtta
         int newCount = verified.Value.stackCount;
         if (newCount == _lastStackCount) return;
         _lastStackCount = newCount;
+        ReapplyAttackSpeedBonus(newCount);
+    }
 
+    // Re-derives this augment's OWN total Attack Speed contribution from scratch (remove exactly what was
+    // last applied, reapply fresh against the CURRENT StackPower) — shared by both triggers that can change
+    // the total: a verified stack-count change (UpdateView above) and StackPower itself changing
+    // (OnStackPowerChanged below), so the two can never drift out of sync with each other.
+    private void ReapplyAttackSpeedBonus(int stackCount)
+    {
         Stats.AddAttackSpeedFlat(-_lastAppliedBonus);
-        _lastAppliedBonus = attackSpeedFlat * Stats.StackPower * newCount;
+        _lastAppliedBonus = attackSpeedFlat * Stats.StackPower * stackCount;
         Stats.AddAttackSpeedFlat(_lastAppliedBonus);
+    }
+
+    // Fires whenever Stats.StackPower itself changes (e.g. a StackPowerAugment picked mid-run) — reapplies
+    // immediately using the current predicted stack count, rather than leaving every already-earned stack
+    // sitting at a stale total until the next stack tick's verified state happens to reach UpdateView. Safe
+    // to mutate Stats directly here (unlike Simulate()) — this is a PredictedEvent, guaranteed exactly once
+    // per real occurrence regardless of resimulation, same reasoning every other direct-from-PredictedEvent
+    // Stats mutation in this codebase already relies on. No-op at 0 stacks (nothing earned yet to re-value).
+    private void OnStackPowerChanged()
+    {
+        if (Stats == null || Stats.IsDead || currentState.stackCount <= 0) return;
+        ReapplyAttackSpeedBonus(currentState.stackCount);
     }
 }

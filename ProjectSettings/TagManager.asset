@@ -15,7 +15,7 @@ TagManager:
   - Bounds
   - PlayerPhysics
   - EnemyPhysics
-  - Player
+  - Friendly
   - Enemy
   - BoundsCollision
   - 

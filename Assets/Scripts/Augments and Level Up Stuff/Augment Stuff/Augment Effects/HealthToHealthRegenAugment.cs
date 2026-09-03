@@ -44,16 +44,15 @@ public class HealthToHealthRegenAugment : AugmentEffectPD<HealthToHealthRegenAug
     [SerializeField] private float maxHealthGrant = 20f;
 
     // For AugmentDescriptionFormatter's {LiveBonusHealthRegenRatio} token — mirrors Simulate()'s own
-    // state.desiredAmount computation exactly, just recomputed directly off live Stats rather than reading
-    // predicted state (this only ever runs off-simulation, from the description formatter, so there's no
-    // rollback/determinism concern reading Stats directly here the way Simulate() itself has to be careful
-    // about).
+    // state.desiredAmount computation, EXCEPT deliberately excludes the belowHalfHealthMultiplier (2026-09-01,
+    // explicit design) — the description should always read as the base amount, not whatever the live
+    // doubled-or-not state happens to be at the moment the description is rendered. The real grant (Simulate/
+    // UpdateView below) still applies the multiplier live as normal; only this preview token ignores it.
     public string LiveBonusHealthRegenRatio(CharacterStatsPD stats)
     {
-        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "";
-        bool belowHalfHealth = stats.CurrentHealth < stats.MaxHealth * 0.5f;
+        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "0";
         float convertibleHealth = Mathf.Max(0f, stats.BonusHealth - stats.ConvertedHealth);
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(convertibleHealth * bonusHealthToHealthRegenPercent * (belowHalfHealth ? belowHalfHealthMultiplier : 1f))} ";
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(convertibleHealth * bonusHealthToHealthRegenPercent)}";
     }
 
     // Tracks how much has actually been granted via Stats.AddHealthRegenFlat/AddConvertedHealthRegen so far

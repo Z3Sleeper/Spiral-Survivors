@@ -34,7 +34,7 @@ public class WeaponMeleePDOld : WeaponBasePD<WeaponMeleePDOld.State>
     // runs now, no enable gate (see CharacterStatsPD.NotifyAllyStrike's own doc comment).
     // _sweepResults/_overlapResults are reused for the ally queries too (safe — each call's results are
     // fully consumed into a HashSet before the next Physics call overwrites the shared buffer).
-    private readonly HashSet<CharacterStatsPD>           _touchedAlliesThisTick = new();
+    private readonly HashSet<IFriendlyPD>                _touchedAlliesThisTick = new();
 
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
 
@@ -190,10 +190,10 @@ public class WeaponMeleePDOld : WeaponBasePD<WeaponMeleePDOld.State>
                     }
 
                     int an = Physics.BoxCastNonAlloc(segStart, half, sweep / dist,
-                        _sweepResults, segRot, dist, CombatLayerMasks.PlayerHurtboxMask);
+                        _sweepResults, segRot, dist, CombatLayerMasks.FriendlyHurtboxMask);
                     for (int i = 0; i < an; i++)
                     {
-                        var ally = _sweepResults[i].collider.GetComponent<CharacterStatsPD>();
+                        var ally = _sweepResults[i].collider.GetComponent<IFriendlyPD>();
                         if (ally != null) _touchedAlliesThisTick.Add(ally);
                     }
                 }
@@ -219,10 +219,10 @@ public class WeaponMeleePDOld : WeaponBasePD<WeaponMeleePDOld.State>
             if (enemy != null) _touchedThisTick.Add(enemy);
         }
 
-        int ao = Physics.OverlapBoxNonAlloc(center, half, _overlapResults, hitboxRot, CombatLayerMasks.PlayerHurtboxMask);
+        int ao = Physics.OverlapBoxNonAlloc(center, half, _overlapResults, hitboxRot, CombatLayerMasks.FriendlyHurtboxMask);
         for (int i = 0; i < ao; i++)
         {
-            var ally = _overlapResults[i].GetComponent<CharacterStatsPD>();
+            var ally = _overlapResults[i].GetComponent<IFriendlyPD>();
             if (ally != null) _touchedAlliesThisTick.Add(ally);
         }
 
@@ -242,7 +242,7 @@ public class WeaponMeleePDOld : WeaponBasePD<WeaponMeleePDOld.State>
 
             foreach (var ally in _touchedAlliesThisTick)
             {
-                if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.owner ?? default, HitCooldown, delta))
+                if (HitCooldownMath.TryStart(state.allyHitCooldowns, ally.ObjectId, HitCooldown, delta))
                     HitAlly(ally);
             }
         }
@@ -277,9 +277,9 @@ public class WeaponMeleePDOld : WeaponBasePD<WeaponMeleePDOld.State>
 
     // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been
     // removed from the project entirely (see CharacterStatsPD.NotifyAllyStrike's own doc comment).
-    private void HitAlly(CharacterStatsPD ally)
+    private void HitAlly(IFriendlyPD ally)
     {
-        if (ally == _stats || ally.IsDead) return;
+        if (ReferenceEquals(ally, _stats) || ally.IsDead) return;
         _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = _stats.WeaponOnHitPower });
     }
 

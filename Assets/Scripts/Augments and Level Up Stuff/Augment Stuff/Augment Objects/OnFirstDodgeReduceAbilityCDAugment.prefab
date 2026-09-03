@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3274fca134035f84a9b1cfeaf542700a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnFirstDodgeReduceAbilityCDAugment
-  reductionPercent: 0.45
+  reductionPercent: 0.25

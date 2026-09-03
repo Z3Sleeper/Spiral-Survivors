@@ -1,4 +1,5 @@
 using PurrNet.Prediction;
+using UnityEngine;
 
 // New tech, not a port. A player-initiated Surge activation (StartSurge) that would otherwise be perfectly
 // normal turns into a full Berserk Surge instead (Stats.StartBerserkSurge — see its own doc comment for the
@@ -20,13 +21,20 @@ using PurrNet.Prediction;
 //    call runs, isSurging is already true (set by whatever started the surge in the first place), so that
 //    call can never re-fire _onSurgeStarted again regardless. The reactive chain is structurally bounded at
 //    one hop, never recursive.
+//
+// Flat Max Energy on pick (2026-08-31) — same "give a permanent, immediate incentive" treatment as
+// DeathPreventedBerserkAugment's own identical grant, for the same reason: this augment's entire payoff used
+// to be entirely conditional (activating Surge at exactly full energy), giving nothing on pick itself.
 public class FullEnergyBerserkSurgeAugment : AugmentEffectPD<FullEnergyBerserkSurgeAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
+    [SerializeField] private float bonusMaxEnergyFlat = 25f;
+
     protected override void OnApply()
     {
         Stats.AddSurgeStartedListener(OnSurgeStarted);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 
     protected override void OnDestroy()

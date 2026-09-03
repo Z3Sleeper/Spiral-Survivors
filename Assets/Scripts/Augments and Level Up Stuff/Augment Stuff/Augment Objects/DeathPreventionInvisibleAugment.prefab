@@ -45,5 +45,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DeathPreventionInvisibleAugment
   attackSpeedFlatWhileInvisible: 0.6
-  onSaveMoveSpeedFlat: 5
+  onSaveMoveSpeedFlat: 3
   onSaveDuration: 3

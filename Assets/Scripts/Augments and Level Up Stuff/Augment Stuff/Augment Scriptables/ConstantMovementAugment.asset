@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: ConstantMovementAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFFFF>Can't Stop, Won't Stop</color>
-  description: '<color=#FFFFFF>+4 Move Speed</color>
+  description: '<color=#FFFFFF>+1.5 Move Speed</color>
 
     You can no longer stop.'
   icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}

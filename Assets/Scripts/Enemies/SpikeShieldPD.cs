@@ -105,7 +105,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // same "commit once, keep reading that same reference" contract BlitzGloomPD._windupTrackedTarget/
     // KingSpikePD._chargeWindupTrackedTarget use (immune to _owner.TargetStats getting reassigned to someone
     // else mid-windup via taunt/invisible-retarget). Only ever read while actually in Windup.
-    private CharacterStatsPD _windupTrackedTarget;
+    private IFriendlyPD _windupTrackedTarget;
     // Companion to _windupTrackedTarget — its position, recorded every tick it's actually alive+visible,
     // frozen otherwise (dead or invisible). Once a Windup starts, nothing stops it (2026-08-22, was:
     // skip dealing damage entirely if the target became invalid) — the burst still fires at wherever this
@@ -422,7 +422,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
                     {
                         Vector3 forward = AngleToDir(state.lockedAngle);
                         if (InAttackRectangle(origin, forward, _windupTrackedLastKnownPosition))
-                            _windupTrackedTarget.TakeDamage(_owner.damage * _shieldburstDamageMultiplier);
+                            _windupTrackedTarget.TakeDamage(_owner.damage * _shieldburstDamageMultiplier, false, _owner.ObjectId);
                     }
                     state.phaseId = (int)ShieldPhase.Releasing;
                     state.phaseTimer = _releaseDuration;
@@ -500,7 +500,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         return new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
     }
 
-    private static bool IsTargetValid(CharacterStatsPD stats) =>
+    private static bool IsTargetValid(IFriendlyPD stats) =>
         stats != null && !stats.IsDead && (!stats.IsInvisible || stats.IsTaunting) && !stats.IsInvincible;
 
     // Same forward-rectangle math SpearGloomPD.EnterStab() uses, scoped to exactly one candidate instead of
@@ -535,24 +535,27 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // correctly dodge-eligible via TakeDamage's own default isPassiveContact — that one's untouched).
     private void OnShieldContactTrigger(GameObject other)
     {
-        var stats = other.GetComponent<CharacterStatsPD>();
-        if (stats == null || !stats.owner.HasValue) return;
+        // IFriendlyPD (2026-08-30, was CharacterStatsPD + the !stats.owner.HasValue guard) — mirrors
+        // EnemyBasePD.OnContactTrigger's own identical 2026-08-30 fix; see that method's own doc comment for
+        // why the old guard is dropped entirely rather than replaced.
+        var friendly = other.GetComponent<IFriendlyPD>();
+        if (friendly == null || friendly.IsDead) return;
 
-        var player = stats.owner.Value;
+        var target = friendly.ObjectId;
         var cooldowns = currentState.contactCooldowns;
         int ticks = Mathf.Max(1, Mathf.RoundToInt(_contactCooldownSeconds / _currentDelta));
 
         for (int i = 0; i < cooldowns.Count; i++)
         {
-            if (!cooldowns[i].player.Equals(player)) continue;
+            if (!cooldowns[i].target.Equals(target)) continue;
             if (cooldowns[i].remaining > 0) return;
-            cooldowns[i] = new ContactCooldown { player = player, remaining = ticks };
-            stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, _owner.SpawnCategory == EnemySpawnCategory.Pleb, isPassiveContact: true);
+            cooldowns[i] = new ContactCooldown { target = target, remaining = ticks };
+            friendly.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, false, _owner.ObjectId, _owner.SpawnCategory == EnemySpawnCategory.Pleb, true);
             return;
         }
 
-        cooldowns.Add(new ContactCooldown { player = player, remaining = ticks });
-        stats.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, _owner.SpawnCategory == EnemySpawnCategory.Pleb, isPassiveContact: true);
+        cooldowns.Add(new ContactCooldown { target = target, remaining = ticks });
+        friendly.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, false, _owner.ObjectId, _owner.SpawnCategory == EnemySpawnCategory.Pleb, true);
     }
 
     protected override void UpdateView(State viewState, State? verified)

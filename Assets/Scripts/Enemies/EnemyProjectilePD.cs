@@ -79,17 +79,20 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
         if (dist > 0.0001f)
         {
             Vector3 half = halfExtents * _scale;
-            int n = Physics.BoxCastNonAlloc(prevPos, half, step / dist, _sweepResults, transform.rotation, dist, CombatLayerMasks.PlayerHurtboxMask);
+            int n = Physics.BoxCastNonAlloc(prevPos, half, step / dist, _sweepResults, transform.rotation, dist, CombatLayerMasks.FriendlyHurtboxMask);
             for (int i = 0; i < n; i++)
             {
-                var target = _sweepResults[i].collider.GetComponent<CharacterStatsPD>();
+                var target = _sweepResults[i].collider.GetComponent<IFriendlyPD>();
                 // No IsInvincible pre-check (2026-08-24 fix) — TakeDamage() already no-ops safely against
                 // invincibility on its own, AND is the only place Dodge credit gets awarded (see
                 // CharacterStatsPD.NotifyDodge's own doc comment); skipping the call here silently ate every
                 // Dodge this attack should have granted while the player was dash-invincible. The projectile
                 // now also correctly expires on an invincible-but-hit player instead of passing through them.
                 if (target == null || target.IsDead) continue;
-                target.TakeDamage(_damage);
+                // No firer-identity field on this projectile — attacker passed default, matches this
+                // interface param's "reserved for later, not wired to anything yet" status (see
+                // IFriendlyPD.TakeDamage's own doc comment).
+                target.TakeDamage(_damage, false, default);
                 state.expired = true;
                 break;
             }

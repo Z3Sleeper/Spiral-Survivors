@@ -107,16 +107,40 @@ public interface IFriendlyPD
     bool IsInvincible { get; }
     Transform transform { get; }
     PredictedObjectID ObjectId { get; }
+    // Generic per-friendly size scalar — mirrors IEnemyPD.Size exactly (see that interface's own doc
+    // comment: "same 'bigger target needs a taller offset' convention CharacterStatsPD.bonusSizePercent
+    // already established for players" — this IS that same property, just also exposed on the interface
+    // now so future ally code can read it generically). CharacterStatsPD backs this with bonusSizePercent.
+    float Size { get; }
 
     // isCrit/attacker mirror IEnemyPD.TakeDamage's own shape for symmetry — no enemy attack rolls a
     // crit against a friendly today (isCrit is always passed false), reserved for later
-    // cosmetic/display use, not wired to any damage multiplier yet.
-    void TakeDamage(float damage, bool isCrit, PredictedObjectID attacker);
+    // cosmetic/display use, not wired to any damage multiplier yet. isPleb/isPassiveContact (2026-08-30)
+    // mirror CharacterStatsPD.TakeDamage's own identical params — Dodge-crediting bookkeeping. Threaded
+    // all the way through the interface now (was previously silently dropped by CharacterStatsPD's own
+    // explicit implementation, which just called TakeDamage(damage) with neither) so a caller like
+    // EnemyBasePD.OnContactTrigger can pass real values through generically, without needing a
+    // CharacterStatsPD-specific type-check first, once it targets IFriendlyPD instead of CharacterStatsPD
+    // directly. A future ally implementer with no Dodge concept of its own is free to just ignore both.
+    void TakeDamage(float damage, bool isCrit, PredictedObjectID attacker, bool isPleb = false, bool isPassiveContact = false);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
     void Slow(float multiplier, float duration);
     bool Interrupt();
     void InterruptTrueStun(float duration);
+
+    // Taunt/invisible change notifications (2026-08-30) — mirror CharacterStatsPD's own existing
+    // Add/RemoveTauntChangedListener/Add/RemoveInvisibleChangedListener exactly (both already public,
+    // already this exact signature, so CharacterStatsPD satisfies these implicitly, no explicit interface
+    // impl needed). Added specifically so EnemySpawnerPD's own taunt/invisible fan-out (every enemy's
+    // IEnemyPD.OnPlayerTauntChanged/OnPlayerInvisibleChanged) can subscribe to ANY FriendlyTargetRegistryPD
+    // member, not just a connected player — a future non-player friendly that wants to "taunt" (pull enemy
+    // attention) or go invisible reuses the exact same mechanic/plumbing a player's Taunt/Invisible
+    // augments already drive, per explicit design (a future ally-aggro mechanic IS this same taunt system).
+    void AddTauntChangedListener(Action<bool> listener);
+    void RemoveTauntChangedListener(Action<bool> listener);
+    void AddInvisibleChangedListener(Action<bool> listener);
+    void RemoveInvisibleChangedListener(Action<bool> listener);
 }
 
 // Neutral registry for anything that implements IFriendlyPD — parallels CharacterStatsPD.All (which
@@ -674,12 +698,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // Same Percent*Penalty shape — HealPower scales every heal this character receives (see Heal()'s own
     // formula), regardless of source (regen, DashHealAugment, KnightAreaStunHealAbilityPD, etc. — anything
     // that funnels through the shared Heal() choke point gets this for free). CritHealPower ONLY applies on
-    // top of it when a given heal happens to roll a "crit heal" (against CritChance, same roll every heal
-    // always makes — see Heal()'s own comment for why no separate enable flag is needed): additively
-    // combined as HealPower + CritHealPower - 1f, same "1 + sum of bonuses" stacking convention
-    // AreaEffectPower already uses elsewhere (see AreaEffectCastHelper.Cast()'s own comment) —
-    // at CritHealPower's neutral 1f baseline this reduces to plain HealPower, so an un-augmented character
-    // sees zero effect from the always-on crit-heal roll until something actually grants bonus CritHealPower.
+    // top of it when a given heal happens to roll a "crit heal" (against CritChance — RollHealMultiplier
+    // gates the roll itself behind CritHealPower being off its neutral baseline at all, 2026-08-30 fix, see
+    // that method's own doc comment): additively combined as HealPower + CritHealPower - 1f, same "1 + sum
+    // of bonuses" stacking convention AreaEffectPower already uses elsewhere (see AreaEffectCastHelper.
+    // Cast()'s own comment) — at CritHealPower's neutral 1f baseline this reduces to plain HealPower, so an
+    // un-augmented character never even rolls a crit heal until something actually grants bonus CritHealPower.
     // critHealPowerMultiplier is reversed by CriticalHealingAugment — another concrete example (alongside
     // totalOnHitPowerPercent above) of a field outside the original 10 that already had a temporary-use
     // pattern nobody had connected to the rollback-safety issue yet.
@@ -1431,6 +1455,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         // LuckRolledLevelUpStatsAugment's own highrollBonusScale doc comment for why this can't just use the
         // full (damage-scope) HighrollBonus value directly.
         public float luckRolledLevelUpStatsHighrollScale;
+        // Dampens the WHOLE rolled multiplier's deviation from 1 (2026-08-31) — see
+        // LuckRolledLevelUpStatsAugment's own effectiveness doc comment for why this is applied AFTER
+        // RollLuckMultiplier rather than scaling LuckFloor/LuckCeiling/HighrollBonus themselves.
+        public float luckRolledLevelUpStatsEffectiveness;
         public bool  modelSidewaysTipped;
         public float orbitFacingYaw;
         public bool  lethalDamagePrevented;
@@ -1595,6 +1623,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     private PredictedEvent<AllyHealGrantedData> _onAllyHealGranted;
     private PredictedEvent _onSurgeStarted;
     private PredictedEvent _onSurgeEnded;
+    // Fires whenever StackPower's own live value actually changes (AddStackPowerPercent below, or any future
+    // mutator that composes into it) — 2026-09-02, for the "stacking permanent bonus, scaled by StackPower"
+    // augment family (SurgeInterruptAoEAugment/DashThroughInterruptAugment/OnEnemyDeathHealthStackingAugment/
+    // SurgeStackingAttackSpeedAugment). Those all recompute their own already-granted total from scratch
+    // whenever a NEW stack is earned (remove what was last applied, reapply fresh against the CURRENT
+    // StackPower) — but that recompute previously only ever ran on the stack-earning trigger itself, so an
+    // existing pile of stacks sat at a stale total until the NEXT stack happened to come in, rather than
+    // updating the moment StackPower itself changed (e.g. picking a StackPowerAugment mid-run). This event
+    // lets each of those listeners re-run that exact same reapply logic immediately on a StackPower change
+    // too, without needing to poll/read StackPower every tick — deliberately not fired on every Simulate()
+    // tick, just the real, infrequent moment the underlying value moves.
+    private PredictedEvent _onStackPowerChanged;
     // Fires the tick shield crosses from >0 to <=0 inside TakeDamage — see that method's own 0-crossing
     // check. No payload (matches _onSurgeStarted/_onSurgeEnded) since "which player" is already implicit
     // per-instance and there's no other useful data to carry (overflow damage already went to health in
@@ -1747,6 +1787,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public void NotifyStrikeHighroll(float damage, float onHitPower) => _onStrikeHighroll.Invoke(new StrikeHighrollData { damage = damage, onHitPower = onHitPower });
     public void AddSurgeStartedListener(Action listener) => _onSurgeStarted.AddListener(listener);
     public void RemoveSurgeStartedListener(Action listener) => _onSurgeStarted.RemoveListener(listener);
+    public void AddStackPowerChangedListener(Action listener) => _onStackPowerChanged.AddListener(listener);
+    public void RemoveStackPowerChangedListener(Action listener) => _onStackPowerChanged.RemoveListener(listener);
     public void AddSurgeEndedListener(Action listener) => _onSurgeEnded.AddListener(listener);
     public void RemoveSurgeEndedListener(Action listener) => _onSurgeEnded.RemoveListener(listener);
     public void AddShieldBreakListener(Action listener) => _onShieldBreak.AddListener(listener);
@@ -1950,6 +1992,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         _onAllyHealGranted = new PredictedEvent<AllyHealGrantedData>(predictionManager, this);
         _onSurgeStarted  = new PredictedEvent(predictionManager, this);
         _onSurgeEnded    = new PredictedEvent(predictionManager, this);
+        _onStackPowerChanged = new PredictedEvent(predictionManager, this);
         _onShieldBreak   = new PredictedEvent(predictionManager, this);
         _onShieldRecharge = new PredictedEvent(predictionManager, this);
         _onLethalDamageTaken = new PredictedEvent(predictionManager, this);
@@ -2025,10 +2068,75 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // same PredictedIdentity<TState> base both classes extend.
     public PredictedObjectID ObjectId => id.objectId;
 
-    // Narrower adapter for IFriendlyPD — isPleb/isPassiveContact (the full TakeDamage overload's own
-    // params, below) are Dodge-credit bookkeeping, meaningless for a non-player attacker; isCrit/
-    // attacker are accepted for interface symmetry but not used yet (see IFriendlyPD's own comment).
-    void IFriendlyPD.TakeDamage(float damage, bool isCrit, PredictedObjectID attacker) => TakeDamage(damage);
+    // Mirrors IEnemyPD.Size exactly — see IFriendlyPD.Size's own doc comment. Already-existing
+    // bonusSizePercent (its public property, not currentState directly — see that property's own doc
+    // comment for the 0f-during-the-LateAwake-window guard it already has) IS this value; no new State
+    // needed.
+    public float Size => bonusSizePercent;
+
+    // The actual sphere hurtbox collider this player's hit-detection uses — wire this to the same
+    // collider CombatLayerMasks.FriendlyHurtboxMask queries target (every enemy AoE attack AND every player
+    // weapon's ally-hit detection query this collider directly now — see SpearGloomPD.EnterStab's own doc
+    // comment for the 2026-08-30 conversion that made this universal). Local-space radius only (NOT
+    // pre-scaled) — SyncHurtboxColliderRadius below writes Size-scaling directly onto the real collider,
+    // deliberately NOT via transform.lossyScale (explicit design: Size is the single, State-backed source
+    // of truth for this player's current scale, guaranteed to never disagree with it since AddSizePercent
+    // writes transform.localScale FROM Size directly — reading the transform's own derived world scale
+    // back out would just be a roundabout, non-State-backed way of re-deriving the same number).
+    [SerializeField] private SphereCollider _hurtboxCollider;
+
+    // 2026-08-28 dash wiggle-room: while inDashMovement is true (Dash AND RogueSpin both drive it — see
+    // that field's own doc comment; BWBlink drives it too but is instant, so the flip is a no-op in
+    // practice), the ACTUAL collider is widened — every attack that hits players (every enemy AoE attack,
+    // EnemyProjectilePD's BoxCast, every player weapon's own ally-hit detection) now queries this same
+    // collider directly via CombatLayerMasks.FriendlyHurtboxMask, so the widen is picked up automatically,
+    // for free, from one shared source, with no separate scalar to keep in sync.
+    //
+    // Deliberately recomputed FRESH every single Simulate() tick from state.inDashMovement, never toggled
+    // by a start/end event pulse — matches this project's plain-field resimulation-safety convention (see
+    // feedback_predictedevent_invoke_must_be_unconditional/project_attack_target_death_invisibility_convention
+    // -adjacent reasoning): a pulse-based toggle risks getting out of sync on replay or on an early/unnatural
+    // end path, but a value re-derived unconditionally from State every tick can't ever drift, and
+    // NotifyDashMovementEnded already fires on EVERY end path (natural, interrupted, or death — see
+    // RogueSpinAbilityPD.EndActiveWindow's own doc comment) so state.inDashMovement itself is always
+    // correct without this needing to know why a dash ended.
+    //
+    // 3f (2026-08-28, retuned from 2f — explicit design: match "Dash Through"'s own sweepRadius convention,
+    // see DashThroughInterruptAugment.sweepRadius's own doc comment) — this player's base hurtbox radius is
+    // 0.5, base character radius is 1.0, so 0.5 * 3 = 1.5, the same absolute world-space radius (at Size ==
+    // 1) every "Dash Through" augment's own SphereCast sweep already uses. Keep this reasoning in sync if
+    // either the hurtbox's own authored radius or the Dash Through family's sweepRadius (1.5f) ever changes —
+    // nothing enforces the match automatically, it's tuned to line up on purpose.
+    private const float DashHitboxRadiusMultiplier = 3f;
+    // Cached once, lazily, the first tick this runs — the collider's own author-set base radius, so the
+    // multiply below is never compounded onto an already-doubled value. -1 sentinel (a real radius is
+    // always positive) rather than a separate bool, matching this class's existing lazy-resolve shape
+    // (_controller's own null-check above).
+    private float _baseHurtboxColliderRadius = -1f;
+
+    // Called once per tick from Simulate(), unconditionally and before any early-return branch, so the
+    // collider is always in sync with this tick's own state.inDashMovement — including during
+    // resimulation replay of a past tick, where it must reflect THAT tick's dash status, not whatever the
+    // collider happened to be left at from a later/different tick's write.
+    private void SyncHurtboxColliderRadius(bool inDashMovement)
+    {
+        if (_hurtboxCollider == null) return;
+        if (_baseHurtboxColliderRadius < 0f) _baseHurtboxColliderRadius = _hurtboxCollider.radius;
+
+        float target = inDashMovement ? _baseHurtboxColliderRadius * DashHitboxRadiusMultiplier : _baseHurtboxColliderRadius;
+        // Change-guarded — see feedback_ui_update_change_detection's own reasoning, applied here to avoid
+        // an every-tick-times-4-players redundant Collider write (and the PhysX broadphase AABB rebuild
+        // that comes with it) when the value hasn't actually changed since last tick.
+        if (!Mathf.Approximately(_hurtboxCollider.radius, target))
+            _hurtboxCollider.radius = target;
+    }
+
+    // Adapter for IFriendlyPD — isPleb/isPassiveContact (2026-08-30 — previously silently dropped here,
+    // see IFriendlyPD.TakeDamage's own doc comment) now forward straight through to the full overload
+    // below, so a caller reaching this player via the interface (e.g. a future EnemyBasePD.OnContactTrigger
+    // targeting IFriendlyPD generically) still gets correct Dodge-credit bookkeeping. isCrit/attacker are
+    // still accepted for interface symmetry but not used yet (see IFriendlyPD's own comment).
+    void IFriendlyPD.TakeDamage(float damage, bool isCrit, PredictedObjectID attacker, bool isPleb, bool isPassiveContact) => TakeDamage(damage, isPleb, isPassiveContact);
 
     // Forwarders to the sibling PlayerControllerPD — null-guarded since _controller isn't guaranteed
     // resolved yet (see its own field comment above; same lazy-resolution convention this class
@@ -2041,6 +2149,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     protected override void Simulate(ref State state, float delta)
     {
         _currentDelta = delta;
+
+        // Unconditional, before any early-return branch below (Pause/dead both still want the collider
+        // honestly reflecting state.inDashMovement) — see SyncHurtboxColliderRadius's own doc comment.
+        SyncHurtboxColliderRadius(state.inDashMovement);
 
         if (_controller == null)
         {
@@ -2140,16 +2252,19 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         }
 
         // Death Prevention grant timer — only ticks while eligible (gainsDeathPreventions) AND not already
-        // holding a banked save (see "stop ticking, it only ticks when we DON'T have one" above), AND not
-        // paused by a forced Surge (Berserk Surge already grants full invincibility for its whole duration
-        // — see IsInvincible's own doc comment — so there's nothing for a Death Prevention to protect
-        // against right now anyway). 0 means "dormant, ready to (re-)arm" — same self-arming shape as
-        // healthRegenTimer's own sentinel-conversion below, just using 0 as the sentinel instead of -1 since
-        // arming always happens right here in Simulate() (delta is always available), never at spawn.
-        // Grants and immediately re-parks at 0 the instant the timer bottoms out, so the very next tick
-        // after the granted save gets spent (hasDeathPrevention flips back false in TakeDamage) starts a
-        // fresh full-length cycle automatically.
-        if (state.gainsDeathPreventions && !state.hasDeathPrevention && !state.forcedSurge)
+        // holding a banked save (see "stop ticking, it only ticks when we DON'T have one" above). 0 means
+        // "dormant, ready to (re-)arm" — same self-arming shape as healthRegenTimer's own sentinel-conversion
+        // below, just using 0 as the sentinel instead of -1 since arming always happens right here in
+        // Simulate() (delta is always available), never at spawn. Grants and immediately re-parks at 0 the
+        // instant the timer bottoms out, so the very next tick after the granted save gets spent
+        // (hasDeathPrevention flips back false in TakeDamage) starts a fresh full-length cycle automatically.
+        //
+        // No longer paused by a forced Surge (2026-09-01, explicit removal — was: "Berserk Surge already
+        // grants full invincibility for its whole duration, so there's nothing for a Death Prevention to
+        // protect against right now anyway"). That reasoning broke down in practice — a save banked mid-
+        // Surge should be ready the instant the Surge's invincibility actually ends, not sit frozen through
+        // the whole Surge and only start counting down afterward.
+        if (state.gainsDeathPreventions && !state.hasDeathPrevention)
         {
             if (state.deathPreventionTimer <= 0)
                 state.deathPreventionTimer = Mathf.Max(1, Mathf.RoundToInt(DeathPreventionTime / delta));
@@ -2291,13 +2406,27 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         // RGB comes from PlayerColor, not a hardcoded white — PlayerColorApplicator tints this same
         // renderer's material directly, so overriding _BaseColor here must keep that tint's RGB and only
         // change alpha, or invisibility would blank the model back to white.
-        if (_modelRenderer != null && viewState.invisible != _lastAppliedInvisible)
+        if (viewState.invisible != _lastAppliedInvisible)
         {
             _lastAppliedInvisible = viewState.invisible;
-            if (_modelMaterialInstance == null) _modelMaterialInstance = _modelRenderer.material;
-            Color c = PlayerColor;
-            c.a = viewState.invisible ? invisibleModelAlpha : 1f;
-            _modelMaterialInstance.SetColor(BaseColorId, c);
+
+            if (_modelRenderer != null)
+            {
+                if (_modelMaterialInstance == null) _modelMaterialInstance = _modelRenderer.material;
+                Color c = PlayerColor;
+                c.a = viewState.invisible ? invisibleModelAlpha : 1f;
+                _modelMaterialInstance.SetColor(BaseColorId, c);
+            }
+
+            // Local-only screen tint (2026-08-31, moved here from RogueVanishAbilityPD's own ability-window-
+            // scoped PredictedEvent pair) — same "driven generically off the invisible flag itself, not any
+            // specific ability" reasoning as the model fade right above, and the same shared-flag convention
+            // UIIsInvincible/_invincibilityShell already use: reusing this ONE edge-detected transition means
+            // an older invisibility source expiring can never hide the tint (or the model fade) out from
+            // under a newer, still-active one — GrantInvisibility's own floor/extend semantics already
+            // guarantee viewState.invisible only actually flips false once NOTHING is still granting it. Any
+            // current or future invisibility source gets this for free with no per-source wiring needed.
+            if (isOwner) LocalUIManagerPD.instance?.SetInvisibleTintVisible(viewState.invisible);
         }
 
         // Continuous idle spin, always on — see _modelTransform's own doc comment for why the sideways tip
@@ -2448,6 +2577,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // staying pinned below it. Augment effects apply identically on every machine (unlike the old
     // owner-only model), so this needs no isOwner gating here.
     public void AddMaxHealthFlat(float amount) => ApplyStatChange(() => currentState.bonusMaxHealthFlat += amount);
+    // Same shape/reasoning as AddMaxHealthFlat directly above — routes through ApplyStatChange so current
+    // Energy rises with the new ceiling (e.g. Max Energy 100 -> 125 also carries Current Energy 75 -> 100)
+    // instead of staying pinned below it. This works out cleanly now that EnergyRegen is itself a PERCENT of
+    // MaxEnergy per second (2026-08-23 rework — see EnergyRegen's own doc comment), not a flat rate, so a
+    // higher Max Energy investment never becomes proportionally slower to refill.
+    public void AddMaxEnergyFlat(float amount) => ApplyStatChange(() => currentState.bonusMaxEnergyFlat += amount);
     // Conversion-source bookkeeping, not a real stat grant — see ConvertedHealth's own doc comment. A
     // conversion augment that grants Health should call this alongside AddMaxHealthFlat, with the identical
     // delta both times. Plain +=, not ApplyStatChange — doesn't touch MaxHealth/MaxEnergy itself, only the
@@ -2497,7 +2632,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public void SetSurgeMoveSpeedPenalty(float value) => ApplyStatChange(() => currentState.surgeMoveSpeedPenalty = value);
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — stackPowerPercent starts at
     // 1f (StackPower = stackPowerPercent * stackPowerPenalty), just had no augment-facing wrapper until now.
-    public void AddStackPowerPercent(float amount) => ApplyStatChange(() => currentState.stackPowerPercent += amount);
+    // Also fires _onStackPowerChanged (2026-09-02) on a genuine nonzero change, unconditionally — every real
+    // call site adds a real augment-authored delta, so guarding on amount != 0 is enough to skip a no-op
+    // without needing a full before/after StackPower comparison. Safe to call directly here (not deferred to
+    // UpdateView) — same "only ever called from an already-safe, exactly-once context" reasoning every other
+    // stat mutator in this class already relies on (this is only ever reached from an augment's own OnApply,
+    // itself guaranteed to run exactly once per real pick).
+    public void AddStackPowerPercent(float amount)
+    {
+        ApplyStatChange(() => currentState.stackPowerPercent += amount);
+        if (amount != 0f) _onStackPowerChanged.Invoke();
+    }
     // Same "additive against the 1f baseline" convention as AddStackPowerPercent — plain +=, not
     // ApplyStatChange, since HealPower/CritHealPower don't affect Max Health/Energy (no before/after clamp
     // recompute needed, same reasoning as AddAreaEffectSizePercent).
@@ -2770,6 +2915,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public bool phantomBladeOnHitEnabled => currentState.phantomBladeOnHitEnabled;
     public bool luckRolledLevelUpStats => currentState.luckRolledLevelUpStats;
     public float luckRolledLevelUpStatsHighrollScale => currentState.luckRolledLevelUpStatsHighrollScale;
+    public float luckRolledLevelUpStatsEffectiveness => currentState.luckRolledLevelUpStatsEffectiveness;
     public float phantomBladeOnHitPowerPercent => currentState.phantomBladeOnHitPowerPercent;
     public void AddPhantomBladeDamageBonus(float amount) => currentState.phantomBladeDamageBonus += amount;
     public void AddPhantomBladeSizeBonus(float amount) => currentState.phantomBladeSizeBonus += amount;
@@ -2778,10 +2924,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public void MultiplyPhantomBladeDamagePenalty(float factor) => currentState.phantomBladeDamagePenalty *= factor;
     public void MultiplyPhantomBladeSizePenalty(float factor) => currentState.phantomBladeSizePenalty *= factor;
     public void EnablePhantomBladeOnHit() => currentState.phantomBladeOnHitEnabled = true;
-    public void EnableLuckRolledLevelUpStats(float highrollBonusScale)
+    public void EnableLuckRolledLevelUpStats(float highrollBonusScale, float effectiveness)
     {
         currentState.luckRolledLevelUpStats = true;
         currentState.luckRolledLevelUpStatsHighrollScale = highrollBonusScale;
+        currentState.luckRolledLevelUpStatsEffectiveness = effectiveness;
     }
     public void AddPhantomBladeOnHitPowerPercent(float amount) => currentState.phantomBladeOnHitPowerPercent += amount;
 
@@ -2820,7 +2967,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // re-check it.
     public void NotifyAllyStrike(AllyStrikeData data)
     {
-        if (data.ally == null || data.ally == this || data.ally.IsDead) return;
+        if (data.ally == null || ReferenceEquals(data.ally, this) || data.ally.IsDead) return;
         _onAllyStrike.Invoke(data);
     }
 
@@ -3330,9 +3477,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // block), with TryEndSurge() blocked from ending it early. Invincible for the whole window via
     // forcedSurge itself (IsInvincible/TakeDamage OR it in — see their own doc comments), not a fixed-
     // duration GrantInvincibility() call, since exactly how long this surge lasts depends on MaxEnergy/
-    // SurgeCost/SurgeTickInterval at the moment it starts and isn't precomputed here. Shield regen and the
-    // Death Prevention grant timer both also pause for forcedSurge's own duration — see their respective
-    // gates in Simulate().
+    // SurgeCost/SurgeTickInterval at the moment it starts and isn't precomputed here. Shield regen still
+    // pauses for forcedSurge's own duration (see its own gate in Simulate()) — the Death Prevention grant
+    // timer no longer does (2026-09-01, see its own gate's doc comment for why that was removed).
     //
     // If a Surge is already running (player-initiated, or an earlier Berserk one), this does NOT end it and
     // start a fresh one — it piggybacks: refills energy and flips it to forced in place, extending whatever
@@ -3361,9 +3508,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         // _onSurgeStarted above (which only fires when nothing was surging at all yet), since piggybacking
         // onto an already-running NORMAL Surge still counts as Berserk activating for popup purposes.
         // Guarded so a redundant StartBerserkSurge() call while already forced-surging doesn't spam a
-        // second popup.
+        // second popup. Same gate covers CancelSurgeBlockingAbility (2026-08-31) — Berserk Surge activating
+        // cancels whichever ability slot is currently active with its own ActiveSurgeBlock true (the reverse
+        // direction of ActiveSurgeBlock — an ability already force-ends Surge when IT activates, see
+        // IAbilityPD.ActiveSurgeBlock's own doc comment). No ActiveSurgeBlock ability can already be active
+        // while a Surge is already running (its own Activate() would have force-ended it first), so this
+        // only ever has something real to cancel on a genuine forcedSurge false->true transition.
         if (!alreadyForced)
+        {
             NotifyStatusPopup(DamageNumberManager.StatusPopupKind.Berserk);
+            _controller?.CancelSurgeBlockingAbility();
+        }
     }
 
     // Unconditional surge end, bypassing the surgeMinDurationTimer throttle TryEndSurge() respects — for
@@ -3700,13 +3855,22 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     // Only called by Heal() below — the natural health-regen tick in Simulate() deliberately reads HealPower
     // directly instead (see its own comment for why it skips crit/luck/Highroll entirely), it does NOT go
-    // through this. Every Heal()-routed heal rolls against CritChance for a "crit heal", always rolled, not
-    // gated behind any enable flag, since an un-augmented CritHealPower sitting at its neutral 1f baseline
-    // makes a successful roll indistinguishable from a normal heal anyway (see HealPower/CritHealPower's own
-    // doc comment). isCrit is surfaced to the caller so HealData.isCrit (and therefore the healing number's
-    // own cosmetic "!" — see DamageNumberManager.SpawnPlayerHeal) reflects whichever heals actually crit.
+    // through this. Every Heal()-routed heal rolls against CritChance for a "crit heal" — but ONLY once
+    // CritHealPower has actually been pushed off its neutral 1f baseline by something real
+    // (CriticalHealingAugment, currently the only source; 2026-08-30 fix — was unconditional). At the
+    // neutral baseline, the crit branch's own formula (HealPower + CritHealPower - 1f) is mathematically
+    // IDENTICAL to the plain HealPower branch, so a "crit" there was a pure visual lie: the healing number's
+    // own cosmetic "!" (see DamageNumberManager.SpawnPlayerHeal) would show up with zero actual numeric
+    // difference to justify it, exactly the "critical heal with no critical healing investment" bug this
+    // gate fixes. isCrit is surfaced to the caller so HealData.isCrit reflects whichever heals actually crit.
     private float RollHealMultiplier(out bool isCrit)
     {
+        if (CritHealPower == 1f)
+        {
+            isCrit = false;
+            return HealPower;
+        }
+
         isCrit = GameRandom.instance.NextFloat() < CritChance;
         return isCrit ? (HealPower + CritHealPower - 1f) : HealPower;
     }

@@ -92,6 +92,10 @@ public interface IEnemyPD
     // OnEnemyDeathHealthStackingAugment's own doc comment for the first consumer) without needing every
     // future consumer to reach into EnemyBasePD directly.
     float XpValue { get; }
+    // Same shape as XpValue directly above, but for upgrade points — deliberately a SEPARATE tracked value
+    // (2026-08-29), not derived from XpValue at all beyond happening to start at similar author-tuned
+    // numbers per enemy. See EnemyBasePD.pointsValue's own doc comment.
+    float PointsValue { get; }
     // Whether the specific hit that killed this enemy was a crit — read from an OnEnemyDeath reaction so a
     // kill-triggered effect (e.g. OnKillLaunchEnemiesAugment) can inherit the killing hit's crit status
     // instead of rolling its own independent chance.
@@ -108,6 +112,14 @@ public interface IEnemyPD
     // same "bigger target needs a taller offset" convention CharacterStatsPD.bonusSizePercent already
     // established for players.
     float Size { get; }
+    // Exposed on the interface (2026-08-31) so generic cross-identity code can read one enemy's current
+    // attack speed through another's own reference — added specifically for the shared held-enemy orbit
+    // position code (EnemyBasePD.LateSimulate's own orbitAngleDeg advance), which resolves its owner only as
+    // an IEnemyPD and needs the OWNER's (not the held enemy's own) EffectiveAttackSpeed to make orbit
+    // rotation rate respond to a Slow landing on the holder — see EnemyBasePD.EffectiveAttackSpeed's own doc
+    // comment for the full composition (base attackSpeed, already difficulty-scaled by ConfigureSpawn, times
+    // any active Slow multiplier).
+    float EffectiveAttackSpeed { get; }
     // Stable, rollback-safe reference to this enemy — safe to store in predicted state (e.g. a
     // PredictedEvent payload), unlike a raw IEnemyPD/Transform reference, since enemies are pooled and
     // reused for new spawns. Trivial passthrough — every PredictedIdentity already carries this.
@@ -197,6 +209,26 @@ public interface IEnemyPD
     // Whether another entity currently controls this enemy's position (pulled/orbiting) — see OrbitTarget's
     // own doc comment. Read-only; callers don't set this directly, it's derived from orbit state.
     bool IsBeingHeld { get; }
+
+    // True exactly while this held enemy has finished its own Pulling-phase lerp (OrbitTarget's own
+    // orbitPullElapsed >= orbitPullDuration) and is frozen at its slot awaiting BeginOrbiting() — i.e. it has
+    // genuinely ARRIVED, not just "enough time should have passed." Added (2026-08-31) so a holder's own
+    // per-ring release gate (KingOrbiterPD/OrbiterGloomPD's Pulling case) can query this directly instead of
+    // independently re-deriving an equivalent time threshold from the same constants and hoping the two stay
+    // in sync — see EnemyBaseState.orbitPullElapsed's own doc comment for the fragility this replaces. A
+    // caller gating a ring's release on this should also treat a dead member as non-blocking (IsDead) — a
+    // pleb that dies mid-Pulling never reaches WaitingToOrbit (LateSimulate's own isDead/wiped early-return
+    // means orbitPullElapsed simply stops advancing), so waiting on IsWaitingToOrbit alone would stall that
+    // ring's release forever.
+    bool IsWaitingToOrbit { get; }
+
+    // True exactly while this enemy is mid-flight from a LaunchAlong() call (EnemyBaseState.launchActive),
+    // false once it's actually finished traveling its full distance. Added (2026-08-31) for the same reason
+    // as IsWaitingToOrbit above — KingOrbiterPD's own ShootFlight release gate used to estimate flight time
+    // via shootingRange/shotSpeed instead of checking whether the shot had actually finished. Same dead-
+    // member caveat applies: LateSimulate's own isDead/wiped early-return means a pleb that dies mid-flight
+    // never clears launchActive on its own, so a caller must also treat IsDead as non-blocking.
+    bool IsLaunching { get; }
 
     // Live read of this enemy's own rigidbody kinematic flag — regardless of WHY it's kinematic (a
     // subclass's own windup/charge/leap phase, SetKinematic() forced ON by a holder, etc.). Read-only;
@@ -319,7 +351,17 @@ public interface IEnemyPD
     // enemy's own attack-cooldown field is declared independently on its own subclass) — ConfigureSpawn just
     // stores it on EnemyBasePD.attackCooldownMultiplier, and each subclass's own OnConfigureSpawn() applies
     // it to its own field, same "_authoredX snapshot" treatment as every other per-enemy tier-scaled field.
-    void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier, float moveSpeedMultiplier, float attackCooldownMultiplier, int tier);
+    // pointsMultiplier (2026-08-29) — separate from xpMultiplier, see pointsValue's own doc comment for why
+    // upgrade points are no longer derived from XP at all.
+    // attackSpeedMultiplier (2026-08-31) — per-DIFFICULTY only (no tier component), applied directly to
+    // EnemyBasePD.attackSpeed (unlike attackCooldownMultiplier above, this generic field already exists on
+    // the base class, same shape as moveSpeedMultiplier/moveSpeed) — see EnemySpawnerPD.
+    // difficultyAttackSpeedGrowthPerLevel's own doc comment for why this exists: a player's own move-speed
+    // progression had been invalidating certain enemies' fixed-duration windups, since every windup/attack-
+    // state timer across the roster already scales by EffectiveAttackSpeed (which this feeds into).
+    // Deliberately kept separate from moveSpeedMultiplier/move speed scaling generally — coincidentally the
+    // same per-level rate today, not a true pairing, per explicit design.
+    void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier, float pointsMultiplier, float moveSpeedMultiplier, float attackCooldownMultiplier, float attackSpeedMultiplier, int tier);
 
     // Generic death-hold API — see EnemyBasePD.RequestDeathHold's own doc comment. Only safe to call from a
     // verified-state reaction (e.g. CharacterStatsPD.OnEnemyDeath), never from raw Simulate()-context code.
@@ -330,11 +372,14 @@ public interface IEnemyPD
     // caller doesn't need to request or track one itself, only trust HandleKillLaunch to release it.
     void StartKillLaunch(Vector3 direction, float speed, float distance, float damage, bool isCrit = false, bool isHighroll = false);
 
-    // Called by EnemySpawnerPD (the enemy-targeting hub) whenever ANY player's taunt/invisible state
-    // changes — generic regardless of concrete TState, same reason this interface exists at all. See
-    // EnemyBasePD<TState>'s own implementation for the actual reaction logic.
-    void OnPlayerTauntChanged(CharacterStatsPD player, bool isTaunting);
-    void OnPlayerInvisibleChanged(CharacterStatsPD player, bool isInvisible);
+    // Called by EnemySpawnerPD (the enemy-targeting hub) whenever ANY friendly's taunt/invisible state
+    // changes — generic regardless of concrete TState, same reason this interface exists at all.
+    // IFriendlyPD (2026-08-30, was CharacterStatsPD) — EnemySpawnerPD now subscribes every
+    // FriendlyTargetRegistryPD member, not just connected players, so a future non-player friendly can pull
+    // enemy attention via the same Taunt mechanic (see IFriendlyPD.AddTauntChangedListener's own doc
+    // comment). See EnemyBasePD<TState>'s own implementation for the actual reaction logic.
+    void OnPlayerTauntChanged(IFriendlyPD player, bool isTaunting);
+    void OnPlayerInvisibleChanged(IFriendlyPD player, bool isInvisible);
 
     // Difficulty-pacing wipe (e.g. EnemySpawnerPD clearing the field right before a boss spawns) —
     // deliberately NOT a real death: no XP orbs, no RaiseOnEnemyDeath (so no on-kill augment/effect ever
@@ -344,10 +389,13 @@ public interface IEnemyPD
 }
 
 // Per-target contact damage cooldown — contact damage repeats over time (unlike a one-shot attack),
-// so each player touching the enemy needs their own independent cooldown, not a single shared one.
+// so each target touching the enemy needs their own independent cooldown, not a single shared one.
+// target (2026-08-30, was PlayerID player) — rekeyed to PredictedObjectID so this works against any
+// IFriendlyPD, not just a connected player (a future non-player ally has no PlayerID). Same rekey
+// WeaponBasePD.AllyHitCooldownEntry already got for the identical reason.
 public struct ContactCooldown
 {
-    public PlayerID player;
+    public PredictedObjectID target;
     // Ticks, not seconds — stored as an int specifically for the bit-packing win: PurrNet's delta-packer
     // costs a full 33 bits for any float that changed since last snapshot, but this field changes almost
     // every tick while any player is in contact (it rarely gets the cheap "unchanged" 1-bit case a float
@@ -377,29 +425,6 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public float slowTimer;
     public float slowMultiplier;
     public bool atPreferredRange;
-    // Set the first tick an enemy with a preferredRange concept is found BOTH backpedaling AND truly outside
-    // the playable area's raw boundary — see HandleMovement's own doc comment for the full bounds-restriction
-    // design this drives, and for why the trigger is backpedal-gated (2026-08-26 fix — restores the original
-    // design intent: enemies are deliberately spawned outside the boundary on purpose, so a plain position-
-    // only trigger was wrongly firing on ordinary APPROACH too, e.g. immediately on spawn). Cleared only once
-    // this enemy has walked back past wallMargin (TryGetInwardSteering itself returns false) — the RELEASE
-    // check runs every tick regardless of approach-vs-retreat (only the initial TRIGGER is backpedal-gated),
-    // so an enemy that clears the margin purely by chase-strafing still correctly un-flags instead of staying
-    // stuck strafing long after it's actually safe. While set, BOTH approach and retreat movement strafe
-    // instead of moving straight at/away from the target. Never touched by melee enemies (preferredRange == 0)
-    // — they always chase, this scenario can't apply to them.
-    public bool boundsRestricted;
-    // Locked the SAME tick boundsRestricted is first set, never re-derived until it clears (2026-08-26,
-    // fixes corner-clustering — see HandleMovement's own doc comment). Which of the two tangential
-    // perpendiculars to strafe along used to be re-decided every tick (whichever faced further from the
-    // target); near a polygon corner, the single-nearest-edge math PlayableAreaPD.TryGetInwardSteering uses
-    // can make its own returned direction swing sharply as the enemy crosses the corner's own bisector,
-    // and re-deciding "which perpendicular" every tick against a moving `dir` created a feedback loop
-    // (flip -> move -> flip back -> move back) that visibly stalled enemies right at corners. Locking this
-    // once and always resolving the SAME fixed side against whatever the current boundsDir happens to be
-    // keeps the wall-following geometry fully reactive (still correctly hugs whichever wall is actually
-    // nearest) while removing the unstable re-comparison that caused the oscillation.
-    public bool boundsStrafeClockwise;
     // Hard gate on HandleMovement — see IEnemyPD.SetMovementDisabled's own doc comment for the full
     // reasoning (why this exists, who's expected to call it, and what it does/doesn't affect).
     public bool movementDisabled;
@@ -617,28 +642,28 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public float preferredRange = 0f;
     public float rangeToleranceFar = 0.3f;
     public float rangeToleranceClose = 0.3f;
-    // Bounds-restriction (2026-08-25, reworked same day) — see HandleMovement's own doc comment for the full
-    // design. Deliberately an inset OFFSET from PlayableAreaPD's own polygon edge, not the literal edge
-    // itself — both the "truly outside" trigger and the "cleared the margin" release read off this same
-    // value, so it doubles as the hysteresis buffer's own width. Halved from 5 (2026-08-25) — 5 read as an
-    // oversized buffer regardless of the hysteresis rework. private const (2026-08-26, was a public field) —
-    // never tuned per-prefab in the Inspector in practice, so this is code-only now, same as
-    // StrafeRadialWeight below; not referenced anywhere outside this file.
-    private const float WallMargin = 2.5f;
-    // Weight of the radial (toward/away-from-target) component blended into a bounds-restricted enemy's
-    // strafe direction — see HandleMovement's own strafe-computation comment for the full model. Tangential
-    // weight is fixed at 1 (implicit); this purely tunes how much real toward/away progress a strafing enemy
-    // still makes on top of the always-present sideways motion — 0 would be a pure zero-progress perpendicular
-    // slide, 1 would weight radial equally with tangential. Fresh starting point (2026-08-26 full rework,
-    // replacing the old angle-slerp StrafeAngleFromInwardDegrees, confirmed too lenient live even at its last
-    // tuned value of 75° — the slerp had no actual guarantee against occasionally producing a net
-    // toward-target direction depending on arena geometry, which this vector-composition model closes by
-    // construction rather than by finding a better angle).
-    private const float StrafeRadialWeight = 0.5f;
+    // Disables ONLY the "too close, back away" half of preferredRange's approach/retreat behavior — see
+    // HandleMovement's own doc comment (2026-08-28) for both this field's specific purpose and why it exists
+    // at all: a ranged enemy that never backpedals can never walk itself out of the arena chasing distance
+    // from the player, which was the actual root cause behind the bounds-restriction/strafe system this
+    // replaces. "Too far, approach" is completely untouched — this enemy still closes distance normally, it
+    // just never retreats once close, holding position instead. False by default — every existing enemy
+    // that wants to hold range keeps backpedaling exactly as before; opt in per-prefab (King Orbiter first).
+    public bool backpedalDisabled = false;
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
     [NonSerialized] public float baseXpValue;
+    // Upgrade points this enemy is worth, separate from xpValue (2026-08-29 — was AwardUpgradePoints(xpValue),
+    // a straight 1:1 with XP) — its own tier-scaling growth rate (EnemySpawnerPD.pointsTierGrowth) is
+    // independently tunable from XP's own (xpTierGrowth), even though both happen to start from a similar
+    // author-tuned base value at Tier 1. Default 5 (xpValue's own default is 1) — deliberately NOT matched to
+    // xpValue's default, per explicit design ("the base points amount and enemy XP are coincidentally exactly
+    // the same [per author-tuned prefab], but every tier beyond T1 they diverge"). Mirrors xpValue/baseXpValue's
+    // entire lifecycle (Awake snapshot, LateAwake pooled-reuse reset, ConfigureSpawn tier scaling) exactly —
+    // see each of those touch points' own doc comments for why that shape exists.
+    public float pointsValue = 5f;
+    [NonSerialized] public float basePointsValue;
     // Generic per-enemy size scalar — not tied to any one visual/physics system, just a shared number
     // other generic code (e.g. HandleKillLaunch's sphere-cast radius, IEnemyPD.Size for
     // DamageNumberManager's own spawn-height scaling) can read without needing its own separate per-enemy
@@ -661,28 +686,62 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Briefly tried 5 (~1.5x tick rate) on 2026-08-21 to catch residual TL4 clumping, then dialed back to 8
     // the same day — a higher tick RATE has an ongoing perf cost every enemy pays every tick regardless of
     // whether it's actually clumped. SeparationForce got the same "try to fully fix it" treatment instead
-    // (see that field's own comment) and, after live testing, also landed back on its original value — the
-    // small residual TL4 clumping is accepted as-is rather than solved by either knob.
+    // (see that field's own comment) and, after live testing, also landed back on its original value at the
+    // time. Neither knob was ever going to fix that residual clumping — it wasn't a tuning problem at all,
+    // it was targetless idle enemies applying the separation force with nothing counteracting it (fixed
+    // 2026-09-01, see SeparationRadiusPerSize's own doc comment for the full postmortem). Left at 8 — no
+    // reason to revisit purely for that symptom now that its actual cause is gone.
     private const int   SeparationCheckInterval = 8;
-    // Reverted to 1f (2026-08-12), doubled to 2f (2026-08-15), then reverted back to 1f again (2026-08-21) —
-    // the 2f radius turned out to space enemies out more than actually wanted; back to "avoid clumping"
-    // rather than "actively space out."
-    private const float SeparationRadiusPerSize = 1f;
+    // Reverted to 1f (2026-08-12), doubled to 2f (2026-08-15), reverted back to 1f again (2026-08-21, stated
+    // reason at the time: "the 2f radius turned out to space enemies out more than actually wanted"). That
+    // stated reason was WRONG, confirmed 2026-09-01 — the radius was never actually the problem. Two real,
+    // separate bugs were compounding at the time and got misdiagnosed as "the radius itself":
+    //   1. SeparationForce wasn't yet scaled by EffectiveMoveSpeed (see that field's own doc comment) — a
+    //      flat force only stayed balanced against HandleMovement's own speed-proportional pull at exactly
+    //      one baseline speed, so declumping visibly weakened at every other speed tier.
+    //   2. HandleSeparation applied the push force to every enemy unconditionally, even ones with no valid
+    //      target (every player invisible-and-not-taunting, or dead) — HandleMovement no-ops with nothing to
+    //      chase, so an idle enemy had nothing counteracting the separation force, reading as random sliding-
+    //      in-place rather than pack jostling. This is what a Rogue Vanish test would have actually shown
+    //      back then — not the radius "spacing enemies out too much", but idle enemies visibly drifting with
+    //      no target. See HandleSeparation's own _target == null exemption for the fix.
+    // With both of those actually fixed first, doubling back to 2f here (2026-09-01) landed correctly on the
+    // first try — confirmed live, keeping it. If this ever needs retuning again, rule out confounds in
+    // OTHER systems (force scaling, targetless idling, anything else that changed alongside a knob like this
+    // one) before blaming the radius itself again — that's exactly the mistake this whole history is a
+    // record of.
+    private const float SeparationRadiusPerSize = 2f;
     // Used instead of SeparationRadiusPerSize above whenever an alive player is within this enemy's own
-    // (normal-radius) declumping range — see RecomputeSeparationPush's own doc comment for why. Deliberately
-    // much smaller than the normal radius: multiple enemies crowding a player need to still be "allowed" to
-    // touch them, this only stops them overlapping too hard once that close, rather than pushing them away
-    // from the player entirely.
+    // near-player DETECTION range (NearPlayerDetectionRadiusPerSize below) — see RecomputeSeparationPush's
+    // own doc comment for why. Deliberately much smaller than the normal radius: multiple enemies crowding a
+    // player need to still be "allowed" to touch them, this only stops them overlapping too hard once that
+    // close, rather than pushing them away from the player entirely.
     private const float SeparationRadiusPerSizeNearPlayer = 0.5f;
+    // Independent from SeparationRadiusPerSize above (2026-09-01, split out) — "how far away can a player be
+    // for this enemy to still get the crowd-friendly near-player treatment" used to just reuse whatever
+    // SeparationRadiusPerSize's own value was, which meant retuning the general declump radius silently
+    // moved this trigger distance too (doubling SeparationRadiusPerSize also doubled how far away a player
+    // could be and still count as "nearby" for this purpose — an unintended side effect on crowd-around-
+    // player behavior nobody actually wanted changed). Fixed at 1f — SeparationRadiusPerSize's own value
+    // before this round's retune — so this stays exactly as it already behaved, decoupled from any future
+    // general-radius tuning.
+    private const float NearPlayerDetectionRadiusPerSize = 1f;
     // Round-tripped back to its original 8f (2026-08-21) after a same-day detour: briefly doubled to 16f
     // (when SeparationRadiusPerSize was still 2f, to cover that radius's bigger distance), then to 32f after
     // SeparationRadiusPerSize reverted to 1f but TL4 testing (Rogue's Vanish — go invisible, watch enemies
     // keep sliding into each other afterward) still showed residual clumping. Live-tested progressively
     // higher from there (up to 320f) and it got WORSE each step, not better — at 320f enemies visibly
-    // bounced off each other. Landed back on the original 8f as the actual best result. The remaining tiny
-    // bit of post-Vanish sliding at TL4 is accepted as-is, not a bug to keep chasing — see
-    // SeparationCheckInterval's own comment for why a higher tick RATE was also tried and reverted instead of
-    // chasing this further.
+    // bounced off each other. Landed back on the original 8f at the time as the best AVAILABLE result, with
+    // the remaining post-Vanish sliding logged as "accepted as-is, not a bug to keep chasing."
+    //
+    // That sliding WAS a real bug after all, later actually found and fixed (2026-09-01, see
+    // SeparationRadiusPerSize's own doc comment for the full postmortem) — HandleSeparation was applying the
+    // push force to targetless idle enemies with nothing to counteract it. Cranking SeparationForce itself
+    // higher was never going to fix that (it was making an idle enemy's own uncontested force STRONGER, the
+    // opposite of the fix), which is exactly why higher values only ever made things visibly worse here. Left
+    // at 8f — no reason to revisit this value now that the actual cause is gone — but noting this so a future
+    // pass doesn't reach for this knob again for the same already-solved symptom. See
+    // SeparationCheckInterval's own comment for why a higher tick RATE was also tried and reverted separately.
     private const float SeparationForce = 8f;
     // Baseline EffectiveMoveSpeed this SeparationForce was tuned against (2026-08-26) — HandleMovement's own
     // pull-toward-target force scales directly with EffectiveMoveSpeed (dir * EffectiveMoveSpeed * delta *
@@ -778,14 +837,44 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Protected (not private) — subclasses with multi-stage attacks (Spear/Leaper/Dagger/Shooter/KingSpike/
     // Blitz) read this directly at their between-stage transitions to check IsInvisible before deciding
     // whether to reprioritize early.
-    protected CharacterStatsPD _targetStats;
+    protected IFriendlyPD _targetStats;
+
+    // Frozen-target chase reference for StartOffsetChase/HandleOffsetChase (2026-08-31) — captured once when
+    // the chase starts, deliberately decoupled from the shared _target/_targetStats pair above, which taunt/
+    // invisible retargeting (RetargetAwayFrom) is free to null or reassign at any moment, mid-dash included
+    // (see RetargetAwayFrom's own doc comment — it assumes every ongoing attack reads its own frozen
+    // reference instead of live _target, which used to be true everywhere EXCEPT this offset-chase). Without
+    // this, RetargetAwayFrom nulling _target the instant a kited target went invisible made
+    // HandleOffsetChase's own null-guard trip immediately, aborting the dash wherever the enemy happened to
+    // be instead of coasting to the target's last known position — confirmed live: Spear/Dagger visibly
+    // stopped short and attacked mid-air the instant a chased target went invisible. Same "commit once, keep
+    // reading that same reference" contract every other windup-tracking mechanism in this codebase already
+    // uses (KingSpikePD._chargeWindupTrackedTarget, BlitzGloomPD/ShooterGloomPD's own _windupTrackedTarget).
+    private IFriendlyPD _offsetChaseTrackedTarget;
+    // Companion to _offsetChaseTrackedTarget — refreshed every tick it's actually alive+visible (same shape
+    // as ShooterGloomPD._windupTrackedTargetLastKnownPosition), frozen the instant it isn't. HandleOffsetChase
+    // chases THIS, not a live _offsetChaseTrackedTarget.transform.position read.
+    private Vector3 _offsetChaseTrackedLastKnownPosition;
 
     // Passive record only, no decision-making here (2026-08-22) — mirrors _targetStats.transform.position
     // every tick _targetStats is non-null, decoupled from whatever governs _target/_targetStats itself
     // (FindClosestTarget/FindRandomTarget, already invisibility-aware). Lets a subclass substitute this in
     // for "no valid target right now" scenarios instead of the whole mechanic just fizzling out (see
     // KingOrbiterPD's own ShootFlight usage) — this field alone doesn't change any existing behavior.
+    // Defaults to Vector3.zero (world origin) on spawn/pooled reuse, same as any other unset Vector3 field —
+    // see hasLastKnownTargetPosition below for the companion flag that distinguishes "genuinely tracked
+    // someone at world origin" (real, if rare) from "never actually tracked anyone yet" (the degenerate case
+    // a naive zero-check can't tell apart on its own).
     protected Vector3 lastKnownTargetPosition;
+    // Sentinel companion to lastKnownTargetPosition above (2026-09-02) — false until the very first real
+    // assignment below, never reset back to false except on a fresh spawn/pooled reuse. A consumer that
+    // falls back to lastKnownTargetPosition when it has no live target of its own (e.g. KingSpikePD's own
+    // post-charge reposition dash) should check THIS first — dashing to/aiming at a position that was never
+    // actually anyone's real position (still sitting at its Vector3.zero default) reads as this enemy
+    // suddenly beelining for the world origin, confirmed live as a real, if rare, bug: possible whenever an
+    // enemy has never once had a valid target since spawning (e.g. every player invisible-and-not-taunting or
+    // dead for this enemy's entire life so far).
+    protected bool hasLastKnownTargetPosition;
 
     // Public for cross-script reads (AddKnockbackVelocity, Stun()), not because it's meant to be hand-
     // tuned — it's fully derived from stunResistant at Awake() and, for state-driven enemies, reassigned
@@ -871,10 +960,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // advanced past the tier it actually spawned in.
     [NonSerialized] public int spawnTier = 1;
 
-    // Threat Level 5 ("enemies attack twice as often") — set by ConfigureSpawn() from EnemySpawnerPD's own
-    // threatLevel5AttackCooldownMultiplier (0.5f once difficulty >= 5, else 1f). A subclass with its own
-    // attack-cooldown field multiplies it by this, once, in its own OnConfigureSpawn() override — see
-    // ConfigureSpawn()'s own doc comment on the interface for why this can't just live generically here.
+    // Threat Level 5 ("enemies attack 50% more often", nerfed 2026-09-01 from "twice as often") — set by
+    // ConfigureSpawn() from EnemySpawnerPD's own threatLevel5AttackCooldownMultiplier (0.75f once difficulty
+    // >= 5, else 1f). A subclass with its own attack-cooldown field multiplies it by this, once, in its own
+    // OnConfigureSpawn() override — see ConfigureSpawn()'s own doc comment on the interface for why this
+    // can't just live generically here.
     [NonSerialized] public float attackCooldownMultiplier = 1f;
 
     // Static fields never reset themselves — there's no domain reload in a built game (that's an Editor-
@@ -947,7 +1037,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private float _authoredMaxHealth;
     private float _authoredDamage;
     private float _authoredMoveSpeed;
+    private float _authoredAttackSpeed;
     private float _authoredXpValue;
+    private float _authoredPointsValue;
     // Same reasoning, for the plain (un-prefixed) name — ApplyTierNamePrefix would otherwise stack another
     // tier prefix onto whatever the PREVIOUS life's prefixed name already was (e.g. "Doom Gloom Blitz") on a
     // pooled reuse, or attach the wrong tier's prefix if a slot's tier changed between lives.
@@ -1041,6 +1133,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public float MaxHealth => maxHealth;
 
     public float XpValue => xpValue;
+    public float PointsValue => pointsValue;
 
     public string EnemyName => enemyName;
 
@@ -1086,10 +1179,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // comment for why LateAwake() (which DOES re-fire on every pooled reuse) resets maxHealth/damage/
         // moveSpeed/xpValue/enemyName back to these every life, instead of just trusting whatever they
         // currently hold.
-        _authoredMaxHealth = maxHealth;
-        _authoredDamage    = damage;
-        _authoredMoveSpeed = moveSpeed;
-        _authoredXpValue   = xpValue;
+        _authoredMaxHealth   = maxHealth;
+        _authoredDamage      = damage;
+        _authoredMoveSpeed   = moveSpeed;
+        _authoredAttackSpeed = attackSpeed;
+        _authoredXpValue     = xpValue;
+        _authoredPointsValue = pointsValue;
         _authoredEnemyName = enemyName;
         isStunnable = !stunResistant;
 
@@ -1136,22 +1231,26 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected override void LateAwake()
     {
         // Reset to the true prefab-authored baseline BEFORE anything below reads maxHealth/damage/
-        // moveSpeed/xpValue, and BEFORE the spawner's own ConfigureSpawn() call (which always runs after
-        // LateAwake(), once hierarchy.Create() returns) gets a chance to multiply them again — LateAwake()
-        // re-fires on every pooled reuse (unlike Awake(), which only captured _authoredMaxHealth/etc. once),
-        // so without this, a pooled slot's stats compounded further every time it got reused (e.g. a Tier 2
-        // enemy reading 750, then 3750, health across successive lives instead of a stable 150 — see
-        // _authoredMaxHealth's own doc comment for the full bug). baseHealth/baseDamage/baseMoveSpeed/
-        // baseXpValue reset here too, for the same reason — they're just as multiplied/contaminated by a
-        // previous life's ConfigureSpawn call as the main 4 fields are.
+        // moveSpeed/xpValue/pointsValue, and BEFORE the spawner's own ConfigureSpawn() call (which always
+        // runs after LateAwake(), once hierarchy.Create() returns) gets a chance to multiply them again —
+        // LateAwake() re-fires on every pooled reuse (unlike Awake(), which only captured
+        // _authoredMaxHealth/etc. once), so without this, a pooled slot's stats compounded further every
+        // time it got reused (e.g. a Tier 2 enemy reading 750, then 3750, health across successive lives
+        // instead of a stable 150 — see _authoredMaxHealth's own doc comment for the full bug).
+        // baseHealth/baseDamage/baseMoveSpeed/baseXpValue/basePointsValue reset here too, for the same
+        // reason — they're just as multiplied/contaminated by a previous life's ConfigureSpawn call as the
+        // main fields are.
         maxHealth     = _authoredMaxHealth;
         damage        = _authoredDamage;
         moveSpeed     = _authoredMoveSpeed;
+        attackSpeed   = _authoredAttackSpeed;
         xpValue       = _authoredXpValue;
+        pointsValue   = _authoredPointsValue;
         baseHealth    = _authoredMaxHealth;
         baseDamage    = _authoredDamage;
         baseMoveSpeed = _authoredMoveSpeed;
         baseXpValue   = _authoredXpValue;
+        basePointsValue = _authoredPointsValue;
         enemyName     = _authoredEnemyName;
 
         ActiveCount++;
@@ -1215,10 +1314,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ref var b = ref B;
         if (b.isDead) return;
 
-        var stats = other.GetComponent<CharacterStatsPD>();
-        if (stats == null || !stats.owner.HasValue) return;
+        // IFriendlyPD (2026-08-30, was CharacterStatsPD + the !stats.owner.HasValue guard) — targets any
+        // registered friendly, not just a connected player. The old guard is dropped entirely rather than
+        // replaced: IsDead already excludes genuinely invalid targets, and ObjectId is never "unclaimed" the
+        // way a PlayerID? could be, so there's no equivalent state left to guard against (confirmed via
+        // AskUserQuestion — matches every other migrated attack, none of which have this kind of guard).
+        var friendly = other.GetComponent<IFriendlyPD>();
+        if (friendly == null || friendly.IsDead) return;
 
-        var player = stats.owner.Value;
+        var target = friendly.ObjectId;
         var cooldowns = b.contactCooldowns;
         int ticks = Mathf.Max(1, Mathf.RoundToInt(ContactCooldownDuration / _currentDelta));
 
@@ -1236,15 +1340,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         for (int i = 0; i < cooldowns.Count; i++)
         {
-            if (!cooldowns[i].player.Equals(player)) continue;
+            if (!cooldowns[i].target.Equals(target)) continue;
             if (cooldowns[i].remaining > 0) return;
-            cooldowns[i] = new ContactCooldown { player = player, remaining = ticks };
-            stats.TakeDamage(GetDamage(), isPlebForDodge, isPassiveContact: isPassiveForDodge);
+            cooldowns[i] = new ContactCooldown { target = target, remaining = ticks };
+            friendly.TakeDamage(GetDamage(), false, ObjectId, isPlebForDodge, isPassiveForDodge);
             return;
         }
 
-        cooldowns.Add(new ContactCooldown { player = player, remaining = ticks });
-        stats.TakeDamage(GetDamage(), isPlebForDodge, isPassiveContact: isPassiveForDodge);
+        cooldowns.Add(new ContactCooldown { target = target, remaining = ticks });
+        friendly.TakeDamage(GetDamage(), false, ObjectId, isPlebForDodge, isPassiveForDodge);
     }
 
     protected override void Destroyed()
@@ -1293,6 +1397,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             _target = null;
             _targetStats = null;
             lastKnownTargetPosition = default;
+            hasLastKnownTargetPosition = false;
+            _offsetChaseTrackedTarget = null;
+            _offsetChaseTrackedLastKnownPosition = default;
             _wasDeadLastFrame = false;
             b.wiped = false;
             _wasWipedLastFrame = false;
@@ -1383,7 +1490,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // Unconditional, ahead of the stun-freeze return below — see lastKnownTargetPosition's own doc
         // comment. Runs regardless of stun/attack-lock, same reasoning as HandleSeparation right below: a
         // passive record, not an action.
-        if (_targetStats != null) lastKnownTargetPosition = _targetStats.transform.position;
+        if (_targetStats != null)
+        {
+            lastKnownTargetPosition = _targetStats.transform.position;
+            hasLastKnownTargetPosition = true;
+        }
 
         // Unconditional, ahead of the stun-freeze return below — declumping is a passive spatial correction,
         // not an "action" a stun/attack-lock should block, and it should keep working even for an enemy
@@ -1602,8 +1713,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // Slot position is always computed the same way regardless of phase — the caller-assigned angle
         // (fixed during Pulling, advancing during Orbiting) at orbitRadiusTarget from the owner's current
         // position. Pulling only differs in that the enemy hasn't arrived there yet (see the Lerp below).
+        // owner.EffectiveAttackSpeed (2026-08-31, was plain delta) — a Slow landing on the HOLDER now
+        // correctly slows the orbit rotation itself too, not just its own movement/attack timing. Reads the
+        // OWNER's attack speed, not this held enemy's own (irrelevant — it isn't the one attacking; it's
+        // being spun by whoever grabbed it). orbitAngularSpeedDegPerSec itself stays the caller-assigned BASE
+        // rate (set once via OrbitTarget/SetOrbitAngularSpeed) — this multiply is a live, per-tick factor on
+        // top, so it reacts immediately to the owner's Slow starting/ending without the owner needing to
+        // re-push a new angular speed value itself.
         if (b.orbitPhase == (int)EnemyOrbitPhase.Orbiting)
-            b.orbitAngleDeg = WrapOrbitAngle(b.orbitAngleDeg + b.orbitAngularSpeedDegPerSec * delta);
+            b.orbitAngleDeg = WrapOrbitAngle(b.orbitAngleDeg + b.orbitAngularSpeedDegPerSec * delta * owner.EffectiveAttackSpeed);
 
         float rad = b.orbitAngleDeg * Mathf.Deg2Rad;
         Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
@@ -1612,7 +1730,14 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         Vector3 pos;
         if (b.orbitPhase == (int)EnemyOrbitPhase.Pulling)
         {
-            b.orbitPullElapsed += delta;
+            // owner.EffectiveAttackSpeed (2026-08-31, was plain delta) — same reasoning as the Orbiting
+            // branch's own identical fix above: without this, speeding up the HOLDER's own dispatch/windup
+            // cadence (KingOrbiterPD/OrbiterGloomPD's own phaseTimer scaling) only changed WHEN each pleb's
+            // pull-in started, not how fast it actually traveled once started — every held pleb still took
+            // the same fixed real-time pullDuration to reach its slot regardless of attack speed. This closes
+            // that gap: the pull-in motion itself now speeds up/slows down in step with the holder's own
+            // EffectiveAttackSpeed too.
+            b.orbitPullElapsed += delta * owner.EffectiveAttackSpeed;
             float t = Mathf.Clamp01(b.orbitPullElapsed / b.orbitPullDuration);
             // Straight-line (Cartesian) lerp from wherever this enemy actually started to the live slot
             // position — NOT a radius-at-fixed-angle lerp — so it visibly travels toward where it's really
@@ -1843,7 +1968,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
                 CharacterStatsPD.All.TryGetValue(vb.killerOwner, out var killer);
                 CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
-                if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(xpValue);
+                if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(pointsValue);
             }
 
             // Deletion re-checked every tick once verified-dead (not just on the edge above) so it
@@ -1888,17 +2013,25 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // common case a null-target enemy's every-tick retry (see EnemyBasePD.Simulate()'s own comment on
         // that fallback) would otherwise burn a full scan on for nothing, every tick, for every such enemy,
         // for however long that window lasts. See CharacterStatsPD.AnyValidTargetExists's own doc comment.
+        // NOTE (2026-08-30): this gate is still player-only — it only tracks CONNECTED PLAYERS' own
+        // death/invisibility state, not FriendlyTargetRegistryPD.All generically. Harmless today (no
+        // non-player IFriendlyPD exists), but once one does, this could wrongly skip the scan below in a
+        // scenario where every player is dead/invisible but a valid NPC ally is still alive — would need
+        // its own generalized refresh (mirroring RefreshAnyValidTargetExists but over the full registry)
+        // before that's a real concern.
         if (!CharacterStatsPD.AnyValidTargetExists) return;
 
         float nearestAny = float.MaxValue;
         Transform anyTarget = null;
-        CharacterStatsPD anyStats = null;
+        IFriendlyPD anyStats = null;
 
         float nearestTaunting = float.MaxValue;
         Transform tauntingTarget = null;
-        CharacterStatsPD tauntingStats = null;
+        IFriendlyPD tauntingStats = null;
 
-        foreach (var p in CharacterStatsPD.All.Values)
+        // FriendlyTargetRegistryPD.All (2026-08-30, was CharacterStatsPD.All.Values) — targets any
+        // IFriendlyPD, not just connected players.
+        foreach (var p in FriendlyTargetRegistryPD.All)
         {
             // Taunt trumps invisible — an invisible-but-taunting player is still a valid (in fact preferred)
             // candidate, only a non-taunting invisible player is excluded entirely.
@@ -1937,7 +2070,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // quirk — each concrete enemy type gets its own copy of any static field declared on this generic base),
     // not a single buffer shared across every enemy type — harmless, just a handful of small lists instead
     // of exactly one.
-    private static readonly List<CharacterStatsPD> _randomTargetScratch = new();
+    private static readonly List<IFriendlyPD> _randomTargetScratch = new();
 
     // Alternative to FindClosestTarget() above for enemies that should pick randomly instead of by
     // proximity — bosses, per design (a boss shouldn't feel "leashed" to whoever's nearest the way a normal
@@ -1955,15 +2088,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     {
         if (!CharacterStatsPD.AnyValidTargetExists) return;
 
+        // FriendlyTargetRegistryPD.All (2026-08-30, was CharacterStatsPD.All.Values) — targets any
+        // IFriendlyPD, not just connected players.
         _randomTargetScratch.Clear();
-        foreach (var p in CharacterStatsPD.All.Values)
+        foreach (var p in FriendlyTargetRegistryPD.All)
             if (!p.IsDead && p.IsTaunting) _randomTargetScratch.Add(p);
 
         if (_randomTargetScratch.Count == 0)
         {
             // Nobody taunting to override anything — exclude whoever we were just targeting (the actual
             // "not the last target" request), still respecting invisibility since nothing here overrides it.
-            foreach (var p in CharacterStatsPD.All.Values)
+            foreach (var p in FriendlyTargetRegistryPD.All)
                 if (!p.IsDead && !p.IsInvisible && p != _targetStats) _randomTargetScratch.Add(p);
         }
 
@@ -1986,12 +2121,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // "boss is targeting you" indicator exists.
     }
 
-    // Called by EnemySpawnerPD (the enemy-targeting hub) the instant any player's taunt state changes —
-    // immediate reaction, not polled. Taunt starting overrides everything (even that player's own
-    // invisibility) — every enemy snaps straight onto them. Taunt ending only matters if that player is
+    // Called by EnemySpawnerPD (the enemy-targeting hub) the instant any friendly's taunt state changes —
+    // immediate reaction, not polled. Taunt starting overrides everything (even that friendly's own
+    // invisibility) — every enemy snaps straight onto them. Taunt ending only matters if that friendly is
     // ALSO currently invisible: they lose their taunt-granted immunity, so anyone targeting them needs to
-    // retarget away right now instead of waiting to notice later.
-    public void OnPlayerTauntChanged(CharacterStatsPD player, bool isTaunting)
+    // retarget away right now instead of waiting to notice later. IFriendlyPD (2026-08-30, was
+    // CharacterStatsPD) — see IEnemyPD.OnPlayerTauntChanged's own doc comment.
+    public void OnPlayerTauntChanged(IFriendlyPD player, bool isTaunting)
     {
         if (isTaunting)
         {
@@ -2004,10 +2140,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (player.IsInvisible) RetargetAwayFrom(player);
     }
 
-    // Called by EnemySpawnerPD the instant any player's invisible state changes. Becoming visible again
+    // Called by EnemySpawnerPD the instant any friendly's invisible state changes. Becoming visible again
     // never needs a forced reaction (nobody was wrongly avoiding them). Becoming invisible only matters to
     // enemies currently targeting them, and only if they're not ALSO taunting (taunt trumps invisible).
-    public void OnPlayerInvisibleChanged(CharacterStatsPD player, bool isInvisible)
+    // IFriendlyPD (2026-08-30, was CharacterStatsPD) — see IEnemyPD.OnPlayerInvisibleChanged's own doc comment.
+    public void OnPlayerInvisibleChanged(IFriendlyPD player, bool isInvisible)
     {
         if (!isInvisible || player.IsTaunting) return;
         RetargetAwayFrom(player);
@@ -2020,7 +2157,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // reassigning _target here is always safe to do immediately, mid-attack included. HandleMovement already
     // stops moving on a null target for anyone idling in Moving; a subclass mid-attack-routine picks up the
     // null/changed _target at its own next between-attacks checkpoint, not here.
-    private void RetargetAwayFrom(CharacterStatsPD invalidPlayer)
+    private void RetargetAwayFrom(IFriendlyPD invalidPlayer)
     {
         if (_targetStats != invalidPlayer) return;
         _target = null;
@@ -2056,99 +2193,22 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         float distToTarget = Vector3.Distance(transform.position, _target.position);
 
-        // Bounds-restriction (2026-08-25, reworked 2026-08-26 from an angle-slerp blend that only touched
-        // backpedaling and turned out to have no real guarantee against ever moving toward the target — see
-        // below). Still scoped to preferredRange > 0 (melee enemies have no preferredRange concept and can
-        // never walk themselves out of the arena via this mechanic at all), but no longer scoped to "currently
-        // backpedaling this tick" — a flagged enemy now strafes on BOTH approach and retreat ticks until it
-        // clears the margin, not just retreat ticks (see the 75°-too-lenient live finding this replaced: the
-        // old design let a chasing enemy bypass strafing entirely and walk straight at the player the instant
-        // distToTarget flipped past preferredRange, which looked like it un-stuck itself for free).
-        //
-        // b.boundsRestricted is a real predicted-State flag with hysteresis, not a live per-tick check: set
-        // the first tick this enemy is found truly OUTSIDE the playable area's raw boundary (not merely
-        // within wallMargin of it — urgency01 is exactly 1 only then, see TryGetInwardSteering's own doc
-        // comment), cleared only once it's walked all the way back past wallMargin (TryGetInwardSteering
-        // itself returns false) — a one-way buffer, crossing back over the raw edge alone isn't enough.
-        // Checked/cleared every tick regardless of approach-vs-retreat now (previously gated behind
-        // "currently backpedaling"), so an enemy that clears the margin purely by chase-strafing still
-        // correctly un-flags instead of staying stuck strafing long after it's actually safe.
-        //
-        // The strafe direction itself is an explicit tangential+radial vector composition, not an angle
-        // blend toward the raw inward direction — the old slerp had no actual guarantee against introducing
-        // a toward-target component (if arena-inward happened to partially align with toward-the-player,
-        // slerping far enough toward it could do exactly that, which is what "still ran into the player"
-        // live turned out to be, not just a wrong-angle-number problem). tangential is one of the two
-        // perpendiculars of boundsDir — by construction it has ZERO radial (toward/away-from-target)
-        // component. The radial term is ADDED on top afterward, at reduced weight so strafing stays the
-        // dominant component of motion, and its SIGN always matches THIS branch's own actual intent (+dir
-        // approaching, -dir retreating) — never swapped. That's what makes "never moves toward the target
-        // while retreating" a guaranteed property of the retreat branch regardless of how StrafeRadialWeight
-        // gets tuned, rather than something that happens to hold at one specific angle and quietly breaks at
-        // another.
-        //
-        // WHICH perpendicular is only decided ONCE, the tick boundsRestricted first sets (whichever faces
-        // further from the target at that moment — see boundsStrafeClockwise's own doc comment for why
-        // re-deciding this every tick, against a live boundsDir that can swing sharply near a polygon
-        // corner, caused enemies to visibly oscillate/stall right at corners) — every later tick reuses that
-        // locked choice against a FRESHLY recomputed boundsDir, so it still correctly hugs whichever wall is
-        // actually nearest without re-litigating which side to strafe on.
+        // Bounds-restriction/strafe system removed entirely (2026-08-28) — the general-purpose "always find
+        // a guaranteed way back to safety" version of this problem turned out to have no real fix that was
+        // proportionate to build: the strafe formula's tangential+radial blend had no actual pull back toward
+        // the boundary at all (confirmed live — an enemy could slide tangentially along a wall corner-to-
+        // corner while staying outside the whole time, since neither the tangential term nor the target-
+        // relative radial term were ever guaranteed to reduce distance from the wall). Rather than keep
+        // hardening a system fighting arbitrary arena geometry, the call was to drop it project-wide and
+        // instead design any enemy/boss that could realistically wander far out of bounds (ranged bosses with
+        // an enrage timer especially — King Orbiter today, any future one) so the scenario structurally can't
+        // arise (a tighter preferredRange, a pull-toward-center bias, or no backpedal/kiting at all) — see
+        // PlayableAreaPD.TryGetInwardSteering's own doc comment; it's left in place, unreferenced, as
+        // general-purpose infrastructure in case a future boss-specific mechanic wants that same steering
+        // primitive. approachDir/retreatDir are just the plain toward/away-from-target directions now, same
+        // as every enemy used before this system ever existed.
         Vector3 approachDir = dir;
         Vector3 retreatDir  = -dir;
-        if (preferredRange > 0)
-        {
-            if (PlayableAreaPD.instance == null)
-            {
-                b.boundsRestricted = false;
-            }
-            else if (!PlayableAreaPD.instance.TryGetInwardSteering(transform.position, WallMargin, out Vector3 boundsDir, out float urgency01))
-            {
-                // Fully clear of the margin buffer (TryGetInwardSteering itself returns false once safely
-                // past it) — release.
-                b.boundsRestricted = false;
-            }
-            else
-            {
-                // Only ever TRIGGERS on a backpedal tick (2026-08-26 fix — restores the original design:
-                // "don't initiate strafing unless they backpedaled while out of bounds or backpedaled to out
-                // of bounds"). Enemies are deliberately spawned outside the playable boundary on purpose (so
-                // they walk in through the wall instead of popping into view), and a plain position-only
-                // trigger was firing for that normal APPROACH too, making a fresh spawn immediately strafe
-                // instead of just walking in. isBackpedaling mirrors the exact same retreat condition the
-                // movement-decision block below uses (atPreferredRange ? distToTarget < preferredRange -
-                // rangeToleranceClose : distToTarget < preferredRange), evaluated fresh every tick — so a
-                // retreat that carries this enemy INTO the boundary still triggers the very tick it crosses
-                // (still "backpedaling" that same tick), covering "backpedaled to out of bounds" too, not
-                // just "backpedaled while ALREADY out of bounds". A fresh spawn placed close enough to
-                // already need to retreat immediately still correctly triggers — that's the same
-                // backpedaling-while-outside case the original design always wanted caught, spawn or not.
-                // urgency01 is exactly 1 only when truly outside the raw boundary — anything less means
-                // still inside, just within the margin band, which should NOT newly trigger this (that was
-                // the earlier bug: treating the whole margin band as unsafe made it an unintentional no-go
-                // zone nothing would ever settle inside).
-                bool isBackpedaling = b.atPreferredRange
-                    ? distToTarget < preferredRange - rangeToleranceClose
-                    : distToTarget < preferredRange;
-
-                if (!b.boundsRestricted && isBackpedaling && urgency01 >= 0.999f)
-                {
-                    b.boundsRestricted = true;
-                    Vector3 lockPerpA = new Vector3(-boundsDir.z, 0f, boundsDir.x);
-                    Vector3 lockPerpB = -lockPerpA;
-                    b.boundsStrafeClockwise = Vector3.Dot(lockPerpA, dir) < Vector3.Dot(lockPerpB, dir);
-                }
-
-                if (b.boundsRestricted && boundsDir != Vector3.zero)
-                {
-                    Vector3 perpA = new Vector3(-boundsDir.z, 0f, boundsDir.x);
-                    Vector3 perpB = -perpA;
-                    Vector3 tangential = b.boundsStrafeClockwise ? perpA : perpB;
-
-                    approachDir = (tangential + dir  * StrafeRadialWeight).normalized;
-                    retreatDir  = (tangential + -dir * StrafeRadialWeight).normalized;
-                }
-            }
-        }
 
         if (preferredRange > 0)
         {
@@ -2162,14 +2222,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 else if (distToTarget < preferredRange - rangeToleranceClose)
                 {
                     b.atPreferredRange = false;
-                    _rigidbody.AddForce(retreatDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
+                    // backpedalDisabled (2026-08-28) — suppresses ONLY this "too close, back away" force,
+                    // never the "too far, approach" branch above. See that field's own doc comment.
+                    if (!backpedalDisabled)
+                        _rigidbody.AddForce(retreatDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
                 }
             }
             else
             {
                 if (distToTarget > preferredRange)
                     _rigidbody.AddForce(approachDir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
-                else if (distToTarget < preferredRange)
+                else if (distToTarget < preferredRange && !backpedalDisabled)
                     _rigidbody.AddForce(retreatDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
 
                 if (Mathf.Abs(distToTarget - preferredRange) <= 0.1f)
@@ -2202,7 +2265,18 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // "harmless staleness" tolerance the whole recompute-every-N-ticks design already accepts. As a
         // PUSHER, see RecomputeSeparationPush's own IEnemyPD.IsKinematic check below — a kinematic enemy is
         // skipped as a neighbor by everyone ELSE's own separation checks too.
-        if (_rigidbody == null || _rigidbody.isKinematic) return;
+        //
+        // No valid target is exempt too, as a PUSHEE only (2026-09-01) — HandleMovement no-ops whenever
+        // _target is null (every player currently invisible-and-not-taunting, or dead), so an idle enemy
+        // with nothing to chase had nothing counteracting the separation force either, reading as aimless
+        // sliding-in-place instead of natural pack jostling (misdiagnosed once already as
+        // SeparationRadiusPerSize itself being the problem — see that field's own doc comment). Same
+        // "pauses wherever it left off, resumes once a target exists again" staleness tolerance as the
+        // kinematic case above. Deliberately NOT exempt as a neighbor other enemies push off of — an idle,
+        // targetless enemy is still a real physical obstacle for a DIFFERENT enemy that still has a target
+        // and is actively moving through the area; only this enemy's own reaction is suppressed, same
+        // asymmetry precedent as IsBeingHeld/other partial exemptions elsewhere in this file.
+        if (_rigidbody == null || _rigidbody.isKinematic || _target == null) return;
 
         b.separationCheckTimer--;
         if (b.separationCheckTimer <= 0)
@@ -2225,12 +2299,14 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         float radius = SeparationRadiusPerSize * size;
         if (radius <= 0f) return;
 
-        // Shrink to the tighter near-player radius if an alive player is within this enemy's own normal
-        // declumping range — lets multiple enemies still cram in around that player (only preventing gross
-        // overlap once that close) instead of the full radius pushing them away from the player entirely.
-        // Checked against the NORMAL (larger) radius so this only kicks in once a player is genuinely close,
-        // not from clear across the arena.
-        if (IsAlivePlayerWithinRange(radius)) radius = SeparationRadiusPerSizeNearPlayer * size;
+        // Shrink to the tighter near-player radius if an alive player is within NearPlayerDetectionRadiusPerSize
+        // — lets multiple enemies still cram in around that player (only preventing gross overlap once that
+        // close) instead of the full radius pushing them away from the player entirely. Checked against its
+        // OWN fixed detection distance (2026-09-01, was the live `radius` variable itself — see
+        // NearPlayerDetectionRadiusPerSize's own doc comment for why that coupling was removed), not
+        // whatever SeparationRadiusPerSize currently is, so retuning the general declump radius never again
+        // silently shifts how far away a player can be and still count as "nearby" for this purpose.
+        if (IsAlivePlayerWithinRange(NearPlayerDetectionRadiusPerSize * size)) radius = SeparationRadiusPerSizeNearPlayer * size;
 
         int n = Physics.OverlapSphereNonAlloc(transform.position, radius, _separationOverlapResults, CombatLayerMasks.EnemyHurtboxMask);
         if (n <= 0) return;
@@ -2293,7 +2369,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private bool IsAlivePlayerWithinRange(float radius)
     {
         float sqrRadius = radius * radius;
-        foreach (var p in CharacterStatsPD.All.Values)
+        // FriendlyTargetRegistryPD.All (2026-08-30, was CharacterStatsPD.All.Values).
+        foreach (var p in FriendlyTargetRegistryPD.All)
         {
             if (p.IsDead) continue;
             if ((p.transform.position - transform.position).sqrMagnitude <= sqrRadius) return true;
@@ -2351,11 +2428,14 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         _rigidbody.MoveRotation(Quaternion.LookRotation(b.dashDirection));
     }
 
-    // Chases a LIVE, target-relative offset POSITION every tick instead of a destination snapshotted once
-    // at start (see EnemyBaseState.isOffsetChasing's own doc comment for why — the old dash-to-a-fixed-point
-    // shape let a fast player simply outrun it). speed follows the same "already excludes attack-speed
-    // scaling" convention as StartDashToPoint's own speed param above — HandleOffsetChase applies
-    // EffectiveAttackSpeed live, every tick, same as HandleDash does.
+    // Chases a target-relative offset POSITION, live-tracked while the committed target stays valid and
+    // frozen at its last-known position the instant it isn't (dead, or invisible-without-taunting) — see
+    // _offsetChaseTrackedTarget's own doc comment for why this reads a frozen reference captured here,
+    // decoupled from the shared _target/_targetStats pair (which the old dash-to-a-fixed-point shape's own
+    // problem — see EnemyBaseState.isOffsetChasing's own doc comment — was ALSO about, just for the position
+    // rather than the reference: a fast player could simply outrun a snapshotted destination). speed follows
+    // the same "already excludes attack-speed scaling" convention as StartDashToPoint's own speed param
+    // above — HandleOffsetChase applies EffectiveAttackSpeed live, every tick, same as HandleDash does.
     //
     // offsetDirectionDegrees is measured relative to the dasher→target bearing AT THIS EXACT MOMENT, rotated
     // around the world-up axis, and LOCKED into b.chaseLockedOffsetDir from here on (2026-08-26 fix — see
@@ -2367,7 +2447,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // `target.position - dir * stopDistance` (dir = dasher→target) which is exactly the 180° case;
     // Dagger dashed to `target.position + dir * offset` which is exactly the 0° case — same formula, only
     // the angle differs. Only the DIRECTION is locked here — HandleOffsetChase still re-applies it against
-    // the target's live position every tick, so the destination itself keeps tracking a moving target.
+    // the tracked target's position every tick, so the destination itself keeps tracking a moving target.
     protected void StartOffsetChase(ref TState state, float speed, float offsetDistance, float offsetDirectionDegrees)
     {
         if (_target == null) return;
@@ -2382,6 +2462,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         toTarget.Normalize();
         b.chaseLockedOffsetDir = Quaternion.AngleAxis(offsetDirectionDegrees, Vector3.up) * toTarget;
 
+        // Commit to the current target for this whole chase — see _offsetChaseTrackedTarget's own doc
+        // comment. _targetStats is guaranteed non-null here alongside _target (FindClosestTarget/
+        // FindRandomTarget always set both together).
+        _offsetChaseTrackedTarget = _targetStats;
+        _offsetChaseTrackedLastKnownPosition = _targetStats.transform.position;
+
         if (_physicsCollider != null) _physicsCollider.enabled = false;
     }
 
@@ -2392,7 +2478,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected void HandleOffsetChase(ref TState state, float delta)
     {
         ref var b = ref GetBase(ref state);
-        if (_target == null || b.isDead)
+        if (_offsetChaseTrackedTarget == null || b.isDead)
         {
             b.isOffsetChasing = false;
             _rigidbody.velocity = Vector3.zero;
@@ -2400,14 +2486,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             return;
         }
 
+        // Refresh the tracked position while still valid; freeze (skip this) the instant it isn't — same
+        // live-then-freeze shape every other windup-tracking mechanism in this codebase already uses.
+        if (!_offsetChaseTrackedTarget.IsDead && (!_offsetChaseTrackedTarget.IsInvisible || _offsetChaseTrackedTarget.IsTaunting))
+            _offsetChaseTrackedLastKnownPosition = _offsetChaseTrackedTarget.transform.position;
+
         // b.chaseLockedOffsetDir was fixed once, back at StartOffsetChase — never re-derived here, see that
         // field's own doc comment. Only the POSITION this resolves to tracks the target live (below).
-        Vector3 liveDestination = _target.position + b.chaseLockedOffsetDir * b.chaseOffsetDistance;
+        Vector3 liveDestination = _offsetChaseTrackedLastKnownPosition + b.chaseLockedOffsetDir * b.chaseOffsetDistance;
 
         Vector3 toDestination = liveDestination - transform.position;
         toDestination.y = 0f;
+        float dist = toDestination.magnitude;
 
-        if (toDestination.magnitude <= OffsetChaseArriveTolerance)
+        if (dist <= OffsetChaseArriveTolerance)
         {
             b.isOffsetChasing = false;
             _rigidbody.velocity = Vector3.zero;
@@ -2415,9 +2507,26 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             return;
         }
 
-        Vector3 moveDir = toDestination.normalized;
+        Vector3 moveDir = toDestination / dist;
         // Live, same "not baked in at start" treatment HandleDash's own EffectiveAttackSpeed multiply uses.
-        _rigidbody.velocity = moveDir * b.dashSpeed * EffectiveAttackSpeed;
+        float speed = b.dashSpeed * EffectiveAttackSpeed;
+        // Capped so this tick's step never overshoots liveDestination (2026-08-31 fix — the "Spear/Dagger
+        // vibrate in place after their target goes invisible mid-dash" bug). Unlike HandleDash (fixed
+        // direction, stops via a Dot()-sign "already passed it" check — structurally overshoot-proof), this
+        // chase re-aims moveDir at the live/frozen destination every single tick, so a full-speed step can fly
+        // straight past a destination that isn't moving — then the very next tick re-aims moveDir the OTHER
+        // way and does the same thing in reverse, repeating every tick until fp noise happens to land inside
+        // OffsetChaseArriveTolerance. A live, still-visible target rarely triggers this since liveDestination
+        // itself keeps drifting each tick, giving the chase somewhere new to converge toward instead of
+        // bouncing off a fixed point — but the instant the tracked target goes invisible mid-dash,
+        // liveDestination freezes at their last-known position (see _offsetChaseTrackedLastKnownPosition's own
+        // doc comment) and the chase starts oscillating around that exact spot. Clamping the SPEED USED THIS
+        // TICK (never the stored b.dashSpeed itself, which stays untouched for the next tick) so the step
+        // lands exactly AT the destination instead of past it removes the oscillation without touching arrival
+        // detection at all, which stays magnitude-based and fires cleanly the very next tick either way.
+        float maxStep = speed * delta;
+        if (maxStep > dist) speed = dist / Mathf.Max(delta, 0.0001f);
+        _rigidbody.velocity = moveDir * speed;
         _rigidbody.MoveRotation(Quaternion.LookRotation(moveDir));
     }
 
@@ -2448,7 +2557,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // true, pass false only if a caller genuinely wants to ignore that (no current caller does). Returns
     // Vector3.zero on any guard failure/degenerate direction — same "caller only writes into its own
     // direction state field on a non-zero return" contract as the other overload.
-    protected Vector3 SnapFaceTarget(CharacterStatsPD target, bool respectInvisibility = true)
+    protected Vector3 SnapFaceTarget(IFriendlyPD target, bool respectInvisibility = true)
     {
         if (target == null) return Vector3.zero;
         if (respectInvisibility && (target.IsDead || (target.IsInvisible && !target.IsTaunting))) return Vector3.zero;
@@ -2479,6 +2588,21 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected void CaptureAttackAnchor(ref TState state)
     {
         if (_target != null) GetBase(ref state).attackAnchorPosition = _target.position;
+    }
+
+    // Companion to CaptureAttackAnchor, for the one call site that needs it: refreshing attackAnchorPosition
+    // right as an offset-chase dash ends (SpearGloomPD/DaggerGloomPD's own dashJustEnded handling), so
+    // Windup/EnterStab aim at wherever the dash actually chased to. Deliberately does NOT re-read live
+    // _target/_targetStats the way CaptureAttackAnchor does — by the time a dash ends, RetargetAwayFrom may
+    // have already nulled _target (a plain CaptureAttackAnchor call would then silently no-op, leaving the
+    // STALE pre-dash anchor) or reassigned it to a brand new target (which would incorrectly redirect this
+    // already-resolving attack onto them) — see _offsetChaseTrackedTarget's own doc comment. Reading the
+    // chase's own frozen/live-tracked position instead sidesteps both failure modes: it's always exactly
+    // where this specific dash was chasing, live if the target stayed valid the whole time, frozen at their
+    // last-known position otherwise.
+    protected void CaptureAttackAnchorFromOffsetChase(ref TState state)
+    {
+        GetBase(ref state).attackAnchorPosition = _offsetChaseTrackedLastKnownPosition;
     }
 
     // Anchor-based counterparts to SnapFaceTarget/FaceTargetSmooth — use these instead, everywhere facing
@@ -2923,6 +3047,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public void SetInvulnerable(bool invulnerable) => B.invulnerable = invulnerable;
 
     public bool IsBeingHeld => B.orbitPhase != (int)EnemyOrbitPhase.None;
+    public bool IsWaitingToOrbit => B.orbitPhase == (int)EnemyOrbitPhase.WaitingToOrbit;
+    public bool IsLaunching => B.launchActive;
 
     public bool IsKinematic => _rigidbody != null && _rigidbody.isKinematic;
 
@@ -3045,7 +3171,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // (nothing bakes it into predicted state at spawn time — it's read live off the field every use), but
     // its base* snapshot (captured in Awake(), before this ever runs) DOES need to be scaled in lockstep,
     // since subclasses can derive further values from it.
-    public void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier, float moveSpeedMultiplier, float attackCooldownMultiplier, int tier)
+    public void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier, float pointsMultiplier, float moveSpeedMultiplier, float attackCooldownMultiplier, float attackSpeedMultiplier, int tier)
     {
         if (category != spawnCategory)
         {
@@ -3060,6 +3186,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         xpValue *= xpMultiplier;
         baseXpValue *= xpMultiplier;
+        pointsValue *= pointsMultiplier;
+        basePointsValue *= pointsMultiplier;
 
         if (healthMultiplier != 1f)
         {
@@ -3079,6 +3207,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             moveSpeed *= moveSpeedMultiplier;
             baseMoveSpeed *= moveSpeedMultiplier;
         }
+
+        // attackSpeed (2026-08-31) — see IEnemyPD.ConfigureSpawn's own attackSpeedMultiplier doc comment. No
+        // base* counterpart needed (unlike moveSpeed) — attackSpeed has no further per-enemy derivation
+        // beyond EffectiveAttackSpeed itself.
+        if (attackSpeedMultiplier != 1f)
+            attackSpeed *= attackSpeedMultiplier;
 
         OnConfigureSpawn();
     }

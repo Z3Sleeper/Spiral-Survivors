@@ -17,6 +17,7 @@ public class PhantomBladeOnDashAugment : AugmentEffectPD<PhantomBladeOnDashAugme
     }
 
     [SerializeField] private GameObject phantomBladePrefab;
+    [SerializeField] private Color bladeColor = Color.white;
     public int bladeCount = 3;
     public float damageMultiplier = 0.6f;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
@@ -59,6 +60,6 @@ public class PhantomBladeOnDashAugment : AugmentEffectPD<PhantomBladeOnDashAugme
         if (Stats == null || Stats.IsDead) return;
 
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, damageMultiplier);
+            Stats.transform.position, bladeCount, damageMultiplier, bladeColor);
     }
 }

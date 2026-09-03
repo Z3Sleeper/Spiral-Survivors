@@ -18,10 +18,11 @@ using UnityEngine;
 // reductionPercent (2026-08-21 numeric pass, was a flat cooldownReductionFlat seconds constant) — now a
 // percent of the STRUCK ability's own BaseCooldownDuration, same "per-ability base" shape
 // OnAbilityStartReduceDashCDAugment/OnAbilityStartReduceOtherAbilityCDAugment already use, instead of an
-// amount untethered from any stat. Default 0.02 (2%) targets roughly 0.1s off a 5s-base ability per strike —
-// this fires far more often (every real hit) than this family's other triggers, hence the much smaller
-// per-proc percent. Still scaled by data.onHitPower same as before (see OnStrikeEnergyRegenAugment's own
-// doc comment for the WeaponCount-divide reasoning) — that scaling wasn't part of this pass.
+// amount untethered from any stat. Default 0.005 (0.5%, nerfed 2026-08-31 from 0.02/2% after playtesting)
+// targets roughly 0.025s off a 5s-base ability per strike — this fires far more often (every real hit) than
+// this family's other triggers, hence the much smaller per-proc percent. Still scaled by data.onHitPower
+// same as before (see OnStrikeEnergyRegenAugment's own doc comment for the WeaponCount-divide reasoning) —
+// that scaling wasn't part of this pass.
 //
 // Reduces via IAbilityPD.ReduceCooldownFlat, not ReduceCooldownPercentRemaining/ReduceCooldownPercentTotal —
 // the percent here is of the ability's fixed BASE cooldown (a flat seconds amount once resolved), not of
@@ -33,7 +34,7 @@ public class OnStrikeReduceAbilityCDAugment : AugmentEffectPD<OnStrikeReduceAbil
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
     // {reductionPercent}/{LiveCooldownReduction} directly in the description text — see its own doc comment
     // (only public fields/properties/methods are checked).
-    public float reductionPercent = 0.02f;
+    public float reductionPercent = 0.005f;
 
     // Cached once — Ability1/Ability2 are permanent one-per-character fixtures for the whole match, same
     // "resolve components once, not on every event" convention as CharacterStatsPD._onAbilityStart's own doc
@@ -48,14 +49,14 @@ public class OnStrikeReduceAbilityCDAugment : AugmentEffectPD<OnStrikeReduceAbil
     // static preview uses).
     public string LiveCooldownReduction(CharacterStatsPD stats)
     {
-        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "";
+        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "0|0";
         float ability1Value = 0f, ability2Value = 0f;
         foreach (var ability in stats.GetComponents<IAbilityPD>())
         {
             if (ability.Slot == AbilitySlot.Ability1) ability1Value = ability.BaseCooldownDuration * reductionPercent;
             else if (ability.Slot == AbilitySlot.Ability2) ability2Value = ability.BaseCooldownDuration * reductionPercent;
         }
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)}";
     }
 
     protected override void OnApply()

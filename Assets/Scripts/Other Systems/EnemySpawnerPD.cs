@@ -177,11 +177,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // of the generic difficulty move-speed scalar, doesn't replace it). Same cumulative-from-this-level-up
     // convention.
     private float threatLevel4PlebMoveSpeedMultiplier = 1.25f;
-    // Threat Level 5's own unique modifier ("Enemies attack twice as often") — a flat halving of every
-    // enemy's own attack-cooldown field, passed through ConfigureSpawn's new attackCooldownMultiplier
-    // parameter (see IEnemyPD.ConfigureSpawn's own doc comment for why this can't be applied generically on
-    // EnemyBasePD itself). Same cumulative-from-this-level-up convention as every other threat modifier.
-    private float threatLevel5AttackCooldownMultiplier = 0.5f;
+    // Threat Level 5's own unique modifier ("Enemies attack 50% more often", nerfed 2026-09-01 from "twice
+    // as often"/0.5f) — a flat 25% cut off every enemy's own attack-cooldown field, passed through
+    // ConfigureSpawn's new attackCooldownMultiplier parameter (see IEnemyPD.ConfigureSpawn's own doc comment
+    // for why this can't be applied generically on EnemyBasePD itself). Same cumulative-from-this-level-up
+    // convention as every other threat modifier.
+    private float threatLevel5AttackCooldownMultiplier = 0.75f;
     // Threat Level 6's own unique modifier ("Double Boss spawns") — how many bosses SpawnBosses() spawns
     // per boss cycle once difficulty >= 6, instead of the default 1. Plain int, not itself threat-level-
     // specific — SpawnBosses() just takes a count parameter, same "N-simultaneous-boss design" state.
@@ -194,15 +195,21 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // an enemy TYPE only ever needs ONE authored (tier1-baseline) stat set on its prefab. Reusing the same
     // prefabs across a different "level" with a different tier progression means retuning these growth
     // curves once here, not re-tuning every individual tier's own hand-authored numbers on every prefab.
-    // Move speed, damage, health, AND xp all grow LINEARLY (tier1 + this fraction of tier1 per tier step
-    // above 1). Health was ALSO exponential originally (healthExponentialTierBase = 5, i.e. 5/25/125 for a
+    // Move speed, damage, AND xp all grow LINEARLY (tier1 + this fraction of tier1 per tier step above 1).
+    // Health was ALSO exponential originally (healthExponentialTierBase = 5, i.e. 5/25/125 for a
     // tier1-baseline 5-health enemy) but switched to linear on 2026-08-20 — that curve assumed player damage
     // output scaled roughly as aggressively per tier as it was tuned for, which turned out not to hold up in
     // practice, leaving high-tier enemies dramatically overtanky relative to what players could actually put
-    // out. healthTierGrowth originally launched at 4 (tier1/tier2/tier3/tier4 = 1x/5x/9x/13x, matching the
-    // old exponential curve's own already-validated tier1/tier2 value before tapering off instead of
-    // continuing to 25x/125x) but has since been retuned further, off further live testing, to 8
-    // (1x/9x/17x/25x) — retune directly here if that still isn't matching live player damage output. xp was
+    // out. healthTierGrowth originally launched at 4 using the SAME "1 + (tier-1)*growth" shape the other
+    // stats use (tier1/tier2/tier3/tier4 = 1x/5x/9x/13x, matching the old exponential curve's own
+    // already-validated tier1/tier2 value before tapering off instead of continuing to 25x/125x), then
+    // retuned further to 8 (1x/9x/17x/25x) off live testing — but that additive shape only ever matches the
+    // originally-intended 1x/5x/10x/15x sequence AT tier 2, then permanently diverges (9 vs 10, 13/17 vs 15,
+    // ...). Reworked 2026-08-30 to its own different shape instead — see _tierHealthMultiplier's own
+    // computation for the actual formula (growth*(tier-1), floored at 1x), value retuned back to 5 to
+    // land exactly on 1x/5x/10x/15x. Health is now the ONE exception to the shared additive formula every
+    // other stat below still uses — retune directly here (or switch shape again) if live testing calls for
+    // it. xp was
     // ALSO exponential originally (xpExponentialTierBase = 5, i.e. 5/25/125/625 for a tier1-baseline 5xp
     // enemy) but switched to linear on 2026-08-12 after live T4 testing showed it snowballing the player's
     // level curve — a single T3/T4 kill's xp vastly outstripped GameManagerPD.xpToNextLevel's own much slower
@@ -210,8 +217,14 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // tier1-baseline 5xp enemy) but has since been retuned to 3 (5/20/35/50).
     [SerializeField] private float moveSpeedTierGrowth = 0.25f;
     [SerializeField] private float damageTierGrowth = 0.5f;
-    [SerializeField] private float healthTierGrowth = 8f;
+    [SerializeField] private float healthTierGrowth = 5f;
     [SerializeField] private float xpTierGrowth = 3f;
+    // Fully independent from xpTierGrowth (2026-08-29 — upgrade points are no longer derived from XP at all,
+    // see EnemyBasePD.pointsValue's own doc comment) — no relationship to xpTierGrowth's own value, tune
+    // this purely on its own merits. Default 1 — a clean +1x-of-base-per-tier progression (via
+    // "1 + (tierNumber-1) * growth"), e.g. a 1-point-base enemy reads 1/2/3/4 across tiers 1-4, matching
+    // Stuart's own reference example exactly.
+    [SerializeField] private float pointsTierGrowth = 1f;
 
     // Public passthroughs (2026-08-21) — lets anything outside this spawner (e.g. DPSCheckPD scaling its own
     // dummy target's stats) replicate the EXACT SAME "1f + (tier - 1) * growth" formula this class applies to
@@ -221,30 +234,48 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     public float DamageTierGrowth    => damageTierGrowth;
     public float HealthTierGrowth    => healthTierGrowth;
     public float XpTierGrowth        => xpTierGrowth;
+    public float PointsTierGrowth    => pointsTierGrowth;
 
     [Header("Difficulty Scaling")]
     // Linear per difficulty level off GamePresets.instance.Difficulty (1-6), same "multiply base, no
     // exponential" convention every tier-growth field in this codebase already uses — level 1 = 1f (no-op
-    // baseline) for all three, level 6 = 1f + 5*growth each. Applied as a flat multiplier on top of
+    // baseline) for all four, level 6 = 1f + 5*growth each. Applied as a flat multiplier on top of
     // everything else (tier scaling, elite/coop scaling) — this is deliberately the ONLY thing difficulty is
     // meant to touch on the generic side. Per-enemy BEHAVIORAL tier scaling (blitzesPerAttack, Shielder's
     // rotationRateDegPerSecond, etc.) stays purely tier-driven and is never touched by difficulty, by
-    // explicit design — difficulty only reshapes how tanky/hard-hitting/fast enemies are, never their attack
-    // patterns. XP deliberately has no difficulty scalar at all — the game isn't harder if players are also
-    // leveling up faster to match, per explicit design. Three INDEPENDENT growth rates now (2026-08-20,
-    // replaced the original single shared 20%-across-the-board rate) — damage/health/move speed each scale
-    // at a different pace per difficulty level. Originally launched at 0.5/1/0.2 (level 6 = +250% damage,
-    // +500% health, +100% move speed); move speed has since been retuned down to 0.1 (level 6 = +50% move
-    // speed instead).
-    [SerializeField] private float difficultyDamageGrowthPerLevel    = 0.5f;
-    [SerializeField] private float difficultyHealthGrowthPerLevel    = 1f;
-    [SerializeField] private float difficultyMoveSpeedGrowthPerLevel = 0.1f;
+    // explicit design — difficulty only reshapes how tanky/hard-hitting/fast enemies are (attack SPEED
+    // included — a generic "how fast" scalar, not a behavioral one), never their attack patterns. XP
+    // deliberately has no difficulty scalar at all — the game isn't harder if players are also leveling up
+    // faster to match, per explicit design. Damage/health/move speed each scale at a different pace per
+    // difficulty level — INDEPENDENT growth rates (2026-08-20, replaced the original single shared
+    // 20%-across-the-board rate). Originally launched at 0.5/1/0.2 (level 6 = +250% damage, +500% health,
+    // +100% move speed); move speed has since been retuned down to 0.1 (level 6 = +50% move speed instead).
+    // Damage retuned down again too (2026-09-01), from 0.5 to 0.2 (level 6 = +100% damage instead of +250%)
+    // — paired with a coupled increase to enemies' own authored base damage (per-enemy, not this scalar), an
+    // explicit attempt to clamp how far damage swings across the full difficulty range rather than leaning
+    // almost entirely on this one per-level multiplier.
+    //
+    // difficultyAttackSpeedGrowthPerLevel (2026-08-31, added) — same 0.1/level rate as move speed, but
+    // KEPT DELIBERATELY SEPARATE (own field, own scalar, own ConfigureSpawn param) rather than reusing/
+    // deriving from difficultyMoveSpeedGrowthPerLevel — per explicit user framing, the matching numbers are
+    // coincidental, not a true pairing; retune independently if they ever diverge. Feeds EnemyBasePD.
+    // attackSpeed (the base EffectiveAttackSpeed already reads), which every windup/attack-state timer
+    // across the whole roster already scales by (state.stateTimer -= delta * EffectiveAttackSpeed) — added
+    // specifically because a player's own move-speed progression had been invalidating certain enemies'
+    // fixed-duration windups (Spear/Dagger/Leaper/Mortar most notably: a faster player can now simply
+    // outrun/escape a windup that takes exactly as long as it always did), same shape as move speed's own
+    // per-difficulty growth so windup completion keeps pace with how fast players are getting.
+    [SerializeField] private float difficultyDamageGrowthPerLevel      = 0.2f;
+    [SerializeField] private float difficultyHealthGrowthPerLevel      = 1f;
+    [SerializeField] private float difficultyMoveSpeedGrowthPerLevel   = 0.1f;
+    [SerializeField] private float difficultyAttackSpeedGrowthPerLevel = 0.1f;
 
     // Public passthroughs — same reasoning as MoveSpeedTierGrowth/DamageTierGrowth/HealthTierGrowth/
     // XpTierGrowth above (2026-08-21, same change).
-    public float DifficultyDamageGrowthPerLevel    => difficultyDamageGrowthPerLevel;
-    public float DifficultyHealthGrowthPerLevel    => difficultyHealthGrowthPerLevel;
-    public float DifficultyMoveSpeedGrowthPerLevel => difficultyMoveSpeedGrowthPerLevel;
+    public float DifficultyDamageGrowthPerLevel      => difficultyDamageGrowthPerLevel;
+    public float DifficultyHealthGrowthPerLevel      => difficultyHealthGrowthPerLevel;
+    public float DifficultyMoveSpeedGrowthPerLevel   => difficultyMoveSpeedGrowthPerLevel;
+    public float DifficultyAttackSpeedGrowthPerLevel => difficultyAttackSpeedGrowthPerLevel;
 
     // Cached once per Simulate() tick (see that method's own comment for exactly where) — plain fields, not
     // State, since they're fully re-derived from GamePresets.instance.Difficulty/state.bossesDefeated every
@@ -256,7 +287,9 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     private float _tierDamageMultiplier = 1f;
     private float _tierHealthMultiplier = 1f;
     private float _tierXpMultiplier = 1f;
+    private float _tierPointsMultiplier = 1f;
     private float _difficultyMoveSpeedScalar = 1f;
+    private float _difficultyAttackSpeedScalar = 1f;
     private float _difficultyDamageScalar = 1f;
     private float _difficultyHealthScalar = 1f;
     // The raw tier number itself (not a multiplier) — passed through to ConfigureSpawn so each enemy can
@@ -301,7 +334,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // ALREADY-verified player-side event callback — it inherits that event's resimulation-safety for free,
     // no extra PredictedEvent layer needed on the enemy side. See project memory for the full reasoning.
     private readonly HashSet<IEnemyPD> _activeEnemies = new();
-    private readonly HashSet<CharacterStatsPD> _subscribedPlayers = new();
+    private readonly HashSet<IFriendlyPD> _subscribedPlayers = new();
 
     public void RegisterEnemy(IEnemyPD enemy) => _activeEnemies.Add(enemy);
     public void UnregisterEnemy(IEnemyPD enemy) => _activeEnemies.Remove(enemy);
@@ -311,15 +344,18 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // ever foreach's it.
     public IEnumerable<IEnemyPD> ActiveEnemies => _activeEnemies;
 
-    // Players don't exist yet in CharacterStatsPD.All at this object's own LateAwake() (they register from
-    // PlayerDataPD.Simulate(), which only starts running once actual per-tick simulation begins) — so this
-    // is checked every Simulate() tick instead, cheap since CharacterStatsPD.All is capped at 4 players and
-    // _subscribedPlayers.Add() short-circuits (skipping the listener-registration work) for anyone already
-    // subscribed. Once subscribed, a player's own two PredictedEvents call back into these forever, so this
-    // never re-subscribes the same player twice.
+    // FriendlyTargetRegistryPD.All (2026-08-30, was CharacterStatsPD.All.Values) — subscribes ANY registered
+    // friendly, not just connected players, so a future non-player friendly's Taunt/Invisible drives the
+    // exact same enemy-targeting reaction a player's already does (see IFriendlyPD.AddTauntChangedListener's
+    // own doc comment). Players don't exist yet in the registry at this object's own LateAwake() (they
+    // register from PlayerDataPD.Simulate(), which only starts running once actual per-tick simulation
+    // begins) — so this is checked every Simulate() tick instead, cheap since _subscribedPlayers.Add()
+    // short-circuits (skipping the listener-registration work) for anyone already subscribed. Once
+    // subscribed, a friendly's own two PredictedEvents call back into these forever, so this never
+    // re-subscribes the same one twice.
     private void SubscribeNewPlayers()
     {
-        foreach (var player in CharacterStatsPD.All.Values)
+        foreach (var player in FriendlyTargetRegistryPD.All)
         {
             if (!_subscribedPlayers.Add(player)) continue;
             var p = player;
@@ -328,12 +364,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
     }
 
-    private void OnPlayerTauntChanged(CharacterStatsPD player, bool isTaunting)
+    private void OnPlayerTauntChanged(IFriendlyPD player, bool isTaunting)
     {
         foreach (var enemy in _activeEnemies) enemy.OnPlayerTauntChanged(player, isTaunting);
     }
 
-    private void OnPlayerInvisibleChanged(CharacterStatsPD player, bool isInvisible)
+    private void OnPlayerInvisibleChanged(IFriendlyPD player, bool isInvisible)
     {
         foreach (var enemy in _activeEnemies) enemy.OnPlayerInvisibleChanged(player, isInvisible);
     }
@@ -496,8 +532,15 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         int tierNumber = GetCurrentTierNumber(state.bossesDefeated);
         _tierMoveSpeedMultiplier = 1f + (tierNumber - 1) * moveSpeedTierGrowth;
         _tierDamageMultiplier    = 1f + (tierNumber - 1) * damageTierGrowth;
-        _tierHealthMultiplier    = 1f + (tierNumber - 1) * healthTierGrowth;
+        // Deliberately NOT the shared "1 + (tier-1)*growth" shape every other stat here uses (2026-08-30) —
+        // explicit design: health growth * (tier - 1), floored at 1x for tier 1 (where the raw formula
+        // would otherwise give 0x). With growth=5 this lands exactly on 1x/5x/10x/15x for tiers 1-4, which
+        // the additive shape can't produce past tier 2 (it only ever matches at tier 2, then diverges —
+        // see healthTierGrowth's own doc comment for the earlier 1x/5x/9x/13x-vs-intended-1x/5x/10x/15x
+        // mismatch this replaces).
+        _tierHealthMultiplier    = Mathf.Max(1f, healthTierGrowth * (tierNumber - 1));
         _tierXpMultiplier        = 1f + (tierNumber - 1) * xpTierGrowth;
+        _tierPointsMultiplier    = 1f + (tierNumber - 1) * pointsTierGrowth;
         _currentTierNumber       = tierNumber;
 
         // Read off GameManagerPD.Difficulty, NOT GamePresets directly (2026-08-21 fix) — see
@@ -508,10 +551,11 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         // EnemySpawnerPD.instance null-check already establishes; harmless here too since this whole block
         // only runs once state.isActive (well after both GameManagerPD and its replicated Difficulty exist).
         int difficulty = GameManagerPD.instance != null ? GameManagerPD.instance.Difficulty : 1;
-        _difficultyDamageScalar    = 1f + (difficulty - 1) * difficultyDamageGrowthPerLevel;
-        _difficultyHealthScalar    = 1f + (difficulty - 1) * difficultyHealthGrowthPerLevel;
-        _difficultyMoveSpeedScalar = 1f + (difficulty - 1) * difficultyMoveSpeedGrowthPerLevel;
-        _currentDifficulty         = difficulty;
+        _difficultyDamageScalar      = 1f + (difficulty - 1) * difficultyDamageGrowthPerLevel;
+        _difficultyHealthScalar      = 1f + (difficulty - 1) * difficultyHealthGrowthPerLevel;
+        _difficultyMoveSpeedScalar   = 1f + (difficulty - 1) * difficultyMoveSpeedGrowthPerLevel;
+        _difficultyAttackSpeedScalar = 1f + (difficulty - 1) * difficultyAttackSpeedGrowthPerLevel;
+        _currentDifficulty           = difficulty;
 
         // ── Quarter escalation ────────────────────────────────────────────
         // Advances into Quarter 2/3/4 (Quarter 1 needs no threshold — it's just wherever cycleTimer starts,
@@ -873,8 +917,17 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
                 _tierHealthMultiplier * healthMultiplier * _difficultyHealthScalar,
                 _tierDamageMultiplier * damageMultiplier * _difficultyDamageScalar,
                 _tierXpMultiplier * xpMultiplier,
+                // Reuses the incoming xpMultiplier param for points' own per-category half too — per this
+                // method's own doc comment just above, that value arriving here is really just "each
+                // category's own existing elite/co-op scalar," not something XP-specific, so it's equally
+                // correct for points (2026-08-29 — points is no longer derived from XP, but the CATEGORY
+                // scaling both still share is the same number either way).
+                _tierPointsMultiplier * xpMultiplier,
                 moveSpeedMultiplier,
                 attackCooldownMultiplier,
+                // Difficulty-only (no tier component, no per-category bump) — see
+                // difficultyAttackSpeedGrowthPerLevel's own doc comment.
+                _difficultyAttackSpeedScalar,
                 _currentTierNumber);
         }
 
@@ -884,11 +937,10 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // Deliberately does NOT validate against PlayableAreaPD's boundary (2026-08-26 — a prior version of this
     // method rejected/clamped candidates outside it, based on a misdiagnosis of a corner-clustering bug).
     // Enemies are intentionally allowed to spawn beyond the boundary on purpose — so they walk in through
-    // the wall instead of visibly popping into existence inside a player's view. The actual fix for that
-    // corner-clustering bug lives on EnemyBasePD.boundsRestricted's own trigger instead: it only ever
-    // activates on an actual backpedal tick (matches the original design — see that field's own doc
-    // comment), so a freshly-spawned enemy that's just approaching/walking in through the wall never
-    // triggers strafing at all, regardless of how far outside the boundary it currently is.
+    // the wall instead of visibly popping into existence inside a player's view. The bounds-restriction/
+    // strafe system this comment used to reference is gone entirely as of 2026-08-28 (see EnemyBasePD.
+    // HandleMovement's own doc comment) — a spawned-outside enemy now just walks straight in like any other
+    // movement, nothing left to trigger regardless of how far outside the boundary it currently is.
     private Vector3 GetSpawnPosition()
     {
         if (spawnPoints != null && spawnPoints.Length >= 2)

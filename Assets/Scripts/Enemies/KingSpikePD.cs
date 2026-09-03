@@ -21,11 +21,17 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         public float   attackCooldownTimer;
         public Vector3 chargeDirection;      // locked in at ChargeWindup entry, reused through Charging
         public int     chargesRemaining;
-        // Set by OnInterrupted() when Charge gets cancelled — Moving's own case checks this before its
-        // normal cooldown-trigger logic (see HandleActiveState) and, once no longer crowd-controlled, fires
-        // straight into Spike Burst instead of a fresh Charge attempt. See OnInterrupted()'s own doc comment
-        // for why this holding step exists instead of transitioning straight into Spike Burst.
+        // Set by OnInterrupted() when a Charge OR the post-charge reposition dash gets cancelled — Moving's
+        // own case checks both this and postChargeDashPending below before its normal cooldown-trigger logic
+        // (see HandleActiveState) and, once no longer crowd-controlled, fires straight into Spike Burst
+        // instead of a fresh Charge/dash attempt. See OnInterrupted()'s own doc comment for why this holding
+        // step exists instead of transitioning straight into Spike Burst, and for which of these two flags
+        // gets set for which interrupted state.
         public bool    spikeBurstPending;
+        // Set by OnInterrupted() when a Charge (not the reposition dash itself) gets cancelled — same
+        // Moving-holding-step shape as spikeBurstPending above, just routing into EnterPostChargeDash instead
+        // of straight to Spike Burst, since an interrupted CHARGE still hasn't closed distance on anyone yet.
+        public bool    postChargeDashPending;
         public bool    remoteSequenceActive;
         public int     remoteBurstsSpawned;
         // Dual-purpose: counts down to the next remote burst wave while remoteBurstsSpawned < remoteBurstCount;
@@ -47,7 +53,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         }
     }
 
-    public enum KingSpikeState { Moving, ChargeWindup, Charging, BetweenCharges, SpikeBurstWindup }
+    public enum KingSpikeState { Moving, ChargeWindup, Charging, BetweenCharges, PostChargeDash, SpikeBurstWindup }
 
     private KingSpikeState GetSpikeState(ref State s) => (KingSpikeState)s.stateId;
     private void SetSpikeState(ref State s, KingSpikeState st) => s.stateId = (int)st;
@@ -96,10 +102,23 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     [SerializeField] private float rotationRateDegPerSecond = 45f;
     private float _authoredRotationRateDegPerSecond;
 
+    [Header("Post-Charge Reposition")]
+    // Closes distance on the closest player right before Spike Burst — see EnterPostChargeDash's own doc
+    // comment for why this phase exists (2026-09-02: this boss used to fire its AoE from wherever its last
+    // Charge/interrupt happened to leave it, often nowhere near anyone). Same "dash toward a live target,
+    // stop short at an offset, 180° = stop BETWEEN dasher and target" shape as SpearGloomPD.EnterDashToTarget,
+    // via the same shared StartOffsetChase primitive.
+    [SerializeField] private float postChargeDashOffsetDistance = 5f;
+    // EffectiveMoveSpeed * this (2x move speed default) — deliberately its own tunable, not a reuse of
+    // ChargeSpeed's own chargeSpeedMultiplier; this is a repositioning move, not the real Charge attack, and
+    // shouldn't be forced to share that attack's own pacing/tuning.
+    [SerializeField] private float postChargeDashSpeedMultiplier = 2f;
+    private float PostChargeDashSpeed => EffectiveMoveSpeed * postChargeDashSpeedMultiplier;
+
     [Header("Spike Burst")]
     [SerializeField] private float spikeBurstChargeTime = 1.5f;
-    // Tier1-authored baseline, scaled per tier by spikeBurstRadiusTierGrowth below (applied in
-    // OnConfigureSpawn()) — GROWS per tier ("20% larger").
+    // Flat, no tier growth (2026-08-31, explicit — was scaled per tier by spikeBurstRadiusTierGrowth; that
+    // field and the whole authored-snapshot dance for this one are gone, it's just a plain constant now).
     [SerializeField] private float spikeBurstRadius     = 18f;
     [SerializeField] private GameObject   spikeBurstIndicator;
     [SerializeField] private WindupFillPD spikeBurstFill;
@@ -146,17 +165,15 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // the tier1-authored base in all cases, never compounding/exponential (user's explicit "multiplicative
     // fields multiply base, no exponential tier scaling" rule).
     [SerializeField] private int   chargesPerAttackTierGrowth    = 2;
-    [SerializeField] private float spikeBurstRadiusTierGrowth    = 0.2f;
     [SerializeField] private int   remoteBurstCountTierGrowth    = 4;
     [SerializeField] private float remoteBurstIntervalTierGrowth = 0.2f;
     // Same linear-per-tier shape as every other *TierGrowth field — see ShielderGloomPD's own identical
     // field for the precedent this was copied from.
     [SerializeField] private float rotationRateDegPerSecondTierGrowth = 0.2f;
 
-    // Captured once in OnAwake(), reset back onto these 4 fields every pooled reuse in LateAwake() — same
+    // Captured once in OnAwake(), reset back onto these fields every pooled reuse in LateAwake() — same
     // "_authoredX snapshot" pattern established for every other tier-scaled field this pass.
     private int   _authoredChargesPerAttack;
-    private float _authoredSpikeBurstRadius;
     private int   _authoredRemoteBurstCount;
     private float _authoredRemoteBurstInterval;
 
@@ -166,7 +183,6 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     {
         base.OnAwake();
         _authoredChargesPerAttack    = chargesPerAttack;
-        _authoredSpikeBurstRadius    = spikeBurstRadius;
         _authoredRemoteBurstCount    = remoteBurstCount;
         _authoredRemoteBurstInterval = remoteBurstInterval;
         _authoredAttackCooldown      = attackCooldown;
@@ -181,7 +197,6 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // once hierarchy.Create() returns) scales these fresh for this life — see _authoredChargesPerAttack's
         // own doc comment.
         chargesPerAttack    = _authoredChargesPerAttack;
-        spikeBurstRadius    = _authoredSpikeBurstRadius;
         remoteBurstCount    = _authoredRemoteBurstCount;
         remoteBurstInterval = _authoredRemoteBurstInterval;
         attackCooldown      = _authoredAttackCooldown;
@@ -200,17 +215,17 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         currentState.persistentBurstCooldownTimer = persistentBurstInterval;
     }
 
-    // Tier1-authored chargesPerAttack/spikeBurstRadius/remoteBurstCount/remoteBurstInterval, scaled by each
-    // field's own *TierGrowth (see the "Tier Scaling" header's own doc comment for the duration-shrinks/
-    // size-grows formula shapes). spawnTier is already final by the time this runs (set earlier in the same
-    // ConfigureSpawn() call). All 4 are read live during gameplay (chargesPerAttack/remoteBurstCount via
-    // refill-if-exhausted checks, spikeBurstRadius/remoteBurstInterval read directly), not mirrored into
-    // predicted State at spawn time, so no extra currentState reset is needed anywhere else.
+    // Tier1-authored chargesPerAttack/remoteBurstCount/remoteBurstInterval, scaled by each field's own
+    // *TierGrowth (see the "Tier Scaling" header's own doc comment for the duration-shrinks/size-grows
+    // formula shapes). spawnTier is already final by the time this runs (set earlier in the same
+    // ConfigureSpawn() call). All 3 are read live during gameplay (chargesPerAttack/remoteBurstCount via
+    // refill-if-exhausted checks, remoteBurstInterval read directly), not mirrored into predicted State at
+    // spawn time, so no extra currentState reset is needed anywhere else. spikeBurstRadius is flat now, no
+    // tier scaling — see its own field comment.
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
         chargesPerAttack    += (spawnTier - 1) * chargesPerAttackTierGrowth;
-        spikeBurstRadius    *= 1f + (spawnTier - 1) * spikeBurstRadiusTierGrowth;
         remoteBurstCount    += (spawnTier - 1) * remoteBurstCountTierGrowth;
         remoteBurstInterval *= 1f - (spawnTier - 1) * remoteBurstIntervalTierGrowth;
         rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
@@ -275,18 +290,31 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     {
         if (dashJustEnded)
         {
-            // Decrement moved to EnterChargeWindup (attack START, not this completion point) — see its own
-            // doc comment for why. chargesRemaining already reflects the charge that just ended by the time
-            // we get here.
-            // IsTargetStillValid (also covers a null target, same as everyone else's explicit != null check)
-            // — a target that went invisible-and-non-taunting since the last charge shouldn't get chained
-            // into another one against them; see that property's own doc comment.
-            // !IsCrowdControlled — a true Stun() landing mid-sequence never interrupts the charge that just
-            // ended above, but stops the chain from continuing into another one, falling through to the
-            // spike burst phase instead (a Slow does NOT stop the chain — see IsCrowdControlled's own doc
-            // comment, hard CC only).
-            if (state.chargesRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenCharges(ref state);
-            else                                                  EnterSpikeBurstWindup(ref state);
+            // Two entirely different dashes fire this same callback — a real Charge (StartDashToPoint) and
+            // the new PostChargeDash repositioning move (StartOffsetChase/StartDashToPoint, see
+            // EnterPostChargeDash's own doc comment) — disambiguate by the state.stateId neither dash
+            // primitive itself ever touches, so it's still whatever this method last set it to.
+            if (GetSpikeState(ref state) == KingSpikeState.PostChargeDash)
+            {
+                // The repositioning dash itself just finished — now actually fire, having closed distance
+                // on someone, instead of from wherever the last Charge/interrupt happened to end.
+                EnterSpikeBurstWindup(ref state);
+            }
+            else
+            {
+                // A real Charge just ended. Decrement moved to EnterChargeWindup (attack START, not this
+                // completion point) — see its own doc comment for why. chargesRemaining already reflects
+                // the charge that just ended by the time we get here.
+                // IsTargetStillValid (also covers a null target, same as everyone else's explicit != null
+                // check) — a target that went invisible-and-non-taunting since the last charge shouldn't get
+                // chained into another one against them; see that property's own doc comment.
+                // !IsCrowdControlled — a true Stun() landing mid-sequence never interrupts the charge that
+                // just ended above, but stops the chain from continuing into another one, falling through to
+                // the post-charge reposition instead (a Slow does NOT stop the chain — see
+                // IsCrowdControlled's own doc comment, hard CC only).
+                if (state.chargesRemaining > 0 && IsTargetStillValid && !IsCrowdControlled) EnterBetweenCharges(ref state);
+                else                                                  EnterPostChargeDash(ref state);
+            }
         }
 
         var ss = GetSpikeState(ref state);
@@ -310,8 +338,9 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         switch (ss)
         {
             case KingSpikeState.Moving:
-                // An interrupted Charge routes here with spikeBurstPending set (see OnInterrupted()'s own
-                // doc comment) instead of straight into Spike Burst — Spike Burst's own windup is
+                // An interrupted Charge/reposition-dash routes here with spikeBurstPending OR
+                // postChargeDashPending set (see OnInterrupted()'s own doc comment for which one, and why)
+                // instead of straight into Spike Burst/the reposition dash — Spike Burst's own windup is
                 // deliberately stun-immune once entered (fixed real-time clock, ignores EffectiveAttackSpeed/
                 // isStunnable — see this switch's SpikeBurstWindup case), so jumping there immediately would
                 // let a Stun() paired with the same hit as the interrupt sail straight into an unstoppable
@@ -319,19 +348,24 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
                 // whole method before it ever reaches this branch (via Simulate()'s own isStunnable-gated
                 // freeze) — this branch only actually runs once not truly stunned (IsCrowdControlled is hard
                 // CC only, i.e. IsTrueStunned — a Slow does NOT hold this open, see its own doc comment), at
-                // which point it fires straight into Spike Burst instead of the normal cooldown/charge-
-                // trigger logic below.
-                if (state.spikeBurstPending)
+                // which point it fires straight into whichever of the two the interrupted state called for,
+                // instead of the normal cooldown/charge-trigger logic below.
+                if (state.spikeBurstPending || state.postChargeDashPending)
                 {
                     if (IsCrowdControlled)
                     {
                         moveSpeed = baseMoveSpeed;
                         if (_target != null) HandleMovement(ref state, delta);
                     }
-                    else
+                    else if (state.spikeBurstPending)
                     {
                         state.spikeBurstPending = false;
                         EnterSpikeBurstWindup(ref state);
+                    }
+                    else
+                    {
+                        state.postChargeDashPending = false;
+                        EnterPostChargeDash(ref state);
                     }
                     break;
                 }
@@ -368,12 +402,12 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
                 {
                     if (_target == null)
                     {
-                        // No valid target for another charge — skip straight to Spike Burst instead of
-                        // winding up at nobody. Unlike every other multi-stage enemy, this does NOT abort
-                        // to Moving: SpikeBurstWindup/FireSpikeBurst/RemoteSpikeBurstPD never need a target
-                        // (always hit every player directly via CharacterStatsPD.All), so there's no reason
-                        // to cut the sequence short.
-                        EnterSpikeBurstWindup(ref state);
+                        // No valid target for another charge — skip straight to the post-charge reposition
+                        // instead of winding up at nobody. Unlike every other multi-stage enemy, this does
+                        // NOT abort to Moving: SpikeBurstWindup/FireSpikeBurst/RemoteSpikeBurstPD never need
+                        // a target (always hit every player directly via CharacterStatsPD.All), so there's
+                        // no reason to cut the sequence short.
+                        EnterPostChargeDash(ref state);
                     }
                     else
                     {
@@ -397,14 +431,16 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // windows, so the goal is "immovable but still physically present" (a solid obstacle players have
         // to path around, can still push other things, can't itself be knocked off its own indicator's
         // position) rather than "non-interacting." Moving needs to stay dynamic (HandleMovement drives it
-        // via AddForce, which a kinematic body ignores), and Charging needs to stay dynamic AND
-        // collider-disabled (fast movement — Case 1, non-interacting, handled entirely by the dash
-        // primitives already). isStunnable is already false for the entire attack routine above, a
-        // superset of every kinematic window, so AddKnockbackVelocity's own `if (!isStunnable ...) return;`
-        // guard already ensures knockback is never attempted against this rigidbody while it's kinematic.
+        // via AddForce, which a kinematic body ignores), and Charging/PostChargeDash both need to stay
+        // dynamic AND collider-disabled (fast movement — Case 1, non-interacting, handled entirely by the
+        // dash primitives already — StartDashToPoint/StartOffsetChase both disable the collider themselves,
+        // same self-contained shape either dash uses). isStunnable is already false for the entire attack
+        // routine above, a superset of every kinematic window, so AddKnockbackVelocity's own
+        // `if (!isStunnable ...) return;` guard already ensures knockback is never attempted against this
+        // rigidbody while it's kinematic.
         if (_rigidbody != null)
         {
-            bool shouldBeKinematic = ss != KingSpikeState.Moving && ss != KingSpikeState.Charging;
+            bool shouldBeKinematic = ss != KingSpikeState.Moving && ss != KingSpikeState.Charging && ss != KingSpikeState.PostChargeDash;
             // Zero velocity on the entering edge only (not every tick while already kinematic) — setting
             // velocity on an already-kinematic PredictedRigidbody throws ("not supported").
             if (shouldBeKinematic && !_rigidbody.isKinematic)
@@ -481,7 +517,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // The SPECIFIC player this ChargeWindup committed to, captured once at EnterChargeWindup — see its own
     // doc comment. Plain field (not State), same convention as BlitzGloomPD's own _windupTrackedTarget. Only
     // ever read while actually in ChargeWindup.
-    private CharacterStatsPD _chargeWindupTrackedTarget;
+    private IFriendlyPD _chargeWindupTrackedTarget;
 
     // Re-faces the body toward _chargeWindupTrackedTarget's LIVE position every ChargeWindup tick, capped at
     // rotationRateDegPerSecond, via Vector3.RotateTowards off state.chargeDirection — the PREDICTED-STATE
@@ -497,7 +533,11 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // _chargeDirectionSnapshot (the plain view-layer copy the charge indicator reads) updated every tick, so
     // whatever EnterCharging reads the instant ChargeWindup ends is always the freshest reachable direction.
     // No-op (holds last direction) if the target's died/gone invisible-without-taunting mid-windup, or if the
-    // computed direction is degenerate (target exactly on top of this boss).
+    // computed direction is degenerate (target exactly on top of this boss). Rate scaled by
+    // EffectiveAttackSpeed (2026-08-31) — was plain delta; now the boss's own re-aim turn rate speeds up in
+    // step with the windup duration it's compressed into (see EnemySpawnerPD.difficultyAttackSpeedGrowthPerLevel's
+    // own doc comment for why the windup itself already sped up but this tracking rate previously hadn't),
+    // matching ShielderGloomPD's own SpikeShieldPD rotation tracking, which already did this.
     private void TrackChargeWindupTarget(ref State state, float delta)
     {
         if (_chargeWindupTrackedTarget == null || _chargeWindupTrackedTarget.IsDead ||
@@ -508,7 +548,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         if (dir == Vector3.zero) return;
         dir.Normalize();
 
-        Vector3 newDir = Vector3.RotateTowards(state.chargeDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta, 0f);
+        Vector3 newDir = Vector3.RotateTowards(state.chargeDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
         _rigidbody.MoveRotation(Quaternion.LookRotation(newDir));
         state.chargeDirection = newDir;
         _chargeDirectionSnapshot = newDir;
@@ -527,11 +567,74 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         SetSpikeState(ref state, KingSpikeState.BetweenCharges);
     }
 
+    // Funnel point for EVERY path that used to enter Spike Burst directly (2026-09-02, new phase) — the end
+    // of a charge chain, "no valid target for another charge" in BetweenCharges, and an interrupted Charge's
+    // own spikeBurstPending routing in Moving. All three used to jump straight into SpikeBurstWindup from
+    // wherever the boss's last Charge (or interrupt) happened to leave it — often nowhere near any player,
+    // firing the AoE on empty ground. This closes distance on the closest player first, same "dash toward a
+    // live target, stop short at an offset, 180° = stop BETWEEN dasher and target" shape as
+    // SpearGloomPD.EnterDashToTarget, via the shared StartOffsetChase primitive — HandleActiveState's own
+    // dashJustEnded block (see its own PostChargeDash branch) fires EnterSpikeBurstWindup once this arrives.
+    //
+    // Re-derives _target/_targetStats fresh here — deliberately NOT whatever this attack sequence's own
+    // _target happened to be (e.g. a taunting-but-far player from BetweenCharges' chain) — "closest player,"
+    // per explicit design, not whoever this boss was already chasing. EXPLICITLY nulled before calling
+    // FindClosestTarget() (not left as-is) — that method's own "leave untouched if nothing found" contract
+    // (see its own doc comment) means a stale _target from before this call — e.g. someone who's since died
+    // or gone invisible-without-taunting — would otherwise silently survive an unsuccessful scan instead of
+    // correctly reading as "no valid target." Nulling first guarantees _target is EITHER a genuinely fresh,
+    // currently-valid candidate, OR null — nothing in between, no stale-reference ambiguity.
+    //
+    // No valid candidate right now (every player invisible-and-not-taunting, or dead, confirmed by the
+    // guaranteed-clean null above) falls back to a plain fixed-point dash (StartDashToPoint) straight at
+    // lastKnownTargetPosition — this boss's own generic "wherever a target was last actually seen" record —
+    // rather than not moving at all, per explicit design. No offset applied to that fallback destination
+    // (unlike the live-target case) — there's no live target to stop "between" this boss and, so it just
+    // dashes to the point itself.
+    //
+    // hasLastKnownTargetPosition guards the degenerate edge of that fallback (2026-09-02, confirmed real,
+    // if rare) — lastKnownTargetPosition defaults to Vector3.zero (world origin) until it's genuinely been
+    // assigned at least once; without this check, an enemy that's never once had a valid target since
+    // spawning would dash straight at the world origin instead of resolving sanely. Treated the same as
+    // "already close enough" below — skip the dash, fire Spike Burst immediately, no meaningless reposition.
+    //
+    // Already within postChargeDashOffsetDistance of the destination — skips the dash entirely and fires
+    // Spike Burst immediately instead (explicit design) — a "dash" that's already shorter than its own
+    // stop-short offset would just awkwardly snap-turn in place rather than actually closing any distance.
+    private void EnterPostChargeDash(ref State state)
+    {
+        _target = null;
+        _targetStats = null;
+        FindClosestTarget();
+
+        if (_target == null && !hasLastKnownTargetPosition)
+        {
+            EnterSpikeBurstWindup(ref state);
+            return;
+        }
+
+        Vector3 destination = _target != null ? _target.position : lastKnownTargetPosition;
+        if (Vector3.Distance(transform.position, destination) <= postChargeDashOffsetDistance)
+        {
+            EnterSpikeBurstWindup(ref state);
+            return;
+        }
+
+        SetSpikeState(ref state, KingSpikeState.PostChargeDash);
+        if (_target != null)
+            StartOffsetChase(ref state, PostChargeDashSpeed, postChargeDashOffsetDistance, 180f);
+        else
+            StartDashToPoint(ref state, PostChargeDashSpeed, destination);
+    }
+
     private void EnterSpikeBurstWindup(ref State state)
     {
         state.stateTimer = spikeBurstChargeTime;
         SetSpikeState(ref state, KingSpikeState.SpikeBurstWindup);
     }
+
+    // See SpearGloomPD._stabOverlapResults's own doc comment for the buffer-size reasoning.
+    private static readonly Collider[] _spikeBurstOverlapResults = new Collider[8];
 
     private void FireSpikeBurst(ref State state)
     {
@@ -540,15 +643,19 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // directly rather than going through GetOwnDamage()/GetDamage(), so it doesn't pick the bonus up
         // for free.
         float   dmg    = damage * spikeBurstDamageMultiplier * EnrageDamageMultiplier;
-        foreach (var stats in CharacterStatsPD.All.Values)
+        // Physics.OverlapSphereNonAlloc against CombatLayerMasks.FriendlyHurtboxMask (2026-08-30, was a
+        // manual FriendlyTargetRegistryPD distance check) — see SpearGloomPD.EnterStab's own doc comment for
+        // why enemy AoE attacks now match every player weapon's own collider-query convention.
+        int n = Physics.OverlapSphereNonAlloc(origin, spikeBurstRadius, _spikeBurstOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
+        for (int i = 0; i < n; i++)
         {
+            var stats = _spikeBurstOverlapResults[i].GetComponent<IFriendlyPD>();
             // No IsInvincible pre-check (2026-08-24 fix) — TakeDamage() already no-ops safely against
             // invincibility on its own, AND is the only place Dodge credit gets awarded (see
             // CharacterStatsPD.NotifyDodge's own doc comment); skipping the call here silently ate every
             // Dodge this attack should have granted while the player was dash-invincible.
-            if (stats.IsDead) continue;
-            if (Vector3.Distance(stats.transform.position, origin) <= spikeBurstRadius)
-                stats.TakeDamage(dmg);
+            if (stats == null || stats.IsDead) continue;
+            stats.TakeDamage(dmg, false, ObjectId);
         }
 
         // Boss returns to Moving immediately (point 5) — the remote sequence keeps ticking independently
@@ -568,8 +675,10 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // interrupted Charge no longer just falls back to Moving and lets a fresh charge attempt restart
     // (chargesRemaining used to be preserved specifically to prevent handing out extra charges on a retry,
     // but the retry itself is exactly what's being removed now). Zeroes chargesRemaining outright and routes
-    // toward Spike Burst instead — the same destination this boss's own natural "ran out of chargesRemaining"
-    // path already reaches — via spikeBurstPending rather than calling EnterSpikeBurstWindup() directly here;
+    // toward the post-charge reposition instead (2026-09-02: was Spike Burst directly, before that phase
+    // existed) — the same destination this boss's own natural "ran out of chargesRemaining"/"no valid
+    // target" paths already reach — via spikeBurstPending rather than calling EnterPostChargeDash() directly
+    // here;
     // see Moving's own case in HandleActiveState for why that indirection exists (letting a paired stun
     // freeze this boss first, since Spike Burst itself can't be stunned once entered). No separate cooldown
     // write needed — Spike Burst's own remote-burst sequence already ends the whole attack cycle on a flat,
@@ -578,8 +687,20 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // below already keeps this from ever running during.
     protected override void OnInterrupted()
     {
-        currentState.chargesRemaining   = 0;
-        currentState.spikeBurstPending  = true;
+        // Which flag to set depends on WHICH state was actually interrupted (2026-09-02) — read BEFORE
+        // SetSpikeState below overwrites it. A Charge/ChargeWindup/BetweenCharges interrupt still hasn't
+        // closed distance on anyone yet, so it routes through the reposition dash first
+        // (postChargeDashPending). The reposition dash ITSELF being interrupted means this boss already
+        // started closing distance — no reason to make it retry that dash, so this goes straight to Spike
+        // Burst instead (spikeBurstPending), firing the instant the resulting interrupt-stun actually wears
+        // off (see Moving's own case for that holding step).
+        bool interruptedDuringPostChargeDash = GetSpikeState(ref currentState) == KingSpikeState.PostChargeDash;
+
+        currentState.chargesRemaining = 0;
+        if (interruptedDuringPostChargeDash)
+            currentState.spikeBurstPending = true;
+        else
+            currentState.postChargeDashPending = true;
         SetSpikeState(ref currentState, KingSpikeState.Moving);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
@@ -604,12 +725,19 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         get
         {
             var ss = GetSpikeState(ref currentState);
-            return ss == KingSpikeState.ChargeWindup || ss == KingSpikeState.Charging || ss == KingSpikeState.BetweenCharges;
+            return ss == KingSpikeState.ChargeWindup || ss == KingSpikeState.Charging || ss == KingSpikeState.BetweenCharges
+                || ss == KingSpikeState.PostChargeDash;
         }
     }
 
     // ── Remote bursts ────────────────────────────────────────────────────────
 
+    // Players only (2026-08-30, explicit design exception to the rest of this boss's IFriendlyPD migration)
+    // — Remote Spike Burst specifically stays CharacterStatsPD/CharacterStatsPD.All, never
+    // FriendlyTargetRegistryPD, per explicit user direction: it's a "boss persistent attack" class mechanic
+    // (spawns and hits at a target's position with no live tracking once launched — a friendly could easily
+    // walk away before it detonates), unlike every other attack on this boss (FireSpikeBurst, charge, etc.),
+    // which are free to hit friendlies.
     private void SpawnRemoteBurstWave()
     {
         if (remoteBurstPrefab == null) return;
@@ -625,7 +753,8 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // burst shape (offset/radius/damage/charge-time) as this boss's real attack sequence — see
     // persistentBurstInterval's own doc comment. Fixed-radius, random-angle offset — matches old KingSpike's
     // Random.insideUnitCircle.normalized * bombOffsetRadius (normalizing collapses the random point down to
-    // a uniform random angle at a FIXED distance, not a random distance within it).
+    // a uniform random angle at a FIXED distance, not a random distance within it). Players only — see
+    // SpawnRemoteBurstWave's own doc comment.
     private void SpawnRemoteBurstFor(CharacterStatsPD stats)
     {
         float   angle  = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
@@ -653,6 +782,9 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         SpawnPersistentRemoteBurst();
     }
 
+    // Players only — see SpawnRemoteBurstWave's own doc comment. Doubly applicable here: this is BOTH a
+    // Remote Spike Burst AND a "boss persistent attack" (per explicit user direction, both categories are
+    // players-only for targeting).
     private void SpawnPersistentRemoteBurst()
     {
         if (remoteBurstPrefab == null) return;
@@ -753,6 +885,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         currentState.attackCooldownTimer  = attackCooldown; // full grace, matching LateAwake()'s own fix
         currentState.chargesRemaining     = 0;
         currentState.spikeBurstPending    = false;
+        currentState.postChargeDashPending = false;
         currentState.remoteSequenceActive = false;
         currentState.remoteBurstsSpawned  = 0;
         currentState.remoteSequenceTimer  = 0f;

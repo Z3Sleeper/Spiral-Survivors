@@ -17,6 +17,17 @@ using UnityEngine;
 // applies it as "+X on top of 1" (its own generic shape, untouched), so at base values a highrolled stat pick
 // gets exactly +30% (Stats.HighrollBonus 3f * 0.1 scale = 0.3, i.e. a x1.3 multiplier), not the full damage-
 // scope 300%.
+//
+// effectiveness (2026-08-31): dampens the WHOLE roll's swing (bonus AND negative, highroll included) down to
+// half — user feedback: this was "far too swingy." Applied at both call sites (AugmentCardUI's manual-pick
+// preview, AugmentManagerPD.AutoPick's real roll) as `1f + (luckMultiplier - 1f) * effectiveness`, AFTER
+// RollLuckMultiplier returns — deliberately not by scaling LuckFloor/LuckCeiling/HighrollBonus themselves
+// going IN, so this still scales up proportionally with LuckCeiling/HighrollBonus investment exactly like
+// before, just at half amplitude throughout (a bigger pre-dampen swing still produces a bigger post-dampen
+// swing). Since the highroll branch's own extra kick (RollLuckMultiplier's `result *= 1 + highrollBonus`) is
+// already baked into the multiplier BEFORE this dampens it, halving the whole thing here also halves the
+// highroll bonus's own effective contribution for free — no separate highrollBonusScale change needed for
+// that half of the ask.
 public class LuckRolledLevelUpStatsAugment : AugmentEffectPD<LuckRolledLevelUpStatsAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -25,6 +36,7 @@ public class LuckRolledLevelUpStatsAugment : AugmentEffectPD<LuckRolledLevelUpSt
     }
 
     [SerializeField] private float highrollBonusScale = 0.1f;
+    [SerializeField] private float effectiveness       = 0.5f;
 
-    protected override void OnApply() => Stats.EnableLuckRolledLevelUpStats(highrollBonusScale);
+    protected override void OnApply() => Stats.EnableLuckRolledLevelUpStats(highrollBonusScale, effectiveness);
 }

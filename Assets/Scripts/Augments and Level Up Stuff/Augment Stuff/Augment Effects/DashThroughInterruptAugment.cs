@@ -131,6 +131,9 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         // Second part of this augment — reacts to SuccessfulInterrupt from ANY source (see class doc
         // comment), not just this augment's own sweep below.
         Stats.AddSuccessfulInterruptListener(OnSuccessfulInterrupt);
+        // Re-values every already-earned stack the instant StackPower itself changes (2026-09-02), not just
+        // lazily on the next new stack — see CharacterStatsPD._onStackPowerChanged's own doc comment.
+        Stats.AddStackPowerChangedListener(OnStackPowerChanged);
     }
 
     protected override void OnDestroy()
@@ -141,7 +144,11 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
             _controller.RemoveDashMovementStartedListener(OnMovementStarted);
             _controller.RemoveDashMovementEndedListener(OnMovementEnded);
         }
-        if (Stats != null) Stats.RemoveSuccessfulInterruptListener(OnSuccessfulInterrupt);
+        if (Stats != null)
+        {
+            Stats.RemoveSuccessfulInterruptListener(OnSuccessfulInterrupt);
+            Stats.RemoveStackPowerChangedListener(OnStackPowerChanged);
+        }
     }
 
     // Current total Dash Haste this passive has actually granted so far (dashHastePerStack * current stack
@@ -151,25 +158,38 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
     // state we want to show there anyway.
     public string LiveStackedDashHaste(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(dashHastePerStack * stats.StackPower * currentState.stackCount)} "
-            : "0 ";
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(dashHastePerStack * stats.StackPower * currentState.stackCount)}"
+            : "0";
 
     // Fires on EVERY successful interrupt (SI), any source (2026-08-21 — was FSI-gated, see class doc
-    // comment). Recomputes its OWN total contribution from scratch on every new stack (remove exactly what
-    // was last applied, reapply fresh against the CURRENT StackPower) rather than incrementally adding per
-    // stack — same "re-derive fully" principle SurgeInterruptAoEAugment's own identically-named
-    // OnSuccessfulInterrupt already uses, so a later StackPowerAugment pick retroactively boosts every stack
-    // already earned, not just future ones. No cap, never resets — permanent stacking for the rest of this
-    // run.
+    // comment). No cap, never resets — permanent stacking for the rest of this run.
     private void OnSuccessfulInterrupt()
     {
         if (Stats == null || Stats.IsDead) return;
-
         currentState.stackCount++;
+        ReapplyDashHaste();
+    }
 
+    // Re-derives this augment's OWN total Dash Haste contribution from scratch (remove exactly what was
+    // last applied, reapply fresh against the CURRENT stackCount/StackPower) rather than incrementally
+    // adding per stack — same "re-derive fully" principle SurgeInterruptAoEAugment's own identically-shaped
+    // grant uses. Shared by both triggers that can change the total: earning a new stack
+    // (OnSuccessfulInterrupt above) and StackPower itself changing (OnStackPowerChanged below), so the two
+    // can never drift out of sync with each other.
+    private void ReapplyDashHaste()
+    {
         Stats.AddDashHaste(-_lastAppliedDashHaste);
         _lastAppliedDashHaste = dashHastePerStack * currentState.stackCount * Stats.StackPower;
         Stats.AddDashHaste(_lastAppliedDashHaste);
+    }
+
+    // Fires whenever Stats.StackPower itself changes (e.g. a StackPowerAugment picked mid-run) — reapplies
+    // immediately rather than leaving every already-earned stack sitting at a stale total until the next
+    // successful interrupt happens to come in. No-op at 0 stacks (nothing earned yet to re-value).
+    private void OnStackPowerChanged()
+    {
+        if (Stats == null || Stats.IsDead || currentState.stackCount <= 0) return;
+        ReapplyDashHaste();
     }
 
     private void OnMovementStarted()

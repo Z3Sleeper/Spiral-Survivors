@@ -46,3 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeCarnivalAugment
   phantomBladePrefab: {fileID: 2942187867930129664, guid: 9123ce90c4dafb44cb96c2ca62f56ace, type: 3}
   phantomBladeDamagePenalty: 0.35
+  bladeColor: {r: 0.3137255, g: 0.3137255, b: 0.3137255, a: 1}

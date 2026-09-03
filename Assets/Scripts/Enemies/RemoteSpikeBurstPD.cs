@@ -19,6 +19,9 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
 
     [SerializeField] private WindupFillPD _windupFill;
 
+    // See SpearGloomPD._stabOverlapResults's own doc comment for the buffer-size reasoning.
+    private static readonly Collider[] _detonationOverlapResults = new Collider[8];
+
     private float _radius;
     private float _damage;
     // This life's own total charge duration, captured once at Launch() — the denominator for UpdateView's
@@ -56,15 +59,27 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
         state.chargeTimer -= delta;
         if (state.chargeTimer > 0f) return;
 
-        foreach (var stats in CharacterStatsPD.All.Values)
+        // Physics.OverlapSphereNonAlloc against CombatLayerMasks.FriendlyHurtboxMask (2026-08-30, was a
+        // manual FriendlyTargetRegistryPD distance check) — see SpearGloomPD.EnterStab's own doc comment for
+        // why enemy AoE attacks now match every player weapon's own collider-query convention. Deliberately
+        // kept as FriendlyHurtboxMask (any friendly), not players-only, even though KingSpikePD's own
+        // spawn-target SELECTION (SpawnRemoteBurstWave/SpawnPersistentRemoteBurst) is players-only — per
+        // explicit user direction, Remote Spike Burst only ever TARGETS (aims/spawns at) a player, but once
+        // it's actually landed and detonating, it damages any friendly caught in the blast radius, same as
+        // every other AoE on this boss.
+        int n = Physics.OverlapSphereNonAlloc(transform.position, _radius, _detonationOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
+        for (int i = 0; i < n; i++)
         {
+            var stats = _detonationOverlapResults[i].GetComponent<IFriendlyPD>();
             // No IsInvincible pre-check (2026-08-24 fix) — TakeDamage() already no-ops safely against
             // invincibility on its own, AND is the only place Dodge credit gets awarded (see
             // CharacterStatsPD.NotifyDodge's own doc comment); skipping the call here silently ate every
             // Dodge this attack should have granted while the player was dash-invincible.
-            if (stats.IsDead) continue;
-            if (Vector3.Distance(stats.transform.position, transform.position) <= _radius)
-                stats.TakeDamage(_damage);
+            if (stats == null || stats.IsDead) continue;
+            // No firer-identity field on this spawned burst — attacker passed default, matches this
+            // interface param's "reserved for later, not wired to anything yet" status (see
+            // IFriendlyPD.TakeDamage's own doc comment).
+            stats.TakeDamage(_damage, false, default);
         }
 
         state.expired = true;

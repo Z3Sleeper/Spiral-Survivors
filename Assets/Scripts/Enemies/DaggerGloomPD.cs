@@ -154,18 +154,18 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     {
         if (dashJustEnded)
         {
-            // Re-captures the anchor to the target's CURRENT live position, right at the moment the dash
-            // ends — same fix as SpearGloomPD's own identical bug (2026-08-27): the dash itself
-            // (HandleOffsetChase) continuously re-tracks the live target the whole time it's running, but
-            // attackAnchorPosition was still whatever it was snapshotted to back at the ORIGINAL
-            // CaptureAttackAnchor call (attack-start, before the dash even began), so Windup's own
-            // SnapFaceAnchor below was facing a stale pre-dash position. Unlike Spear this doesn't affect
+            // Re-captures the anchor to wherever the dash's own tracked position actually ended up, right at
+            // the moment the dash ends — same fix as SpearGloomPD's own identical bug (2026-08-27, upgraded
+            // 2026-08-31 to CaptureAttackAnchorFromOffsetChase — see its own doc comment): the dash itself
+            // (HandleOffsetChase) tracks the target live the whole time it's running (freezing on death/
+            // invisibility), but attackAnchorPosition was still whatever it was snapshotted to back at the
+            // ORIGINAL CaptureAttackAnchor call (attack-start, before the dash even began), so Windup's own
+            // SnapFaceAnchor was facing a stale pre-dash position. Unlike Spear this doesn't affect
             // EnterSpin's own damage (a self-centered radial AoE, not direction-dependent), which is why this
             // was never visibly noticeable here — but the facing itself was still wrong, so fixed for
-            // consistency. Same target IDENTITY stays committed either way (_target/_targetStats untouched)
-            // — this only refreshes the POSITION snapshot. CaptureAttackAnchor's own null-guard makes this a
-            // safe no-op if the target died mid-dash.
-            CaptureAttackAnchor(ref state);
+            // consistency. Same target IDENTITY stays committed either way — this only refreshes the
+            // POSITION.
+            CaptureAttackAnchorFromOffsetChase(ref state);
             EnterWindup(ref state);
         }
 
@@ -288,28 +288,34 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         SetDaggerState(ref state, DaggerState.Windup);
     }
 
+    // See SpearGloomPD._stabOverlapResults's own doc comment for the buffer-size reasoning.
+    private static readonly Collider[] _spinOverlapResults = new Collider[8];
+
     private void EnterSpin(ref State state)
     {
         state.stateTimer = spinDuration;
         // Decrement moved to the attack-start sites (Moving/BetweenSpins, above) — see their own comment.
         SetDaggerState(ref state, DaggerState.Spinning);
 
-        // One-shot AoE resolve, matching KingSpikePD.FireSpikeBurst — a plain distance check against
-        // CharacterStatsPD.All rather than a physics trigger/collider, since this is checking against a
-        // small, bounded, already-in-memory set (players), not enemies.
+        // One-shot AoE resolve via Physics.OverlapSphereNonAlloc against CombatLayerMasks.FriendlyHurtboxMask
+        // (2026-08-30, was a manual FriendlyTargetRegistryPD distance check) — see SpearGloomPD.EnterStab's
+        // own doc comment for why enemy AoE attacks now match every player weapon's own collider-query
+        // convention.
         // * size — matches SpearGloomPD's own stabRange * size precedent; EnemyBasePD.size has no automatic
         // transform.localScale wiring, so elite/bigger variants need this explicit to actually hit wider.
         float   dmg    = damage * spinDamageMultiplier;
         Vector3 origin = transform.position;
-        foreach (var stats in CharacterStatsPD.All.Values)
+
+        int n = Physics.OverlapSphereNonAlloc(origin, spinRadius * size, _spinOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
+        for (int i = 0; i < n; i++)
         {
+            var stats = _spinOverlapResults[i].GetComponent<IFriendlyPD>();
             // No IsInvincible pre-check (2026-08-24 fix) — TakeDamage() already no-ops safely against
             // invincibility on its own, AND is the only place Dodge credit gets awarded (see
             // CharacterStatsPD.NotifyDodge's own doc comment); skipping the call here silently ate every
             // Dodge this attack should have granted while the player was dash-invincible.
-            if (stats.IsDead) continue;
-            if (Vector3.Distance(stats.transform.position, origin) <= spinRadius * size)
-                stats.TakeDamage(dmg);
+            if (stats == null || stats.IsDead) continue;
+            stats.TakeDamage(dmg, false, ObjectId);
         }
     }
 

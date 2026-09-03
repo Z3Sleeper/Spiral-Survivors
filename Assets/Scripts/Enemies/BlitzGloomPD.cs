@@ -103,7 +103,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     // Plain field (not State), same "commit once, keep reading that same reference" contract as
     // KingOrbiterPD's own _shotTargetSnapshot — immune to _targetStats getting reassigned to someone else
     // mid-Windup (taunt/invisible-retarget). Only ever read while actually in Windup.
-    private CharacterStatsPD _windupTrackedTarget;
+    private IFriendlyPD _windupTrackedTarget;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -299,7 +299,8 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     // make this "lock" automatically. No-op (holds last direction) if the target's died/gone
     // invisible-without-taunting mid-Windup, or if the computed direction is degenerate (target exactly on
     // top of this enemy) — same "freeze on invalid, don't stomp with zero" convention the old SnapFaceAnchor
-    // call already had.
+    // call already had. Rate scaled by EffectiveAttackSpeed (2026-08-31) — see
+    // KingSpikePD.TrackChargeWindupTarget's own identical 2026-08-31 doc comment for why.
     private void TrackWindupTarget(ref State state, float delta)
     {
         if (_windupTrackedTarget == null || _windupTrackedTarget.IsDead ||
@@ -310,7 +311,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         if (dir == Vector3.zero) return;
         dir.Normalize();
 
-        Vector3 newDir = Vector3.RotateTowards(state.blitzDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta, 0f);
+        Vector3 newDir = Vector3.RotateTowards(state.blitzDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
         _rigidbody.MoveRotation(Quaternion.LookRotation(newDir));
         state.blitzDirection = newDir;
     }

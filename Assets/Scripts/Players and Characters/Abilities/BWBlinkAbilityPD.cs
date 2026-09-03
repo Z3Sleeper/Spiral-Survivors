@@ -70,9 +70,6 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
-    // Action — a committed teleport. Exposed for live playtesting — see IAbilityPD.IsActionAbility's own
-    // doc comment.
-    [SerializeField] private bool isActionAbility = true;
 
     [Header("Effect")]
     public float duration = 2f;
@@ -130,7 +127,6 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     // active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole Move Speed buff) — see IAbilityPD.
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
@@ -289,6 +285,8 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     }
 
     public void NotifyActivationBlocked() { }
+    // Never sets its own ActiveSurgeBlock true — see IAbilityPD.CancelActiveWindow's own doc comment.
+    public void CancelActiveWindow() { }
 
     protected override void Simulate(ref State state, float delta)
     {

@@ -28,9 +28,29 @@ PrefabInstance:
       propertyPath: maxHealth
       value: 1000
       objectReference: {fileID: 0}
+    - target: {fileID: 2195335558513612733, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2195335558513612733, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 2195335558513612733, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
+      propertyPath: m_ConstrainProportionsScale
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 3528644101431230945, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
       propertyPath: m_Radius
       value: 1.6
+      objectReference: {fileID: 0}
+    - target: {fileID: 3812485605274019885, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3812485605274019885, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5980433598698001219, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
       propertyPath: m_LocalScale.x

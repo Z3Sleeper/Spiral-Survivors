@@ -24,8 +24,11 @@ using UnityEngine;
 //
 // Recomputes its OWN total contribution from scratch on every new stack (removing exactly what it last
 // applied, then reapplying fresh against the CURRENT StackPower) rather than incrementally adding per stack —
-// same "re-derive fully, don't incrementally adjust" principle SurgeStackingAttackSpeedAugment already uses,
-// so a later StackPowerAugment pick retroactively boosts every stack already earned, not just future ones.
+// same "re-derive fully, don't incrementally adjust" principle SurgeStackingAttackSpeedAugment already uses.
+// Also reapplies immediately the instant StackPower itself changes (2026-09-02, CharacterStatsPD.
+// AddStackPowerChangedListener), not just lazily whenever the next stack happens to come in — so a
+// StackPowerAugment picked mid-run retroactively boosts every stack already earned right away, not on a
+// delay tied to the next enemy death.
 public class OnEnemyDeathHealthStackingAugment : AugmentEffectPD<OnEnemyDeathHealthStackingAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -56,18 +59,22 @@ public class OnEnemyDeathHealthStackingAugment : AugmentEffectPD<OnEnemyDeathHea
     // (not blank) outside a live match too — 0 IS the real current value in both cases, not a missing one.
     public string LiveStackedMaxHealth(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(bonusMaxHealthPerStack * stats.StackPower * currentState.stackCount)} "
-            : "0 ";
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(bonusMaxHealthPerStack * stats.StackPower * currentState.stackCount)}"
+            : "0";
 
     protected override void OnApply()
     {
         CharacterStatsPD.OnEnemyDeath += OnEnemyDeath;
+        // Re-values every already-earned stack the instant StackPower itself changes (2026-09-02), not just
+        // lazily on the next new stack — see CharacterStatsPD._onStackPowerChanged's own doc comment.
+        Stats.AddStackPowerChangedListener(OnStackPowerChanged);
     }
 
     protected override void OnDestroy()
     {
         base.OnDestroy();
         CharacterStatsPD.OnEnemyDeath -= OnEnemyDeath;
+        if (Stats != null) Stats.RemoveStackPowerChangedListener(OnStackPowerChanged);
     }
 
     private void OnEnemyDeath(CharacterStatsPD killer, IEnemyPD enemy)
@@ -87,9 +94,26 @@ public class OnEnemyDeathHealthStackingAugment : AugmentEffectPD<OnEnemyDeathHea
 
         currentState.deathCount -= deathsPerStack;
         currentState.stackCount++;
+        ReapplyMaxHealthBonus();
+    }
 
+    // Re-derives this augment's OWN total Max Health contribution from scratch (remove exactly what was
+    // last applied, reapply fresh against the CURRENT stackCount/StackPower) — shared by both triggers that
+    // can change the total: earning a new stack (OnEnemyDeath above) and StackPower itself changing
+    // (OnStackPowerChanged below), so the two can never drift out of sync with each other.
+    private void ReapplyMaxHealthBonus()
+    {
         Stats.AddMaxHealthFlat(-_lastAppliedBonus);
         _lastAppliedBonus = bonusMaxHealthPerStack * currentState.stackCount * Stats.StackPower;
         Stats.AddMaxHealthFlat(_lastAppliedBonus);
+    }
+
+    // Fires whenever Stats.StackPower itself changes (e.g. a StackPowerAugment picked mid-run) — reapplies
+    // immediately rather than leaving every already-earned stack sitting at a stale total until the next
+    // qualifying enemy death happens to come in. No-op at 0 stacks (nothing earned yet to re-value).
+    private void OnStackPowerChanged()
+    {
+        if (Stats == null || Stats.IsDead || currentState.stackCount <= 0) return;
+        ReapplyMaxHealthBonus();
     }
 }

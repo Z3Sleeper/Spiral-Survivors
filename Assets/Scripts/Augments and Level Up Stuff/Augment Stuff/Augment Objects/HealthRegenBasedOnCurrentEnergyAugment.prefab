@@ -44,6 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4af246b27859d5744b6da8a32d9e21e1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthRegenBasedOnCurrentEnergyAugment
-  maxFlatBonus: 1
-  maxPercentBonus: 0.6
-  energyThreshold: 0.5
+  maxFlatBonus: 2.4
+  energyThreshold: 0.75

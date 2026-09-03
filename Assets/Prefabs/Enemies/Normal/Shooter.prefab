@@ -350,15 +350,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ShooterGloomPD
   _rigidbody: {fileID: 7050331330856468974}
   enemyName: Shooter
-  moveSpeed: 10
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
-  maxHealth: 76
+  maxHealth: 75
   preferredRange: 8
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 5
+  backpedalDisabled: 0
+  damage: 10
   xpValue: 5
+  pointsValue: 5
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -374,12 +376,12 @@ MonoBehaviour:
   minAttackRange: 8
   windupDuration: 1
   shootDuration: 0.1
-  betweenShotPause: 0.25
   postShotPause: 0.5
   shotsPerAttack: 1
   shotDamageMultiplier: 1
-  dashSpeedMultiplier: 4
+  dashSpeedMultiplier: 2
   dashDistanceBuffer: 0.5
+  firePauseDuration: 0.25
   projectilePrefab: {fileID: 2942187867930129664, guid: 9d386d556ca6e174fb4b039ee7704a18, type: 3}
   projectileSpeed: 8
   projectileMaxRange: 20

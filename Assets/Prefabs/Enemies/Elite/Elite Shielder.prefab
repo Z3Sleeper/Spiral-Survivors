@@ -28,6 +28,14 @@ PrefabInstance:
       propertyPath: m_ConstrainProportionsScale
       value: 1
       objectReference: {fileID: 0}
+    - target: {fileID: 1165240601248264599, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
+      propertyPath: m_AnchorMax.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1165240601248264599, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
       propertyPath: m_Name
       value: Elite Shielder
@@ -53,6 +61,10 @@ PrefabInstance:
       value: 750
       objectReference: {fileID: 0}
     - target: {fileID: 3272693724207491131, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
+      propertyPath: pointsValue
+      value: 25
+      objectReference: {fileID: 0}
+    - target: {fileID: 3272693724207491131, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
       propertyPath: sizeYOffset
       value: 0.625
       objectReference: {fileID: 0}
@@ -75,10 +87,6 @@ PrefabInstance:
     - target: {fileID: 3689758045197322117, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
       propertyPath: m_LocalScale.z
       value: 1.5
-      objectReference: {fileID: 0}
-    - target: {fileID: 3689758045197322117, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 16
       objectReference: {fileID: 0}
     - target: {fileID: 6911436899984018449, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
       propertyPath: m_Radius

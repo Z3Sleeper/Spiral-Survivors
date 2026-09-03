@@ -153,19 +153,18 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     {
         if (dashJustEnded)
         {
-            // Re-captures the anchor to the target's CURRENT live position, right at the moment the dash
-            // ends (2026-08-27 fix) — the dash itself (HandleOffsetChase) continuously re-tracks the live
-            // target the whole time it's running, but attackAnchorPosition was still whatever it was
-            // snapshotted to back at the ORIGINAL CaptureAttackAnchor call (attack-start, before the dash
-            // even began). A fast/moving target could relocate substantially over the course of a dash, so
-            // Windup's own SnapFaceAnchor below and EnterStab's own hit-check direction were both aiming at
-            // a stale pre-dash position instead of where the target actually ended up — confirmed live:
-            // Spear visibly stabbed toward its own dash-offset direction rather than the player. Same target
-            // IDENTITY stays committed either way (_target/_targetStats untouched) — this only refreshes the
-            // POSITION snapshot, consistent with the "ongoing attack resolves against whoever it started
-            // against" rule; CaptureAttackAnchor's own null-guard makes this a safe no-op if the target died
-            // mid-dash.
-            CaptureAttackAnchor(ref state);
+            // Re-captures the anchor to wherever the dash's own tracked position actually ended up, right at
+            // the moment the dash ends (2026-08-27 fix, upgraded 2026-08-31 to CaptureAttackAnchorFromOffsetChase
+            // — see its own doc comment) — the dash itself (HandleOffsetChase) tracks the target live the
+            // whole time it's running (freezing on death/invisibility), but attackAnchorPosition was still
+            // whatever it was snapshotted to back at the ORIGINAL CaptureAttackAnchor call (attack-start,
+            // before the dash even began). A fast/moving target could relocate substantially over the course
+            // of a dash, so Windup's own SnapFaceAnchor below and EnterStab's own hit-check direction were
+            // both aiming at a stale pre-dash position instead of where the target actually ended up —
+            // confirmed live: Spear visibly stabbed toward its own dash-offset direction rather than the
+            // player. Same target IDENTITY stays committed either way — this only refreshes the POSITION,
+            // consistent with the "ongoing attack resolves against whoever it started against" rule.
+            CaptureAttackAnchorFromOffsetChase(ref state);
             EnterWindup(ref state);
         }
 
@@ -300,48 +299,60 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         SetSpearState(ref state, SpearState.Windup);
     }
 
+    // Generous, fixed-size buffer — the Friendly layer is capped at a handful of live colliders (players +
+    // whatever future friendlies are on screen), so this can never realistically truncate (see
+    // feedback_overlapnonalloc_buffer_truncation's own doc comment for why that's a real risk to guard
+    // against in general).
+    private static readonly Collider[] _stabOverlapResults = new Collider[8];
+
     private void EnterStab(ref State state)
     {
         state.spearStateTimer = stabDuration;
         // Decrement moved to the attack-start sites (Moving/BetweenStabs, above) — see their own comment.
         SetSpearState(ref state, SpearState.Stabbing);
 
-        // One-shot forward-rectangle AoE resolve, matching KingSpikePD.FireSpikeBurst/DaggerGloomPD.
-        // EnterSpin/LeaperGloomPD.EnterLanding — a plain check against CharacterStatsPD.All rather than a
-        // physics trigger collider. Spear used to be the one enemy in the roster still using a real
-        // Collider+OnTriggerEnter for its attack; converted to match everyone else. Direction is derived
-        // from the captured attackAnchorPosition, not transform.forward directly — same reasoning as
-        // ShooterGloomPD.FireShots (deterministic off simulation-owned state, not whatever the body's
-        // current rotation happens to be), even though in practice they resolve to the same thing here
-        // since SnapFaceAnchor() already faced the body this way back at Windup entry.
+        // One-shot forward-rectangle AoE resolve via Physics.OverlapBoxNonAlloc against
+        // CombatLayerMasks.FriendlyHurtboxMask (2026-08-30, was a manual FriendlyTargetRegistryPD distance/
+        // dot-product check) — reverted back to a real collider query, matching every player weapon's own
+        // convention, per explicit user direction: querying the actual hurtbox collider is simpler (no
+        // hand-rolled rectangle-projection math) and no less safe (this exact layer/resimulation combo is
+        // already proven live by every weapon's own ally-hit detection) than the manual approach, so there's
+        // no reason for enemy AoE attacks to do it differently. Direction is derived from the captured
+        // attackAnchorPosition, not transform.forward directly — same reasoning as ShooterGloomPD.FireShots
+        // (deterministic off simulation-owned state, not whatever the body's current rotation happens to
+        // be), even though in practice they resolve to the same thing here since SnapFaceAnchor() already
+        // faced the body this way back at Windup entry.
         Vector3 origin  = transform.position;
         Vector3 forward = state.b.attackAnchorPosition - origin;
         forward.y = 0f;
         if (forward == Vector3.zero) return;
         forward.Normalize();
 
-        float dmg       = damage * stabDamageMultiplier;
+        float dmg = damage * stabDamageMultiplier;
         // Scaled by size (EnemyBasePD's generic per-enemy scalar) — stabWidth is tuned against the base
         // model's own footprint, and elite/bigger variants scale their model up via size, so the stab zone
         // needs to widen right along with it or it'd visually clip through a bigger model's own sides.
-        float halfWidth = stabWidth * 0.5f * size;
-        foreach (var stats in CharacterStatsPD.All.Values)
+        float halfWidth  = stabWidth * 0.5f * size;
+        float halfLength = stabRange * size * 0.5f;
+        // The zone is a one-sided forward rectangle (origin to origin+forward*range), not centered on
+        // origin — OverlapBox needs its actual center, so the box is shifted forward by half its own length.
+        Vector3 center = origin + forward * halfLength;
+        // Y half-extent is a fixed generous constant, not size-scaled — every character's hurtbox collider
+        // sits at roughly the same ground-level height regardless of Size, so this just needs to comfortably
+        // span that band, not track the visual model's footprint the way the X/Z extents do.
+        Vector3 halfExtents = new Vector3(halfWidth, 2f, halfLength);
+        Quaternion rot = Quaternion.LookRotation(forward);
+
+        int n = Physics.OverlapBoxNonAlloc(center, halfExtents, _stabOverlapResults, rot, CombatLayerMasks.FriendlyHurtboxMask);
+        for (int i = 0; i < n; i++)
         {
+            var stats = _stabOverlapResults[i].GetComponent<IFriendlyPD>();
             // No IsInvincible pre-check (2026-08-24 fix) — TakeDamage() already no-ops safely against
             // invincibility on its own, AND is the only place Dodge credit gets awarded (see
             // CharacterStatsPD.NotifyDodge's own doc comment); skipping the call here silently ate every
             // Dodge this attack should have granted while the player was dash-invincible.
-            if (stats.IsDead) continue;
-
-            Vector3 offset = stats.transform.position - origin;
-            offset.y = 0f;
-            float forwardDist = Vector3.Dot(offset, forward);
-            if (forwardDist < 0f || forwardDist > stabRange * size) continue;
-
-            float lateralDist = (offset - forward * forwardDist).magnitude;
-            if (lateralDist > halfWidth) continue;
-
-            stats.TakeDamage(dmg);
+            if (stats == null || stats.IsDead) continue;
+            stats.TakeDamage(dmg, false, ObjectId);
         }
     }
 

@@ -191,7 +191,6 @@ MonoBehaviour:
   slot: 0
   tags: []
   activeSurgeBlock: 0
-  isActionAbility: 1
   castRangeMultiplier: 2
   travelSpeed: 50
   holdDuration: 3
@@ -217,7 +216,7 @@ MonoBehaviour:
     Total Move Speed</color> for <color=#FFA000>{duration} seconds</color>.
 
     Only
-    usable while <color=#FFB4FF>Blade Dance</color> is active.
+    usable while <color=#FFA000>Blade Dance</color> is active.
 
     <color=#FFBE50><i>Autocasts
     when Blade Dance ends</i></color>'
@@ -226,7 +225,6 @@ MonoBehaviour:
   slot: 1
   tags: []
   activeSurgeBlock: 0
-  isActionAbility: 1
-  duration: 2
+  duration: 3
   moveSpeedTotalPercent: 0.5
   postBlinkInvincibility: 0.05

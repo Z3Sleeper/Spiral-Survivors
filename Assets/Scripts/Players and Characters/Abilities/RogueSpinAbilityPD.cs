@@ -36,9 +36,6 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // in-progress one from being force-ended AND immediately re-blocked at the counter level — see
     // IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract this now goes through instead).
     [SerializeField] private bool activeSurgeBlock = true;
-    // Action — a committed leap-dash dealing real damage. Exposed for live playtesting — see
-    // IAbilityPD.IsActionAbility's own doc comment.
-    [SerializeField] private bool isActionAbility = true;
 
     [Header("Movement")]
     // Overall active window for the whole ability — movement, invincibility, weapons-disabled, damage
@@ -133,7 +130,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // "shared, never held across calls" convention as PhantomBladeSummonHelper/AreaEffectCastHelper's own.
     private static readonly Collider[] _damageOverlapResults = new Collider[128];
     private readonly HashSet<IEnemyPD>        _damageTouchedThisTick        = new();
-    private readonly HashSet<CharacterStatsPD> _damageTouchedAlliesThisTick = new();
+    private readonly HashSet<IFriendlyPD> _damageTouchedAlliesThisTick = new();
 
     protected override State GetInitialState() => default;
 
@@ -172,7 +169,6 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // other ability slot out for its whole active window (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => true;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole leap) — see IAbilityPD.AbilityIsActive's
     // own doc comment for why these are separate interface members even though they agree here.
     public bool AbilityIsActive => currentState.isActive;
@@ -422,6 +418,21 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         EndActiveWindow(ref currentState, interrupted: true);
     }
 
+    // IAbilityPD.CancelActiveWindow — called by PlayerControllerPD.CancelSurgeBlockingAbility() the instant a
+    // Berserk Surge starts while this leap is active (this ability's own activeSurgeBlock is true — see that
+    // interface member's own doc comment). Same reaction/interrupted:true as a real Interrupt() landing —
+    // Surge activating genuinely cuts this leap short from the outside, same as an enemy hit would.
+    // Also explicitly closes _controller's own isSpecialMoving window (2026-08-31 fix) — unlike a real
+    // Interrupt() (which already does this itself before firing the interrupted event this ability listens
+    // for), this path reaches OnSpecialMovementInterrupted() directly and would otherwise leave
+    // isSpecialMoving/the disabled collider sitting there until specialMoveTimer separately ran out on its
+    // own — see EndSpecialMovementWindow's own doc comment for the full reasoning.
+    public void CancelActiveWindow()
+    {
+        OnSpecialMovementInterrupted();
+        _controller?.EndSpecialMovementWindow();
+    }
+
     // Plain, self-contained AoE damage tick — every hit is built identically to a normal weapon hit (same
     // roll/highroll/crit math, same NotifyHit/NotifyStrike/NotifyCritStrike/knockback/hit-feedback calls, so
     // onhit/onstrike augments react exactly like they would to a real weapon), reading the normal, penalized
@@ -453,10 +464,10 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
             HitEnemy(enemy);
 
         _damageTouchedAlliesThisTick.Clear();
-        int an = Physics.OverlapCapsuleNonAlloc(p0, p1, radius, _damageOverlapResults, CombatLayerMasks.PlayerHurtboxMask);
+        int an = Physics.OverlapCapsuleNonAlloc(p0, p1, radius, _damageOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
         for (int i = 0; i < an; i++)
         {
-            var ally = _damageOverlapResults[i].GetComponent<CharacterStatsPD>();
+            var ally = _damageOverlapResults[i].GetComponent<IFriendlyPD>();
             if (ally != null) _damageTouchedAlliesThisTick.Add(ally);
         }
         foreach (var ally in _damageTouchedAlliesThisTick)
@@ -505,9 +516,9 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
 
     // A touched ally only ever fires the _onAllyStrike notification now — real friendly fire has been
     // removed from the project entirely (see CharacterStatsPD.NotifyAllyStrike's own doc comment).
-    private void HitAlly(CharacterStatsPD ally)
+    private void HitAlly(IFriendlyPD ally)
     {
-        if (ally == _stats || ally.IsDead) return;
+        if (ReferenceEquals(ally, _stats) || ally.IsDead) return;
         _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = OnHitPowerForEffects() });
     }
 

@@ -45,4 +45,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EventManagerPD
   eventPrefabs: []
-  successSfx: {fileID: 8300000, guid: 46c7129edbae410419e8c572ca74f505, type: 3}
+  eventSpawnPoints: []
+  spawnAreas: []
+  patrolGraph: []
+  announcementDurationMultiplier: 5

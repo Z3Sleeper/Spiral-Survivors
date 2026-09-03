@@ -429,15 +429,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::KingSpikePD
   _rigidbody: {fileID: 5392799678339745330}
   enemyName: King Spike
-  moveSpeed: 10
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
-  maxHealth: 7500
+  maxHealth: 5000
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 5
+  backpedalDisabled: 0
+  damage: 10
   xpValue: 500
+  pointsValue: 500
   size: 3
   contactColliderEnabled: 1
   stunResistant: 0
@@ -454,19 +456,19 @@ MonoBehaviour:
   - {fileID: 5427267374445519469}
   - {fileID: 1191430190877834793}
   invulnerableShell: {fileID: 6798967740665866865}
-  chargeDamageMultiplier: 2.5
+  chargeDamageMultiplier: 2
   spikeBurstDamageMultiplier: 4
-  remoteBurstDamageMultiplier: 2.5
+  remoteBurstDamageMultiplier: 2
   chargeWindupDuration: 1
-  chargeSpeedMultiplier: 3.5
+  chargeSpeedMultiplier: 3
   chargeDistance: 20
   chargesPerAttack: 4
-  betweenChargePause: 0.1
+  betweenChargePause: 0.2
   chargeWindupIndicator: {fileID: 1096041614498844689}
   chargeWindupFill: {fileID: 8183445282016507463}
-  rotationRateDegPerSecond: 45
+  rotationRateDegPerSecond: 30
   spikeBurstChargeTime: 1.5
-  spikeBurstRadius: 18
+  spikeBurstRadius: 10
   spikeBurstIndicator: {fileID: 4686410381492106149}
   spikeBurstFill: {fileID: 8658849789107406530}
   remoteBurstPrefab: {fileID: 5351432771132445161, guid: 0596e4734b5af4648bbbf092a61ea0a2, type: 3}
@@ -477,8 +479,7 @@ MonoBehaviour:
   remoteChargeTime: 1.5
   persistentBurstInterval: 3
   attackCooldown: 5
-  chargesPerAttackTierGrowth: 2
-  spikeBurstRadiusTierGrowth: 0.1
+  chargesPerAttackTierGrowth: 0
   remoteBurstCountTierGrowth: 4
   remoteBurstIntervalTierGrowth: 0.2
   rotationRateDegPerSecondTierGrowth: 0.2

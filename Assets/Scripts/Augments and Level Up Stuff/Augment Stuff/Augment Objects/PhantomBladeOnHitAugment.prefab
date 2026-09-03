@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeOnHitAugment
   phantomBladeDamageBonus: 0.1
-  phantomBladeOnHitPowerPercent: 0.3
+  phantomBladeOnHitPowerPercent: 0.5

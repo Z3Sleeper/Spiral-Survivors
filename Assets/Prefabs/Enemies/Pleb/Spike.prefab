@@ -531,15 +531,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SpikeGloomPD
   _rigidbody: {fileID: -2186915327312289600}
   enemyName: Spike
-  moveSpeed: 6
+  moveSpeed: 5
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
   maxHealth: 25
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  backpedalDisabled: 0
   damage: 5
   xpValue: 1
+  pointsValue: 1
   size: 1
   contactColliderEnabled: 1
   stunResistant: 0
@@ -1114,7 +1116,7 @@ Transform:
   m_LocalScale: {x: 0.5, y: 0.1, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 6504063389203382597}
+  m_Father: {fileID: 6078516058932629184}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &1954475303013300584
 MeshFilter:
@@ -1202,6 +1204,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 5992896687658558699}
   - {fileID: 6504063389203382597}
   m_Father: {fileID: 7839943648137112170}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -1518,7 +1521,6 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 5992896687658558699}
   - {fileID: 6705824777853674429}
   - {fileID: 479545171686884061}
   m_Father: {fileID: 6078516058932629184}

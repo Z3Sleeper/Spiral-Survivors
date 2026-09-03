@@ -22,8 +22,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // not a MoveSpeed multiplier anymore — used to scale with the player's own current MoveSpeed (so a
     // MoveSpeed buff also sped up the dash), which stopped feeling right once MoveSpeed buffs got common;
     // 50 preserves how the dash already felt at baseline (no buffs) before this change.
-    private const float DashDuration = 0.2f;
-    private const float DashSpeed    = 50f;
+    private const float DashDuration = 0.35f;
+    private const float DashSpeed    = 30f;
 
     // Knockback() derives an approximate stun duration from the force it's given, same shape as
     // EnemyBasePD.AddKnockbackVelocity's own formula (stunDuration = ln(force/threshold)/drag when force
@@ -522,10 +522,15 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (_stats == null || _stats.IsDead)
         {
             // Halt whatever was in progress (e.g. a mid-dash death) so the corpse doesn't keep sliding.
+            // Fires _onDashMovementEnded alongside _onDashEnded (2026-08-31 fix) — every _onDashMovementStarted
+            // needs a matching Ended or a movement-window listener (DashThroughInterruptAugment's own sweep)
+            // gets stuck open forever; this path used to only fire the reward pair, silently skipping the
+            // movement pair since it doesn't route through EndDash().
             if (state.isDashing)
             {
                 state.isDashing = false;
                 _onDashEnded.Invoke();
+                _onDashMovementEnded.Invoke();
             }
             state.isSpecialMoving = false;
             if (_rigidbody != null)
@@ -558,9 +563,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // IsLockedOut property (that one reads currentState instead of this tick's own `state` ref, otherwise
         // identical) — see its own doc comment for the exact rule spec.
         //
-        // isDashing is deliberately NOT part of this hard lock (unlike its old formula) — dashing now follows
-        // the same lenient rule as a Berserk-Surge-style forced Surge: only IAbilityPD.IsActionAbility
-        // abilities get blocked while dashing (actionBlocked below), buff abilities stay castable through it.
+        // isDashing is deliberately NOT part of this hard lock — every ability is castable while dashing now
+        // (2026-08-31 rework, see class doc history) — a ForcesSpecialAction ability activated mid-dash
+        // instead cleanly ends the dash first (see the ability-activation block below), rather than being
+        // blocked by it.
         bool lockedOut = state.isSpecialMoving || state.stunTimer > 0f
             || (_ability1 != null && _ability1.IsActive && _ability1.ForcesSpecialAction)
             || (_ability2 != null && _ability2.IsActive && _ability2.ForcesSpecialAction);
@@ -573,25 +579,40 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // Ability1 input — PlayerControllerPD only gates/forwards; the ability component itself owns its
         // own cooldown state and decides what Activate()/NotifyActivationBlocked() actually do.
         //
-        // Also blocked outright while actively dashing OR during a Berserk-Surge-style forced Surge
-        // (CharacterStatsPD.IsForcedSurging) for any ability whose own IsActionAbility is true — buff
-        // abilities (pure stat/buff-state grants) stay usable through either, only action abilities are
-        // blocked. NOT ActiveSurgeBlock (a different, unrelated flag — see IAbilityPD.IsActionAbility's own
-        // doc comment for why the two can't be conflated).
+        // Blocked only while a Berserk-Surge-style forced Surge (CharacterStatsPD.IsForcedSurging) is active
+        // AND this ability's own ActiveSurgeBlock is true (2026-08-31, replaces the old IsActionAbility check
+        // — that flag is retired entirely now that dash no longer blocks any ability and Surge-blocking is
+        // driven by the same flag abilities already use to block Surge in the other direction). Every other
+        // ability stays castable through a forced Surge. See CharacterStatsPD.StartBerserkSurge's own
+        // CancelSurgeBlockingAbility call for the reverse direction — Surge activating cancels whichever
+        // ActiveSurgeBlock ability is currently active, rather than merely blocking new casts.
         if (input.ability1Pressed && _ability1 != null)
         {
-            bool actionBlocked1 = (state.isDashing || _stats.IsForcedSurging) && _ability1.IsActionAbility;
+            bool actionBlocked1 = _stats.IsForcedSurging && _ability1.ActiveSurgeBlock;
             bool blocked1 = lockedOut || actionBlocked1;
-            if (_ability1.IsReady && !blocked1) _ability1.Activate();
+            if (_ability1.IsReady && !blocked1)
+            {
+                // A ForcesSpecialAction ability (RogueSpin/BWBlink) activated mid-dash cleanly ends the dash
+                // first — CLEAN end (default interrupted: false), deliberately never Interrupt()/
+                // interrupted: true: this is the player choosing to act, not being interrupted by anything
+                // external, so dash-completion-reward augments (DashExplosionAugment/DashHealAugment) still
+                // fire normally, and the Interrupted status popup must never show for a player's own choice.
+                if (state.isDashing && _ability1.ForcesSpecialAction) EndDash(ref state);
+                _ability1.Activate();
+            }
             else _ability1.NotifyActivationBlocked();
         }
 
         // Ability2 input — same gate/forward split as Ability1 above.
         if (input.ability2Pressed && _ability2 != null)
         {
-            bool actionBlocked2 = (state.isDashing || _stats.IsForcedSurging) && _ability2.IsActionAbility;
+            bool actionBlocked2 = _stats.IsForcedSurging && _ability2.ActiveSurgeBlock;
             bool blocked2 = lockedOut || actionBlocked2;
-            if (_ability2.IsReady && !blocked2) _ability2.Activate();
+            if (_ability2.IsReady && !blocked2)
+            {
+                if (state.isDashing && _ability2.ForcesSpecialAction) EndDash(ref state);
+                _ability2.Activate();
+            }
             else _ability2.NotifyActivationBlocked();
         }
 
@@ -837,6 +858,39 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (cancelledSomething) _stats?.NotifyStatusPopup(DamageNumberManager.StatusPopupKind.Interrupted);
 
         return cancelledSomething;
+    }
+
+    // Called by CharacterStatsPD.StartBerserkSurge() the instant a Berserk Surge genuinely starts (2026-08-31)
+    // — the reverse direction of ActiveSurgeBlock: an ability whose own ActiveSurgeBlock is true already
+    // force-ends Surge when IT activates (see IAbilityPD.ActiveSurgeBlock's own doc comment); this is what
+    // makes the same relationship hold when Surge activates FIRST instead, cutting off whichever ability slot
+    // is currently active with ActiveSurgeBlock true (today, only RogueSpinAbilityPD can ever be in this
+    // state). Deliberately calls the ability's own IAbilityPD.CancelActiveWindow() rather than reaching into
+    // PlayerControllerPD's own isSpecialMoving/Interrupt() machinery — CancelActiveWindow is scoped to
+    // ActiveSurgeBlock specifically, not ForcesSpecialAction, so this stays correct even for a future
+    // ActiveSurgeBlock ability that doesn't lock movement at all.
+    public void CancelSurgeBlockingAbility()
+    {
+        if (_ability1 != null && _ability1.IsActive && _ability1.ActiveSurgeBlock) _ability1.CancelActiveWindow();
+        if (_ability2 != null && _ability2.IsActive && _ability2.ActiveSurgeBlock) _ability2.CancelActiveWindow();
+    }
+
+    // Ends whatever special-movement window is currently open (isSpecialMoving, physics collider,
+    // rigidbody velocity) WITHOUT firing _onSpecialMovementInterrupted (2026-08-31) — for a self-cancel
+    // path where the ability itself already knows it's ending and handles its own teardown directly (e.g.
+    // RogueSpinAbilityPD.CancelActiveWindow(), called when Berserk Surge cuts its leap short), so
+    // re-invoking the full interrupted event would just be a redundant second call into the same ability.
+    // Same underlying EndSpecialMovement() primitive Interrupt() itself uses for this half of its own
+    // teardown, exposed here so a caller that ISN'T going through Interrupt() can still keep this
+    // controller-owned state from drifting out of sync with the ability's own window closing — without
+    // this, isSpecialMoving/the disabled collider would otherwise just sit there until specialMoveTimer
+    // (a SEPARATE timer from the ability's own activeTimer, started together but never force-synced) happens
+    // to run out on its own, exactly the "two parallel timers hoping to agree" shape already fixed for King
+    // Orbiter's pull-in — this closes it directly instead of hoping the two stay aligned. Idempotent — a
+    // no-op if isSpecialMoving is already false, so it's always safe to call speculatively.
+    public void EndSpecialMovementWindow()
+    {
+        if (currentState.isSpecialMoving) EndSpecialMovement(ref currentState);
     }
 
     // Public entry point for a real, direct stun (not knockback-derived) — sets trueStunTimer as well as the

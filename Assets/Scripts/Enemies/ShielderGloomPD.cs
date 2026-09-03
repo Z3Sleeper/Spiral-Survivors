@@ -79,7 +79,7 @@ public class ShielderGloomPD : EnemyBasePD
     // Shielder's own target" is implemented: the Shield always reads whatever this currently holds, rather
     // than the Shielder pushing a value in on some separate cadence. Same outcome, simpler code shape.
     public Transform Target => _target;
-    public CharacterStatsPD TargetStats => _targetStats;
+    public IFriendlyPD TargetStats => _targetStats;
 
     protected override void OnAwake()
     {
@@ -148,6 +148,19 @@ public class ShielderGloomPD : EnemyBasePD
     // Tells the Shield it got interrupted so IT cancels its own windup — the Shielder's own state machine
     // has nothing of its own to reset (see class doc comment), so this is the entire override.
     protected override void OnInterrupted() => _shield?.CancelWindup();
+
+    // Same fix as MortarGloomPD's own Die() override (2026-08-29, found via the same audit) — SpikeShieldPD.
+    // LateSimulate() only guards on `_owner == null`, never `_owner`'s death state, so a Shielder dying
+    // mid-Windup left its Shield still winding up (and eventually landing a hit) from a dead Shielder's own
+    // position — Destroyed() below eventually cleans the Shield up, but only much later (deferred,
+    // verified-isDead-gated), well after this gap. CancelWindup() is the exact same cross-identity
+    // predicted-state mutation OnInterrupted() above already calls, and Die() runs synchronously from
+    // TakeDamage() (Simulate()-context), so this is equally safe here.
+    protected override void Die()
+    {
+        base.Die();
+        _shield?.CancelWindup();
+    }
 
     // Destroyed() fires on every removal path this identity can go through (real death via UpdateView's
     // verified-isDead delete, SilentDespawn/wipe, or scene teardown) — hooking Shield cleanup here instead

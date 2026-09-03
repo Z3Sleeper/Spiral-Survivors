@@ -53,7 +53,7 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     private float? _knockback;
     private bool _interrupt;
     private Action<IEnemyPD> _onEnemyHit;
-    private Action<CharacterStatsPD> _onAllyHit;
+    private Action<IFriendlyPD> _onAllyHit;
     // Fired once per cast with the total enemies/allies hit that cast — e.g. KnightAreaStunHealAbilityPD
     // healing itself based on how many enemies got stunned. null (default) for callers that don't need it.
     private Action<int> _onCastComplete;
@@ -90,7 +90,7 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         bool targetAllies = false, bool dealDamage = true, float damagePercent = 0f, float onHitPowerPercent = 0f,
         bool notifyOnHit = true,
         bool hasKnockback = false, float? knockback = null, bool interrupt = false,
-        Action<IEnemyPD> onEnemyHit = null, Action<CharacterStatsPD> onAllyHit = null, Action<int> onCastComplete = null,
+        Action<IEnemyPD> onEnemyHit = null, Action<IFriendlyPD> onAllyHit = null, Action<int> onCastComplete = null,
         Action<IEnemyPD> onSuccessfulInterrupt = null,
         bool overrideHitSfx = false, AudioClip hitSfxOverride = null, bool vfxPerCast = false)
     {

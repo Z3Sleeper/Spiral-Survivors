@@ -40,9 +40,6 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // nothing for a Surge block to actually bracket. Still exposed for interface consistency — see
     // IAbilityPD.ActiveSurgeBlock's own doc comment.
     [SerializeField] private bool activeSurgeBlock = false;
-    // Action — spawns a real damage-dealing projectile. Exposed for live playtesting — see
-    // IAbilityPD.IsActionAbility's own doc comment.
-    [SerializeField] private bool isActionAbility = true;
 
     [Header("Effect")]
     public float strengthPercent    = 2f;
@@ -107,7 +104,6 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // Never forces a special action — doesn't touch movement at all, and IsActive is always false anyway.
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     public bool AbilityIsActive => false;
     // No active window at all — see class doc comment.
     public bool HasActiveWindow => false;
@@ -188,6 +184,8 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     }
 
     public void NotifyActivationBlocked() { }
+    // Never sets its own ActiveSurgeBlock true — see IAbilityPD.CancelActiveWindow's own doc comment.
+    public void CancelActiveWindow() { }
 
     protected override void Simulate(ref State state, float delta)
     {

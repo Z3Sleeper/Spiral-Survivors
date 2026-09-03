@@ -58,7 +58,11 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
     {
         // baseHeal joins the scaled portion INSIDE the onHitPower multiply — see its own field comment.
         float totalHeal = (baseHeal + Stats.HealthRegen * healthRegenMultiplier) * data.onHitPower;
-        data.ally.HealFromAlly(totalHeal, Stats);
+        // Stub (2026-08-30) — HealFromAlly is CharacterStatsPD-specific, not on IFriendlyPD yet (data.ally
+        // was widened to IFriendlyPD as part of the combat-targeting migration). Non-player ally healing
+        // shape isn't designed yet, same "stub for now" call as DamageNumberManager's own IFriendlyPD
+        // overloads — a future non-player ally just doesn't get healed by this augment until that's decided.
+        if (data.ally is CharacterStatsPD player) player.HealFromAlly(totalHeal, Stats);
         Stats.Heal(totalHeal);
     }
 }

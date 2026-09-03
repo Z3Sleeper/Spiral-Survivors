@@ -120,12 +120,6 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     [Tooltip("Only used when Avoid Players On Placement is enabled — see its own tooltip.")]
     [SerializeField] protected float playerOffset = 0f;
 
-    // Multiplies the announcement popup's own display duration on top of DamageNumber's shared, normal-status
-    // baseline (see CharacterStatsPD.NotifyStatusPopup/StatusPopupData's own doc comments for the full
-    // threading) — 2x so this one-time "event is starting" callout lingers noticeably longer than a routine
-    // Stun/Slow/Dodge popup, per explicit design (2026-08-19).
-    private const float AnnouncementDurationMultiplier = 2f;
-
     // Virtual, not abstract (2026-08-25) — shows the shared event description panel (LocalUIManagerPD.
     // ShowEventPanel) generically for every event, so no concrete event needs to know that panel exists at
     // all. A concrete event's own override MUST call base.OnEventStart(playableArea) — same "PD lifecycle
@@ -135,17 +129,21 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     // Also fires a Custom status popup (the floating "Stunned!"/"Dodged!"-style callout above a player's own
     // head, NOT the persistent description panel) on EVERY player, white by default, reading startAnnouncement
     // above for the message — a one-time, attention-grabbing "this is starting NOW" the persistent description
-    // panel alone doesn't provide. CharacterStatsPD.NotifyStatusPopup is already resimulation-safe (relayed
-    // through its own PredictedEvent, same as every other Simulate()-context status-popup caller in this
-    // codebase — e.g. CharacterStatsPD.TakeDamage/Slow/etc.), so this is safe to call directly from here
-    // despite OnEventStart itself running from Simulate()-context.
+    // panel alone doesn't provide. Its display duration is multiplied by EventManagerPD.AnnouncementDurationMultiplier
+    // (one shared, centrally-tunable knob — see that property's own doc comment for why it lives there and
+    // not per-event-prefab) on top of DamageNumber's normal status-popup baseline. CharacterStatsPD.
+    // NotifyStatusPopup is already resimulation-safe (relayed through its own PredictedEvent, same as every
+    // other Simulate()-context status-popup caller in this codebase — e.g. CharacterStatsPD.TakeDamage/
+    // Slow/etc.), so this is safe to call directly from here despite OnEventStart itself running from
+    // Simulate()-context.
     public virtual void OnEventStart(PlayableAreaPD playableArea, int currentTier)
     {
         LocalUIManagerPD.instance?.ShowEventPanel();
 
         if (string.IsNullOrEmpty(startAnnouncement)) return;
+        float durationMultiplier = EventManagerPD.instance != null ? EventManagerPD.instance.AnnouncementDurationMultiplier : 2f;
         foreach (var stats in CharacterStatsPD.All.Values)
-            stats.NotifyStatusPopup(startAnnouncement, Color.white, AnnouncementDurationMultiplier);
+            stats.NotifyStatusPopup(startAnnouncement, Color.white, durationMultiplier);
     }
 
     // Event-specific sweep-up (tear down anything THIS event spawned) — called once by
@@ -182,6 +180,12 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     // resimulation-safe, pause-aware), not Time.time — same reasoning every other cosmetic-but-state-driven
     // value in this codebase uses. Shared across every event (per explicit design), same as
     // GetEventDescription — no concrete event needs to override this.
+    //
+    // A companion black-to-white BACKGROUND flash (same wave, same phase) was tried alongside this
+    // (2026-08-28) to make an event's start harder to miss, but immediately walked back the same day — it
+    // read as an epilepsy-risk flash in practice, not just "noticeable." Do not re-add a full-panel color
+    // flash for this purpose; EventBasePD.AnnouncementDurationMultiplier (on EventManagerPD, lengthening
+    // the floating status-popup callout instead) is the direction that was kept.
     private Color GetDescriptionColor(TState viewState)
     {
         float elapsed = GetBase(ref viewState).elapsedTime;

@@ -45,7 +45,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeOnHighrollAugment
   phantomBladePrefab: {fileID: 2942187867930129664, guid: 9123ce90c4dafb44cb96c2ca62f56ace, type: 3}
+  bladeColor: {r: 0, g: 1, b: 0.5294118, a: 1}
   phantomBladeDamageBonus: 0.1
   baseTimer: 5
+  cooldownReductionOnHighroll: 2.5
   bladeCount: 3
-  baseDamageMultiplier: 0.6
+  baseDamageMultiplier: 0.3

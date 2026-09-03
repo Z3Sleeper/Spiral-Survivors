@@ -472,9 +472,14 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         // preview needs.
         // HighrollBonus is scaled down (not passed raw) — see AugmentCardUI's own identical comment on why.
         var option = options[randomIndex];
-        float luckMultiplier = (!option.isAugment && CharacterStatsPD.All.TryGetValue(player, out var stats) && stats.luckRolledLevelUpStats)
-            ? WeaponDamageMath.RollLuckMultiplier(stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.HighrollBonus * stats.luckRolledLevelUpStatsHighrollScale, GameRandom.instance.NextFloat, out _)
-            : 1f;
+        float luckMultiplier = 1f;
+        if (!option.isAugment && CharacterStatsPD.All.TryGetValue(player, out var stats) && stats.luckRolledLevelUpStats)
+        {
+            luckMultiplier = WeaponDamageMath.RollLuckMultiplier(stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.HighrollBonus * stats.luckRolledLevelUpStatsHighrollScale, GameRandom.instance.NextFloat, out _);
+            // Dampens the whole roll's swing down to (by default) half — see LuckRolledLevelUpStatsAugment's
+            // own effectiveness doc comment. Mirrors AugmentCardUI's own identical manual-pick dampening.
+            luckMultiplier = 1f + (luckMultiplier - 1f) * stats.luckRolledLevelUpStatsEffectiveness;
+        }
 
         SubmitPick(player, randomIndex, multiplier, luckMultiplier, luckMultiplier);
     }

@@ -26,25 +26,28 @@ public static class EventTargetScalingPD
     // NOT get this layer — a spawned target's own damage output/move speed don't need to scale with player
     // count the way its health pool and XP payout do.
     //
-    // scaleHealth/scaleDamage/scaleXp/scaleMoveSpeed (2026-08-26, consolidated from two separate methods —
-    // ApplyTierScaling scaled all four unconditionally, a since-removed ApplyHealthAndXpTierScaling scaled
-    // only health+xp) — opt-OUT, all default true, so every existing call site (DPSCheckPD/
-    // DestroyTheTargetsPD, and PerimeterPatrolEventPD as of this pass) that wants every stat scaled just
-    // calls ApplyTierScaling(target, currentTier) with no extra arguments, identical to the old
-    // unconditional behavior. A future caller that wants a stat left untouched (e.g. a target with no
-    // damage output of its own) passes that one flag false explicitly — see EnemyBasePD.ConfigureSpawn's
-    // own implementation for why passing a 1f multiplier for damage/moveSpeed is a true no-op there
-    // (hard-gated behind `!= 1f`), which is what setting a flag false resolves to below.
+    // scaleHealth/scaleDamage/scaleXp/scaleMoveSpeed/scaleAttackSpeed (2026-08-26, consolidated from two
+    // separate methods — ApplyTierScaling scaled all four unconditionally, a since-removed
+    // ApplyHealthAndXpTierScaling scaled only health+xp; scaleAttackSpeed added 2026-08-31 alongside
+    // EnemySpawnerPD's own new difficultyAttackSpeedGrowthPerLevel) — opt-OUT, all default true, so every
+    // existing call site (DPSCheckPD/DestroyTheTargetsPD, and PerimeterPatrolEventPD as of this pass) that
+    // wants every stat scaled just calls ApplyTierScaling(target, currentTier) with no extra arguments,
+    // identical to the old unconditional behavior. A future caller that wants a stat left untouched (e.g. a
+    // target with no damage output of its own) passes that one flag false explicitly — see
+    // EnemyBasePD.ConfigureSpawn's own implementation for why passing a 1f multiplier for damage/moveSpeed/
+    // attackSpeed is a true no-op there (hard-gated behind `!= 1f`), which is what setting a flag false
+    // resolves to below.
     public static void ApplyTierScaling(IEnemyPD target, int currentTier,
-        bool scaleHealth = true, bool scaleDamage = true, bool scaleXp = true, bool scaleMoveSpeed = true)
+        bool scaleHealth = true, bool scaleDamage = true, bool scaleXp = true, bool scaleMoveSpeed = true, bool scaleAttackSpeed = true)
     {
         if (EnemySpawnerPD.instance == null) return;
         var spawner = EnemySpawnerPD.instance;
 
         int difficulty = GameManagerPD.instance != null ? GameManagerPD.instance.Difficulty : 1;
-        float difficultyHealthScalar    = 1f + (difficulty - 1) * spawner.DifficultyHealthGrowthPerLevel;
-        float difficultyDamageScalar    = 1f + (difficulty - 1) * spawner.DifficultyDamageGrowthPerLevel;
-        float difficultyMoveSpeedScalar = 1f + (difficulty - 1) * spawner.DifficultyMoveSpeedGrowthPerLevel;
+        float difficultyHealthScalar      = 1f + (difficulty - 1) * spawner.DifficultyHealthGrowthPerLevel;
+        float difficultyDamageScalar      = 1f + (difficulty - 1) * spawner.DifficultyDamageGrowthPerLevel;
+        float difficultyMoveSpeedScalar   = 1f + (difficulty - 1) * spawner.DifficultyMoveSpeedGrowthPerLevel;
+        float difficultyAttackSpeedScalar = 1f + (difficulty - 1) * spawner.DifficultyAttackSpeedGrowthPerLevel;
 
         int playerCount = GameManagerPD.instance != null ? GameManagerPD.instance.FixedPlayerCount : 1;
         float coopToughnessScalar = GameManagerPD.instance != null ? GameManagerPD.instance.CoopToughnessScalar : 0f;
@@ -53,8 +56,16 @@ public static class EventTargetScalingPD
         float healthMultiplier    = scaleHealth    ? (1f + (currentTier - 1) * spawner.HealthTierGrowth) * difficultyHealthScalar * coopScale : 1f;
         float damageMultiplier    = scaleDamage    ? (1f + (currentTier - 1) * spawner.DamageTierGrowth) * difficultyDamageScalar : 1f;
         float xpMultiplier        = scaleXp        ? (1f + (currentTier - 1) * spawner.XpTierGrowth) * coopScale : 1f;
+        // Reuses the scaleXp opt-out flag (no separate scalePoints param) and the same coopScale layering
+        // XP gets — points is treated as XP's own "kill reward" sibling for this helper's purposes, even
+        // though its own tier growth rate (PointsTierGrowth) is fully independent from XP's (2026-08-29, see
+        // EnemyBasePD.pointsValue's own doc comment for why points is no longer derived from XP at all).
+        float pointsMultiplier    = scaleXp        ? (1f + (currentTier - 1) * spawner.PointsTierGrowth) * coopScale : 1f;
         float moveSpeedMultiplier = scaleMoveSpeed ? (1f + (currentTier - 1) * spawner.MoveSpeedTierGrowth) * difficultyMoveSpeedScalar : 1f;
+        // Difficulty-only, no tier component — mirrors EnemySpawnerPD.SpawnEnemy's own identical
+        // attackSpeedMultiplier computation.
+        float attackSpeedMultiplier = scaleAttackSpeed ? difficultyAttackSpeedScalar : 1f;
 
-        target.ConfigureSpawn(EnemySpawnCategory.Normal, healthMultiplier, damageMultiplier, xpMultiplier, moveSpeedMultiplier, 1f, currentTier);
+        target.ConfigureSpawn(EnemySpawnCategory.Normal, healthMultiplier, damageMultiplier, xpMultiplier, pointsMultiplier, moveSpeedMultiplier, 1f, attackSpeedMultiplier, currentTier);
     }
 }

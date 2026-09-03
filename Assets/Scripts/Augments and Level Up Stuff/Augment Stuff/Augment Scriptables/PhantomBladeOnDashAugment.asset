@@ -30,6 +30,7 @@ MonoBehaviour:
   requiredAugments: []
   tags:
   - Phantom Blade
+  - Dash Effect
   requiredTags: []
   incompatibleTags: []
   unlockTag: Phantom Blade

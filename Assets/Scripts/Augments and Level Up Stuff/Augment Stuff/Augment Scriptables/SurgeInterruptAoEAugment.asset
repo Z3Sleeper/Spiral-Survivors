@@ -13,11 +13,12 @@ MonoBehaviour:
   m_Name: SurgeInterruptAoEAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Surge Parry</color>
-  description: '<color=#FFA000>(AoE) On <color=#FFFF00>Surge</color> Start at <color=#FFFF00>Full
-    Energy</color>:</color> <color=#FFA000>Interrupt</color> enemies in a <color=#3278FF>1.25x
-    Range</color> radius.
+  description: '<color=#FFA000>(AoE) On <color=#FFFF00>Surge Start</color> after
+    spending <color=#FFFF00>50 Energy</color>:</color> <color=#FFA000>Interrupt</color>
+    enemies in a <color=#3278FF>1.25x Range</color> radius.
 
-    <color=#FFA000>On Interrupt:</color> Gain <color=#FFFF00>Full
+    <color=#FFA000>On
+    Interrupt:</color> Gain <color=#FFFF00>+1 <color=#9664FF>Stacking</color> Max
     Energy</color>.'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 5067588024737065532, guid: 9a21b590bd813804bbcd336c0858c96d, type: 3}
@@ -29,6 +30,7 @@ MonoBehaviour:
   requiredAugments: []
   tags:
   - AoE Effect
+  - Stacking
   requiredTags: []
   incompatibleTags: []
   unlockTag: 

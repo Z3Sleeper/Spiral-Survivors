@@ -13,20 +13,26 @@ using UnityEngine;
 // was silently over-buffing every non-weapon-strike consumer of Strength/OnHitPower too.
 //
 // Merged with the former standalone SurgeCostReductionAugment (2026-08-19, deleted — never actually wired
-// up as its own pick, and was judged too boring on its own) — a permanent, one-shot Surge Cost reduction
-// grant now lives here too, alongside the conditional weapon-count doubling. Multiplicative diminishing-
-// returns stacking against CharacterStatsPD's own surgeCostReductionPercent tier (neutral 1f baseline, so
-// the default 0.25 lands it at *0.75 = -25%, lowered 2026-08-23 from -50%) — the reduction side can never
-// mathematically drive SurgeCost to 0 or below, regardless of how many reduction/increase sources (e.g.
-// SurgeCostIncreaseAugment) combine.
-// Granted unconditionally in OnApply(), NOT gated behind Surge start/end like the weapon-count doubling
-// above — this half is a flat, always-on grant, same shape as any other permanent flat-stat augment.
+// up as its own pick, and was judged too boring on its own) — a permanent, one-shot bonus now lives here
+// too, alongside the conditional weapon-count doubling. Granted unconditionally in OnApply(), NOT gated
+// behind Surge start/end like the weapon-count doubling above — this half is a flat, always-on grant, same
+// shape as any other permanent flat-stat augment.
+//
+// RESHAPED 2026-08-29 — was a permanent -25% Surge Cost reduction (via AddSurgeCostReductionPercent). With
+// SurgeInterruptAoEAugment's own rework the same day gating off ENERGY SPENT rather than a full-energy
+// snapshot (see that augment's own class doc comment), a Surge Cost reduction here would now directly nerf
+// that augment's own activation gate — spending less per Surge means a slower climb toward
+// energySpentRequirement. Explicit decision: Surge Cost itself is done being tuned/touched going forward:
+// this now grants a flat +25 Max Energy instead (Stats.AddMaxEnergyFlat — routes through ApplyStatChange, so
+// Current Energy rises by the same delta as the new ceiling, e.g. 100->125 Max Energy also carries 75->100
+// Current Energy; see that method's own doc comment). Same net effect of "more Surge uptime per full-to-empty
+// cycle" the old Surge Cost reduction was going for, without ever touching SurgeCost itself again.
 public class SurgeWeaponCountAugment : AugmentEffectPD<SurgeWeaponCountAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     [SerializeField] private int bonusWeaponCountMultiplier = 2;
-    [SerializeField] private float surgeCostPercentReduction = 0.25f;
+    [SerializeField] private float bonusMaxEnergyFlat = 25f;
 
     // Plain, not State — mutated only from PredictedEvent listener callbacks, same role/reasoning as
     // SurgeEndMoveSpeedAugment's own _bonusActive. Without this, picking this augment WHILE already Surging
@@ -40,7 +46,7 @@ public class SurgeWeaponCountAugment : AugmentEffectPD<SurgeWeaponCountAugment.S
     {
         Stats.AddSurgeStartedListener(OnSurgeStarted);
         Stats.AddSurgeEndedListener(OnSurgeEnded);
-        Stats.AddSurgeCostReductionPercent(surgeCostPercentReduction);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 
     protected override void OnDestroy()

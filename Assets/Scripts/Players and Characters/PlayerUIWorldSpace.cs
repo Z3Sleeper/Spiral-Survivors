@@ -201,13 +201,14 @@ public class PlayerUIWorldSpace : MonoBehaviour
 
         // Shown more broadly than the fill above — any not-ready reason (real cooldown OR e.g.
         // BWBlinkAbilityPD's Blade-Dance gate), a hard lockout (a locking ability elsewhere is active, or
-        // isSpecialMoving/stunned — see PlayerControllerPD.IsLockedOut's own doc comment), or blocked by
-        // actively dashing OR a Berserk-Surge-style forced Surge (only for an action ability — see
-        // IAbilityPD.IsActionAbility's own doc comment, same condition PlayerControllerPD.Simulate() itself
-        // gates Activate() on) — even though the ability itself may otherwise be fully ready. _controller can
-        // still be null here (this runs before Update()'s own _controller == null check further down).
+        // isSpecialMoving/stunned — see PlayerControllerPD.IsLockedOut's own doc comment), or blocked by a
+        // Berserk-Surge-style forced Surge while this ability's own ActiveSurgeBlock is true (2026-08-31, was
+        // IsActionAbility + dashing — dash no longer blocks any ability at all, see
+        // PlayerControllerPD.Simulate()'s own ability-activation block for the current rules this mirrors) —
+        // even though the ability itself may otherwise be fully ready. _controller can still be null here
+        // (this runs before Update()'s own _controller == null check further down).
         bool onCooldown = !_ability1.IsReady || (_controller != null && _controller.IsLockedOut)
-            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability1.IsActionAbility);
+            || (_stats.IsForcedSurging && _ability1.ActiveSurgeBlock);
         if (onCooldown != _ability1CooldownUIShown)
         {
             _ability1CooldownUIShown = onCooldown;
@@ -274,7 +275,7 @@ public class PlayerUIWorldSpace : MonoBehaviour
 
         // See UpdateAbility1's own identical comment for the full visibility reasoning.
         bool onCooldown = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut)
-            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability2.IsActionAbility);
+            || (_stats.IsForcedSurging && _ability2.ActiveSurgeBlock);
         if (onCooldown != _ability2CooldownUIShown)
         {
             _ability2CooldownUIShown = onCooldown;

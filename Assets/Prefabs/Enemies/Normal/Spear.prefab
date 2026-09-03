@@ -318,15 +318,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SpearGloomPD
   _rigidbody: {fileID: -8117565900580008965}
   enemyName: Spear
-  moveSpeed: 12
+  moveSpeed: 8
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
-  maxHealth: 76
+  maxHealth: 75
   preferredRange: 5
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  damage: 5
+  backpedalDisabled: 0
+  damage: 10
   xpValue: 5
+  pointsValue: 5
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0

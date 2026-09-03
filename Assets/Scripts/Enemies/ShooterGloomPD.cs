@@ -147,7 +147,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     // (matches BlitzGloomPD._windupTrackedTarget/KingSpikePD._chargeWindupTrackedTarget exactly). Drives
     // both Windup's own cosmetic facing and the real fire-aim direction, both via plain instant SnapFaceTarget
     // calls (no rate cap, per explicit design — unlike Blitz/KingSpike's own rate-capped equivalents).
-    private CharacterStatsPD _windupTrackedTarget;
+    private IFriendlyPD _windupTrackedTarget;
     // Mirrors KingOrbiterPD's own _shotTargetLastKnownPosition — only refreshes while _windupTrackedTarget is
     // actually alive+visible, held frozen otherwise (dead/invisible-without-taunting), and resumes live
     // tracking the instant validity returns. SnapFaceTarget(CharacterStatsPD)'s own built-in no-op-on-invalid

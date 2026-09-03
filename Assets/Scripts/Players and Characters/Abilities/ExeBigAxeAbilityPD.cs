@@ -42,9 +42,6 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
-    // Buff — only grants stat changes for its own duration, doesn't otherwise act on the world. Exposed for
-    // live playtesting — see IAbilityPD.IsActionAbility's own doc comment.
-    [SerializeField] private bool isActionAbility = false;
 
     [Header("Effect")]
     public float duration = 10f;
@@ -76,7 +73,6 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     // slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole buff) — see IAbilityPD.
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
@@ -170,6 +166,8 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     }
 
     public void NotifyActivationBlocked() { }
+    // Never sets its own ActiveSurgeBlock true — see IAbilityPD.CancelActiveWindow's own doc comment.
+    public void CancelActiveWindow() { }
 
     protected override void Simulate(ref State state, float delta)
     {

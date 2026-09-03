@@ -169,13 +169,15 @@ MonoBehaviour:
   eliteSpawnTimeLastPercent: 0.75
   eliteSpawnRampRatio: 0.8
   baseEliteCount: 10
-  moveSpeedTierGrowth: 0.25
+  moveSpeedTierGrowth: 0.05
   damageTierGrowth: 0.5
-  healthTierGrowth: 4
+  healthTierGrowth: 5
   xpTierGrowth: 3
-  difficultyDamageGrowthPerLevel: 0.5
+  pointsTierGrowth: 1
+  difficultyDamageGrowthPerLevel: 0.2
   difficultyHealthGrowthPerLevel: 1
   difficultyMoveSpeedGrowthPerLevel: 0.1
+  difficultyAttackSpeedGrowthPerLevel: 0.1
   bossesToDefeatForWin: 4
   maxNormalEnemies: 100
   maxEliteEnemies: 100

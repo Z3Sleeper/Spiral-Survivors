@@ -83,7 +83,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // "closest only" restriction, since a cluster of allies this shot happens to cross all reacting isn't a
     // balance concern the way multi-hitting enemies would be. Still gated per-ally for the whole flight so
     // a slow/wide shot lingering on one ally doesn't reprocess it every tick while still overlapping.
-    private readonly HashSet<CharacterStatsPD> _struckAllies = new();
+    private readonly HashSet<IFriendlyPD> _struckAllies = new();
 
     // ── Launch ────────────────────────────────────────────────────────────────
 
@@ -215,11 +215,11 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
             }
             if (hitEnemy != null) ProcessHit(ref state, hitEnemy);
 
-            int an = Physics.BoxCastNonAlloc(prevPos, halfExtents, step / dist, _sweepResults, transform.rotation, dist, CombatLayerMasks.PlayerHurtboxMask);
+            int an = Physics.BoxCastNonAlloc(prevPos, halfExtents, step / dist, _sweepResults, transform.rotation, dist, CombatLayerMasks.FriendlyHurtboxMask);
             for (int i = 0; i < an; i++)
             {
-                var ally = _sweepResults[i].collider.GetComponent<CharacterStatsPD>();
-                if (ally == null || ally == _stats || _struckAllies.Contains(ally)) continue;
+                var ally = _sweepResults[i].collider.GetComponent<IFriendlyPD>();
+                if (ally == null || ReferenceEquals(ally, _stats) || _struckAllies.Contains(ally)) continue;
                 _struckAllies.Add(ally);
                 HitAlly(ref state, ally);
             }
@@ -285,7 +285,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // removed from the project entirely (see CharacterStatsPD.NotifyAllyStrike's own doc comment). Still
     // applies ApplyHitDropoffAndRicochet — a touch still counts as "a hit" for the shot's own
     // dropoff/ricochet bookkeeping, same as it did before.
-    private void HitAlly(ref State state, CharacterStatsPD ally)
+    private void HitAlly(ref State state, IFriendlyPD ally)
     {
         if (ally.IsDead) return;
         _stats.NotifyAllyStrike(new AllyStrikeData { ally = ally, onHitPower = state.currentOnHitPower });

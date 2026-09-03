@@ -125,6 +125,10 @@ PrefabInstance:
       value: 375
       objectReference: {fileID: 0}
     - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
+      propertyPath: pointsValue
+      value: 25
+      objectReference: {fileID: 0}
+    - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
       propertyPath: sizeYOffset
       value: 0.625
       objectReference: {fileID: 0}

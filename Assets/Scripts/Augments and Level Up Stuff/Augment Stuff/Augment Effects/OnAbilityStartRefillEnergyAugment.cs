@@ -21,7 +21,7 @@ public class OnAbilityStartRefillEnergyAugment : AugmentEffectPD<OnAbilityStartR
     // AugmentDescriptionFormatter's {LiveEnergyRegenRatio} token.
     public string LiveEnergyRegenRatio(CharacterStatsPD stats)
     {
-        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "";
+        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "0|0";
         float ability1Value = 0f, ability2Value = 0f;
         foreach (var ability in stats.GetComponents<IAbilityPD>())
         {
@@ -30,7 +30,7 @@ public class OnAbilityStartRefillEnergyAugment : AugmentEffectPD<OnAbilityStartR
             else if (ability.Slot == AbilitySlot.Ability2) ability2Value = value;
         }
         // "|" not "/" — see OnAbilityStartHealHealthRegenAugment's identical LiveAbilityHealAmount for why.
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)}";
     }
 
     protected override void OnApply() => Stats.AddAbilityStartListener(OnAbilityStart);

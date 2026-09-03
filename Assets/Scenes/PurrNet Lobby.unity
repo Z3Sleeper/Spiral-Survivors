@@ -2254,6 +2254,8 @@ MonoBehaviour:
     <color=#FFFF00>Surge</color> that grants <color=#FFFF00>Full Energy</color> right
     away and <color=#FFA000>Invincibility</color> during it. But <color=#FF00FF>Shield</color>
     and <color=#FFFFFF>Death Prevention</color> timers are paused during it as well.
+  - <color=#FFFF00>Surging</color> costs <color=#FFFF00>Energy</color>.\nYou regenerate
+    a percent of your <color=#FFFF00>Max Energy</color> while not <color=#FFFF00>Surging</color>.
   hintInterval: 10
 --- !u!4 &205622257
 Transform:

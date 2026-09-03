@@ -8,7 +8,8 @@ using UnityEngine;
 // percent-of-base) — now a percent of EACH ability's own BaseCooldownDuration individually, same "per-ability
 // base" shape OnAbilityStartReduceDashCDAugment/OnStrikeReduceAbilityCDAugment/
 // OnAbilityStartReduceOtherAbilityCDAugment already use, rather than one flat amount applied identically to
-// both abilities regardless of how differently they're tuned. Default 0.15 (15%) of each ability's own base.
+// both abilities regardless of how differently they're tuned. Default 0.075 (7.5%, nerfed 2026-08-31 from
+// 0.15/15% after playtesting) of each ability's own base.
 //
 // Reduces via IAbilityPD.ReduceCooldownFlat, not ReduceCooldownPercentRemaining/ReduceCooldownPercentTotal —
 // the percent here is of the ability's fixed BASE cooldown (a flat seconds amount once resolved per ability),
@@ -26,7 +27,7 @@ public class OnDashStartedReduceAbilityCDAugment : AugmentEffectPD<OnDashStarted
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
     // {reductionPercent}/{LiveCooldownReduction} directly in the description text — see its own doc comment
     // (only public fields/properties/methods are checked).
-    public float reductionPercent = 0.15f;
+    public float reductionPercent = 0.075f;
 
     // Cached once — Ability1/Ability2 are permanent one-per-character fixtures for the whole match, same
     // convention OnStrikeReduceAbilityCDAugment/OnAbilityStartReduceOtherAbilityCDAugment's own caches use.
@@ -38,14 +39,14 @@ public class OnDashStartedReduceAbilityCDAugment : AugmentEffectPD<OnDashStarted
     // tokens, since each ability's own actual reduction now depends on its own base cooldown.
     public string LiveCooldownReduction(CharacterStatsPD stats)
     {
-        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "";
+        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "0|0";
         float ability1Value = 0f, ability2Value = 0f;
         foreach (var ability in stats.GetComponents<IAbilityPD>())
         {
             if (ability.Slot == AbilitySlot.Ability1) ability1Value = ability.BaseCooldownDuration * reductionPercent;
             else if (ability.Slot == AbilitySlot.Ability2) ability2Value = ability.BaseCooldownDuration * reductionPercent;
         }
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)}";
     }
 
     protected override void OnApply()

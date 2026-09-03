@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: DeathPreventionShieldDRAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFFFF>Unbreakable</color>
-  description: '<color=#FFA000>+50% Damage Reduction</color> while <color=#FF00FF>Shielded</color>.
+  description: '<color=#FFA000>+25% Damage Reduction</color> while <color=#FF00FF>Shielded</color>.
 
     Gain
     <color=#FFFFFF>Death Prevention</color>.

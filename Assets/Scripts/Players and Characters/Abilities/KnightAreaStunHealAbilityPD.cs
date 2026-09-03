@@ -3,11 +3,12 @@ using UnityEngine;
 
 // Knight's first class ability, built on the IAbilityPD architecture — gated by a cooldown. Reworked
 // (2026-08-23) from an instantaneous stun+self-heal into a real timed buff with a delayed payoff: casting
-// grants +25% Total Max Health, +25% Damage Reduction, +50% Total Weapon Range, and +50% Size for a fixed
-// duration, and once per cast — either when that duration naturally ends, OR early via a recast (see below),
-// whichever happens first — the AoE triggers: every nearby enemy gets interrupted, stunned, and knocked back.
-// No damage, no heal-per-enemy-hit — both gone; the AoE keeps its knockback but exists purely for the
-// interrupt+stun+knockback utility now, no self-sustain.
+// grants +25% Total Max Health, +50% Total Weapon Range, and +50% Size for a fixed duration, and once per
+// cast — either when that duration naturally ends, OR early via a recast (see below), whichever happens
+// first — the AoE triggers: every nearby enemy gets interrupted, stunned, and knocked back. No damage, no
+// heal-per-enemy-hit — both gone; the AoE keeps its knockback but exists purely for the interrupt+stun+
+// knockback utility now, no self-sustain. Damage Reduction (was +25%, one of the original four grants)
+// removed entirely (2026-08-31, explicit user request) — this ability now grants exactly three stats.
 //
 // Same-day rework (2026-08-23): the Weapon Range and Size grants, and Damage Reduction's own percentage
 // (50% -> 25%), all moved over from KnightBigBuffAbilityPD, which used to grant them for its own Berserk
@@ -20,8 +21,8 @@ using UnityEngine;
 //
 // Recastable while already active — a second press triggers the AoE immediately instead of waiting for the
 // buff to naturally expire, but (2026-08-23 change, per explicit user request) does NOT end the buff itself
-// early anymore — the Max Health/Damage Reduction grant stays up for the full duration regardless of when
-// the AoE actually fires. Exactly one AoE trigger per cast: State.aoeTriggered is set the instant TriggerAoE()
+// early anymore — the stat grants stay up for the full duration regardless of when the AoE actually fires.
+// Exactly one AoE trigger per cast: State.aoeTriggered is set the instant TriggerAoE()
 // runs (recast or natural end, whichever happens first) and gates the OTHER path out — a natural expiry after
 // an early recast does nothing further, and IsReady itself now reads false the instant aoeTriggered flips
 // (2026-08-24 — was previously still "ready," just silently no-oping deeper inside Activate()) so the ability
@@ -35,14 +36,14 @@ using UnityEngine;
 // apart.
 //
 // No AbilityPower scaling anywhere (2026-08-23, explicit removal) — duration/maxHealthPercent/
-// damageReductionPercent are all flat, fixed values, and the AoE's own stunDuration now scales by
+// rangePercent/sizePercent are all flat, fixed values, and the AoE's own stunDuration now scales by
 // CharacterStatsPD.AreaEffectPower alone (a direct multiplier, neutral at 1.0) rather than the old additive
 // AreaEffectPower+AbilityPower-1f combination. The "AoE Effects" family's own radius/count/retrigger scaling
 // (AreaEffectSize via RangeScalingAoEBase, AreaEffectCount) is untouched — that's owned by the shared
 // AreaEffectCastHelper/AreaEffectPD chain, not this ability's own AbilityPower term.
 //
-// All four stat grants use the Total tier (AddMaxHealthTotalPercent/AddDamageReductionPercent/
-// AddWeaponRangeTotalPercent/AddSizePercent) rather than the plain Bonus tier the generic stat-pick augments
+// All three stat grants use the Total tier (AddMaxHealthTotalPercent/AddWeaponRangeTotalPercent/
+// AddSizePercent) rather than the plain Bonus tier the generic stat-pick augments
 // use, same "outlier/special effect, not a per-point-buy pick" reasoning as every other buff ability in this
 // codebase. Max Health also tops current health up by the same delta the ceiling just rose by for free:
 // CharacterStatsPD.ApplyStatChange (which AddMaxHealthTotalPercent routes through) already bumps current
@@ -78,7 +79,7 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Steadfast";
     [SerializeField, TextArea] private string description =
-        "Gain +25% Max Health, +25% Damage Reduction, +50% Range, and +50% Size for 8 seconds. At the end of the duration, interrupt and stun all nearby enemies. Recast to trigger the stun early.";
+        "Gain +25% Max Health, +50% Range, and +50% Size for 8 seconds. At the end of the duration, interrupt and stun all nearby enemies. Recast to trigger the stun early.";
     public float cooldown = 20f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
     // throughout the active window) — see Simulate(). true: cooldown starts ticking immediately at cast,
@@ -91,15 +92,10 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract. No longer
     // moot now that this ability has a real active window (unlike its pre-rework instantaneous self).
     [SerializeField] private bool activeSurgeBlock = false;
-    // Buff — only grants stat changes for its own duration (plus a delayed AoE payoff), doesn't otherwise
-    // act on the world mid-window. Exposed for live playtesting — see IAbilityPD.IsActionAbility's own doc
-    // comment.
-    [SerializeField] private bool isActionAbility = false;
 
     [Header("Effect")]
     public float duration = 8f;
     public float maxHealthPercent       = 0.25f;
-    public float damageReductionPercent = 0.25f;
     public float rangePercent           = 0.5f;
     public float sizePercent            = 0.5f;
     // Recast-to-trigger-early (see IsReady's own doc comment) is blocked for this long after a fresh cast —
@@ -143,7 +139,6 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // against the Inspector field changing mid-buff (same convention as every other buff ability in this
     // codebase). Also what IsReady's own recast-block elapsed-time math is measured against.
     private float _appliedMaxHealthPercent;
-    private float _appliedDamageReductionPercent;
     private float _appliedRangePercent;
     private float _appliedSizePercent;
     private float _appliedDuration;
@@ -178,7 +173,6 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole buff) — see IAbilityPD.AbilityIsActive's
     // own doc comment for why these are separate interface members even though they agree here.
     public bool AbilityIsActive => currentState.isActive;
@@ -261,7 +255,6 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
         }
 
         _appliedMaxHealthPercent       = maxHealthPercent;
-        _appliedDamageReductionPercent = damageReductionPercent;
         _appliedRangePercent           = rangePercent;
         _appliedSizePercent            = sizePercent;
         _appliedDuration                = duration;
@@ -281,7 +274,6 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
 
         // Also tops current health up by the same delta the ceiling just rose by — see class doc comment.
         _stats.AddMaxHealthTotalPercent(_appliedMaxHealthPercent);
-        _stats.AddDamageReductionPercent(_appliedDamageReductionPercent);
         _stats.AddWeaponRangeTotalPercent(_appliedRangePercent);
         _stats.AddSizePercent(_appliedSizePercent);
 
@@ -303,7 +295,6 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
         if (_stats != null)
         {
             _stats.AddMaxHealthTotalPercent(-_appliedMaxHealthPercent);
-            _stats.RemoveDamageReductionPercent(_appliedDamageReductionPercent);
             _stats.AddWeaponRangeTotalPercent(-_appliedRangePercent);
             _stats.AddSizePercent(-_appliedSizePercent);
         }
@@ -358,6 +349,8 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     }
 
     public void NotifyActivationBlocked() { }
+    // Never sets its own ActiveSurgeBlock true — see IAbilityPD.CancelActiveWindow's own doc comment.
+    public void CancelActiveWindow() { }
 
     // Fired by AreaEffectCastHelper.Cast for every enemy this cast actually interrupted (see its own doc
     // comment on onSuccessfulInterrupt) — feeds the generic SI/FSI events, gated to fire FSI at most once per

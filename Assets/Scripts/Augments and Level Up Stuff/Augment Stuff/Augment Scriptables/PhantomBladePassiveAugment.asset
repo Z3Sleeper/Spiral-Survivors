@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: PhantomBladePassiveAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#FF0050>Storm</color>
-  description: '<color=#FFA000>Every 5 seconds:</color> <color=#FFA000>Summon</color>
+  description: '<color=#FFA000>Every 20 seconds:</color> <color=#FFA000>Summon</color>
     <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
     the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{DamageMultiplierPercent}%
     Strength</color>) damage</color>. <color=#FFA000>Cooldown</color> scales with

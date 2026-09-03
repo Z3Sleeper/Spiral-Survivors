@@ -14,8 +14,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFB4FF>Mind and Body</color>
   description: <color=#FFA000>On <color=#FFB4FF>Ability</color> Cast:</color> <color=#FFA000>Reduce</color>
-    your <color=#00FFFF>Dash</color> <color=#FFA000>cooldown</color> by <color=#00FFFF>{LiveCooldownReduction}</color><color=#FFA000>(30%
-    of the casted <color=#FFB4FF>Ability's</color> base cooldown)</color>.
+    your <color=#00FFFF>Dash</color> <color=#FFA000>cooldown</color> by <color=#00FFFF>{LiveCooldownReduction}</color>
+    <color=#FFA000>seconds</color> <color=#FFA000>(30% of the casted <color=#FFB4FF>Ability's</color>
+    base cooldown)</color>.
   icon: {fileID: 21300000, guid: 23366daf0e8cd88499305548a92eb295, type: 3}
   effectPrefab: {fileID: 9113338019665785293, guid: fc1f3a5c330c82241a8e5511066410d6, type: 3}
   multiplayerOnly: 0

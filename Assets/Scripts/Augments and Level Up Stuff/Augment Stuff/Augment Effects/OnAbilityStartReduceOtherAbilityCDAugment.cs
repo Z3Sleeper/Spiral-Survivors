@@ -33,14 +33,14 @@ public class OnAbilityStartReduceOtherAbilityCDAugment : AugmentEffectPD<OnAbili
     // Ability1's own value IS what Ability2 gets reduced by (and vice versa).
     public string LiveCooldownReduction(CharacterStatsPD stats)
     {
-        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "";
+        if (!AugmentDescriptionFormatter.ShowLiveValues || stats == null) return "0|0";
         float ability1Value = 0f, ability2Value = 0f;
         foreach (var ability in stats.GetComponents<IAbilityPD>())
         {
             if (ability.Slot == AbilitySlot.Ability1) ability1Value = ability.CooldownDuration * reductionPercent;
             else if (ability.Slot == AbilitySlot.Ability2) ability2Value = ability.CooldownDuration * reductionPercent;
         }
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)} ";
+        return $"{AugmentDescriptionFormatter.FormatLiveNumber(ability1Value)}|{AugmentDescriptionFormatter.FormatLiveNumber(ability2Value)}";
     }
 
     protected override void OnApply()

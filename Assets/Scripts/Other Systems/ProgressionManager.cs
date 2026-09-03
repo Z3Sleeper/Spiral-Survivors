@@ -5,175 +5,162 @@ using UnityEngine;
 
 public static class ProgressionManager
 {
-    private const int    CurrentSaveVersion = 8;
+    private const int    CurrentSaveVersion = 10;
     private const string SaveFileName       = "progression.json";
 
-    private const int   BaseFee       = 20;
-    private const float FeeMultiplier = 1.1f;
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
 
     // ── Pricing design principles (deliberate, not accidental — check against these before assuming a typo) ──
-    // 1. Every cost array below is a pure arithmetic progression: cost(tier) = start + step*tier, with a
-    //    CONSTANT step within that stat (no per-stat compounding/curving). Verified true for every single
-    //    array as of 2026-08-07, including the 10-entry LevelUpStats/XPMultiplier tables. The exponential
-    //    "getting more expensive over time" feel comes entirely from the separate, global feePart = BaseFee *
-    //    FeeMultiplier^boughtUpgrades surcharge added to every purchase regardless of which stat/tier (see
-    //    GetBaseStatUpgradeCost) — NOT from these tables. If asked to normalize/audit these for typos later,
-    //    check for constant step-per-array first; a broken step is the tell.
-    //    EXCEPTION (2026-08-21, retuned same day from x2.5 down to a x1.5-based growing-exponent curve):
-    //    every stat with a Threat-Level-gated tier is geometric, not arithmetic, over its gated portion.
-    //    "L" below means Threat-Level COUNT within the gated portion, 1-based (the first gated pair/tier is
-    //    L=1 regardless of its real UnlockDifficulty number — TL0 and TL1 both collapse to L=1, since neither
-    //    has a unique modifier of its own). Two shapes, depending on how many tiers that stat unlocks per
-    //    Threat Level:
-    //    - TWO tiers per level (LevelUpStatsCosts/TotalStrengthPercentCosts, pairing mirrors their own
-    //      UnlockDifficulty's {2,2,3,3,4,4,5,5,6,6} shape): pair 1 = (seed, seed*1.5). Within any pair, the
-    //      second tier is always its own pair's first tier * 1.5. Crossing into pair L (L=2,3,4,5): that
-    //      pair's first tier = previous pair's SECOND tier * 1.5^(L-1) — the crossing exponent grows every
-    //      time a new Threat Level is crossed, it does not stay constant.
-    //    - ONE tier per level (MoveSpeedPercentCosts/StrengthPerLevelCosts, and Strength's own gated tail —
-    //      see below): tier 1 = seed; tier L (L=2,3,4,5) = tier(L-1) * 1.5^(L-1) — same growing-exponent
-    //      crossing rule, applied to every single tier since there's no "pair" to hold a within-level step.
-    //      StrengthPerLevelCosts used to be the 10-entry two-tiers-per-level shape too (matching
-    //      UnlockDifficulty {2,2,3,3,4,4,5,5,6,6}) before being cut down to 5 tiers/UnlockDifficulty
-    //      {2,3,4,5,6} — it's this one-tier-per-level shape now, not the two-tier one.
-    //    1.5 isn't a power of 2, so a long enough chain eventually can't stay an exact integer — rounded
-    //    (half up) only where unavoidable; every other entry is exact. Extend either shape's exact pattern
-    //    (same growing exponent, L+1 next) if any of these arrays ever needs more tiers.
-    //    Strength is the one MIXED case: tiers 0-2 are ungated (UnlockDifficulty all 0) and keep the plain
-    //    arithmetic +250 step rule 1 describes. The geometric exception only applies from tier 3 onward
-    //    (first Threat-Level-gated tier, L=1) — seeded off tier 2's own ungated value, but treated as ALREADY
-    //    one exponent step up from it (500 * 1.5^1 = 750), not equal to it — unlike MoveSpeedPercentCosts'
-    //    own L=1 (which has no preceding ungated tier to differentiate itself from, so starts unscaled at the
-    //    seed directly). Never derive Strength's gated tiers from tier 0 directly — it's 0, and 0 times
-    //    anything stays 0.
-    // 2. Step is ~50% of that stat's own starting price almost everywhere (WeaponRange 500→750, MaxHealth/
-    //    AttackSpeed/MoveSpeed/LevelUpStats/XPMultiplier/LevelUpOptions/StrengthPerLevel/TotalStrengthPercent
-    //    all exactly start/2). ShieldRechargeTime (500 step on a 1500 start, ~33%) is the one deliberate
-    //    outlier to that ratio — still a constant step per rule 1, just not exactly half.
-    // 3. Stats are grouped into rough price brackets by perceived power, each roughly an order of magnitude
-    //    above the last: ~250-750 (core stats), ~1000-3000 (high-impact), ~4000-44000 (systemic/meta,
-    //    ungated portion) — every Threat-Level-gated tier on top of that scales geometrically per rule 1's
-    //    exception instead of continuing a flat bracket, so those run well past their base bracket's own
-    //    ceiling by design (e.g. TotalStrengthPercentCosts' own gated tail tops out at 4378939 — the growing
-    //    crossing exponent means these climb much further than the flat brackets below ever suggest).
-    // 4. Tier COUNT (separate from price) also follows a rule: "core stats" get 4 tiers on purpose — 4
-    //    unupgraded stat-augment levels, i.e. 2 "upgraded" levels, since LevelUpStats effectively doubles
+    // 1. TWO regimes, split at UnlockDifficulty 4 (2026-08-29 — TL1/TL2 are treated as "tutorial" Threat
+    //    Levels; TL3 is where cost scaling genuinely starts, so the compounding formula stays for TL0-3 but
+    //    is deliberately NOT allowed to keep compounding past it):
+    //    - UnlockDifficulty 0-3 (effUD, below): cost[i] = cost[i-1] + base * effUD(i) — the original
+    //      cumulative formula, unchanged from its own doc comment history. effUD(i) treats an
+    //      UnlockDifficulty of 0 OR 1 as 1 (both mean "no extra Threat-Level cost multiplier yet").
+    //    - UnlockDifficulty 4+: a CONSTANT step per Threat Level crossed, not the cumulative formula above.
+    //      step = base * 4 (computed once per stat, using the first TL4+ tier's own UD number — 4 — not
+    //      recomputed with a growing UD each time). Every tier sharing the SAME UnlockDifficulty gets the
+    //      SAME price (no increase between, say, LevelUpStatsCosts' own two TL4 tiers) — price only changes
+    //      when crossing into a NEW UnlockDifficulty group, by exactly +step each time: TL4 group =
+    //      anchor + 1*step, TL5 group = anchor + 2*step, TL6 group = anchor + 3*step, where "anchor" is
+    //      whatever the last UnlockDifficulty-3-or-below tier already priced at (untouched, see above).
+    //      This was a deliberate fix for a real compounding problem: the original cumulative formula
+    //      (cost[i] = cost[i-1] + base*UD(i), chained all the way through) made total cost grow
+    //      QUADRATICALLY with tier depth — each tier's own increment itself scaled with UD, so a long chain
+    //      of increasing UDs compounded on top of an ever-growing base — while points-gain-per-Threat-Level
+    //      is only LINEAR (GameManagerPD.DifficultyPointMultiplier = Difficulty). The mismatch was invisible
+    //      at TL0-3 (few tiers had compounded yet) but blew TL4-6 totals well past their "~2x that Threat
+    //      Level's own win reward" target, LevelUpStatsCosts worst of all (10 tiers spanning TL2-6, the most
+    //      compounding of any stat). A pure "no reference to any other tier, cost[i] = base*UD(i) directly"
+    //      version was tried and rejected first — it let price DROP below an earlier tier whenever
+    //      base*UD(i) happened to undercut it, which is never acceptable (explicit design: price must never
+    //      drop tier-to-tier). A max(cost[i-1], base*UD(i)) version was tried next and also rejected — it
+    //      never drops, but plateaus (flat, no growth at all) for however many tiers it takes base*UD(i) to
+    //      catch back up to the anchor, which for some stats (LevelUpStatsCosts) meant 6 tiers flat in a
+    //      row. The constant-step version is the one that stuck: guaranteed monotonic, genuinely linear
+    //      (not quadratic, not flat) growth every single Threat Level crossed, with no dependence on how
+    //      many tiers happen to share a given Threat Level.
+    //    Each array's own entry is the final purchase price either way — no separate global fee/surcharge
+    //    layered on top (see GetBaseStatUpgradeCost).
+    //    1a. The "50-floor" shape: some stats' cost[0] is a flat 50 (so the very first tier never costs
+    //        literally 0), with the REAL seed/base living at cost[1] instead, and the cumulative formula
+    //        above only applying from cost[2] onward — StrengthCosts/DashChargesCosts/LuckCosts/
+    //        EnergyRegenCosts/DashHasteCosts/AbilityHasteCosts/CritChanceCosts/HealthRegenCosts/
+    //        MaxShieldCosts all follow this shape. Every other stat's cost[0] IS its own base directly
+    //        (formula applies from cost[1] on), no separate floor entry.
+    // 2. Tier COUNT (separate from price) still follows its own rule: "core stats" get 4 tiers on purpose —
+    //    4 unupgraded stat-augment levels, i.e. 2 "upgraded" levels, since LevelUpStats effectively doubles
     //    the per-level value from the stat augment database at max rank. MaxHealth is the one deliberate
     //    exception at 5 tiers (base 50 + 5 points of +10 lands exactly on 100), and MoveSpeed is
     //    deliberately capped at 2 tiers (far higher per-point impact in this game than other core stats, so
     //    it gets less total room to buy).
-    // 5. Every cost array has a same-length "UnlockDifficulty" sibling directly below it — see
+    // 3. Every cost array has a same-length "UnlockDifficulty" sibling directly below it — see
     //    GetTierRequiredDifficulty/CanUpgradeBaseStat for how a nonzero entry gates that tier behind
     //    ProgressionManager.HighestUnlockedDifficulty, and UnlockNextDifficulty for the "More X Shop Tiers"
-    //    announcement a newly-crossed threshold queues. All zero right now on every stat (ungated) — this is
-    //    a hand-tuned list the user edits directly, so deliberately no further inline commentary here.
+    //    announcement a newly-crossed threshold queues. This is a hand-tuned list the user edits directly, so
+    //    deliberately no further inline commentary here.
     private static readonly int[] StrengthCosts =
-        { 0, 250, 500, 750, 1125, 2531, 8543, 43249 };
+        { 50, 500, 1000, 2000, 3500, 5500, 7500, 9500 };
     private static readonly int[] StrengthUnlockDifficulty =
         { 0, 0, 0, 2, 3, 4, 5, 6 };
     private static readonly int[] DashChargesCosts =
-        { 0, 250, 500, 750 };
+        { 50, 500, 2000, 3500 };
     private static readonly int[] DashChargesUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 0, 0, 3, 3 };
     private static readonly int[] LuckCosts =
-        { 0, 250, 500, 750 };
+        { 50, 500, 1500, 2500 };
     private static readonly int[] LuckUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 0, 0, 2, 2 };
     // 4 tiers (2026-08-23, was 3) — matches +1.25%/tier * 4 = +5% total from the shop (retuned 2026-08-24
     // from +2.5%/tier alongside baseEnergyRegen's own 10% -> 5% nerf), landing exactly on the intended 5%
     // base -> 10% fully-upgraded target (see GetBaseStatValuePerTier's own EnergyRegen entry). Same
     // {0, 250, 500, 750} cost curve as DashHaste/AbilityHaste/CritChance's own 4-tier arrays.
     private static readonly int[] EnergyRegenCosts =
-        { 0, 250, 500, 750 };
+        { 10, 500, 1500, 2500 };
     private static readonly int[] EnergyRegenUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 0, 0, 2, 2 };
     private static readonly int[] DashHasteCosts =
-        { 0, 250, 500, 750 };
+        { 10, 500, 1500, 2500 };
     private static readonly int[] DashHasteUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 0, 0, 2, 2 };
     private static readonly int[] AbilityHasteCosts =
-        { 0, 250, 500, 750 };
+        { 10, 500, 1500, 2500 };
     private static readonly int[] AbilityHasteUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 0, 0, 2, 2 };
     private static readonly int[] CritChanceCosts =
-        { 0, 250, 500, 750 };
+        { 10, 500, 1500, 2500 };
     private static readonly int[] CritChanceUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 0, 0, 2, 2 };
     private static readonly int[] HealthRegenCosts =
-        { 0, 500, 1000, 1500 };
+        { 10, 500, 1500, 2500 };
     private static readonly int[] HealthRegenUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 0, 0, 2, 2 };
     private static readonly int[] MaxShieldCosts =
-        { 0, 1000, 2000 };
+        { 10, 1000, 2000 };
     private static readonly int[] MaxShieldUnlockDifficulty =
         { 0, 0, 0 };
     private static readonly int[] WeaponRangeCosts =
-        { 500, 750, 1000, 1250 };
+        { 1000, 4000, 8000, 12000 };
     private static readonly int[] WeaponRangeUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 2, 3, 4, 5 };
     private static readonly int[] MaxHealthCosts =
-        { 500, 750, 1000, 1250, 1500 };
+        { 500, 1500, 3000, 5000, 7000 };
     private static readonly int[] MaxHealthUnlockDifficulty =
-        { 0, 0, 0, 0, 0 };
+        { 0, 2, 3, 4, 5 };
     private static readonly int[] RevivePowerCosts =
-        { 500, 750, 1000, 1250, 1500 };
+        { 500, 1500, 3000, 5000, 7000 };
     private static readonly int[] RevivePowerUnlockDifficulty =
-        { 0, 0, 0, 0, 0 };
+        { 0, 2, 3, 4, 5 };
     private static readonly int[] MaxEnergyCosts =
-        { 500, 750, 1000, 1250, 1500 };
+        { 500, 1500, 3000, 5000, 7000 };
     private static readonly int[] MaxEnergyUnlockDifficulty =
-        { 0, 0, 0, 0, 0 };
+        { 0, 2, 3, 4, 5 };
     private static readonly int[] CollectionRadiusCosts =
-        { 500, 750, 1000, 1250, 1500 };
+        { 500, 1500, 3000, 5000, 7000 };
     private static readonly int[] CollectionRadiusUnlockDifficulty =
-        { 0, 0, 0, 0, 0 };
+        { 0, 2, 3, 4, 5 };
     private static readonly int[] ReviveTimePenaltyCosts =
-        { 1000, 1500 };
+        { 1000, 2000 };
     private static readonly int[] ReviveTimePenaltyUnlockDifficulty =
         { 0, 0 };
     private static readonly int[] AttackSpeedCosts =
-        { 1000, 1500, 2000, 2500 };
+        { 2000, 8000, 16000, 24000 };
     private static readonly int[] AttackSpeedUnlockDifficulty =
-        { 0, 0, 0, 0 };
+        { 2, 3, 4, 5 };
     private static readonly int[] ShieldRechargeTimeCosts =
-        { 1500, 2000 };
+        { 3000, 15000 };
     private static readonly int[] ShieldRechargeTimeUnlockDifficulty =
-        { 0, 0 };
+        { 2, 4 };
     private static readonly int[] MoveSpeedCosts =
-        { 2000, 3000 };
+        { 3000, 12000, 24000, 36000, 48000 };
     private static readonly int[] MoveSpeedUnlockDifficulty =
-        { 0, 0 };
+        { 2, 3, 4, 5, 6 };
     private static readonly int[] DeathPreventionCosts =
         { 3000 };
     private static readonly int[] DeathPreventionUnlockDifficulty =
-        { 0 };
-    // 2026-08-26: every seed below halved (LevelUpStats 4000->2000, LevelUpOptions/MoveSpeedPercent/
-    // StrengthPerLevel 5000->2500, TotalStrengthPercent 10000->5000) — later Threat-Level-gated tiers had
-    // grown too expensive. Rest of each chain re-derived from its own halved seed using rule 1's exact
-    // geometric formula above (still rounded half-up only where unavoidable) — not a flat halving of every
-    // entry, since the growing 1.5^(L-1) crossing exponent means a flat halve-everything pass would drift
-    // off the documented formula by the later tiers.
+        { 2 };
+    // Re-derived 2026-08-29 from the new unified formula (rule 1 above) off the same 2000 seed — every
+    // chain below is now a flat "cost[i-1] + base * effUD(i)" walk, no more geometric crossing exponent.
     private static readonly int[] LevelUpStatsCosts =
-        { 2000, 3000, 4500, 6750, 15188, 22781, 76887, 115330, 583859, 875788 };
+        { 3000, 9000, 18000, 27000, 39000, 39000, 51000, 51000, 63000, 63000 };
     private static readonly int[] LevelUpStatsUnlockDifficulty =
         { 2, 2, 3, 3, 4, 4, 5, 5, 6, 6 };
     private static readonly int[] LevelUpOptionsCosts =
-        { 2500, 3750 };
+        { 2500, 10000 };
     private static readonly int[] LevelUpOptionsUnlockDifficulty =
         { 3, 3 };
-    private static readonly int[] TotalStrengthPercentCosts =
-        { 5000, 7500, 11250, 16875, 37969, 56953, 192217, 288325, 1459646, 2189469 };
-    private static readonly int[] TotalStrengthPercentUnlockDifficulty =
-        { 2, 2, 3, 3, 4, 4, 5, 5, 6, 6 };
     private static readonly int[] MoveSpeedPercentCosts =
-        { 2500, 3750, 8438, 28477, 144163 };
+        { 3000, 12000, 24000, 36000, 48000 };
     private static readonly int[] MoveSpeedPercentUnlockDifficulty =
-        { 2, 3, 4, 5, 6 };
+        { 77, 77, 77, 77, 77 };
     private static readonly int[] StrengthPerLevelCosts =
-        { 2500, 3750, 8438, 28477, 144163 };
+        { 3000, 12000, 24000, 36000, 48000 };
     private static readonly int[] StrengthPerLevelUnlockDifficulty =
         { 2, 3, 4, 5, 6 };
+    private static readonly int[] TotalStrengthPercentCosts =
+        { 5000, 15000, 30000, 45000, 65000, 85000, 110000, 135000, 165000, 195000 };
+    private static readonly int[] TotalStrengthPercentUnlockDifficulty =
+        { 77, 77, 77, 77, 77, 77, 77, 77, 77, 77 };
 
     private static string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
 
@@ -239,8 +226,7 @@ public static class ProgressionManager
 
                 for (int t = 0; t < targetTier; t++)
                 {
-                    int  feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, _data.boughtUpgrades));
-                    long cost    = costs[t] + feePart;
+                    long cost = costs[t];
                     if (_data.totalPoints - _data.spentPoints < cost) break;
                     _data.statTiers[key] = t + 1;
                     _data.boughtUpgrades++;
@@ -371,7 +357,7 @@ public static class ProgressionManager
     public static long AvailablePoints => Data.totalPoints - Data.spentPoints;
     public static int  BoughtUpgrades  => Data.boughtUpgrades;
 
-    public static bool IsShopUnlocked => TotalPoints >= 20;
+    public static bool IsShopUnlocked => TotalPoints >= 50;
 
     public static int HighestUnlockedDifficulty => Data.highestUnlockedDifficulty;
 
@@ -458,7 +444,7 @@ public static class ProgressionManager
         if (statType == StatType.Strength) return true;
         int[] costs = GetStatCosts(statType);
         return costs.Length > 0
-            && TotalPoints >= costs[0] * 10 + BaseFee
+            && TotalPoints >= costs[0] * 10
             && HighestUnlockedDifficulty >= GetTierRequiredDifficulty(statType, 0);
     }
 
@@ -470,7 +456,7 @@ public static class ProgressionManager
         StatType.Strength          => 5f,
         StatType.MaxHealth         => 10f,
         StatType.MoveSpeed         => 1f,
-        StatType.AttackSpeed       => 10f,
+        StatType.AttackSpeed       => 5f,
         StatType.HealthRegen       => 0.2f,
         // Fraction of MaxEnergy per second, not flat units (2026-08-23 rework — see
         // CharacterStatsPD.baseEnergyRegen's own doc comment). 0.0125 = +1.25% per tier (nerfed 2026-08-24
@@ -489,7 +475,7 @@ public static class ProgressionManager
         StatType.LevelUpStats       => 10f,
         StatType.TotalStrengthPercent => 0.1f,
         StatType.MoveSpeedPercent    => 0.1f,
-        StatType.Luck                => 10f,
+        StatType.Luck                => 5f,
         StatType.StrengthPerLevel    => 1f,
         StatType.MaxShield           => 0.05f,
         StatType.ShieldRechargeTime  => -0.5f,
@@ -508,8 +494,7 @@ public static class ProgressionManager
         int[] costs = GetStatCosts(statType);
         int   tier  = GetBaseStatTier(statType);
         if (tier >= costs.Length) return int.MaxValue;
-        int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, BoughtUpgrades));
-        return costs[tier] + feePart;
+        return costs[tier];
     }
 
     public static bool CanUpgradeBaseStat(StatType statType)
@@ -571,18 +556,15 @@ public static class ProgressionManager
         int   tier      = GetBaseStatTier(statType);
         long  total     = 0;
         long  remaining = AvailablePoints;
-        int   simBought = BoughtUpgrades;
         int   difficulty = HighestUnlockedDifficulty;
 
         for (int t = tier; t < costs.Length; t++)
         {
             if (difficulty < GetTierRequiredDifficulty(statType, t)) break;
-            int  feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, simBought));
-            long cost    = costs[t] + feePart;
+            long cost = costs[t];
             if (remaining < cost) break;
             total     += cost;
             remaining -= cost;
-            simBought++;
         }
         return total;
     }
@@ -593,13 +575,8 @@ public static class ProgressionManager
         if (tier == 0) return 0;
         int[] costs = GetStatCosts(statType);
         long refund = 0;
-        int bought = BoughtUpgrades;
         for (int t = tier - 1; t >= 0; t--)
-        {
-            int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, Mathf.Max(0, bought - 1)));
-            refund += costs[t] + feePart;
-            bought--;
-        }
+            refund += costs[t];
         return refund;
     }
 
@@ -609,13 +586,8 @@ public static class ProgressionManager
         if (tier == 0) return;
         int[] costs  = GetStatCosts(statType);
         long  refund = 0;
-        int   bought = BoughtUpgrades;
         for (int t = tier - 1; t >= 0; t--)
-        {
-            int feePart = Mathf.RoundToInt(BaseFee * Mathf.Pow(FeeMultiplier, Mathf.Max(0, bought - 1)));
-            refund += costs[t] + feePart;
-            bought--;
-        }
+            refund += costs[t];
         Data.statTiers.Remove(statType.ToString());
         Data.boughtUpgrades = Mathf.Max(0, Data.boughtUpgrades - tier);
         Data.spentPoints    = System.Math.Max(0L, Data.spentPoints - refund);
@@ -669,9 +641,9 @@ public static class ProgressionManager
     // whichever candidate is iterated first never gets replaced by an exact tie, so iterating AutoBuyPriority
     // in order is what makes "first" mean "earlier in that list" rather than "whatever Enum.GetValues
     // happened to return first." Re-evaluates from scratch after every single purchase, not just once up
-    // front — GetBaseStatUpgradeCost's feePart scales off BoughtUpgrades, which increases with every
-    // purchase, so which stat is cheapest (and even which stats remain affordable at all) can genuinely
-    // change mid-run. Returns how many purchases were made, purely informational for a caller that wants to
+    // front — buying a stat's current tier advances it to its NEXT tier, whose own cost in that stat's
+    // costs[] array is typically different, so which stat is cheapest (and even which stats remain
+    // affordable at all) can genuinely change mid-run. Returns how many purchases were made, purely informational for a caller that wants to
     // report/log it.
     public static int AutoBuy()
     {

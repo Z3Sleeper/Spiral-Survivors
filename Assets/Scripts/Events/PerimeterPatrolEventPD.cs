@@ -82,8 +82,26 @@ public class PerimeterPatrolEventPD : EventBasePD<PerimeterPatrolEventPD.State>
         // PerimeterPatrolGloomPD.Launch to walk toward from there — see that method's own doc comment for
         // why spawning exactly on a vertex was never actually required. Reduces to the old single-random-
         // point behavior at enemyCount == 1 (i=0 always offsets by exactly 0 arc length).
+        //
+        // avoidPlayersOnPlacement (2026-08-29 — this event never read it at all before) rerolls the single
+        // SHARED startArc, not each enemy's own point independently — rerolling per-point would desync the
+        // guaranteed-even-spacing property above (enemy 2 could reroll to a different arc while enemy 3
+        // doesn't). AllSpawnPointsClearPlayers dry-runs the whole batch's positions (GetPointAtArcLength is
+        // pure, side-effect-free) against every candidate startArc until one clears every spawn, or gives up
+        // after maxPlacementAttempts and keeps the last roll — same best-effort-fallback convention
+        // EventManagerPD.TryGetSpawnAreaPoint/TryGetEventSpawnPoint already use, never silently fails.
         float totalLength = PlayableAreaPD.GetLoopLength(perimeter);
-        float startArc = totalLength > 0f ? GameRandom.instance.NextFloat(0f, totalLength) : 0f;
+        float startArc = 0f;
+        if (totalLength > 0f)
+        {
+            const int maxPlacementAttempts = 30;
+            for (int attempt = 0; attempt < maxPlacementAttempts; attempt++)
+            {
+                startArc = GameRandom.instance.NextFloat(0f, totalLength);
+                if (!avoidPlayersOnPlacement || AllSpawnPointsClearPlayers(perimeter, startArc, totalLength))
+                    break;
+            }
+        }
         for (int i = 0; i < enemyCount; i++)
         {
             float arc = startArc + i * totalLength / enemyCount;
@@ -112,6 +130,24 @@ public class PerimeterPatrolEventPD : EventBasePD<PerimeterPatrolEventPD.State>
             if (go.TryGetComponent(out PerimeterPatrolGloomPD patrol))
                 patrol.Launch(startIndex);
         }
+    }
+
+    // Dry-run check for OnEventStart's own reroll loop above — computes what every enemy's spawn position
+    // WOULD be for a candidate startArc (same formula as the real spawn loop, kept in sync by construction
+    // since both read totalLength/enemyCount the same way) without actually creating anything, and returns
+    // false the instant any single one fails IsFarEnoughFromEveryPlayer. playerOffset alone (no separate
+    // footprint radius, unlike EventManagerPD's own TryGetSpawnAreaPoint/TryGetEventSpawnPoint) — a patrol
+    // spawn is a bare point, not an authored zone/dummy with its own radius field to add in.
+    private bool AllSpawnPointsClearPlayers(Vector3[] perimeter, float startArc, float totalLength)
+    {
+        for (int i = 0; i < enemyCount; i++)
+        {
+            float arc = startArc + i * totalLength / enemyCount;
+            Vector3 candidate = PlayableAreaPD.GetPointAtArcLength(perimeter, arc, out _);
+            if (!PlayableAreaPD.IsFarEnoughFromEveryPlayer(new Vector2(candidate.x, candidate.z), playerOffset))
+                return false;
+        }
+        return true;
     }
 
     protected override void Simulate(ref State state, float delta)

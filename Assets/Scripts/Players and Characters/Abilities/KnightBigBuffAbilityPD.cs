@@ -64,10 +64,6 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     [SerializeField] private string[] tags;
     // false (default) — see IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract.
     [SerializeField] private bool activeSurgeBlock = false;
-    // No stat changes granted (see class doc comment) — Taunt is a flag, not a stat. isActive tracks whether
-    // the resulting Berserk Surge is currently active, for cooldown/UI/Taunt-window purposes. Exposed for
-    // live playtesting — see IAbilityPD.IsActionAbility's own doc comment.
-    [SerializeField] private bool isActionAbility = false;
 
     private CharacterStatsPD _stats;
 
@@ -95,7 +91,6 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     // ability slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
     public bool ForcesSpecialAction => false;
     public bool ActiveSurgeBlock => activeSurgeBlock;
-    public bool IsActionAbility => isActionAbility;
     // Same underlying window as IsActive for this ability (the whole buff) — see IAbilityPD.
     // AbilityIsActive's own doc comment for why these are separate interface members even though they
     // agree here.
@@ -192,6 +187,11 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     }
 
     public void NotifyActivationBlocked() { }
+    // Never sets its own ActiveSurgeBlock true — see IAbilityPD.CancelActiveWindow's own doc comment. (Also
+    // moot for a different reason: this ability's whole active window IS a Berserk Surge, so
+    // PlayerControllerPD.CancelSurgeBlockingAbility() only ever runs on the tick a Surge STARTS, before this
+    // could ever be the ability already occupying that Surge.)
+    public void CancelActiveWindow() { }
 
     // _onSurgeEnded fires for ANY Surge ending, not just one this ability itself started (e.g. a plain Surge
     // that was never Berserk at all) — the isActive guard is what makes reacting to it unconditionally safe.

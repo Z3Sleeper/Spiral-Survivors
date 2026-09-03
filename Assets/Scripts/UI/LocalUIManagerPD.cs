@@ -868,14 +868,15 @@ public class LocalUIManagerPD : MonoBehaviour
         bool onCooldown = _ability1.CooldownRemaining > 0f && !_ability1.AbilityIsActive;
         // BG is shown more broadly — real cooldown, any OTHER not-ready reason, a hard lockout (a locking
         // ability elsewhere is active, or isSpecialMoving/stunned — see PlayerControllerPD.IsLockedOut's own
-        // doc comment), or blocked by actively dashing OR a Berserk-Surge-style forced Surge (only for an
-        // action ability — see IAbilityPD.IsActionAbility's own doc comment, same condition
-        // PlayerControllerPD.Simulate() itself gates Activate() on) — even though the ability itself may
-        // otherwise be fully ready. The countdown TEXT and the CDFill overlay itself both stay tied to actual
-        // cooldown only (onCooldown above) — none of the other reasons have a timer/depletion to show, so
-        // both would just read as stale/wrong if they followed the BG here.
+        // doc comment), or blocked by a Berserk-Surge-style forced Surge while this ability's own
+        // ActiveSurgeBlock is true (2026-08-31, was IsActionAbility + dashing — dash no longer blocks any
+        // ability at all, see PlayerControllerPD.Simulate()'s own ability-activation block for the current
+        // rules this mirrors) — even though the ability itself may otherwise be fully ready. The countdown
+        // TEXT and the CDFill overlay itself both stay tied to actual cooldown only (onCooldown above) — none
+        // of the other reasons have a timer/depletion to show, so both would just read as stale/wrong if they
+        // followed the BG here.
         bool showBG = !_ability1.IsReady || (_controller != null && _controller.IsLockedOut)
-            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability1.IsActionAbility);
+            || (_stats.IsForcedSurging && _ability1.ActiveSurgeBlock);
         if (showBG != _ability1CooldownUIShown)
         {
             _ability1CooldownUIShown = showBG;
@@ -930,7 +931,7 @@ public class LocalUIManagerPD : MonoBehaviour
         bool onCooldown = _ability2.CooldownRemaining > 0f && !_ability2.AbilityIsActive;
         // See UpdateAbility1's own identical comment for the full BG-visibility reasoning.
         bool showBG = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut)
-            || (((_controller != null && _controller.IsDashing) || _stats.IsForcedSurging) && _ability2.IsActionAbility);
+            || (_stats.IsForcedSurging && _ability2.ActiveSurgeBlock);
         if (showBG != _ability2CooldownUIShown)
         {
             _ability2CooldownUIShown = showBG;
