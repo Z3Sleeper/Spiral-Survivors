@@ -39,8 +39,9 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // Surge events live on CharacterStatsPD instead, since StartSurge()/TryEndSurge() are defined there.
     private PredictedEvent _onDashStarted;
     // Fires only on a NATURAL dash end (timer ran out) — NOT on Interrupt(), see _onDashInterrupted below.
-    // "Reward on completion" listeners (DashExplosionAugment/DashHealAugment/PhantomBladeOnDashAugment) rely
-    // on this distinction: an interrupted dash shouldn't still pay out its on-end effect.
+    // "Reward on completion" listeners (DashExplosionAugment/DashHealAugment) rely on this distinction: an
+    // interrupted dash shouldn't still pay out its on-end effect. PhantomBladeOnDashAugment moved to
+    // _onDashStarted instead (2026-09-14, was a dash-end listener).
     private PredictedEvent _onDashEnded;
     // Fires INSTEAD of _onDashEnded when Interrupt() cuts a dash short — for listeners that care specifically
     // whether the dash was cut short vs. completed naturally. Listeners that just need to know the movement
@@ -55,6 +56,17 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // movement-window listener's window (DashThroughInterruptAugment's sweep — see its own doc comment).
     private PredictedEvent _onDashMovementStarted;
     private PredictedEvent _onDashMovementEnded;
+    // Fires ONLY from StartDash()/EndDash() themselves (2026-09-03) — never from NotifyDashStarted()/
+    // NotifyDashEnded(), which both ability-driven dash-like movement (RogueSpinAbilityPD's leap,
+    // BWBlinkAbilityPD) AND DashEffectDoubleTriggerAugment's own delayed retrigger call into. That augment
+    // used to listen to the very _onDashStarted/_onDashEnded pair its own retrigger fires, which both
+    // caused an infinite self-retrigger loop (fixed with a reentrancy guard) AND meant a quick RogueSpin/
+    // BWBlink cast within the retrigger window could stomp/drop a real dash's own pending retrigger (the
+    // guard didn't fix that part). This pair exists so that augment can listen to "a genuine real dash
+    // started/ended" specifically, completely decoupled from anything NotifyDashStarted/NotifyDashEnded
+    // ever fires into — eliminates both problems at the root instead of guarding around them.
+    private PredictedEvent _onRealDashStarted;
+    private PredictedEvent _onRealDashEnded;
 
     public void AddDashStartedListener(System.Action listener) => _onDashStarted.AddListener(listener);
     public void RemoveDashStartedListener(System.Action listener) => _onDashStarted.RemoveListener(listener);
@@ -68,6 +80,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     public void RemoveDashMovementStartedListener(System.Action listener) => _onDashMovementStarted.RemoveListener(listener);
     public void AddDashMovementEndedListener(System.Action listener) => _onDashMovementEnded.AddListener(listener);
     public void RemoveDashMovementEndedListener(System.Action listener) => _onDashMovementEnded.RemoveListener(listener);
+    public void AddRealDashStartedListener(System.Action listener) => _onRealDashStarted.AddListener(listener);
+    public void RemoveRealDashStartedListener(System.Action listener) => _onRealDashStarted.RemoveListener(listener);
+    public void AddRealDashEndedListener(System.Action listener) => _onRealDashEnded.AddListener(listener);
+    public void RemoveRealDashEndedListener(System.Action listener) => _onRealDashEnded.RemoveListener(listener);
 
     // Lets an ability that functions like a dash (e.g. RogueSpinAbilityPD's leap) hook into the same
     // OnDashStarted/OnDashEnded listeners a real dash already fires (DashExplosionAugment, DashHealAugment,
@@ -82,6 +98,13 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // matching what the real dash's own StartDash/EndDash do automatically (see their own call sites).
     public void NotifyDashMovementStarted() => _onDashMovementStarted.Invoke();
     public void NotifyDashMovementEnded() => _onDashMovementEnded.Invoke();
+    // Same "caller decides" contract — every ability-driven dash-like movement call site fires this
+    // alongside its own NotifyDashStarted/NotifyDashEnded (2026-09-03, RogueSpinAbilityPD/BWBlinkAbilityPD)
+    // so DashEffectDoubleTriggerAugment still treats an ability-driven dash-like action as a genuine trigger
+    // worth retriggering — see _onRealDashStarted's own field comment for why this is a separate pair
+    // rather than that augment listening to _onDashStarted/_onDashEnded directly.
+    public void NotifyRealDashStarted() => _onRealDashStarted.Invoke();
+    public void NotifyRealDashEnded() => _onRealDashEnded.Invoke();
 
     // Grants back one dash charge, clamped to the character's own current max — e.g.
     // DashThroughInterruptAugment refunding a charge on a successful interrupt. Doesn't touch
@@ -148,6 +171,12 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // feedback on your own click matters more than the extra tick of latency verifiedState would add.
     public bool IsReady => currentState.isReady;
     public bool IsDashing => currentState.isDashing;
+    // Exposed (2026-09-03) so CharacterStatsPD.IFriendlyPD.IsDashingOrLeaping can OR this in alongside
+    // IsDashing itself — enemy dash-tracking (EnemyBasePD.HandleOffsetChase) needs to freeze on a player
+    // during RogueSpin's leap the same as it does during a real dash, since both are equally "moving too
+    // fast to chase live" from an enemy's perspective, even though they're deliberately separate flags
+    // here (see this class's own isDashing doc comment for why a real dash never sets isSpecialMoving).
+    public bool IsSpecialMoving => currentState.isSpecialMoving;
     // True while either ability slot is currently forcing a special action on this player — isSpecialMoving,
     // or an ability whose IAbilityPD.ForcesSpecialAction is true and IsActive (e.g. RogueSpinAbilityPD's
     // leap). A non-locking ability (ForcesSpecialAction false, e.g. RogueVanishAbilityPD — it only flips
@@ -286,6 +315,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _onSpecialMovementInterrupted = new PredictedEvent(predictionManager, this);
         _onDashMovementStarted = new PredictedEvent(predictionManager, this);
         _onDashMovementEnded   = new PredictedEvent(predictionManager, this);
+        _onRealDashStarted = new PredictedEvent(predictionManager, this);
+        _onRealDashEnded   = new PredictedEvent(predictionManager, this);
 
         if (!isOwner) return;
         _input = new InputSystem_Actions();
@@ -741,6 +772,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _rigidbody.velocity = Vector3.zero;
         _onDashStarted.Invoke();
         _onDashMovementStarted.Invoke();
+        _onRealDashStarted.Invoke();
     }
 
     // interrupted: false for the natural end (Simulate()'s own dashTimer<=0 check) — fires _onDashEnded as
@@ -761,6 +793,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         else
         {
             _onDashEnded.Invoke();
+            _onRealDashEnded.Invoke();
         }
         // Movement window closes regardless of why — see _onDashMovementEnded's own field comment.
         _onDashMovementEnded.Invoke();

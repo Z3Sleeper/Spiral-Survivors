@@ -229,6 +229,19 @@ namespace PurrLobby
             }
         }
 
+        // Re-attempts Steam initialization if the current provider is Steam-based and Steam isn't currently
+        // available yet — see SteamLobbyProvider.EnsureSteamInitialized's own doc comment for the full
+        // reasoning (the game's own boot-time SteamAPI.Init() is a one-shot attempt with no automatic retry).
+        // No-ops (returns true) for any other provider type, or if Steam's already available. Call this
+        // right before a Create/Join attempt — LobbySceneController.OnCreateLobbyClicked/OnJoinLobbyClicked
+        // both do.
+        public bool EnsureProviderReady()
+        {
+            if (_currentProvider is SteamLobbyProvider steamProvider)
+                return steamProvider.EnsureSteamInitialized();
+            return true;
+        }
+
         /// <summary>
         /// Set or switch the current provider
         /// </summary>
@@ -421,19 +434,22 @@ namespace PurrLobby
                 OnRoomJoinFailed?.Invoke("Null or empty room ID.");
                 return;
             }
-            
+
+            // Vendored fix (2026-09-12), re-apply if this package is ever updated — this used to ALSO fire
+            // OnRoomJoined/OnRoomJoinFailed itself based on room.IsValid, duplicating events the provider
+            // already fires on every path (OnLobbyUpdated on success, OnLobbyJoinFailed on every failure —
+            // see SteamLobbyProvider.JoinLobbyAsync's own doc comments), both already relayed into these
+            // same LobbyManager events by SubscribeToProviderEvents. The success duplicate was invisible
+            // (LobbySceneController.OnRoomJoined's own _initializedForLobby guard silently swallowed it),
+            // but the failure duplicate wasn't — confirmed live, a real join failure fired OnRoomJoinFailed
+            // TWICE: once with this method's own generic "Failed to join room X" (fired synchronously,
+            // inline) and once with the provider's own actual reason (fired one frame later via
+            // InvokeDelayed), stepping on whichever UI reads the message. Now just awaits the call and lets
+            // the provider's own already-firing events be the single source of truth for both outcomes.
             RunTask(async () =>
             {
                 EnsureProviderSet();
-                var room = await _currentProvider.JoinLobbyAsync(roomId);
-                if (room.IsValid)
-                {
-                    OnRoomJoined?.Invoke(room);
-                }
-                else
-                {
-                    OnRoomJoinFailed?.Invoke($"Failed to join room {roomId}");
-                }
+                await _currentProvider.JoinLobbyAsync(roomId);
             });
         }
 

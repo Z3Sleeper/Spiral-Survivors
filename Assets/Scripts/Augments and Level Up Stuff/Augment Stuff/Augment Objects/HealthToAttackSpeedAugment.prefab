@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d1b07e186fea759439e2e9f1e0b9255d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthToAttackSpeedAugment
-  bonusHealthToAttackSpeedPercent: 0.0025
+  bonusHealthToAttackSpeedPercent: 0.002
   belowHalfHealthMultiplier: 2
-  maxHealthGrant: 20
+  maxHealthGrant: 10

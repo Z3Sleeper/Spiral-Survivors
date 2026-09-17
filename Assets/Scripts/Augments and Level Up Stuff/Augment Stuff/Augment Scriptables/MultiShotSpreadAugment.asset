@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#3278FF>Choke</color>
   description: '<color=#3278FF>Multishot Projectile Spread</color> is <color=#FFA000>reduced</color>
-    by <color=#3278FF>80%</color>.
+    by <color=#3278FF>85%</color>.
 
     <color=#FFA000>+100% Knockback</color>'
   icon: {fileID: 21300000, guid: f2c8a7fb8497a4746b04f47c4f7d2a9a, type: 3}

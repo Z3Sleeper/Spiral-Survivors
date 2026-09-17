@@ -101,8 +101,10 @@ public class GamePresets : MonoBehaviour
         // SteamLobbyProvider's own free-floating RunSteamCallbacks() loop (still mid-cycle on the same main
         // thread) and caused a real native crash (access violation inside
         // SteamAPI_ManualDispatch_GetNextCallback) when that loop's next tick called RunCallbacks() against
-        // an already-shut-down dispatcher. This just signals the flag; the loop calls the real Shutdown()
-        // itself, from the only place that's actually safe to — see RequestSteamShutdown()'s own doc comment.
+        // an already-shut-down dispatcher. RequestSteamShutdown() itself now calls the real, idempotent
+        // Shutdown() synchronously right here (2026-08-12 fix — it used to only set a stop flag for the
+        // async loop's own next Task.Delay continuation to notice, which the Editor frequently never resumed
+        // after Stop) — see that method's own doc comment for the full reasoning.
         Debug.Log("[GamePresets] OnApplicationQuit: requesting SteamAPI shutdown.");
         SteamLobbyProvider.RequestSteamShutdown();
     }

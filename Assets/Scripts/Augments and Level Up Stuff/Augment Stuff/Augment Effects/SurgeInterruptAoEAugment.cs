@@ -9,38 +9,54 @@ using UnityEngine;
 // extra tax bolted on to balance a mechanic that no longer exists. Two parts, both on this one augment
 // (Surge/Energy family):
 //
-// 1. (AoE Effects) On EVERY Surge Start, gated by an energy-SPENT requirement instead of a full-energy
-//    requirement (2026-08-29 rework #2 — was "only if that Surge started at full energy," which itself
-//    replaced an even earlier "every Surge Start AND every Surge End, unconditionally"; both of those were
-//    live-tested and found to either spam trivially or force an awkward always-be-at-max-energy playstyle).
-//    Instead: currentState.energySpentSinceLastBurst accumulates every CharacterStatsPD._onEnergySpent
-//    event (see EnergySpentData's own doc comment — Surge's own activation cost AND its ongoing per-tick
-//    drain both route through this one event, "the only energy-spend source in this codebase") since the
-//    last qualifying burst; a Surge Start only actually casts once that running total reaches
+// 1. (AoE Effects) On EVERY Surge End, gated by an energy-SPENT requirement instead of a full-energy
+//    requirement (2026-09-06 — moved from Surge Start; a much more natural activation path, since ending
+//    Surge is exactly when you've actually finished spending the energy that gates this, rather than
+//    checking spent-so-far at the moment a fresh Surge merely begins. 2026-08-29 rework #2 before that was
+//    "only if that Surge started at full energy," which itself replaced an even earlier "every Surge Start
+//    AND every Surge End, unconditionally"; both of those were live-tested and found to either spam
+//    trivially or force an awkward always-be-at-max-energy playstyle). Instead:
+//    currentState.energySpentSinceLastBurst accumulates every CharacterStatsPD._onEnergySpent event (see
+//    EnergySpentData's own doc comment — Surge's own activation cost AND its ongoing per-tick drain both
+//    route through this one event, "the only energy-spend source in this codebase") since the last
+//    qualifying burst; a Surge End only actually casts once that running total reaches
 //    energySpentRequirement (exposed, tunable — default 50), then resets it to 0 for the next burst to
-//    accumulate toward. The VERY FIRST Surge Start after picking this augment always qualifies regardless
-//    of energy-spent history — GetInitialState() seeds energySpentSinceLastBurst to float.MaxValue rather
-//    than 0, so there's no awkward "can't use it at all until you've already spent 50 energy on nothing"
-//    dead window right after picking it. This resolves the spamming problem the earlier full-energy gate
-//    was fighting without imposing a "must be at max energy to activate Surge at all" restriction on how the
+//    accumulate toward. The VERY FIRST Surge End after picking this augment always qualifies regardless of
+//    energy-spent history — GetInitialState() seeds energySpentSinceLastBurst to float.MaxValue rather than
+//    0, so there's no awkward "can't use it at all until you've already spent 50 energy on nothing" dead
+//    window right after picking it. This resolves the spamming problem the earlier full-energy gate was
+//    fighting without imposing a "must be at max energy to activate Surge at all" restriction on how the
 //    player actually plays — pure Surge-usage volume gates it now, not a snapshot of energy at the instant
-//    of activation.
+//    of activation. Fires on ANY Surge ending (normal or Berserk/forced) — no special-casing between them,
+//    since the gate is purely about energy spent, not which kind of Surge produced it.
 //
 //    Interrupt every enemy in radius, via the shared AreaEffectCastHelper/AreaEffectPD chain (same one
 //    DashExplosionAugment/ShieldBreakBurstAugment use) — radius scales with Stats.AreaEffectSize (via
-//    Stats.RangeScalingAoEBase * radiusMultiplier, the standardized "AoE Effects" radius formula), and the
-//    whole cast repeats Stats.AreaEffectCount times. Pure interrupt only (2026-08-25, was also dealing
-//    damagePercent unpenalized Strength and applying normal player knockback — removed, this augment is
-//    interrupt-only now, no damage/knockback component at all) — dealDamage/hasKnockback both left at
+//    Stats.RangeScalingAoEBase * radiusMultiplier, the standardized "AoE Effects" radius formula) — a flat
+//    single cast (Stats.AreaEffectCount, the stat that used to let this repeat, was removed entirely
+//    2026-09-13). Pure interrupt (+ a paired stun, see below) only
+//    (2026-08-25, was also dealing damagePercent unpenalized Strength and applying normal player knockback —
+//    removed, this augment has no damage/knockback component at all) — dealDamage/hasKnockback both left at
 //    Launch()'s own default (false), same "leave it at default rather than pass it" convention
 //    AreaEffectCastHelper's own doc comment establishes for a non-damaging cast.
 //
 //    A successful interrupt is paired with CharacterStatsPD.NotifyInterrupted(enemy, ref
-//    currentState.firedFsiThisBurst) — currentState.firedFsiThisBurst resets at the start of each qualifying
-//    burst, so every burst gets its own independent "first successful interrupt fires the GLOBAL
-//    FirstSuccessfulInterrupt (FSI) event" opportunity; every OTHER interrupt within that same burst only
-//    fires the plain SuccessfulInterrupt (SI) event, same per-activation scoping the old on-strike design
-//    used, just now per-burst instead of per-strike.
+//    currentState.firedFsiThisBurst, pairedStunDuration) — currentState.firedFsiThisBurst resets at the
+//    start of each qualifying burst, so every burst gets its own independent "first successful interrupt
+//    fires the GLOBAL FirstSuccessfulInterrupt (FSI) event" opportunity; every OTHER interrupt within that
+//    same burst only fires the plain SuccessfulInterrupt (SI) event, same per-activation scoping the old
+//    on-strike design used, just now per-burst instead of per-strike. pairedStunDuration (2026-09-06, added
+//    back — default 1f) rides NotifyInterrupted's own existing "additional stun on top of the automatic
+//    flat interrupt-stun" parameter (see its own doc comment — the two combine via Mathf.Max into one total
+//    true-stun, this portion IS scaled by crowdControlResist unlike the automatic flat portion).
+//
+//    CastAoE's Launch() call ALSO passes pairedStunDuration as a plain onEnemyHit Stun() (2026-09-08 fix,
+//    was missing — matches KnightAreaStunHealAbilityPD's own identical dual-layer shape) — Interrupt()
+//    itself only ever succeeds against an enemy currently CanBeInterrupted (mid-windup/dash/attack), so
+//    relying on the NotifyInterrupted-paired stun ALONE meant an enemy simply idling/walking when the burst
+//    landed got no stun at all. Now every enemy this cast hits gets the plain Stun() unconditionally, and
+//    one ALSO successfully interrupted additionally gets InterruptTrueStun's bonus layered on top —
+//    ApplyStun's own Mathf.Max semantics mean the two calls can never fight each other.
 //
 // 2. Passive, always active regardless of Surge state: subscribes to the GENERIC SuccessfulInterrupt (SI)
 //    event — fires on EVERY successful interrupt, from ANY source (a dash, AxeThrow, Knight's stun heal,
@@ -64,7 +80,7 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
         public bool  firedFsiThisBurst;
         // Running total of energy spent (CharacterStatsPD._onEnergySpent) since the last qualifying burst —
         // see class doc comment #1 for the full gate mechanic. Seeded to float.MaxValue by GetInitialState()
-        // below, not 0, so the very first Surge Start after picking this augment always qualifies.
+        // below, not 0, so the very first Surge End after picking this augment always qualifies.
         public float energySpentSinceLastBurst;
         // Permanent — never reset, unlike energySpentSinceLastBurst above. See OnSuccessfulInterrupt's own
         // doc comment for the stacking Max Energy grant this drives.
@@ -79,9 +95,12 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
         return s;
     }
 
-    // Requirement is exposed (2026-08-29) so it can be tuned without a recompile — default 50.
-    [Header("Activation Gate")]
-    [SerializeField] private float energySpentRequirement = 50f;
+    // Requirement is exposed (2026-08-29) so it can be tuned without a recompile — default 50. Whole numbers
+    // only (2026-09-17, was a plain float) — Surge Cost itself is always a whole number in practice, and
+    // this gate is denominated in the same units, so this is now enforced at the type level rather than left
+    // as an unenforced convention. SurgeEnergySpentMoveSpeedAugment's own energySpentRequirement got the
+    // identical treatment, same day, same reasoning.
+    [SerializeField] private int energySpentRequirement = 50;
 
     [Header("On Successful Interrupt — Stacking Permanent Max Energy")]
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
@@ -105,27 +124,28 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
     // every PredictedEvent in this class) fires exactly once per real occurrence regardless of resimulation.
     private float _lastAppliedMaxEnergy;
 
-    [Header("AoE Effect — On Surge Start (gated by energy spent)")]
+    [Header("AoE Effect — On Surge End (gated by energy spent)")]
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — standardized "AoE Effects" formula (see class
     // doc comment). 1 is the neutral default; tune per-augment feel without touching the WeaponRange/
     // AreaEffectSize scaling itself.
     [SerializeField] private float radiusMultiplier = 1.25f;
-    // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
-    [SerializeField] private float retriggerRate = 0.5f;
+    // Rides NotifyInterrupted's own "additional stun on top of the automatic flat interrupt-stun" parameter
+    // (2026-09-06, added back) — see class doc comment #1 for the full combination shape.
+    [SerializeField] private float pairedStunDuration = 1f;
 
     [Header("VFX")]
     // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
     [SerializeField] private GameObject radiusVFXPrefab;
 
-    // Spawned on every qualifying Surge Start — pooled, so this is cheap even when AreaEffectCount is just
+    // Spawned on every qualifying Surge End — pooled, so this is cheap even when AreaEffectCount is just
     // 1. Must be registered in PredictedPrefabs.asset like any other spawned effect. Can reuse the exact
     // same AreaEffectPD prefab DashExplosionAugment/ShieldBreakBurstAugment use, since the class itself
     // isn't tied to any one augment.
-    [Header("Chain (spawned on a qualifying Surge Start)")]
+    [Header("Chain (spawned on a qualifying Surge End)")]
     [SerializeField] private GameObject chainPrefab;
 
     // Permanent buff-bar icon (2026-08-29) — unlike every duration-timed buff icon elsewhere in this
-    // codebase (SurgeEndMoveSpeedAugment, OnFirstDodgeGain*), this one is never removed once granted; it's
+    // codebase (SurgeEnergySpentMoveSpeedAugment, OnDodgeGain*), this one is never removed once granted; it's
     // always visible for the rest of the match once picked, tracking gate PROGRESS instead of a countdown.
     // See UpdateView below for the fill/text mapping.
     [Header("Buff Bar")]
@@ -134,7 +154,7 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
 
     protected override void OnApply()
     {
-        Stats.AddSurgeStartedListener(OnSurgeStarted);
+        Stats.AddSurgeEndedListener(OnSurgeEnded);
         Stats.AddSuccessfulInterruptListener(OnSuccessfulInterrupt);
         Stats.AddEnergySpentListener(OnEnergySpent);
         // Re-values every already-earned stack the instant StackPower itself changes (2026-09-02), not just
@@ -151,7 +171,7 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
         if (_buffIconInstance != null && BuffBarPD.instance != null)
             BuffBarPD.instance.RemoveBuffIcon(_buffIconInstance);
         if (Stats == null) return;
-        Stats.RemoveSurgeStartedListener(OnSurgeStarted);
+        Stats.RemoveSurgeEndedListener(OnSurgeEnded);
         Stats.RemoveSuccessfulInterruptListener(OnSuccessfulInterrupt);
         Stats.RemoveEnergySpentListener(OnEnergySpent);
         Stats.RemoveStackPowerChangedListener(OnStackPowerChanged);
@@ -187,8 +207,8 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
     private void OnEnergySpent(EnergySpentData data) => currentState.energySpentSinceLastBurst += data.amount;
 
     // Only bursts once energySpentSinceLastBurst has reached energySpentRequirement — see class doc comment
-    // #1 for the full gate mechanic (and why the very first Surge Start always qualifies regardless).
-    private void OnSurgeStarted()
+    // #1 for the full gate mechanic (and why the very first Surge End always qualifies regardless).
+    private void OnSurgeEnded()
     {
         if (Stats == null) return;
         if (currentState.energySpentSinceLastBurst < energySpentRequirement) return;
@@ -205,21 +225,30 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
 
         Vector3 castPosition = Stats.transform.position;
         float radius = Stats.RangeScalingAoEBase * radiusMultiplier;
-        int totalCasts = Mathf.Max(1, Stats.AreaEffectCount);
 
         var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
         if (!chainId.HasValue) return;
 
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-            chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-                interrupt: true, onSuccessfulInterrupt: OnAoEInterrupt, vfxPerCast: true);
+            // onEnemyHit (2026-09-08 fix, was missing entirely) — same layering shape
+            // KnightAreaStunHealAbilityPD's own TriggerAoE uses: pairedStunDuration lands on EVERY enemy
+            // this cast hits, unconditionally, via a direct Stun() call. Without this, the ONLY stun this
+            // augment ever applied was NotifyInterrupted's own paired-stun bonus below, which only fires for
+            // enemies Interrupt() actually succeeds on (CanBeInterrupted true — mid-windup/dash/attack) — an
+            // enemy simply idling or walking when the burst landed got no stun at all. Now every hit enemy
+            // gets the plain Stun() unconditionally, and an enemy ALSO successfully interrupted additionally
+            // gets InterruptTrueStun's bonus layered on top via OnAoEInterrupt below — ApplyStun's own
+            // Mathf.Max semantics mean the two calls can never fight each other.
+            chain.Launch(Stats, castPosition, radius, radiusVFXPrefab,
+                interrupt: true, onEnemyHit: enemy => enemy.Stun(pairedStunDuration),
+                onSuccessfulInterrupt: OnAoEInterrupt, vfxPerCast: true);
     }
 
     // Named method, not an inline lambda — currentState is a ref-returning property on the PD base class, and
     // a ref field access like this can't be captured inside a C# closure. A plain instance method sidesteps
     // that entirely since it re-resolves currentState fresh each time it's actually invoked.
-    private void OnAoEInterrupt(IEnemyPD enemy) => Stats.NotifyInterrupted(enemy, ref currentState.firedFsiThisBurst);
+    private void OnAoEInterrupt(IEnemyPD enemy) => Stats.NotifyInterrupted(enemy, ref currentState.firedFsiThisBurst, pairedStunDuration);
 
     // Fires on EVERY successful interrupt, any source — see class doc comment #2 for why SI, not FSI, and
     // for the full stacking-grant reasoning.

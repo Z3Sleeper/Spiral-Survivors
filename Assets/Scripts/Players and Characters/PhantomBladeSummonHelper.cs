@@ -16,6 +16,9 @@ public struct PhantomBladeSummonData
     public float damage;
     public float size;
     public bool isCrit;
+    // Whether this blade's own damage roll highrolled (2026-09-14) — carried the same way isCrit is, so a
+    // Carnival copy shares the original's real highroll status instead of defaulting to false.
+    public bool isHighroll;
     public float baseDamageMultiplier;
 }
 
@@ -128,13 +131,13 @@ public static class PhantomBladeSummonHelper
         float damage = rolled * stats.Strength
             * (1f + stats.phantomBladeDamageBonus) * stats.phantomBladeDamageBonusPercent * stats.phantomBladeDamagePenalty;
 
-        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, baseDamageMultiplier, color);
+        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, isHighroll, baseDamageMultiplier, color);
 
         // Structurally recursion-proof, not just guarded: SummonCopyAtTarget (below) never calls back into
         // SummonAtTarget, so there is no path from a copy back into this notify no matter how many
         // "hit summon, do something" listeners end up subscribed.
         if (notifySummon)
-            stats.NotifyPhantomBladeSummon(new PhantomBladeSummonData { target = target.ObjectId, damage = damage, size = size, isCrit = isCrit, baseDamageMultiplier = baseDamageMultiplier });
+            stats.NotifyPhantomBladeSummon(new PhantomBladeSummonData { target = target.ObjectId, damage = damage, size = size, isCrit = isCrit, isHighroll = isHighroll, baseDamageMultiplier = baseDamageMultiplier });
     }
 
     // "Exact copy" of an already-resolved primary summon — same damage/size/crit status (no fresh roll),
@@ -148,10 +151,10 @@ public static class PhantomBladeSummonHelper
     // color field at all; Carnival always tints its own copy with its own bladeColor, regardless of which
     // augment triggered the original.
     public static void SummonCopyAtTarget(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit,
+        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit, bool isHighroll,
         float baseDamageMultiplier, Color color)
     {
-        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, baseDamageMultiplier, color);
+        SpawnBlade(hierarchy, phantomBladePrefab, stats, target, damage, size, isCrit, isHighroll, baseDamageMultiplier, color);
     }
 
     // Fixed-radius, random-angle offset around the target — matches old (Random.insideUnitCircle.normalized
@@ -159,7 +162,7 @@ public static class PhantomBladeSummonHelper
     // convention as KingSpikePD's remote-burst offset. Shared by both the primary and copy paths, so every
     // call (including a Carnival copy of the same primary summon) independently rolls its own fresh angle.
     private static void SpawnBlade(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
-        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit,
+        CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit, bool isHighroll,
         float baseDamageMultiplier, Color color)
     {
         float radius = PhantomBladePD.BaseSpawnRadius * size;
@@ -172,6 +175,6 @@ public static class PhantomBladeSummonHelper
         if (!id.HasValue) return;
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out PhantomBladePD blade))
-            blade.Summon(stats, damage, size, isCrit, baseDamageMultiplier, color);
+            blade.Summon(stats, damage, size, isCrit, isHighroll, baseDamageMultiplier, color);
     }
 }

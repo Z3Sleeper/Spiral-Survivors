@@ -100,6 +100,9 @@ public interface IEnemyPD
     // kill-triggered effect (e.g. OnKillLaunchEnemiesAugment) can inherit the killing hit's crit status
     // instead of rolling its own independent chance.
     bool WasKilledByCrit { get; }
+    // Same as WasKilledByCrit above, for highroll (2026-09-14, extended to match) — whether the specific hit
+    // that killed this enemy was itself a highroll.
+    bool WasKilledByHighroll { get; }
     string EnemyName { get; }
     // 1 = full time remaining before enraging, 0 = enraged (or this enemy isn't a Boss — enrage is
     // Boss-only). Same generic-regardless-of-TState reasoning as every other member here.
@@ -158,7 +161,11 @@ public interface IEnemyPD
     // primitive, caller decides when to revert" shape as SetInvulnerable/SetHurtboxDisabled — overridden=false
     // ignores whatever `damage` was last passed, so callers don't need to separately track/restore anything.
     void SetDamageOverride(bool overridden, float damage = 0f);
-    void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner);
+    // isHighroll: default false, trailing/optional (2026-09-14) — every existing caller compiles unchanged;
+    // only a caller with a real isHighroll value in scope (a real weapon strike, or an onhit/onstrike effect
+    // inheriting data.isHighroll) needs to pass it, so WasKilledByHighroll below reflects the actual killing
+    // hit's status regardless of which source lands it.
+    void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner, bool isHighroll = false);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
     // multiplier is how much of normal move speed remains while active (e.g. 0.5 = half speed), not a
@@ -210,17 +217,31 @@ public interface IEnemyPD
     // own doc comment. Read-only; callers don't set this directly, it's derived from orbit state.
     bool IsBeingHeld { get; }
 
-    // True exactly while this held enemy has finished its own Pulling-phase lerp (OrbitTarget's own
-    // orbitPullElapsed >= orbitPullDuration) and is frozen at its slot awaiting BeginOrbiting() — i.e. it has
-    // genuinely ARRIVED, not just "enough time should have passed." Added (2026-08-31) so a holder's own
-    // per-ring release gate (KingOrbiterPD/OrbiterGloomPD's Pulling case) can query this directly instead of
-    // independently re-deriving an equivalent time threshold from the same constants and hoping the two stay
-    // in sync — see EnemyBaseState.orbitPullElapsed's own doc comment for the fragility this replaces. A
-    // caller gating a ring's release on this should also treat a dead member as non-blocking (IsDead) — a
-    // pleb that dies mid-Pulling never reaches WaitingToOrbit (LateSimulate's own isDead/wiped early-return
-    // means orbitPullElapsed simply stops advancing), so waiting on IsWaitingToOrbit alone would stall that
-    // ring's release forever.
+    // True exactly while this held enemy has finished its own Pulling-phase MoveTowards (reached the orbit
+    // slot exactly, see OrbitTarget's own doc comment) and is frozen there awaiting BeginOrbiting() — i.e.
+    // it has genuinely ARRIVED, not just "enough time should have passed." Added (2026-08-31, back when
+    // Pulling was still duration-based) so a holder's own per-ring release gate (KingOrbiterPD/
+    // OrbiterGloomPD's Pulling case) can query this directly instead of independently re-deriving an
+    // equivalent time threshold from the same constants and hoping the two stay in sync — that reasoning
+    // held even more once Pulling became speed-based (2026-09-12), since a flat speed means different
+    // pulls now genuinely take different amounts of real time, so there's no shared duration constant left
+    // to derive an estimate from at all. A caller gating a ring's release on this should also treat a dead
+    // member as non-blocking (IsDead) — a pleb that dies mid-Pulling never reaches WaitingToOrbit
+    // (LateSimulate's own isDead/wiped early-return means it simply stops moving toward its slot), so
+    // waiting on IsWaitingToOrbit alone would stall that ring's release forever.
     bool IsWaitingToOrbit { get; }
+
+    // True only while orbitPhase is EXACTLY Pulling — 2026-09-16, added alongside the fix for a real bug this
+    // gap enabled: KingOrbiterPD.UpdatePullLineIndicators used to exclude a pleb from its active-indicator
+    // list via `enemy.IsWaitingToOrbit` (a strict equality against ONE specific enum value), intending "stop
+    // showing the indicator once this pleb has arrived." But EnemyOrbitPhase has a THIRD value past that —
+    // Orbiting — which a pleb's own ring releases it into (EndPullingRing -> BeginOrbiting) independently of
+    // whether the KING's own overall phase is still "Pulling" for OTHER, still-in-progress rings. Once a
+    // pleb moved from WaitingToOrbit to Orbiting, `IsWaitingToOrbit` read false again, silently re-admitting
+    // it into the active list — using its now-genuinely-orbiting live position — until every other ring also
+    // finished. Use this instead for any "is this pleb's pull movement still actually ongoing" check —
+    // inclusive of the correct state, not exclusive of one specific wrong one.
+    bool IsPulling { get; }
 
     // True exactly while this enemy is mid-flight from a LaunchAlong() call (EnemyBaseState.launchActive),
     // false once it's actually finished traveling its full distance. Added (2026-08-31) for the same reason
@@ -290,17 +311,24 @@ public interface IEnemyPD
     // `targetAngleDeg`'s current-tick target position for the very first pull-position lerp step; every tick
     // afterward this enemy re-resolves `owner`'s LIVE position itself (see EnemyBasePD.LateSimulate()'s own
     // doc comment for why that has to happen in ITS OWN LateSimulate(), not be pushed in by the owner). Pull
-    // phase: this enemy's OWN current world position (captured here, at the instant of the call) is straight-
-    // line-lerped toward `owner`'s live position + the `targetAngleDeg`/`radius` orbit slot, over
-    // `pullDuration` seconds — a Cartesian lerp, not a radius-only lerp, so it visibly moves toward wherever
-    // it's actually going to end up rather than snapping sideways onto the target angle first. Once the pull
-    // lerp completes this enemy does NOT start orbiting automatically anymore (2026-08-17) — it freezes at
-    // its slot (WaitingToOrbit — see EnemyOrbitPhase's own doc comment) until the caller explicitly calls
-    // BeginOrbiting() below, once every pleb sharing that same radius/ring has similarly arrived. Once
-    // actually orbiting: radius fixed at `radius`, angle advances from `targetAngleDeg` at
-    // `angularSpeedDegPerSec`. Does NOT itself set movement-disabled/kinematic/invulnerable — the caller
-    // composes those separately (same "small composable primitives" convention as Stun/Interrupt).
-    void OrbitTarget(PredictedObjectID owner, Vector3 ownerPosition, float radius, float pullDuration, float angularSpeedDegPerSec, float targetAngleDeg);
+    // phase: this enemy's OWN current world position is MoveTowards-stepped, at a flat `pullSpeed`
+    // units/sec (2026-09-12, was a fixed-DURATION Cartesian Lerp — every held enemy took the same seconds
+    // to arrive regardless of how far away it started, which read as inconsistent travel speed across
+    // different grab distances; a flat speed instead means farther pulls just take proportionally longer,
+    // matching KingOrbiterPD's own shotSpeed-driven LaunchAlong convention), toward `owner`'s live position
+    // + the `targetAngleDeg`/`radius` orbit slot — a Cartesian MoveTowards, not a radius-only one, so it
+    // visibly moves toward wherever it's actually going to end up rather than snapping sideways onto the
+    // target angle first. MoveTowards itself never overshoots (clamps exactly to the destination once
+    // within one tick's step), so arrival is just "did this tick's step reach the slot exactly," no
+    // separate tolerance needed. Once the pull completes this enemy does NOT start orbiting automatically
+    // anymore (2026-08-17) — it freezes at its slot (WaitingToOrbit — see EnemyOrbitPhase's own doc
+    // comment) until the caller explicitly calls BeginOrbiting() below, once every pleb sharing that same
+    // radius/ring has similarly arrived (see IsWaitingToOrbit's own doc comment for why release is gated on
+    // real arrival, not an estimated duration). Once actually orbiting: radius fixed at `radius`, angle
+    // advances from `targetAngleDeg` at `angularSpeedDegPerSec`. Does NOT itself set movement-disabled/
+    // kinematic/invulnerable — the caller composes those separately (same "small composable primitives"
+    // convention as Stun/Interrupt).
+    void OrbitTarget(PredictedObjectID owner, Vector3 ownerPosition, float radius, float pullSpeed, float angularSpeedDegPerSec, float targetAngleDeg);
     // Releases a pleb that finished its own pull-in (WaitingToOrbit) into actually rotating (Orbiting) — see
     // EnemyOrbitPhase's own doc comment for why this hand-off exists. A no-op while not currently
     // WaitingToOrbit (e.g. still Pulling, or already Orbiting) — safe to call speculatively without checking
@@ -353,14 +381,14 @@ public interface IEnemyPD
     // it to its own field, same "_authoredX snapshot" treatment as every other per-enemy tier-scaled field.
     // pointsMultiplier (2026-08-29) — separate from xpMultiplier, see pointsValue's own doc comment for why
     // upgrade points are no longer derived from XP at all.
-    // attackSpeedMultiplier (2026-08-31) — per-DIFFICULTY only (no tier component), applied directly to
-    // EnemyBasePD.attackSpeed (unlike attackCooldownMultiplier above, this generic field already exists on
+    // attackSpeedMultiplier (2026-08-31, difficulty-only; tier component added 2026-09-14) — applied directly
+    // to EnemyBasePD.attackSpeed (unlike attackCooldownMultiplier above, this generic field already exists on
     // the base class, same shape as moveSpeedMultiplier/moveSpeed) — see EnemySpawnerPD.
-    // difficultyAttackSpeedGrowthPerLevel's own doc comment for why this exists: a player's own move-speed
-    // progression had been invalidating certain enemies' fixed-duration windups, since every windup/attack-
-    // state timer across the roster already scales by EffectiveAttackSpeed (which this feeds into).
-    // Deliberately kept separate from moveSpeedMultiplier/move speed scaling generally — coincidentally the
-    // same per-level rate today, not a true pairing, per explicit design.
+    // difficultyAttackSpeedGrowthPerLevel/attackSpeedTierGrowth's own doc comments for why this exists: a
+    // player's own move-speed progression had been invalidating certain enemies' fixed-duration windups, since
+    // every windup/attack-state timer across the roster already scales by EffectiveAttackSpeed (which this
+    // feeds into). Deliberately kept separate from moveSpeedMultiplier/move speed scaling generally —
+    // coincidentally the same per-level/per-tier rates today, not a true pairing, per explicit design.
     void ConfigureSpawn(EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier, float pointsMultiplier, float moveSpeedMultiplier, float attackCooldownMultiplier, float attackSpeedMultiplier, int tier);
 
     // Generic death-hold API — see EnemyBasePD.RequestDeathHold's own doc comment. Only safe to call from a
@@ -456,12 +484,13 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // "changed" cost every single tick instead of a quantized/compressed one).
     public CompressedFloat orbitAngleDeg;
     public float orbitRadiusTarget;
-    // This enemy's own world position, captured the instant OrbitTarget() is called — the Pulling phase
-    // straight-line-lerps FROM this TO the live target slot (owner position + orbitAngleDeg/orbitRadiusTarget);
-    // irrelevant once Orbiting.
-    public Vector3 orbitPullStartPosition;
-    public float orbitPullDuration;
-    public float orbitPullElapsed;
+    // Flat MoveTowards speed (units/sec) for the Pulling phase (2026-09-12, was orbitPullStartPosition +
+    // orbitPullDuration + orbitPullElapsed driving a fixed-DURATION Lerp instead — removed entirely, no
+    // longer needed: LateSimulate() now MoveTowards-steps straight from this enemy's own live
+    // transform.position every tick, so there's no separate "start position" to snapshot or "elapsed"
+    // counter to track, just this one caller-assigned constant read every tick like
+    // orbitAngularSpeedDegPerSec below). Irrelevant once Orbiting.
+    public float orbitPullSpeed;
     public float orbitAngularSpeedDegPerSec;
 
     // See IEnemyPD.LaunchAlong's own doc comment — independent of orbitPhase above (checked first in
@@ -497,8 +526,9 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // against the target's LIVE position, so the destination still slides along with a moving target; only
     // the SIDE/direction of the offset itself is fixed, never the position it resolves to. 0° locks onto the
     // dasher->target bearing at that instant (continues straight past the target, e.g. DaggerGloomPD, ending
-    // up on its far side); 180° is the opposite bearing (stops short, between the dasher and the target,
-    // e.g. SpearGloomPD); any other angle flanks to a side.
+    // up on its far side); any other angle flanks to a side. Vector3.zero is a separate sentinel (2026-09-03,
+    // the no-angle StartOffsetChase overload — e.g. SpearGloomPD/KingSpikePD) meaning "no locked side at
+    // all, just get within chaseOffsetDistance of the target" — see HandleOffsetChase's own doc comment.
     public Vector3 chaseLockedOffsetDir;
     // Captured once at the start of an "ongoing" attack (dash-to-target, or windup entered directly because
     // already in range) via EnemyBasePD.CaptureAttackAnchor — see that method's own doc comment. Facing
@@ -513,6 +543,8 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // that reduced health to <= 0 (see that method's own comment), not inferred later, since isCrit is only
     // in scope as that call's own parameter.
     public bool killedByCrit;
+    // Same as killedByCrit above, for highroll (2026-09-14, extended to match).
+    public bool killedByHighroll;
     public bool initialized;
     // Difficulty-pacing wipe — deliberately separate from isDead, never set alongside it. See
     // IEnemyPD.SilentDespawn's own doc comment for the full reasoning (no XP, no death effects/holds, no
@@ -943,6 +975,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public float EffectiveAttackSpeed => attackSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f);
     public bool _isDead => B.isDead;
     public bool WasKilledByCrit => B.killedByCrit;
+    public bool WasKilledByHighroll => B.killedByHighroll;
 
     public static int ActiveCount = 0;
     public static int ActiveNormalCount = 0;
@@ -1730,23 +1763,21 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         Vector3 pos;
         if (b.orbitPhase == (int)EnemyOrbitPhase.Pulling)
         {
-            // owner.EffectiveAttackSpeed (2026-08-31, was plain delta) — same reasoning as the Orbiting
-            // branch's own identical fix above: without this, speeding up the HOLDER's own dispatch/windup
-            // cadence (KingOrbiterPD/OrbiterGloomPD's own phaseTimer scaling) only changed WHEN each pleb's
-            // pull-in started, not how fast it actually traveled once started — every held pleb still took
-            // the same fixed real-time pullDuration to reach its slot regardless of attack speed. This closes
-            // that gap: the pull-in motion itself now speeds up/slows down in step with the holder's own
-            // EffectiveAttackSpeed too.
-            b.orbitPullElapsed += delta * owner.EffectiveAttackSpeed;
-            float t = Mathf.Clamp01(b.orbitPullElapsed / b.orbitPullDuration);
-            // Straight-line (Cartesian) lerp from wherever this enemy actually started to the live slot
-            // position — NOT a radius-at-fixed-angle lerp — so it visibly travels toward where it's really
-            // going instead of snapping sideways onto the target angle the instant the pull begins. See
-            // IEnemyPD.OrbitTarget's own doc comment.
-            pos = Vector3.Lerp(b.orbitPullStartPosition, slotPos, t);
+            // Flat-speed MoveTowards (2026-09-12, was a fixed-DURATION Lerp from a snapshotted start
+            // position) — straight-line (Cartesian) toward the live slot position, NOT a radius-at-fixed-
+            // angle move, so it visibly travels toward where it's really going instead of snapping sideways
+            // onto the target angle the instant the pull begins. See IEnemyPD.OrbitTarget's own doc comment
+            // for why this reads transform.position directly (last tick's own MovePosition result) instead
+            // of a separately-tracked start point. owner.EffectiveAttackSpeed (2026-08-31, kept from the
+            // old duration-based version) — a Slow/haste on the HOLDER still speeds up or slows down the
+            // pull-in motion itself, not just when it started.
+            float step = b.orbitPullSpeed * delta * owner.EffectiveAttackSpeed;
+            pos = Vector3.MoveTowards(transform.position, slotPos, step);
             // WaitingToOrbit, not Orbiting directly (2026-08-17) — see EnemyOrbitPhase's own doc comment.
             // Freezes here at the slot until the caller explicitly releases it via BeginOrbiting().
-            if (t >= 1f) b.orbitPhase = (int)EnemyOrbitPhase.WaitingToOrbit;
+            // MoveTowards never overshoots (clamps exactly to slotPos once within one step), so reaching it
+            // exactly IS arrival — no separate tolerance needed.
+            if (pos == slotPos) b.orbitPhase = (int)EnemyOrbitPhase.WaitingToOrbit;
         }
         else
         {
@@ -2203,10 +2234,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // instead design any enemy/boss that could realistically wander far out of bounds (ranged bosses with
         // an enrage timer especially — King Orbiter today, any future one) so the scenario structurally can't
         // arise (a tighter preferredRange, a pull-toward-center bias, or no backpedal/kiting at all) — see
-        // PlayableAreaPD.TryGetInwardSteering's own doc comment; it's left in place, unreferenced, as
-        // general-purpose infrastructure in case a future boss-specific mechanic wants that same steering
-        // primitive. approachDir/retreatDir are just the plain toward/away-from-target directions now, same
-        // as every enemy used before this system ever existed.
+        // PlayableAreaPD.TryGetInwardSteering, the general-purpose steering primitive this used to lean on.
+        // That method was itself removed entirely 2026-09-17 (confirmed dead, zero remaining callers,
+        // alongside the whole innerObstructions system it was built to service — see PlayableAreaPD's own
+        // class doc comment). approachDir/retreatDir are just the plain toward/away-from-target directions
+        // now, same as every enemy used before this system ever existed.
         Vector3 approachDir = dir;
         Vector3 retreatDir  = -dir;
 
@@ -2441,13 +2473,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // around the world-up axis, and LOCKED into b.chaseLockedOffsetDir from here on (2026-08-26 fix — see
     // that field's own doc comment for the live-recompute instability this replaced). 0° locks onto
     // continuing straight past the target (e.g. DaggerGloomPD, ending up on its far side from wherever it
-    // approached from); 180° locks onto stopping short, at a point BETWEEN the dasher and the target (e.g.
-    // SpearGloomPD); any other angle flanks to a side. Confirmed as the correct generalization by reading
-    // both enemies' old dash-to-a-snapshotted-point math: Spear dashed to
-    // `target.position - dir * stopDistance` (dir = dasher→target) which is exactly the 180° case;
-    // Dagger dashed to `target.position + dir * offset` which is exactly the 0° case — same formula, only
-    // the angle differs. Only the DIRECTION is locked here — HandleOffsetChase still re-applies it against
-    // the tracked target's position every tick, so the destination itself keeps tracking a moving target.
+    // approached from); any other angle flanks to a side. Only the DIRECTION is locked here —
+    // HandleOffsetChase still re-applies it against the tracked target's position every tick, so the
+    // destination itself keeps tracking a moving target.
+    //
+    // Spear/King Spike's own "stop short, between dasher and target" case used to be the 180° case here
+    // (dashed to `target.position - dir * stopDistance`, dir = dasher→target) but has since moved to the
+    // no-angle overload just below (2026-09-03) — explicit design: since both are already dashing straight
+    // at the target, they naturally end up roughly between their own approach path and the target
+    // regardless, so locking a specific bearing was never actually necessary for that case. This
+    // angle-locked overload now exists purely for DaggerGloomPD's 0° "continue past to the far side" case,
+    // which genuinely does need a specific side (anywhere-within-radius isn't enough — it must be past).
     protected void StartOffsetChase(ref TState state, float speed, float offsetDistance, float offsetDirectionDegrees)
     {
         if (_target == null) return;
@@ -2471,6 +2507,31 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (_physicsCollider != null) _physicsCollider.enabled = false;
     }
 
+    // No-angle variant (2026-09-03) — for callers that only care about ending up SOMEWHERE within
+    // arriveRadius of the target, not any particular side/bearing (e.g. SpearGloomPD/KingSpikePD's own
+    // "stop short, between dasher and target" 180° case — explicit design: since the dasher is already
+    // moving straight at the target, it naturally ends up roughly between its own approach path and the
+    // target regardless, so locking a specific angle was never actually necessary there). Sets
+    // b.chaseLockedOffsetDir to Vector3.zero as a sentinel HandleOffsetChase reads to skip the angle offset
+    // entirely and use chaseOffsetDistance as the arrival radius instead of the fixed
+    // OffsetChaseArriveTolerance — safe/unambiguous since the angle-locked overload above always produces a
+    // genuine unit vector, never zero. DaggerGloomPD's own 0° "continue past to the far side" case still
+    // needs the angle-locked overload — that one's whole point IS ending up on a specific side.
+    protected void StartOffsetChase(ref TState state, float speed, float arriveRadius)
+    {
+        if (_target == null) return;
+        ref var b = ref GetBase(ref state);
+        b.isOffsetChasing = true;
+        b.dashSpeed = speed;
+        b.chaseOffsetDistance = arriveRadius;
+        b.chaseLockedOffsetDir = Vector3.zero;
+
+        _offsetChaseTrackedTarget = _targetStats;
+        _offsetChaseTrackedLastKnownPosition = _targetStats.transform.position;
+
+        if (_physicsCollider != null) _physicsCollider.enabled = false;
+    }
+
     // Small, not exposed — the only 3 params either caller needs are speed/distance/direction (above);
     // arrival tolerance is an implementation detail, not something either enemy needs to tune per-attack.
     private const float OffsetChaseArriveTolerance = 0.25f;
@@ -2488,18 +2549,30 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         // Refresh the tracked position while still valid; freeze (skip this) the instant it isn't — same
         // live-then-freeze shape every other windup-tracking mechanism in this codebase already uses.
-        if (!_offsetChaseTrackedTarget.IsDead && (!_offsetChaseTrackedTarget.IsInvisible || _offsetChaseTrackedTarget.IsTaunting))
+        // !IsDashingOrLeaping added 2026-09-03: a dashing/leaping target moves fast enough that this
+        // chase's own speed can never converge on it (constantly re-aiming at a destination that outruns
+        // every step), producing visible jitter/never-arriving behavior until the burst ends. Freezing
+        // here instead means the chase commits to a plausible intercept point instead — same resume-on-
+        // condition-clearing behavior as the invisible case, since this re-evaluates every tick.
+        if (!_offsetChaseTrackedTarget.IsDead && (!_offsetChaseTrackedTarget.IsInvisible || _offsetChaseTrackedTarget.IsTaunting) && !_offsetChaseTrackedTarget.IsDashingOrLeaping)
             _offsetChaseTrackedLastKnownPosition = _offsetChaseTrackedTarget.transform.position;
 
         // b.chaseLockedOffsetDir was fixed once, back at StartOffsetChase — never re-derived here, see that
         // field's own doc comment. Only the POSITION this resolves to tracks the target live (below).
-        Vector3 liveDestination = _offsetChaseTrackedLastKnownPosition + b.chaseLockedOffsetDir * b.chaseOffsetDistance;
+        // Vector3.zero is the no-angle sentinel (see the 3-param StartOffsetChase overload's own doc
+        // comment) — destination collapses to the tracked target's own position directly, and
+        // chaseOffsetDistance is read as an arrival RADIUS below instead of a directional offset.
+        bool noAngle = b.chaseLockedOffsetDir == Vector3.zero;
+        Vector3 liveDestination = noAngle
+            ? _offsetChaseTrackedLastKnownPosition
+            : _offsetChaseTrackedLastKnownPosition + b.chaseLockedOffsetDir * b.chaseOffsetDistance;
 
         Vector3 toDestination = liveDestination - transform.position;
         toDestination.y = 0f;
         float dist = toDestination.magnitude;
 
-        if (dist <= OffsetChaseArriveTolerance)
+        float arriveTolerance = noAngle ? b.chaseOffsetDistance : OffsetChaseArriveTolerance;
+        if (dist <= arriveTolerance)
         {
             b.isOffsetChasing = false;
             _rigidbody.velocity = Vector3.zero;
@@ -2649,7 +2722,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         _targetStats != null && !_targetStats.IsDead && (!_targetStats.IsInvisible || _targetStats.IsTaunting);
 
     // ── Combat ─────────────────────────────────────────────────────────────
-    public virtual void TakeDamage(float damage, bool isCrit = false, PlayerID attackerOwner = default)
+    public virtual void TakeDamage(float damage, bool isCrit = false, PlayerID attackerOwner = default, bool isHighroll = false)
     {
         ref var b = ref B;
         if (b.isDead) return;
@@ -2695,9 +2768,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         {
             b.health = 0;
             // Captured here, not inferred later — Die()/OnEnemyDeath need to know whether the specific hit
-            // that actually killed this enemy was a crit (e.g. OnKillLaunchEnemiesAugment inheriting crit
-            // status rather than rolling its own), and isCrit is only in scope as this call's own parameter.
+            // that actually killed this enemy was a crit/highroll (e.g. OnKillLaunchEnemiesAugment inheriting
+            // both instead of rolling its own), and isCrit/isHighroll are only in scope as this call's own
+            // parameters.
             b.killedByCrit = isCrit;
+            b.killedByHighroll = isHighroll;
             Die();
         }
     }
@@ -2866,7 +2941,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 if (enemy._isDead) continue;
                 if (b.killLaunchHitIds.Contains(enemy.ObjectId)) continue;
                 b.killLaunchHitIds.Add(enemy.ObjectId);
-                enemy.TakeDamage(b.killLaunchDamage, b.killLaunchIsCrit, b.killerOwner);
+                enemy.TakeDamage(b.killLaunchDamage, b.killLaunchIsCrit, b.killerOwner, b.killLaunchIsHighroll);
                 // TakeDamage alone never shows a damage number (see TriggerHitFeedback's own doc comment on
                 // IEnemyPD) — fired through _onHitFeedback rather than a queue (see HitFeedbackData's own
                 // doc comment for why a plain queue here was resimulation-unsafe).
@@ -3048,6 +3123,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     public bool IsBeingHeld => B.orbitPhase != (int)EnemyOrbitPhase.None;
     public bool IsWaitingToOrbit => B.orbitPhase == (int)EnemyOrbitPhase.WaitingToOrbit;
+    public bool IsPulling => B.orbitPhase == (int)EnemyOrbitPhase.Pulling;
     public bool IsLaunching => B.launchActive;
 
     public bool IsKinematic => _rigidbody != null && _rigidbody.isKinematic;
@@ -3103,16 +3179,14 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // call (LateSimulate() re-resolves owner's LIVE position every tick from here on) — kept as a parameter
     // for symmetry/because callers already have it on hand, not because this method needs it for anything
     // beyond the caller's own convenience.
-    public void OrbitTarget(PredictedObjectID owner, Vector3 ownerPosition, float radius, float pullDuration, float angularSpeedDegPerSec, float targetAngleDeg)
+    public void OrbitTarget(PredictedObjectID owner, Vector3 ownerPosition, float radius, float pullSpeed, float angularSpeedDegPerSec, float targetAngleDeg)
     {
         ref var b = ref B;
 
-        b.orbitPullStartPosition    = transform.position;
         b.orbitAngleDeg             = targetAngleDeg;
         b.orbitOwnerId              = owner;
         b.orbitRadiusTarget         = radius;
-        b.orbitPullDuration         = Mathf.Max(0.0001f, pullDuration);
-        b.orbitPullElapsed          = 0f;
+        b.orbitPullSpeed            = Mathf.Max(0.0001f, pullSpeed);
         b.orbitAngularSpeedDegPerSec = angularSpeedDegPerSec;
         b.orbitPhase                = (int)EnemyOrbitPhase.Pulling;
     }

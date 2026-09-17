@@ -64,6 +64,10 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     // snapshot-and-reset treatment instead of just incrementing this field directly.
     [SerializeField] private int   attacksPerAttack   = 1;
     [SerializeField] private float dashSpeedMultiplier = 4f;
+    // Flat + size-scaled (2026-09-03, was preferredRange/2f) — decoupled from preferredRange, matching
+    // KingSpikePD.postChargeDashOffsetDistance's own flat-variable convention instead of deriving from the
+    // shared approach/retreat/attack-range field. See EnterDashToTarget's own call site.
+    [SerializeField] private float dashOffsetDistance = 2f;
     // Captured once in OnAwake(), reset back onto attacksPerAttack every pooled reuse in LateAwake() —
     // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
     // pattern established for BlitzGloomPD/DaggerGloomPD/MortarGloomPD's own identical attack-count fields.
@@ -371,11 +375,14 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         // slows down in real time right alongside every other attack-speed-scaled part of this attack, not
         // just at dash start.
         //
-        // 180° — chases a point BETWEEN Spear and the target (stops preferredRange/2f short of the target's
-        // own live position), continuously re-tracked instead of snapshotted once (2026-08-26, was
-        // StartDashToTarget — a fast player could just outrun a snapshotted destination). See
-        // EnemyBasePD.StartOffsetChase's own doc comment for the full angular convention.
-        StartOffsetChase(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, preferredRange / 2f, 180f);
+        // No-angle variant (2026-09-03, was the 180°-locked overload) — just needs to end up anywhere
+        // within dashOffsetDistance*size of the target's own live position, continuously re-tracked instead
+        // of snapshotted once (2026-08-26, was StartDashToTarget — a fast player could just outrun a
+        // snapshotted destination). Explicit design: since Spear is already dashing straight at the target,
+        // it naturally ends up roughly between its own approach path and the target regardless, so locking
+        // a specific "stop short, between dasher and target" bearing was never actually necessary — see
+        // EnemyBasePD.StartOffsetChase's own no-angle overload doc comment.
+        StartOffsetChase(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, dashOffsetDistance * size);
     }
 
     private void EnterPostStab(ref State state)
@@ -434,7 +441,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         // bail out early via its own guard, silently skipping the _animator.Play(IdleHash, ...) call gated
         // behind that exact same check.
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
-        if (_windupFill != null) _windupFill.ResetFill();
+        if (_windupFill != null) _windupFill.Hide();
     }
 
     // ── View ───────────────────────────────────────────────────────────────
@@ -451,24 +458,21 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         if (!gameObject.activeInHierarchy) return;
 
         // Re-applied every frame, not just once at spawn — stabRange is the single source of truth for
-        // reach, so the visual indicator can never silently drift out of sync with it.
-        if (_windupIndicator != null)
+        // reach, so the visual indicator can never silently drift out of sync with it. * size on both terms,
+        // matching EnterStab's own hit-check exactly (stabRange * size, stabWidth * 0.5f * size) —
+        // EnemyBasePD.size has no automatic transform.localScale wiring anywhere in this codebase, so the
+        // indicator does NOT inherit size-driven scaling for free; it must be applied explicitly here or it
+        // silently drifts out of sync with the real (size-scaled) hit-check on any elite/bigger variant.
+        // stabWidth is already a FULL width (see its own doc comment).
+        // _windupIndicator's own current position IS the near edge — centerForwardOffset shifts the true
+        // center half the distance forward from there, computed PURELY in WindupFillPD's own local space
+        // (see ShowRectangle's own doc comment) rather than a caller-computed world point — reading
+        // transform.forward here to bake a world position was what caused visible jitter on a passively
+        // Visuals-inherited rotation.
+        if (_windupIndicator != null && _windupFill != null)
         {
-            // * size on both terms, matching EnterStab's own hit-check exactly (stabRange * size,
-            // stabWidth * 0.5f * size) — EnemyBasePD.size has no automatic transform.localScale wiring
-            // anywhere in this codebase (confirmed via direct grep), so the indicator does NOT inherit
-            // size-driven scaling for free; it must be applied explicitly here or it silently drifts out
-            // of sync with the real (size-scaled) hit-check on any elite/bigger variant.
-            IndicatorMath.ApplyLineTransform(_windupIndicator.transform, stabRange * size);
-            // ApplyLineTransform only ever sizes LENGTH (Z) — width (X) was never wired up here, so
-            // stabWidth changes only ever affected the actual hit-check (EnterStab's own halfWidth), never
-            // the visual indicator. stabWidth is already a FULL width (see its own doc comment), so no x2
-            // needed here (unlike SpikeShieldPD's own half-width field) — same 0.1-world-units-per-scale-unit
-            // convention ApplyLineTransform's own `distance * 0.1f` uses for Z, assuming the standard
-            // 10-unit-at-scale-1 plane mesh every line indicator in this codebase uses.
-            var scale = _windupIndicator.transform.localScale;
-            scale.x = stabWidth * 0.1f * size;
-            _windupIndicator.transform.localScale = scale;
+            float length = stabRange * size;
+            _windupFill.ShowRectangle(length, stabWidth * size, length * 0.5f);
         }
 
         var ss = (SpearState)viewState.spearStateId;
@@ -494,7 +498,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         _lastVisualState = ss;
 
         if (_windupIndicator != null) _windupIndicator.SetActive(ss == SpearState.Windup);
-        if (_windupFill != null && ss != SpearState.Windup) _windupFill.ResetFill();
+        if (_windupFill != null && ss != SpearState.Windup) _windupFill.Hide();
 
         if (_animator == null) return;
         switch (ss)
@@ -520,7 +524,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
-        if (_windupFill != null) _windupFill.ResetFill();
+        if (_windupFill != null) _windupFill.Hide();
         // Snaps out of whatever attack pose (Windup/Stabbing/etc.) this enemy died mid-animation in — ss
         // is frozen from here on (Simulate() stops updating spearStateId once dead), so without this the
         // corpse would otherwise hold/loop that pose for the entire kill-launch instead of reading as dead.
@@ -541,7 +545,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.spearStateTimer          = 0f;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
-        if (_windupFill != null)      _windupFill.ResetFill();
+        if (_windupFill != null)      _windupFill.Hide();
         // In case death happened mid-Windup/Stabbing, while kinematic was on — HandleActiveState would
         // correct this on the next tick anyway (spearStateId resets to Moving above), but resetting
         // explicitly here avoids even a one-tick window where a freshly-reused instance reads as kinematic.

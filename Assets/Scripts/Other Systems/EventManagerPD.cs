@@ -59,20 +59,6 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
     // against any Vector3[] loop) — replaces the old GetInsetPerimeter(wallOffset)-derived path.
     [SerializeField] private Transform[] patrolGraph;
 
-    // Multiplies the event-start announcement popup's display duration (the floating "Event Name!" callout
-    // above every player's head — see EventBasePD.OnEventStart's own doc comment) on top of DamageNumber's
-    // shared, normal-status baseline — so this one-time "an event is starting NOW" callout lingers
-    // noticeably longer than a routine Stun/Slow/Dodge popup, per explicit design (2026-08-19). Lives here
-    // (2026-08-28), not on EventBasePD itself, because EVERY concrete event (DPSCheckPD, CaptureThePointPD,
-    // DestroyTheTargetsPD, PerimeterPatrolEventPD, ...) is its own separate prefab inheriting from
-    // EventBasePD — a field declared there would need tuning separately, per prefab, four-plus times over,
-    // instead of being one shared knob every event reads from this single central hub (same "one designer
-    // dial, not N duplicated copies" reasoning eventSpawnPoints/spawnAreas/patrolGraph above already follow).
-    [Header("Announcement")]
-    [Tooltip("Multiplies the event-start announcement popup's display duration on top of the normal status-popup baseline. Shared across every event.")]
-    [SerializeField] private float announcementDurationMultiplier = 2f;
-    public float AnnouncementDurationMultiplier => announcementDurationMultiplier;
-
     // Lazily built once — spawnAreas is static level-authored data, never changes at runtime, so there's no
     // invalidation logic needed beyond "computed yet or not." Index i's value is the CUMULATIVE polygon area
     // (PlayableAreaPD.PolygonArea, true shoelace-formula area, not a bounding-box proxy) of every area up to
@@ -125,9 +111,22 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
     // currentTier — EnemySpawnerPD's own _currentTierNumber at the moment it decided to trigger this event
     // (see its own "Mid-cycle event trigger" doc comment for the call site) — threaded straight through to
     // every event's own OnEventStart unconditionally, see IEventPD.OnEventStart's own doc comment for why.
+    //
+    // Defensive precaution (2026-09-02): resolves whatever event is still active FIRST, before spawning a
+    // new one — closes the "no defined interaction" gap EnemySpawnerPD.eventDuration's own doc comment
+    // flags, where a mistakenly-long eventDuration could let this get called again while the previous
+    // event's own resolve timer hasn't expired yet, silently orphaning it (never Cleanup()'d/MarkResolved()'d,
+    // activeEventId just overwritten out from under it) and leaving EnemySpawnerPD's own single
+    // eventResolveTimer resolving whichever event happens to be tracked by the time it expires, not
+    // necessarily the one it actually started counting down for. Safe to call unconditionally even when
+    // nothing is actually active — ResolveEvent() is already idempotent by construction (see its own doc
+    // comment), so this is a harmless no-op in the normal case where the previous event already resolved
+    // itself well before this ever runs again.
     public void StartEvent(int currentTier)
     {
         if (eventPrefabs == null || eventPrefabs.Length == 0) return;
+
+        ResolveEvent();
 
         var prefab = eventPrefabs[GameRandom.instance.Next(eventPrefabs.Length)];
         var id = hierarchy.Create(prefab, transform.position, Quaternion.identity);
@@ -140,18 +139,19 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
         ev.OnEventStart(PlayableAreaPD.instance, currentTier);
     }
 
-    // Called from TWO places — remember this whenever changing it: (1) EnemySpawnerPD, a flat, hardcoded 1
+    // Called from THREE places — remember this whenever changing it: (1) EnemySpawnerPD, a flat, hardcoded 1
     // minute (eventDuration) after StartEvent(), for the "ran out of time" case; (2) the active event itself,
     // directly, the instant it decides it succeeded early (see CaptureThePointPD.Simulate() for the
-    // precedent). Reads the active event's own Succeeded flag (defaults false — see EventBasePD's own doc
-    // comment for why that's already correct for a timed-out resolve), triggers the pseudo-level-up bonus
-    // augment round on success, then runs Cleanup() + MarkResolved() — see EventBasePD's own class-level doc
-    // comment for why this does NOT destroy the event itself here (that's deferred to verified state, in
-    // EventBasePD's own UpdateView).
+    // precedent); (3) StartEvent() itself, defensively, right before spawning a new event (see its own doc
+    // comment for the orphaned-event gap this closes). Reads the active event's own Succeeded flag (defaults
+    // false — see EventBasePD's own doc comment for why that's already correct for a timed-out resolve),
+    // triggers the pseudo-level-up bonus augment round on success, then runs Cleanup() + MarkResolved() — see
+    // EventBasePD's own class-level doc comment for why this does NOT destroy the event itself here (that's
+    // deferred to verified state, in EventBasePD's own UpdateView).
     //
     // Idempotent by construction, not by an extra explicit guard: the FIRST call to actually find a live
-    // event (whichever of the two callers gets there first) clears activeEventId to default at its own end,
-    // so the OTHER caller's later call finds hierarchy.GetGameObject(default) returning null and is a
+    // event (whichever of the three callers gets there first) clears activeEventId to default at its own end,
+    // so any OTHER caller's later call finds hierarchy.GetGameObject(default) returning null and is a
     // harmless no-op — same sentinel convention this codebase already relies on elsewhere (e.g.
     // KingOrbiterPD's own default-PredictedObjectID checks).
     public void ResolveEvent()
@@ -189,6 +189,25 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
     // candidate within maxAttempts, falls back to the LAST candidate that was genuinely inside a polygon
     // (never returns true with an undefined point, never silently fails just because a player happened to be
     // standing on every sampled spot this exact attempt).
+    //
+    // Obstacle avoidance (2026-09-16, added) — ALWAYS on, no opt-in flag needed (unlike avoidPlayers, which
+    // some events genuinely want disabled): there's no case where a level designer would WANT an event to
+    // spawn inside a tree/rock's own collider, so this isn't a per-event choice. Gated on footprintRadius > 0
+    // rather than a separate bool — every existing/future caller that already passes a real footprintRadius
+    // (for the avoidPlayers check above) gets this for free with no call-site changes, and a caller that
+    // never sizes its own footprint (footprintRadius left at its 0 default) just skips the check instead of
+    // querying Physics.CheckSphere with a meaningless zero radius. Same best-effort/bounded-attempts fallback
+    // shape as avoidPlayers — if every candidate this call samples overlaps an obstacle, this still returns
+    // the last in-polygon candidate rather than failing outright.
+    //
+    // LayerMask.GetMask("Obstacle") called inline, NOT cached in a static readonly field (2026-09-16, tried
+    // caching first) — a static field initializer runs as part of this class's static constructor, which
+    // Unity outright throws on if LayerMask.NameToLayer/GetMask gets called from it ("NameToLayer is not
+    // allowed to be called from a MonoBehaviour constructor or instance field initializer"); WeaponBasePD's
+    // own EnemyHurtboxMask/FriendlyHurtboxMask precedent apparently never gets first-touched early enough to
+    // hit this, but this class's cctor does. Not a hot path (called only when placing an event, a handful of
+    // times at most, never per-frame) — the repeated string lookup this costs is irrelevant, same "call it
+    // inline" convention XPOrbPD.cs already uses for this exact same "Obstacle" layer.
     public bool TryGetSpawnAreaPoint(SpawnAreaSelection selection, out Vector3 point, bool avoidPlayers = false, float playerOffset = 0f, float footprintRadius = 0f, int maxAttempts = 30)
     {
         point = default;
@@ -204,6 +223,9 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
             if (!PlayableAreaPD.TryRandomPointInPolygon(spawnAreas[areaIndex].points, out Vector3 candidate)) continue;
 
             if (!haveFallback) { fallback = candidate; haveFallback = true; }
+
+            if (footprintRadius > 0f && Physics.CheckSphere(candidate, footprintRadius, LayerMask.GetMask("Obstacle")))
+                continue;
 
             if (avoidPlayers && !PlayableAreaPD.IsFarEnoughFromEveryPlayer(new Vector2(candidate.x, candidate.z), footprintRadius + playerOffset))
                 continue;

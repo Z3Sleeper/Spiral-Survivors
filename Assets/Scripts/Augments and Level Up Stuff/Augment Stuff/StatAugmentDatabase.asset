@@ -16,13 +16,13 @@ MonoBehaviour:
   - statType: 0
     displayName: Max Health
     color: {r: 0, g: 1, b: 0, a: 1}
-    value: 10
+    value: 5
     prependText: +
     appendText: 
   - statType: 5
     displayName: Health Regen
     color: {r: 0.49019608, g: 1, b: 0, a: 1}
-    value: 0.2
+    value: 0.25
     prependText: +
     appendText: 
   - statType: 4
@@ -46,7 +46,7 @@ MonoBehaviour:
   - statType: 3
     displayName: Range
     color: {r: 0.19607843, g: 0.47058824, b: 1, a: 1}
-    value: 1
+    value: 0.5
     prependText: +
     appendText: 
   - statType: 19

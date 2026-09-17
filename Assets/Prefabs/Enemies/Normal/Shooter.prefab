@@ -377,14 +377,14 @@ MonoBehaviour:
   windupDuration: 1
   shootDuration: 0.1
   postShotPause: 0.5
-  shotsPerAttack: 1
-  shotDamageMultiplier: 1
-  dashSpeedMultiplier: 2
+  shotsPerAttack: 3
+  shotDamageMultiplier: 0.5
+  dashSpeedMultiplier: 1.5
   dashDistanceBuffer: 0.5
   firePauseDuration: 0.25
   projectilePrefab: {fileID: 2942187867930129664, guid: 9d386d556ca6e174fb4b039ee7704a18, type: 3}
   projectileSpeed: 8
-  projectileMaxRange: 20
+  projectileMaxRange: 30
   spawnOffset: 0.75
   projectileScale: 1
   multishotCount: 0
@@ -506,7 +506,7 @@ GameObject:
   - component: {fileID: 2853454691506665481}
   - component: {fileID: 7477497162605979100}
   m_Layer: 0
-  m_Name: Hat
+  m_Name: Visor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -521,7 +521,7 @@ Transform:
   m_GameObject: {fileID: 1756066027675513741}
   serializedVersion: 2
   m_LocalRotation: {x: -0.13052624, y: 0, z: 0, w: 0.9914449}
-  m_LocalPosition: {x: 0, y: 0.5, z: -0.15}
+  m_LocalPosition: {x: 0, y: 0.45, z: -0.125}
   m_LocalScale: {x: 0.8, y: 0.15, z: 0.8}
   m_ConstrainProportionsScale: 0
   m_Children: []

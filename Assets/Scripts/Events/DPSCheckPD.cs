@@ -44,10 +44,10 @@ public class DPSCheckPD : EventBasePD<DPSCheckPD.State>
     protected override ref EventBaseState GetBase(ref State state) => ref state.b;
 
     [Header("Target")]
-    // Typed as DummyTargetPD directly, not a plain GameObject — this event specifically knows it's spawning
-    // a dummy target (not an arbitrary IEnemyPD), same "small, event-specific, no need to touch shared
-    // generic systems" reasoning CaptureThePointPD's own zoneVisual/chargeFill fields already follow.
-    [SerializeField] private DummyTargetPD dummyPrefab;
+    // Plain GameObject (2026-09-02, was DummyTargetPD directly) — see DestroyTheTargetsPD's own identical
+    // field comment for why: DummyTargetPD is now a generic base with multiple concrete variants, so there's
+    // no single concrete class to type this field as anymore.
+    [SerializeField] private GameObject dummyPrefab;
 
     [Header("Placement")]
     // The target's own footprint for the avoid-players check (when avoidPlayersOnPlacement is enabled on
@@ -68,7 +68,7 @@ public class DPSCheckPD : EventBasePD<DPSCheckPD.State>
         if (EventManagerPD.instance != null && EventManagerPD.instance.TryGetEventSpawnPoint(out var p, avoidPlayersOnPlacement, playerOffset, zoneRadius))
             spawnPos = p;
 
-        var id = hierarchy.Create(dummyPrefab.gameObject, spawnPos, Quaternion.identity);
+        var id = hierarchy.Create(dummyPrefab, spawnPos, Quaternion.identity);
         if (!id.HasValue) return;
 
         currentState.dummyId = id.Value;

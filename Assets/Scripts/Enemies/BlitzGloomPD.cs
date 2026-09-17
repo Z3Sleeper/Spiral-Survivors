@@ -30,6 +30,11 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         public float   attackCooldownTimer;
         public Vector3 blitzDirection;        // locked in at Windup entry, reused through Blitzing
         public int     blitzesRemaining;
+        // 0..1 how far through the fixed dash corridor the body has actually traveled, written
+        // deterministically every Simulate tick while Blitzing (see HandleActiveState's own doc comment) —
+        // drives the windup indicator's own "collapse in behind the body" shrink in UpdateView. Reset to 0 at
+        // EnterBlitz (fresh dash, fresh progress); meaningless outside Blitzing.
+        public float   blitzTravelProgress;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
         public State Duplicate()
@@ -105,6 +110,16 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     // mid-Windup (taunt/invisible-retarget). Only ever read while actually in Windup.
     private IFriendlyPD _windupTrackedTarget;
 
+    // Blitzing unparents windupIndicator to freeze it at the fixed dash corridor for the whole dash (2026-09-14
+    // — see UpdateView's own Blitzing-entry comment for why), so these are needed to know where/how to put it
+    // back once Blitzing ends — same exact pattern (and the same worldPositionStays:true bug already fixed
+    // there) as LeaperGloomPD's own _windupIndicatorParent/_windupIndicatorLocalPos/_windupIndicatorLocalRot —
+    // see that class's own doc comments for the full "why" on each.
+    private Transform  _windupIndicatorParent;
+    private Vector3    _windupIndicatorLocalPos;
+    private Quaternion _windupIndicatorLocalRot;
+    private bool       _windupIndicatorLocalPoseCaptured;
+
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
     protected override void OnAwake()
@@ -124,6 +139,17 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         blitzesPerAttack = _authoredBlitzesPerAttack;
         attackCooldown = _authoredAttackCooldown;
         rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
+
+        // Guarded to a single real capture per instance — see LeaperGloomPD's own identical
+        // _windupIndicatorParent/_windupIndicatorLocalPos capture for the full reasoning (a pooled reuse could
+        // already be mid-Blitzing, unparented, by the time LateAwake() re-fires).
+        if (windupIndicator != null) _windupIndicatorParent ??= windupIndicator.transform.parent;
+        if (windupIndicator != null && !_windupIndicatorLocalPoseCaptured)
+        {
+            _windupIndicatorLocalPos = windupIndicator.transform.localPosition;
+            _windupIndicatorLocalRot = windupIndicator.transform.localRotation;
+            _windupIndicatorLocalPoseCaptured = true;
+        }
         // Randomized initial cooldown (1x-2x attackCooldown), matching old BlitzGloom.OnSpawned — spreads
         // out multiple simultaneously-spawned Blitzers so they don't all windup in lockstep. GameRandom,
         // not UnityEngine.Random, for determinism (old system's UnityEngine.Random.Range wasn't
@@ -133,6 +159,17 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         // assignment runs BEFORE that scaling lands, so it's only ever a placeholder for the brief window
         // in between.
         currentState.blitzesRemaining    = blitzesPerAttack;
+    }
+
+    // Reparents windupIndicator back under _windupIndicatorParent AND restores its exact authored local pose
+    // — see LeaperGloomPD.ReparentWindupIndicatorHome's own doc comment for why this restores the pose
+    // explicitly instead of trusting SetParent(parent, true)'s own worldPositionStays.
+    private void ReparentWindupIndicatorHome()
+    {
+        if (windupIndicator == null) return;
+        windupIndicator.transform.SetParent(_windupIndicatorParent, false);
+        windupIndicator.transform.localPosition = _windupIndicatorLocalPos;
+        windupIndicator.transform.localRotation = _windupIndicatorLocalRot;
     }
 
     // Tier1-authored blitzesPerAttack, scaled by blitzesPerAttackTierGrowth per tier above 1 (see that
@@ -154,6 +191,39 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     }
 
     // ── Simulation ────────────────────────────────────────────────────────────
+
+    // Overridden specifically so the travel-progress computation below runs EVERY tick, including while
+    // actually Blitzing (2026-09-14 fix — confirmed live: the shrink never advanced past its initial 0 at
+    // all). This used to live inside HandleActiveState, but EnemyBasePD.Simulate() only ever calls
+    // HandleActiveState while !b.isDashing — see its own dash-dispatch block ("if (!b.isDashing &&
+    // !b.isOffsetChasing) HandleActiveState(...)") — meaning it was SKIPPED ENTIRELY for this enemy's own
+    // ENTIRE Blitzing duration, the one state that actually needed it. Same "override Simulate(), call
+    // base.Simulate() first, then layer extra unconditional per-tick logic on top" pattern
+    // KingOrbiterPD.Simulate() already establishes for its own Persistent Pleb Shots.
+    protected override void Simulate(ref State state, float delta)
+    {
+        base.Simulate(ref state, delta);
+
+        // Drives the windup indicator's own "collapse in behind the body as it travels" shrink — see
+        // UpdateView's own doc comment for the full visual reasoning. Computed HERE, deterministically, off
+        // the REAL tick-accurate transform.position (safe — this is exactly the same "read the real physics
+        // position inside Simulate/LateSimulate, never a live/smoothed transform from view code" rule every
+        // other jitter fix this session already established — this runs unconditionally every tick, same
+        // Simulate-context safety as before, just no longer gated behind HandleActiveState actually running),
+        // then stored into predicted State so UpdateView only ever reads the derived RESULT, never re-deriving
+        // it from a live transform itself. origin is re-derived from state.b.dashDestination/
+        // state.blitzDirection (both fixed for the whole dash) rather than a separate snapshot — same
+        // reasoning as UpdateView's own identical derivation.
+        if (GetBlitzState(ref state) == BlitzState.Blitzing)
+        {
+            Vector3 destination = state.b.dashDestination;
+            Vector3 origin = destination - state.blitzDirection * blitzDistance;
+            float traveled = blitzDistance > 0.0001f
+                ? Vector3.Dot(transform.position - origin, state.blitzDirection)
+                : blitzDistance;
+            state.blitzTravelProgress = Mathf.Clamp01(traveled / Mathf.Max(blitzDistance, 0.0001f));
+        }
+    }
 
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
@@ -320,6 +390,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     {
         Vector3 endPoint = transform.position + state.blitzDirection * blitzDistance;
         SetBlitzState(ref state, BlitzState.Blitzing);
+        state.blitzTravelProgress = 0f; // fresh dash, fresh progress — see its own doc comment on State
         // EffectiveMoveSpeed, not baseMoveSpeed (2026-08-13) — so this scales with Boss enrage stacking and
         // stays proportionate to whatever EnemySpawnerPD's own tier scaling did to moveSpeed, same as every
         // other dashing enemy's own dash-speed formula (see EnemyBasePD.StartDashToPoint's own doc comment).
@@ -384,7 +455,13 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         // _lastVisualState deliberately NOT written here — see SpearGloomPD.OnInterrupted's own comment for
         // why (UpdateView's own edge-detection bookkeeping, not ours to set).
         if (windupIndicator != null) windupIndicator.SetActive(false);
-        if (windupFill != null) windupFill.ResetFill();
+        if (windupFill != null) windupFill.Hide();
+        // Explicit reparent, not left for UpdateView's own edge-detected transition to eventually catch up —
+        // an interrupt during Blitzing leaves windupIndicator unparented (see UpdateView's own transition
+        // comment); Blitzing IS interruptible (see CanBeInterrupted below), so this is a real, reachable case,
+        // not just defensive. Same fix/reasoning as LeaperGloomPD.OnInterrupted's own identical check.
+        if (windupIndicator != null && windupIndicator.transform.parent != _windupIndicatorParent)
+            ReparentWindupIndicatorHome();
     }
 
     // ── View ──────────────────────────────────────────────────────────────────
@@ -399,29 +476,102 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         // actually active, instead of leaving stale indicator state from a previous pooled life.
         if (!gameObject.activeInHierarchy) return;
 
+        var ss = (BlitzState)viewState.stateId;
+        bool isWindupOrBlitzing = ss == BlitzState.Windup || ss == BlitzState.Blitzing;
+
         // Re-applied every frame, not just once at spawn — see SpearGloomPD/KingSpikePD's identical
         // reasoning: if blitzDistance is ever changed at runtime, the indicator's visual footprint should
         // never silently drift out of sync with it.
-        if (windupIndicator != null) IndicatorMath.ApplyLineTransform(windupIndicator.transform, blitzDistance);
-
-        var ss = (BlitzState)viewState.stateId;
+        //
+        // Blitzing branch (2026-09-14) — "collapses in behind the body" as it travels: the shown rectangle's
+        // near edge advances from the fixed dash origin toward the fixed destination as
+        // viewState.blitzTravelProgress climbs 0->1, while the far edge (the destination) never moves, so the
+        // length shown is always exactly "how much of the dash is still ahead" — matching the real hitbox
+        // exactly (contact damage is live for this whole span, see CanContactDamage). blitzTravelProgress is
+        // written deterministically in Simulate (see HandleActiveState's own doc comment) off the REAL
+        // tick-accurate transform.position — this method itself never reads a live/smoothed transform for the
+        // shape math, only the already-derived viewState result, so this can't reintroduce the read-timing
+        // jitter class of bug every other indicator fix this session had to solve. origin/destination are
+        // both fixed for the whole dash (see State.blitzDirection's own doc comment, and
+        // EnemyBasePD.StartDashToPoint's own doc comment for dashDestination), so reading them off viewState
+        // is safe — interpolating a constant against itself is a no-op. windupIndicator is already unparented
+        // by the time this runs during Blitzing (see the transition block below), so this world-space
+        // SetPositionAndRotation composes correctly every frame, same as Leaper's own frozen-Leaping write.
+        //
+        // Windup branch — full, unshrunk telegraph length, unchanged from before; windupIndicator is still
+        // passively inherited under Visuals at this point (not yet unparented), so position/rotation are
+        // deliberately left untouched here — only the shape (ShowRectangle) is driven.
+        if (windupIndicator != null && windupFill != null)
+        {
+            if (ss == BlitzState.Blitzing)
+            {
+                Vector3 destination = viewState.b.dashDestination;
+                Vector3 origin = destination - viewState.blitzDirection * blitzDistance;
+                float progress = Mathf.Clamp01(viewState.blitzTravelProgress);
+                Vector3 nearEdge = Vector3.Lerp(origin, destination, progress);
+                float remaining = blitzDistance * (1f - progress);
+                windupIndicator.transform.SetPositionAndRotation(nearEdge, Quaternion.LookRotation(viewState.blitzDirection));
+                windupFill.ShowRectangle(remaining, centerForwardOffset: remaining * 0.5f);
+            }
+            else
+            {
+                windupFill.ShowRectangle(blitzDistance, centerForwardOffset: blitzDistance * 0.5f);
+            }
+        }
 
         // Live, every frame regardless of the _lastVisualState-gated block below — see SpearGloomPD's own
-        // comment on the identical live-fill pattern.
-        if (windupFill != null && ss == BlitzState.Windup)
+        // comment on the identical live-fill pattern. Gate widened to cover Blitzing too (2026-09-14, was
+        // Windup-only) — per explicit design, the fill must read as CLEANLY, exactly fully filled (relative
+        // to whatever the CURRENT, possibly-already-shrunk length is) for the entire Blitzing dash, not just
+        // whatever near-1 (but not exactly 1) value Windup's own last tick happened to leave it at. This
+        // formula already gives exactly that for free during Blitzing: stateTimer keeps counting down past 0
+        // into negative territory for the whole dash (nothing resets it at the Windup->Blitzing handoff), so
+        // Clamp01 of a negative ratio floors to 0, and 1-0 = 1 — no separate branch needed, unlike
+        // KingOrbiterPD's own Shoot/Pull/Persistent fills, which DO need an explicit post-fire branch since
+        // their own underlying timers either don't go negative or (Persistent) get reset entirely on fire —
+        // see UpdatePersistentIndicatorFills's own doc comment for that one.
+        if (windupFill != null && isWindupOrBlitzing)
             windupFill.SetProgress(1f - Mathf.Clamp01(viewState.stateTimer / windupDuration));
 
         if (ss == _lastVisualState) return;
+        BlitzState previousState = _lastVisualState;
         _lastVisualState = ss;
 
-        if (windupIndicator != null) windupIndicator.SetActive(ss == BlitzState.Windup);
-        if (windupFill != null && ss != BlitzState.Windup) windupFill.ResetFill();
+        // Per explicit design (2026-09-14) — the indicator must stay visible for the Blitz's ENTIRE
+        // movement, not just its Windup telegraph, matching the same "hold until the referenced enemy has
+        // actually finished its own movement" convention just established for King Orbiter/Orbiter's own
+        // pull/shot indicators.
+        if (windupIndicator != null)
+        {
+            if (ss == BlitzState.Blitzing && previousState != BlitzState.Blitzing)
+            {
+                // Entering Blitzing — unparent once; the live-every-frame block above (which runs BEFORE this
+                // gated block, same tick) already wrote this frame's correct world position/rotation/shape
+                // using progress=0 (blitzTravelProgress was just reset to 0 in EnterBlitz), so there's nothing
+                // left to do here except detach from Visuals' continuously-interpolating hierarchy — same
+                // "unparent so a still-parented smoothed object can't drag this along with it" reasoning
+                // Leaper's own Leaping-entry transition uses.
+                windupIndicator.transform.SetParent(null, true);
+            }
+            else if (previousState == BlitzState.Blitzing && ss != BlitzState.Blitzing)
+            {
+                ReparentWindupIndicatorHome();
+            }
+            windupIndicator.SetActive(isWindupOrBlitzing);
+        }
+        if (windupFill != null && !isWindupOrBlitzing) windupFill.Hide();
     }
 
     protected override void OnDeathStop()
     {
         if (windupIndicator != null) windupIndicator.SetActive(false);
-        if (windupFill != null)      windupFill.ResetFill();
+        if (windupFill != null)      windupFill.Hide();
+        // Explicit reparent, fixed immediately rather than left for OnRespawnReset's own defensive check to
+        // catch on the NEXT pooled reuse — same "leftover indicator stuck mid-air" class of bug
+        // OnInterrupted's own identical fix addresses. Dying mid-Blitzing leaves windupIndicator unparented
+        // (see UpdateView's own transition comment).
+        if (windupIndicator != null && windupIndicator.transform.parent != _windupIndicatorParent)
+            ReparentWindupIndicatorHome();
     }
 
     protected override void OnRespawnReset()
@@ -431,7 +581,12 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.blitzesRemaining    = blitzesPerAttack;
         if (windupIndicator != null) windupIndicator.SetActive(false);
-        if (windupFill != null)      windupFill.ResetFill();
+        if (windupFill != null)      windupFill.Hide();
+        // In case death happened mid-Blitzing, while the indicator was unparented — a fresh reuse should
+        // never inherit a previous life's detached indicator (defensive backstop — OnDeathStop's own
+        // identical check should already have caught this, but this covers any path that skipped it).
+        if (windupIndicator != null && windupIndicator.transform.parent != _windupIndicatorParent)
+            ReparentWindupIndicatorHome();
         // In case death happened mid-Windup, while kinematic was on — HandleActiveState would correct this
         // on the next tick anyway (stateId resets to Moving above), but resetting explicitly here avoids
         // even a one-tick window where a freshly-reused instance reads as kinematic.

@@ -30,19 +30,13 @@ public class PhantomBladeOnHealAugment : AugmentEffectPD<PhantomBladeOnHealAugme
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
     public float healthNeeded = 50f;
     public int bladeCount = 3;
-    public float baseDamageMultiplier = 0.6f;
-
-    // baseDamageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
-    // convention wouldn't apply to it directly — this alias exists purely so a description can reference
-    // {DamageMultiplierPercent} and get the correctly-scaled static number, as a fallback for whenever
-    // {LiveBladeDamageRatio} itself is blank (out of a live match — see ShowLiveValues's own doc comment).
-    public float DamageMultiplierPercent => baseDamageMultiplier;
+    public float strengthMultiplierPercent = 0.6f;
 
     // For AugmentDescriptionFormatter's {LiveBladeDamageRatio} token. See
     // PhantomBladeSummonHelper.PreviewDamage's own doc comment for the full shared-formula convention.
     public string LiveBladeDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, baseDamageMultiplier))} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, strengthMultiplierPercent))} "
             : "";
 
     private float _healAccumulator;
@@ -84,7 +78,7 @@ public class PhantomBladeOnHealAugment : AugmentEffectPD<PhantomBladeOnHealAugme
             if (phantomBladePrefab == null) continue;
 
             PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-                Stats.transform.position, bladeCount, baseDamageMultiplier, bladeColor);
+                Stats.transform.position, bladeCount, strengthMultiplierPercent, bladeColor);
         }
     }
 }

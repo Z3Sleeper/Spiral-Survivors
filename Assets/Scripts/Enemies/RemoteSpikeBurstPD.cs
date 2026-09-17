@@ -5,6 +5,11 @@ using UnityEngine;
 // weapon, just a short-lived spawned effect with a charge-then-detonate timer, same category as
 // WeaponRangedProjectilePD ("deliberately not X"). Lives independently of the boss once spawned: it keeps
 // ticking and will still detonate even if the boss that spawned it has since died.
+//
+// chargeTimer scales by _chargeAttackSpeed (2026-09-14) — a ONE-TIME snapshot of King Spike's own
+// EffectiveAttackSpeed taken at Launch(), same "firer could die/get pooled-and-reused mid-charge, so snapshot
+// rather than read a live reference" shape MortarHazardPD's own _windupAttackSpeed already uses (see that
+// field's own doc comment for the full reasoning). Not read live off a stored King Spike reference on purpose.
 public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
 {
     public struct State : IPredictedData<State>
@@ -27,15 +32,20 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
     // This life's own total charge duration, captured once at Launch() — the denominator for UpdateView's
     // own live SetProgress() ratio (see its own doc comment for why this replaced a self-timed StartFill()).
     private float _chargeDuration;
+    // One-time snapshot of King Spike's own EffectiveAttackSpeed at Launch() — see class doc comment for why
+    // this is scaled-once, not read live.
+    private float _chargeAttackSpeed = 1f;
 
-    // Called by KingSpikePD.SpawnRemoteBurstWave() immediately after hierarchy.Create() returns —
-    // synchronous and deterministic, same "mutate currentState right after Create()" pattern as
+    // Called by KingSpikePD.SpawnRemoteBurstWave()/SpawnPersistentRemoteBurst() (via the shared
+    // SpawnRemoteBurstFor helper) immediately after hierarchy.Create() returns — synchronous and
+    // deterministic, same "mutate currentState right after Create()" pattern as
     // XPOrbPD.SetValue()/WeaponRangedProjectilePD.Launch().
-    public void Launch(float chargeTime, float radius, float damage)
+    public void Launch(float chargeTime, float radius, float damage, float chargeAttackSpeed = 1f)
     {
         _radius = radius;
         _damage = damage;
         _chargeDuration = chargeTime;
+        _chargeAttackSpeed = Mathf.Max(0.0001f, chargeAttackSpeed);
         currentState.chargeTimer = chargeTime;
 
         // A pooled instance's PREVIOUS life ends with the fill fully complete (that's what a finished
@@ -44,7 +54,7 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
         // waits on verified.HasValue (see its own doc comment) rather than firing near-instantly off
         // viewState, so without this explicit reset a reused instance would visibly sit fully-filled for a
         // moment before that first verified snapshot arrives and progress actually starts moving.
-        if (_windupFill != null) _windupFill.ResetFill();
+        if (_windupFill != null) _windupFill.Hide();
     }
 
     protected override State GetInitialState() => default;
@@ -56,7 +66,7 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
         if (state.expired) return;
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
-        state.chargeTimer -= delta;
+        state.chargeTimer -= delta * _chargeAttackSpeed;
         if (state.chargeTimer > 0f) return;
 
         // Physics.OverlapSphereNonAlloc against CombatLayerMasks.FriendlyHurtboxMask (2026-08-30, was a
@@ -88,10 +98,10 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
     protected override void UpdateView(State viewState, State? verified)
     {
         // Re-applied every frame, not just once at Launch() — if _radius is ever changed mid-life, the
-        // visible footprint (DangerIndicator + WindupFill, both children of this root, propagated down
-        // via ordinary transform-hierarchy scaling) should never silently drift out of sync with the
-        // actual AoE damage radius.
-        IndicatorMath.ApplyRadialTransform(transform, _radius);
+        // visible footprint (both the outline and the fill mesh) should never silently drift out of sync
+        // with the actual AoE damage radius. centerForwardOffset left at its 0 default — this object's own
+        // position already IS the center, fixed for its whole life once landed, never moves.
+        if (_windupFill != null) _windupFill.ShowCircle(_radius);
 
         // Live, every frame — see feedback_windupfill_self_timed_drift: a self-timed StartFill() runs on its
         // own Time.deltaTime clock, independent of the tick-based chargeTimer that actually gates the real

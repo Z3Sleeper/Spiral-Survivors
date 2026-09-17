@@ -9,50 +9,42 @@ using UnityEngine;
 // player's own PlayerControllerPD._onDashEnded, same per-owner-instance cross-player-safety reasoning as
 // PhantomBladeOnDashAugment (no shared/static channel for another player's dash to leak through).
 //
-// "AoE Effects" tag (2026-07-25): heal amount scales with Stats.AreaEffectPower, radius (and the VFX
-// showing it) scale with Stats.AreaEffectSize, and the whole cast can repeat Stats.AreaEffectCount times
-// total via retriggerRate. Radius formula standardized (2026-08-10) across DashExplosionAugment/
-// DashHealAugment/ShieldBreakBurstAugment: Stats.RangeScalingAoEBase * radiusMultiplier — extracted onto
-// CharacterStatsPD itself on 2026-08-12 (single source of truth after the 0.5 -> 1 WeaponRange-coefficient
-// retune needed touching every family member by hand), same shape KnightAreaStunHealAbilityPD
-// already uses. See DashExplosionAugment's own doc comment for the full
-// reasoning — identical
-// shape here (every cast, including the common AreaEffectCount == 1 case, goes through a spawned AreaEffectPD
-// — pooled, so this costs a reactivate, not a real spawn — rather than a separate direct-cast path kept in
-// sync by hand). AreaEffectPD itself isn't Dash-specific — the same generic chain every "AoE Effects" caller
-// uses, enemy- or ally-targeting; this augment passes targetAllies: true and its own RollAndHeal as
-// onAllyHit, since the heal-roll formula is this augment's own business logic, not generic chain plumbing.
+// "AoE Effects" tag (2026-07-25): radius (and the VFX showing it) scales with Stats.AreaEffectSize. Heal
+// amount used to also scale with Stats.AreaEffectPower and the cast could repeat Stats.AreaEffectCount times
+// — both removed entirely (2026-09-13); every cast is now a flat single cast at this augment's own plain
+// baseline. Radius formula standardized (2026-08-10) across DashExplosionAugment/DashHealAugment/
+// ShieldBreakBurstAugment: Stats.RangeScalingAoEBase * radiusMultiplier — extracted onto CharacterStatsPD
+// itself on 2026-08-12 (single source of truth after the 0.5 -> 1 WeaponRange-coefficient retune needed
+// touching every family member by hand), same shape KnightAreaStunHealAbilityPD already uses. See
+// DashExplosionAugment's own doc comment for the full reasoning — identical shape here (every cast goes
+// through a spawned AreaEffectPD — pooled, so this costs a reactivate, not a real spawn — rather than a
+// separate direct-cast path kept in sync by hand). AreaEffectPD itself isn't Dash-specific — the same
+// generic chain every "AoE Effects" caller uses, enemy- or ally-targeting; this augment passes
+// targetAllies: true and its own RollAndHeal as onAllyHit, since the heal-roll formula is this augment's own
+// business logic, not generic chain plumbing.
 public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    public float healthRegenMultiplier = 2.5f;
+    // 2026-09-14: scales off Stats.BonusHealthRegen (was Stats.HealthRegen, the full/total stat) — see that
+    // property's own doc comment. Renamed from healthRegenMultiplier to bonusHealthRegenPercent (now ends in
+    // "Percent", so AugmentDescriptionFormatter's *100 convention applies directly) — the old
+    // HealthRegenMultiplierPercent alias property this needed is gone, no longer necessary.
+    public float bonusHealthRegenPercent = 2.5f;
     // Flat floor added to the scaled portion below (2026-08-12, playtesting: this augment did literally
-    // nothing for a build with zero HealthRegen investment) — added BEFORE the AreaEffectPower multiply (see
-    // RollAndHeal()), so it still scales with AreaEffectPower same as the rest of the heal, just guarantees
-    // a non-zero base even at zero HealthRegen investment.
+    // nothing for a build with zero HealthRegen investment) — guarantees a non-zero base even at zero
+    // HealthRegen investment.
     [SerializeField] private float baseHeal = 10f;
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
     // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
     // scaling itself.
     [SerializeField] private float radiusMultiplier = 1.25f;
 
-    // healthRegenMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
-    // convention wouldn't apply to it directly — this alias exists so a description can reference
-    // {HealthRegenMultiplierPercent} for a static fallback (shown outside a live match, when
-    // {LiveHealthRegenRatio} itself is blank) alongside the live number.
-    public float HealthRegenMultiplierPercent => healthRegenMultiplier;
-
-    // Fully accurate live preview — unlike the OnHit/OnStrike family, AreaEffectPower is itself a stat (not
-    // a per-event roll), so nothing needs to be excluded here — for AugmentDescriptionFormatter's
-    // {LiveHealthRegenRatio} token.
+    // For AugmentDescriptionFormatter's {LiveHealthRegenRatio} token.
     public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseHeal + stats.HealthRegen * healthRegenMultiplier * stats.AreaEffectPower)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseHeal + stats.BonusHealthRegen * bonusHealthRegenPercent)} "
             : "";
-    // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
-    [SerializeField] private float retriggerRate = 0.5f;
-
     [Header("VFX")]
     // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
     [SerializeField] private GameObject radiusVFXPrefab;
@@ -83,14 +75,13 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
 
         Vector3 castPosition = Stats.transform.position;
         float radius = Stats.RangeScalingAoEBase * radiusMultiplier;
-        int totalCasts = Mathf.Max(1, Stats.AreaEffectCount);
 
         var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
         if (!chainId.HasValue) return;
 
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-            chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
+            chain.Launch(Stats, castPosition, radius, radiusVFXPrefab,
                 targetAllies: true, onAllyHit: RollAndHeal, vfxPerCast: true);
     }
 
@@ -101,8 +92,7 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
     // exclusion there — so this fires for Stats too, not just genuinely other players.
     private void RollAndHeal(IFriendlyPD ally)
     {
-        // baseHeal joins the scaled portion INSIDE the AreaEffectPower multiply — see its own field comment.
-        float totalHeal = (baseHeal + Stats.HealthRegen * healthRegenMultiplier) * Stats.AreaEffectPower;
+        float totalHeal = baseHeal + Stats.BonusHealthRegen * bonusHealthRegenPercent;
 
         // Self heals through the normal, HealPower-scaled Heal() (same as any other self-heal source) — a
         // genuinely different ally goes through HealFromAlly() instead (NOT scaled by the ally's own

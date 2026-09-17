@@ -5337,6 +5337,10 @@ MonoBehaviour:
   weaponParticles:
   - {fileID: 5403018837995814691}
   - {fileID: 7470580545439469240}
+  minEmissionRate: 0
+  maxEmissionRate: 0
+  minEmissionRange: 0
+  maxEmissionRange: 0
   isRanged: 0
   rangeMultiplier: 1
   visualHeightTarget: {fileID: 6538681499716106083}
@@ -5378,6 +5382,9 @@ MonoBehaviour:
   - {fileID: 2820736293622115385}
   - {fileID: 5150021955019228429}
   tintedMaterialIndex: 0
+  coloredParticleSystems:
+  - {fileID: 5403018837995814691}
+  - {fileID: 7470580545439469240}
   alpha: 1
 --- !u!1 &3057346110584056543
 GameObject:

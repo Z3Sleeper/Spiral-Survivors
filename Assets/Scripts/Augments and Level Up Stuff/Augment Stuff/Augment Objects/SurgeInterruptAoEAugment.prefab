@@ -45,8 +45,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnSurgeStartInterruptOnStrikeAugment
   energySpentRequirement: 50
+  maxEnergyPerStack: 0.5
   radiusMultiplier: 1.25
   retriggerRate: 0.5
+  pairedStunDuration: 1
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
   chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}
   buffIcon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}

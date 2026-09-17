@@ -21,6 +21,13 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         public float   attackCooldownTimer;
         public Vector3 chargeDirection;      // locked in at ChargeWindup entry, reused through Charging
         public int     chargesRemaining;
+        // 0..1 how far through the fixed charge corridor the body has actually traveled, written
+        // deterministically every Simulate tick while Charging — see HandleActiveState's own doc comment.
+        // Drives the charge windup indicator's own "collapse in behind the body" shrink in UpdateView, exact
+        // same shape as BlitzGloomPD.State.blitzTravelProgress (see its own doc comment) — this boss's own
+        // Charge is "basically the exact same shape as Blitz's blitz" per explicit design. Reset to 0 at
+        // EnterCharging (fresh charge, fresh progress); meaningless outside Charging.
+        public float   chargeTravelProgress;
         // Set by OnInterrupted() when a Charge OR the post-charge reposition dash gets cancelled — Moving's
         // own case checks both this and postChargeDashPending below before its normal cooldown-trigger logic
         // (see HandleActiveState) and, once no longer crowd-controlled, fires straight into Spike Burst
@@ -94,6 +101,15 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     [SerializeField] private float betweenChargePause   = 0.1f;
     [SerializeField] private GameObject   chargeWindupIndicator;
     [SerializeField] private WindupFillPD chargeWindupFill;
+    // Charging unparents chargeWindupIndicator to let it track the actual travel corridor as it shrinks
+    // (2026-09-14 — see UpdateView's own doc comment), so these are needed to know where/how to put it back
+    // once Charging ends — exact same pattern as BlitzGloomPD's own _windupIndicatorParent/
+    // _windupIndicatorLocalPos/_windupIndicatorLocalRot (see that class's own doc comments for the full "why"
+    // on each, including the worldPositionStays:true reparent bug already fixed there).
+    private Transform  _windupIndicatorParent;
+    private Vector3    _windupIndicatorLocalPos;
+    private Quaternion _windupIndicatorLocalRot;
+    private bool       _windupIndicatorLocalPoseCaptured;
     // Max turn rate while tracking a target during ChargeWindup (2026-08-21) — copied from
     // ShielderGloomPD's own rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45 base, 0.2 tier
     // growth), same tier1-authored-baseline treatment as chargesPerAttack above. Caps how fast this boss can
@@ -202,6 +218,18 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         attackCooldown      = _authoredAttackCooldown;
         rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
         persistentBurstInterval = _authoredPersistentBurstInterval;
+
+        // Guarded to a single real capture per instance — see LeaperGloomPD/BlitzGloomPD's own identical
+        // _windupIndicatorParent/_windupIndicatorLocalPos capture for the full reasoning (a pooled reuse
+        // could already be mid-Charging, unparented, by the time LateAwake() re-fires).
+        if (chargeWindupIndicator != null) _windupIndicatorParent ??= chargeWindupIndicator.transform.parent;
+        if (chargeWindupIndicator != null && !_windupIndicatorLocalPoseCaptured)
+        {
+            _windupIndicatorLocalPos = chargeWindupIndicator.transform.localPosition;
+            _windupIndicatorLocalRot = chargeWindupIndicator.transform.localRotation;
+            _windupIndicatorLocalPoseCaptured = true;
+        }
+
         // Full cooldown grace period on spawn (2026-08-12: changed from half — this boss's opening attack
         // would otherwise fire before players have even finished loading in) — plain currentState
         // assignment, so even if LateAwake somehow re-fires on a pooled reuse this is harmless (idempotent),
@@ -259,6 +287,27 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // stuck windup indicator, just manifesting as an ongoing side effect instead of a stuck visual.
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (B.isDead || B.wiped) return;
+
+        // Drives the charge windup indicator's own "collapse in behind the body as it travels" shrink
+        // (2026-09-14) — see UpdateView's own doc comment for the full visual reasoning, and
+        // BlitzGloomPD.Simulate's own identical computation (this boss's own Charge is "basically the exact
+        // same shape as Blitz's blitz" per explicit design). MUST run here, in this override, not inside
+        // HandleActiveState (which is where it originally lived) — EnemyBasePD.Simulate() only ever calls
+        // HandleActiveState while !b.isDashing (see its own dash-dispatch block), so placing this inside
+        // HandleActiveState meant it was SKIPPED ENTIRELY for this boss's own ENTIRE Charging duration, the
+        // one state that actually needed it — confirmed live: the shrink never advanced past its initial 0 at
+        // all. Placed here, ahead of the remoteSequenceActive early-return below, same "runs regardless of
+        // stateId/remoteSequenceActive" reasoning UpdatePersistentRemoteBursts' own placement already uses —
+        // Charging has nothing to do with the remote-burst sequence and must never be gated behind it.
+        if (GetSpikeState(ref state) == KingSpikeState.Charging)
+        {
+            Vector3 destination = state.b.dashDestination;
+            Vector3 origin = destination - state.chargeDirection * chargeDistance;
+            float traveled = chargeDistance > 0.0001f
+                ? Vector3.Dot(transform.position - origin, state.chargeDirection)
+                : chargeDistance;
+            state.chargeTravelProgress = Mathf.Clamp01(traveled / Mathf.Max(chargeDistance, 0.0001f));
+        }
 
         // Runs regardless of stateId/remoteSequenceActive — see persistentBurstInterval's own doc comment
         // ("REGARDLESS of King Spike's current state", per explicit design). Placed here, ahead of the
@@ -423,6 +472,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         }
 
         ss = GetSpikeState(ref state);
+
         isStunnable = ss == KingSpikeState.Moving ? !stunResistant : false;
 
         // Kinematic (not collider-disable) whenever the boss is genuinely standing still — ChargeWindup,
@@ -453,14 +503,6 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     }
 
     // ── State transitions ────────────────────────────────────────────────────
-
-    // Plain (not predicted State) shadow of state.chargeDirection, written in lockstep inside
-    // EnterChargeWindup() — the same deterministic Simulate() call that decides chargeDirection itself, so
-    // it's available instantly on every machine with no network round-trip. Same reasoning as
-    // LeaperGloomPD._leapTargetSnapshot: viewState wouldn't work either, since PurrDiction linearly
-    // interpolates every State field (including plain Vector3s) between ticks, and this is a discrete
-    // "decided once" value that shouldn't blend.
-    private Vector3 _chargeDirectionSnapshot;
 
     private void EnterChargeWindup(ref State state, float delta)
     {
@@ -503,15 +545,11 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // often isn't fast enough to fully turn around before the windup ends if the target's now roughly
         // behind it — confirmed live: this boss visibly kept charging in roughly the same direction over and
         // over instead of properly re-aiming at a player who'd since circled behind it. Only writes
-        // chargeDirection/_chargeDirectionSnapshot on a non-zero return — see
-        // EnemyBasePD.SnapFaceTarget(CharacterStatsPD, bool) own doc comment for the guard/degenerate cases
-        // that return Vector3.zero.
+        // chargeDirection on a non-zero return — see EnemyBasePD.SnapFaceTarget(CharacterStatsPD, bool) own
+        // doc comment for the guard/degenerate cases that return Vector3.zero.
         Vector3 snapDir = SnapFaceTarget(_chargeWindupTrackedTarget);
         if (snapDir != Vector3.zero)
-        {
             state.chargeDirection = snapDir;
-            _chargeDirectionSnapshot = snapDir;
-        }
     }
 
     // The SPECIFIC player this ChargeWindup committed to, captured once at EnterChargeWindup — see its own
@@ -529,9 +567,11 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // it shared the identical fragile "read transform.rotation as the rotate-from basis" dependency — that
     // read lags a physics step behind any MoveRotation call, so ANY future same-tick double-processing here
     // would silently reproduce Blitz's exact bug. state.chargeDirection is written/read synchronously within
-    // the same Simulate() tick, immune to that lag regardless of call count. Keeps state.chargeDirection AND
-    // _chargeDirectionSnapshot (the plain view-layer copy the charge indicator reads) updated every tick, so
-    // whatever EnterCharging reads the instant ChargeWindup ends is always the freshest reachable direction.
+    // the same Simulate() tick, immune to that lag regardless of call count. Keeps state.chargeDirection
+    // updated every tick, so whatever EnterCharging reads the instant ChargeWindup ends is always the
+    // freshest reachable direction — the charge windup indicator (a Visuals child) now also reads this exact
+    // same real body rotation via plain passive inheritance (2026-09-14, see UpdateView's own doc comment),
+    // no separate plain-field snapshot needed for it anymore.
     // No-op (holds last direction) if the target's died/gone invisible-without-taunting mid-windup, or if the
     // computed direction is degenerate (target exactly on top of this boss). Rate scaled by
     // EffectiveAttackSpeed (2026-08-31) — was plain delta; now the boss's own re-aim turn rate speeds up in
@@ -551,14 +591,25 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         Vector3 newDir = Vector3.RotateTowards(state.chargeDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
         _rigidbody.MoveRotation(Quaternion.LookRotation(newDir));
         state.chargeDirection = newDir;
-        _chargeDirectionSnapshot = newDir;
     }
 
     private void EnterCharging(ref State state)
     {
         Vector3 endPoint = transform.position + state.chargeDirection * chargeDistance;
         SetSpikeState(ref state, KingSpikeState.Charging);
+        state.chargeTravelProgress = 0f; // fresh charge, fresh progress — see its own doc comment on State
         StartDashToPoint(ref state, ChargeSpeed, endPoint);
+    }
+
+    // Reparents chargeWindupIndicator back under _windupIndicatorParent AND restores its exact authored local
+    // pose — see LeaperGloomPD.ReparentWindupIndicatorHome's own doc comment for why this restores the pose
+    // explicitly instead of trusting SetParent(parent, true)'s own worldPositionStays.
+    private void ReparentWindupIndicatorHome()
+    {
+        if (chargeWindupIndicator == null) return;
+        chargeWindupIndicator.transform.SetParent(_windupIndicatorParent, false);
+        chargeWindupIndicator.transform.localPosition = _windupIndicatorLocalPos;
+        chargeWindupIndicator.transform.localRotation = _windupIndicatorLocalRot;
     }
 
     private void EnterBetweenCharges(ref State state)
@@ -622,7 +673,10 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
         SetSpikeState(ref state, KingSpikeState.PostChargeDash);
         if (_target != null)
-            StartOffsetChase(ref state, PostChargeDashSpeed, postChargeDashOffsetDistance, 180f);
+            // No-angle variant (2026-09-03, was the 180°-locked overload) — just needs to end up anywhere
+            // within postChargeDashOffsetDistance of the target, see EnemyBasePD.StartOffsetChase's own
+            // no-angle overload doc comment for why locking a specific bearing was never actually necessary.
+            StartOffsetChase(ref state, PostChargeDashSpeed, postChargeDashOffsetDistance);
         else
             StartDashToPoint(ref state, PostChargeDashSpeed, destination);
     }
@@ -713,7 +767,14 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // bookkeeping. Setting it here would make UpdateView's next real call see ss == _lastVisualState and
         // bail out early via its own guard, silently skipping whatever else that guard protects.
         if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
-        if (chargeWindupFill != null) chargeWindupFill.ResetFill();
+        if (chargeWindupFill != null) chargeWindupFill.Hide();
+        // Explicit reparent, not left for UpdateView's own edge-detected transition to eventually catch up —
+        // an interrupt during Charging leaves chargeWindupIndicator unparented (see UpdateView's own
+        // transition comment); Charging IS interruptible (see CanBeInterrupted below), so this is a real,
+        // reachable case, not just defensive. Same fix/reasoning as BlitzGloomPD.OnInterrupted's own
+        // identical check.
+        if (chargeWindupIndicator != null && chargeWindupIndicator.transform.parent != _windupIndicatorParent)
+            ReparentWindupIndicatorHome();
     }
 
     // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
@@ -767,8 +828,11 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out RemoteSpikeBurstPD burst))
             // EnrageDamageMultiplier multiplied in explicitly — same "reads raw damage directly" reasoning
-            // as FireSpikeBurst's own dmg local above.
-            burst.Launch(remoteChargeTime, remoteBurstRadius, damage * remoteBurstDamageMultiplier * EnrageDamageMultiplier);
+            // as FireSpikeBurst's own dmg local above. EffectiveAttackSpeed passed as a one-time snapshot
+            // (2026-09-14) so this hazard's own charge-then-detonate timer speeds up/slows down in step with
+            // King Spike's own attack speed (including an active Slow) — see RemoteSpikeBurstPD's own
+            // _chargeAttackSpeed doc comment for why it's snapshotted rather than read live.
+            burst.Launch(remoteChargeTime, remoteBurstRadius, damage * remoteBurstDamageMultiplier * EnrageDamageMultiplier, EffectiveAttackSpeed);
     }
 
     // ── Persistent Remote Spike Bursts ──────────────────────────────────────────
@@ -812,41 +876,72 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // actually active, instead of leaving stale indicator state from a previous pooled life.
         if (!gameObject.activeInHierarchy) return;
 
-        // Re-applied every frame, not just once at spawn — if spikeBurstRadius/chargeDistance are ever
-        // changed at runtime (a live balance tweak, a future enrage/scaling hook, etc.), the indicators'
-        // visual footprints should never silently drift out of sync with the actual values they represent.
-        // Charge applied once to the parent (ChargeDangerIndicator/ChargeWindupFill are both its children,
-        // axis-aligned with it) rather than each child individually.
-        if (spikeBurstIndicator != null) IndicatorMath.ApplyRadialTransform(spikeBurstIndicator.transform, spikeBurstRadius);
-        if (chargeWindupIndicator != null) IndicatorMath.ApplyLineTransform(chargeWindupIndicator.transform, chargeDistance);
+        // Re-applied every frame, not just once at spawn — if spikeBurstRadius is ever changed at runtime (a
+        // live balance tweak, a future enrage/scaling hook, etc.), the indicator's visual footprint should
+        // never silently drift out of sync with the actual value it represents. centerForwardOffset left at
+        // its 0 default — spikeBurstIndicator's own current position (WindupFillPD's own transform) already
+        // IS the center.
+        if (spikeBurstIndicator != null && spikeBurstFill != null)
+            spikeBurstFill.ShowCircle(spikeBurstRadius);
 
         var ss = (KingSpikeState)viewState.stateId;
+        bool isChargeWindupOrCharging = ss == KingSpikeState.ChargeWindup || ss == KingSpikeState.Charging;
 
-        // Sourced from _chargeDirectionSnapshot (a plain field, not predicted State) — instantly available
-        // on every machine the moment EnterChargeWindup() decides it, with no network round-trip and no
-        // interpolation blend (see the field's own doc comment; this used to read off `verified`, which
-        // only populates for non-owner clients after a round-trip — the same class of visible-desync bug
-        // fixed for LeaperGloomPD's leap indicator).
+        // Charge windup indicator (2026-09-14 rework — this boss's own Charge is "basically the exact same
+        // shape as Blitz's blitz" per explicit design, so this now mirrors BlitzGloomPD.UpdateView's own
+        // identical block field-for-field; see that class's own doc comments for the full reasoning behind
+        // each piece).
         //
-        // Tracked every frame, NOT gated behind the one-shot _lastVisualState transition guard below —
-        // chargeWindupIndicator is a child of "Visuals", the transform PredictedTransform's _graphics
-        // field points at and continuously interpolates every render frame (toward the physics root's
-        // tick-accurate rotation), independent of anything else touching it. Setting an absolute world
-        // rotation on one of its children only once would get visually dragged along as Visuals keeps
-        // interpolating afterward. Re-asserting every frame keeps the indicator pinned regardless of what
-        // Visuals is doing underneath it.
+        // ChargeWindup branch — full, unshrunk telegraph length, passively inherited under Visuals (not yet
+        // unparented) — position/rotation are deliberately left untouched here, only the shape (ShowRectangle)
+        // is driven. The explicit per-frame chargeWindupIndicator.transform.rotation write this branch used to
+        // do is GONE (2026-09-14 fix) — it was a stale pre-Leaper-fix pattern: an explicit WORLD rotation
+        // write on an object still parented under Visuals' own continuously-interpolating hierarchy is exactly
+        // the class of read-timing mismatch that caused LeaperGloomPD's own original indicator jitter (see
+        // that class's own doc comments) — re-asserting it every frame does NOT actually fix that, since
+        // Unity composes local x parent transforms at RENDER time, not write time, so a later same-frame
+        // Visuals update still produces a wrong final result. TrackChargeWindupTarget already turns the REAL
+        // body via _rigidbody.MoveRotation every tick, so chargeWindupIndicator (a Visuals child) already
+        // gets this exact same facing for free via plain passive inheritance — no explicit write needed at
+        // all, same fix shape LeaperGloomPD's own windup indicator already went through.
         //
-        // EnterCharging()'s actual dash direction reads the authoritative ref State directly — no
-        // interpolation involved at all — so it's always exactly correct; only the indicator needed this.
-        if (chargeWindupIndicator != null && ss == KingSpikeState.ChargeWindup)
+        // Charging branch — "collapses in behind the body" as it travels: the shown rectangle's near edge
+        // advances from the fixed charge origin toward the fixed destination as viewState.chargeTravelProgress
+        // climbs 0->1, while the far edge (the destination) never moves, so the length shown is always exactly
+        // "how much of the charge is still ahead." chargeTravelProgress is written deterministically in
+        // Simulate (see HandleActiveState's own doc comment) off the REAL tick-accurate transform.position —
+        // this method itself never reads a live/smoothed transform for the shape math, only the
+        // already-derived viewState result. Rotation here reads viewState.chargeDirection (not
+        // _chargeDirectionSnapshot) — safe once unparented, since interpolating a value that's already fixed
+        // for the whole Charging span against itself is a no-op (same reasoning BlitzGloomPD's own identical
+        // read already establishes).
+        if (chargeWindupIndicator != null && chargeWindupFill != null)
         {
-            chargeWindupIndicator.transform.rotation = Quaternion.LookRotation(_chargeDirectionSnapshot);
+            if (ss == KingSpikeState.Charging)
+            {
+                Vector3 destination = viewState.b.dashDestination;
+                Vector3 origin = destination - viewState.chargeDirection * chargeDistance;
+                float progress = Mathf.Clamp01(viewState.chargeTravelProgress);
+                Vector3 nearEdge = Vector3.Lerp(origin, destination, progress);
+                float remaining = chargeDistance * (1f - progress);
+                chargeWindupIndicator.transform.SetPositionAndRotation(nearEdge, Quaternion.LookRotation(viewState.chargeDirection));
+                chargeWindupFill.ShowRectangle(remaining, centerForwardOffset: remaining * 0.5f);
+            }
+            else
+            {
+                chargeWindupFill.ShowRectangle(chargeDistance, centerForwardOffset: chargeDistance * 0.5f);
+            }
         }
 
         // Live, every frame regardless of the _lastVisualState-gated block below — reacts immediately to
         // EffectiveAttackSpeed changing mid-windup (a slow landing/expiring), same reasoning as every other
-        // attack-speed-scaled enemy's own live fill.
-        if (chargeWindupFill != null && ss == KingSpikeState.ChargeWindup)
+        // attack-speed-scaled enemy's own live fill. Gate widened to cover Charging too (2026-09-14, was
+        // ChargeWindup-only) — per explicit design, the fill must read as cleanly, exactly fully filled
+        // (relative to whatever the CURRENT, possibly-already-shrunk length is) for the entire Charging span.
+        // Free for the same reason as Blitz: stateTimer counts down past 0 into negative territory through
+        // Charging (nothing resets it at the ChargeWindup->Charging handoff), so Clamp01 of a negative ratio
+        // floors to 0, and 1-0 = 1 — see BlitzGloomPD.UpdateView's own identical doc comment.
+        if (chargeWindupFill != null && isChargeWindupOrCharging)
             chargeWindupFill.SetProgress(1f - Mathf.Clamp01(viewState.stateTimer / chargeWindupDuration));
 
         // Also live, every frame — see feedback_windupfill_self_timed_drift: SpikeBurstWindup's own timer is
@@ -859,23 +954,49 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
             spikeBurstFill.SetProgress(1f - Mathf.Clamp01(viewState.stateTimer / spikeBurstChargeTime));
 
         if (ss == _lastVisualState) return;
+        KingSpikeState previousState = _lastVisualState;
         _lastVisualState = ss;
 
+        // Per explicit design (2026-09-14) — the indicator must stay visible for the Charge's ENTIRE
+        // movement, not just its ChargeWindup telegraph, matching the same "hold until the referenced enemy
+        // has actually finished its own movement" convention established this session for King Orbiter/
+        // Orbiter's own pull/shot indicators, and BlitzGloomPD's own dash.
         if (chargeWindupIndicator != null)
-            chargeWindupIndicator.SetActive(ss == KingSpikeState.ChargeWindup);
-        if (chargeWindupFill != null && ss != KingSpikeState.ChargeWindup) chargeWindupFill.ResetFill();
+        {
+            if (ss == KingSpikeState.Charging && previousState != KingSpikeState.Charging)
+            {
+                // Entering Charging — unparent once; the live-every-frame block above (which runs BEFORE this
+                // gated block, same tick) already wrote this frame's correct world position/rotation/shape
+                // using progress=0 (chargeTravelProgress was just reset to 0 in EnterCharging), so there's
+                // nothing left to do here except detach from Visuals' continuously-interpolating hierarchy —
+                // same reasoning BlitzGloomPD's own Blitzing-entry transition uses.
+                chargeWindupIndicator.transform.SetParent(null, true);
+            }
+            else if (previousState == KingSpikeState.Charging && ss != KingSpikeState.Charging)
+            {
+                ReparentWindupIndicatorHome();
+            }
+            chargeWindupIndicator.SetActive(isChargeWindupOrCharging);
+        }
+        if (chargeWindupFill != null && !isChargeWindupOrCharging) chargeWindupFill.Hide();
 
         if (spikeBurstIndicator != null)
             spikeBurstIndicator.SetActive(ss == KingSpikeState.SpikeBurstWindup);
-        if (spikeBurstFill != null && ss != KingSpikeState.SpikeBurstWindup) spikeBurstFill.ResetFill();
+        if (spikeBurstFill != null && ss != KingSpikeState.SpikeBurstWindup) spikeBurstFill.Hide();
     }
 
     protected override void OnDeathStop()
     {
         if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
-        if (chargeWindupFill != null)      chargeWindupFill.ResetFill();
+        if (chargeWindupFill != null)      chargeWindupFill.Hide();
+        // Explicit reparent, fixed immediately rather than left for OnRespawnReset's own defensive check to
+        // catch on the NEXT pooled reuse — same "leftover indicator stuck mid-air" class of bug OnInterrupted's
+        // own identical fix addresses. Dying mid-Charging leaves chargeWindupIndicator unparented (see
+        // UpdateView's own transition comment).
+        if (chargeWindupIndicator != null && chargeWindupIndicator.transform.parent != _windupIndicatorParent)
+            ReparentWindupIndicatorHome();
         if (spikeBurstIndicator != null)   spikeBurstIndicator.SetActive(false);
-        if (spikeBurstFill != null)        spikeBurstFill.ResetFill();
+        if (spikeBurstFill != null)        spikeBurstFill.Hide();
     }
 
     protected override void OnRespawnReset()
@@ -892,9 +1013,14 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // Full grace, matching LateAwake()'s own reasoning for persistentBurstCooldownTimer.
         currentState.persistentBurstCooldownTimer = persistentBurstInterval;
         if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
-        if (chargeWindupFill != null)      chargeWindupFill.ResetFill();
+        if (chargeWindupFill != null)      chargeWindupFill.Hide();
+        // In case death happened mid-Charging, while the indicator was unparented — a fresh reuse should
+        // never inherit a previous life's detached indicator (defensive backstop — OnDeathStop's own
+        // identical check should already have caught this, but this covers any path that skipped it).
+        if (chargeWindupIndicator != null && chargeWindupIndicator.transform.parent != _windupIndicatorParent)
+            ReparentWindupIndicatorHome();
         if (spikeBurstIndicator != null)   spikeBurstIndicator.SetActive(false);
-        if (spikeBurstFill != null)        spikeBurstFill.ResetFill();
+        if (spikeBurstFill != null)        spikeBurstFill.Hide();
         // In case death happened mid-SpikeBurstWindup, while kinematic was on — HandleActiveState would
         // correct this on the next tick anyway (stateId resets to Moving above), but resetting explicitly
         // here avoids even a one-tick window where a freshly-reused instance reads as kinematic.

@@ -47,7 +47,7 @@ MonoBehaviour:
   startAnnouncement: Event Started!\nDestroy the Spires!
   avoidPlayersOnPlacement: 1
   playerOffset: 2
-  dummyPrefab: {fileID: 5859841604911502220, guid: 596dc246523872f41a87c8e0d6ae3046, type: 3}
+  dummyPrefab: {fileID: 1597157536724350220, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
   dummyCount: 5
   zoneRadius: 2
   spreadSamples: 5

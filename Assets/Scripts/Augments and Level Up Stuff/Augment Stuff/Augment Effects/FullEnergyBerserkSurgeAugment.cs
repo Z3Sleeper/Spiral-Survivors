@@ -5,9 +5,14 @@ using UnityEngine;
 // normal turns into a full Berserk Surge instead (Stats.StartBerserkSurge — see its own doc comment for the
 // full contract), but ONLY if the player was at full energy the instant they activated it.
 //
-// Timing: _onSurgeStarted fires AFTER StartSurge() has already deducted SurgeCost from currentState.energy
-// (see its own body), so "was full energy at activation" can't be read directly off Stats.CurrentEnergy once
-// this listener runs — it has to reconstruct the pre-deduction value instead: CurrentEnergy + SurgeCost.
+// Timing: StartSurge() no longer deducts an upfront SurgeCost of its own (2026-09-03 fix — see that
+// method's own doc comment), so _onSurgeStarted now fires with currentState.energy still reflecting
+// exactly what it was at activation — "was full energy at activation" reads directly off
+// Stats.CurrentEnergy with no reconstruction needed anymore. (Was CurrentEnergy + SurgeCost < MaxEnergy,
+// back when StartSurge()'s own upfront deduction meant CurrentEnergy here was already SurgeCost short of
+// the true activation value — removing that deduction without also fixing this comparison would have
+// silently loosened the "exactly full" gate into "within SurgeCost of full," wrongly granting Berserk on a
+// near-full-but-not-quite activation.)
 //
 // Infinite-loop safety (explicit design concern, not just a hypothetical): StartBerserkSurge() ITSELF refills
 // energy to MaxEnergy and can also fire _onSurgeStarted (when nothing was surging yet) — which is exactly
@@ -46,7 +51,7 @@ public class FullEnergyBerserkSurgeAugment : AugmentEffectPD<FullEnergyBerserkSu
     private void OnSurgeStarted()
     {
         if (Stats == null || Stats.IsForcedSurging) return;
-        if (Stats.CurrentEnergy + Stats.SurgeCost < Stats.MaxEnergy) return;
+        if (Stats.CurrentEnergy < Stats.MaxEnergy) return;
 
         Stats.StartBerserkSurge();
     }

@@ -15,13 +15,45 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private LobbyManager lobbyManager;
     [SerializeField] private NetworkManager networkManager;
     [SerializeField] private GameObject mainMenuPanel;
-    [SerializeField] private GameObject purrLobbyPanel;
     [SerializeField] private GameObject characterSelectPanel;
     [SerializeField] private GameObject settingsPanel;
     [SerializeField] private GameObject upgradePanel;
     [SerializeField] private GameObject creditsPanel;
     [SerializeField] private GameObject encyclopediaPanel;
     [SerializeField] private GameObject[] upgradeButtons;
+
+    // Replaces PurrLobby's own ViewManager/Views (MainMenuView/BrowseView/CreatingRoomView/LobbyView) —
+    // 2026-09-12 — those only ever existed as an intermediate "how do you want to find a lobby" step
+    // (purrLobbyPanel) before landing on characterSelectPanel; OnRoomJoined below already switches straight
+    // to characterSelectPanel regardless of what triggered CreateRoom()/JoinLobby(), so a custom main-menu
+    // button calling either directly needs no separate panel/View layer of its own at all.
+    [Header("Create/Join Lobby")]
+    [SerializeField] private TMP_InputField joinLobbyCodeInput;
+    // Simple raycast-blocking tint (2026-09-12), same role PurrLobby's own CreatingRoomView/LoadingRoomView
+    // played — shown the instant Create/Join is clicked, hidden the instant the attempt resolves either
+    // way (OnRoomJoined success, or OnRoomJoinFailed/OnError failure). Purely a click-blocker + visual
+    // "something's happening" cue; doesn't own any of the actual create/join logic itself.
+    [SerializeField] private GameObject lobbyLoadingOverlay;
+    // Displays OnRoomJoinFailed's message (SteamLobbyProvider.DescribeJoinFailure — already short/generic,
+    // no lobby ID or raw Steam enum, safe to show as-is) — cleared at the start of every fresh
+    // OnJoinLobbyClicked attempt so a stale error from a previous attempt never lingers behind a new one.
+    [SerializeField] private TextMeshProUGUI joinErrorText;
+    // CreateRoom()'s own equivalent (2026-09-15) — separate GameObject/text box from joinErrorText, shown by
+    // OnLobbyError specifically when the in-flight attempt was a Create, not a Join (see _pendingAttemptType
+    // below for how OnLobbyError tells the two apart — PurrLobby's CreateRoom() has no dedicated failure
+    // event of its own, unlike JoinLobby's OnRoomJoinFailed, so it only ever surfaces through the same
+    // generic OnError every other lobby error also routes through). Cleared at the start of every fresh
+    // OnCreateLobbyClicked attempt, same "no stale message from a previous attempt" reason joinErrorText's
+    // own clearing has.
+    [SerializeField] private TextMeshProUGUI createErrorText;
+
+    // Which button was clicked most recently — OnLobbyError (CreateRoom's only failure signal) uses this to
+    // decide whether the message belongs in createErrorText or joinErrorText, since PurrLobby's OnError gives
+    // no way to tell which kind of attempt actually failed. Create and Join attempts are mutually exclusive
+    // (the overlay blocks a second click while one's in flight), so this only ever needs to reflect the LAST
+    // attempt started, not a real stack/queue.
+    private enum PendingLobbyAttempt { None, Create, Join }
+    private PendingLobbyAttempt _pendingAttemptType = PendingLobbyAttempt.None;
     // The "Upgrade Shop" button's own text (possibly more than one copy across scenes/panels, same reason
     // upgradeButtons above is an array) — turns green whenever any base stat is both unlocked and
     // affordable, as a "you can buy something" nudge. Original color cached per-entry at Start() and
@@ -29,7 +61,6 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private TextMeshProUGUI[] upgradeButtonTexts;
     [SerializeField] private Color affordableUpgradeColor = Color.green;
     private Color[] _upgradeButtonDefaultColors;
-    [SerializeField] private ViewManager viewManager;
 
     [Header("Unlock Popup")]
     [SerializeField] private GameObject unlockPopup;
@@ -180,11 +211,20 @@ public class LobbySceneController : MonoBehaviour
         }
 
         lobbyManager.OnRoomJoined.AddListener(OnRoomJoined);
+        lobbyManager.OnRoomJoinFailed.AddListener(OnRoomJoinFailed);
         lobbyManager.OnRoomLeft.AddListener(OnRoomLeft);
         lobbyManager.OnRoomUpdated.AddListener(OnRoomUpdated);
         lobbyManager.OnAllReady.AddListener(OnAllReady);
         lobbyManager.OnError.AddListener(OnLobbyError);
         networkManager.onClientConnectionState += OnClientConnectionStateChanged;
+
+        // Same "emulate a genuinely fresh state" reasoning as everything else in this method — a scene
+        // reload/return should never inherit an overlay left stuck on, or a stale error message, from a
+        // previous attempt.
+        if (lobbyLoadingOverlay != null) lobbyLoadingOverlay.SetActive(false);
+        if (createErrorText != null) createErrorText.gameObject.SetActive(false);
+        if (joinErrorText != null) joinErrorText.gameObject.SetActive(false);
+        _pendingAttemptType = PendingLobbyAttempt.None;
 
         if (lobbyManager.CurrentLobby.IsValid)
         {
@@ -205,7 +245,6 @@ public class LobbySceneController : MonoBehaviour
         else
         {
             mainMenuPanel.SetActive(true);
-            purrLobbyPanel.SetActive(false);
             characterSelectPanel.SetActive(false);
         }
     }
@@ -213,6 +252,7 @@ public class LobbySceneController : MonoBehaviour
     private void OnDestroy()
     {
         lobbyManager.OnRoomJoined.RemoveListener(OnRoomJoined);
+        lobbyManager.OnRoomJoinFailed.RemoveListener(OnRoomJoinFailed);
         lobbyManager.OnRoomLeft.RemoveListener(OnRoomLeft);
         lobbyManager.OnRoomUpdated.RemoveListener(OnRoomUpdated);
         lobbyManager.OnAllReady.RemoveListener(OnAllReady);
@@ -329,12 +369,50 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.LeaveLobby();
     }
 
-    // e.g. CreateLobbyAsync timing out or Steam rejecting the request — bail back to the main PurrLobby
-    // menu instead of leaving whatever loading overlay (CreatingRoomView, etc.) stuck on screen forever.
+    // e.g. CreateLobbyAsync timing out, Steam rejecting the request, or JoinLobby given a bad/expired code
+    // — mainMenuPanel is already the only panel showing throughout a create/join attempt now that there's
+    // no separate purrLobbyPanel step to bounce back out of. Also the catch-all for JoinLobby failures that
+    // surface here instead of/alongside OnRoomJoinFailed below — hiding the overlay from both keeps it from
+    // ever getting stuck up regardless of which event a given failure actually fires.
+    //
+    // This is CreateRoom()'s ONLY failure signal (2026-09-15) — PurrLobby's LobbyManager has no dedicated
+    // OnRoomCreateFailed event; SteamLobbyProvider.CreateLobbyAsync fires this same OnError on both a timeout
+    // and a Steam-side rejection, so a failed Create attempt used to silently hide the overlay with nothing
+    // shown to the player at all. Routes the message into createErrorText or joinErrorText based on
+    // _pendingAttemptType (see its own doc comment) — whichever button was actually clicked to start the
+    // attempt that just failed.
     private void OnLobbyError(string message)
     {
         Debug.LogWarning($"[LobbySceneController] Lobby error: {message}");
-        if (viewManager != null) viewManager.ShowView<MainMenuView>();
+        ShowLobbyAttemptError(_pendingAttemptType, message);
+        _pendingAttemptType = PendingLobbyAttempt.None;
+    }
+
+    // Shared by OnLobbyError above and the EnsureProviderReady() failure path in OnCreateLobbyClicked/
+    // OnJoinLobbyClicked below — hides the overlay and shows the message in whichever text box the given
+    // attempt type owns. Takes the type explicitly (not just reading _pendingAttemptType itself) so a click
+    // handler can report an EnsureProviderReady() failure for the attempt it just started, before that
+    // attempt ever reaches CreateRoom()/JoinLobby() at all.
+    private void ShowLobbyAttemptError(PendingLobbyAttempt attemptType, string message)
+    {
+        if (lobbyLoadingOverlay != null) lobbyLoadingOverlay.SetActive(false);
+        var errorText = attemptType == PendingLobbyAttempt.Create ? createErrorText : joinErrorText;
+        if (errorText != null)
+        {
+            errorText.text = message;
+            errorText.gameObject.SetActive(true);
+        }
+    }
+
+    // JoinLobby's own explicit failure path (empty room ID, or the provider itself couldn't find/join it) —
+    // same "hide the overlay, show the message" contract as OnLobbyError above.
+    private void OnRoomJoinFailed(string message)
+    {
+        Debug.LogWarning($"[LobbySceneController] Join lobby failed: {message}");
+        // message is already short/player-safe — see SteamLobbyProvider.DescribeJoinFailure's own doc
+        // comment (no lobby ID, no raw Steam enum name) — safe to show as-is, no further formatting needed.
+        ShowLobbyAttemptError(PendingLobbyAttempt.Join, message);
+        _pendingAttemptType = PendingLobbyAttempt.None;
     }
 
     private void OnApplicationQuit()
@@ -342,17 +420,70 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.LeaveLobby();
     }
 
-    public void OnMultiplayerClicked()
+    // Straight to LobbyManager.CreateRoom() — no intermediate panel to show first. OnRoomJoined (below)
+    // reacts once the room's actually created and switches to characterSelectPanel on its own; nothing here
+    // needs to wait on that or flip any panel itself. Shows the loading overlay immediately (blocking
+    // clicks for the whole in-flight attempt) — OnRoomJoined/OnRoomJoinFailed/OnLobbyError are what hide it
+    // again, whichever one actually fires for this attempt.
+    public void OnCreateLobbyClicked()
     {
-        mainMenuPanel.SetActive(false);
-        purrLobbyPanel.SetActive(true);
-        viewManager.OnLeaveBrowseClicked();
+        if (lobbyLoadingOverlay != null) lobbyLoadingOverlay.SetActive(true);
+        // Hides any stale error text left over from a previous failed attempt of EITHER kind — a fresh
+        // Create attempt shouldn't still show an old Create or Join failure sitting on screen.
+        if (createErrorText != null) createErrorText.gameObject.SetActive(false);
+        if (joinErrorText != null) joinErrorText.gameObject.SetActive(false);
+        // Tells OnLobbyError (CreateRoom's only failure signal) that a subsequent OnError belongs in
+        // createErrorText, not joinErrorText — see _pendingAttemptType's own doc comment.
+        _pendingAttemptType = PendingLobbyAttempt.Create;
+
+        // Retries Steam init if it's not currently available yet (2026-09-15) — see
+        // LobbyManager.EnsureProviderReady's own doc comment: the game's own boot-time SteamAPI.Init() is a
+        // one-shot attempt with no automatic retry, so a Create clicked before Steam finished starting up
+        // used to be permanently stuck with no recovery. Reported directly here, not via OnLobbyError —
+        // EnsureSteamInitialized() deliberately doesn't fire OnError itself, see its own doc comment — and
+        // CreateRoom() is skipped entirely so it's never attempted against a still-dead Steam connection.
+        if (!lobbyManager.EnsureProviderReady())
+        {
+            ShowLobbyAttemptError(PendingLobbyAttempt.Create, "Steam isn't available right now.");
+            _pendingAttemptType = PendingLobbyAttempt.None;
+            return;
+        }
+
+        lobbyManager.CreateRoom();
     }
 
-    public void OnBackToMainMenuClicked()
+    // Reads whatever's currently in joinLobbyCodeInput and hands it straight to LobbyManager.JoinLobby() —
+    // same "does nothing on an invalid/empty code" contract JoinLobby() and OnLobbyError above already
+    // have (JoinLobby itself no-ops with a warning on an empty string; a wrong-but-non-empty code just
+    // fires OnRoomJoinFailed/OnError — both show their message in joinErrorText, see _pendingAttemptType's
+    // own doc comment for how OnError knows to route here rather than createErrorText). Trimmed so stray
+    // leading/trailing whitespace from a pasted code doesn't fail a lookup that would otherwise succeed.
+    // Overlay/error-text are only touched once the code actually passes this method's own empty-check — an
+    // empty field is a silent, instant no-op, never worth flashing a loading state or clearing an unrelated
+    // error for.
+    public void OnJoinLobbyClicked()
     {
-        purrLobbyPanel.SetActive(false);
-        mainMenuPanel.SetActive(true);
+        if (joinLobbyCodeInput == null || string.IsNullOrWhiteSpace(joinLobbyCodeInput.text)) return;
+        if (lobbyLoadingOverlay != null) lobbyLoadingOverlay.SetActive(true);
+        // Hides any stale error text left over from a previous failed attempt of EITHER kind — see
+        // OnCreateLobbyClicked's own identical comment.
+        if (createErrorText != null) createErrorText.gameObject.SetActive(false);
+        if (joinErrorText != null) joinErrorText.gameObject.SetActive(false);
+        // See _pendingAttemptType's own doc comment.
+        _pendingAttemptType = PendingLobbyAttempt.Join;
+
+        // See OnCreateLobbyClicked's own identical retry block — same reasoning, JoinLobby's own IsSteamClientAvailable
+        // guard already reports a still-unavailable Steam correctly (OnRoomJoinFailed), but a RETRY attempt
+        // belongs here, right before the real JoinLobby() call, not inside SteamLobbyProvider.JoinLobbyAsync
+        // itself.
+        if (!lobbyManager.EnsureProviderReady())
+        {
+            ShowLobbyAttemptError(PendingLobbyAttempt.Join, "Steam isn't available right now.");
+            _pendingAttemptType = PendingLobbyAttempt.None;
+            return;
+        }
+
+        lobbyManager.JoinLobby(joinLobbyCodeInput.text.Trim());
     }
 
     private void ShowNextUnlock()
@@ -579,8 +710,11 @@ public class LobbySceneController : MonoBehaviour
         _expectedSteamIds.Clear();
         _joinedSteamIds.Clear();
         GameStartData.HostColorAssignments.Clear();
+        // Defensive — same reasoning as the resets above: shouldn't normally still be up by the time
+        // OnRoomLeft fires (OnRoomJoined/OnRoomJoinFailed/OnLobbyError already hide it), but leaving this
+        // stuck true would otherwise permanently block every future lobby attempt this session.
+        if (lobbyLoadingOverlay != null) lobbyLoadingOverlay.SetActive(false);
         characterSelectPanel.SetActive(false);
-        purrLobbyPanel.SetActive(false);
         mainMenuPanel.SetActive(true);
     }
 
@@ -903,7 +1037,11 @@ public class LobbySceneController : MonoBehaviour
     private void ShowCharacterSelect()
     {
         mainMenuPanel.SetActive(false);
-        purrLobbyPanel.SetActive(false);
         characterSelectPanel.SetActive(true);
+        // The success path for the loading overlay OnCreateLobbyClicked/OnJoinLobbyClicked show — this is
+        // the one place InitializeForLobby() actually finishes landing on character select, whether that
+        // came from a fresh create/join this session or a returning-lobby restore in Start() (harmless
+        // there too, since the overlay was never shown in that path to begin with).
+        if (lobbyLoadingOverlay != null) lobbyLoadingOverlay.SetActive(false);
     }
 }

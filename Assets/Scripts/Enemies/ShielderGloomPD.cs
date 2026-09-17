@@ -28,6 +28,12 @@ public class ShielderGloomPD : EnemyBasePD
     // _authoredRotationRateDegPerSecond's own doc comment for why this needs the snapshot-and-reset
     // treatment instead of just multiplying this field directly.
     [SerializeField] private float rotationRateDegPerSecond = 45f;
+    // Multiplies rotationRateDegPerSecond ONLY while the Shield is in its Windup phase (2026-09-17) — makes
+    // the telegraph read as more committed/predictable right before the burst fires, same spirit as every
+    // other windup-slows-things convention in this codebase. Back to the full rate the instant Windup ends
+    // (Releasing and FreeRotating both use the unscaled rate) — see SpikeShieldPD.Simulate()'s own Windup
+    // case for where this is actually applied.
+    [SerializeField] private float windupRotationRateMultiplier = 0.5f;
     // Same tier1-authored-baseline treatment as rotationRateDegPerSecond above.
     [SerializeField] private float attackRange = 4f;
     // Full width of the forward-facing rectangular attack zone (same convention SpearGloomPD.stabWidth
@@ -111,9 +117,9 @@ public class ShielderGloomPD : EnemyBasePD
         if (go != null && go.TryGetComponent(out SpikeShieldPD shield))
         {
             _shield = shield;
-            shield.Configure(this, orbitRadius, rotationRateDegPerSecond, attackRange, attackWidth,
-                windupDuration, releaseDuration, attackCooldown, shieldburstDamageMultiplier,
-                shieldContactDamageMultiplier, contactCooldownSeconds);
+            shield.Configure(this, orbitRadius, rotationRateDegPerSecond, windupRotationRateMultiplier,
+                attackRange, attackWidth, windupDuration, releaseDuration, attackCooldown,
+                shieldburstDamageMultiplier, shieldContactDamageMultiplier, contactCooldownSeconds);
         }
     }
 

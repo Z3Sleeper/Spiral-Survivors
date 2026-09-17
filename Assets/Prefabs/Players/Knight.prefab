@@ -16,9 +16,57 @@ PrefabInstance:
       propertyPath: weaponPrefab
       value: 
       objectReference: {fileID: 2942187867930129664, guid: ec814f900baee3f4a95c9816bb5ef608, type: 3}
+    - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1357578059376289040, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1357578059376289040, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1357578059376289040, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 1357578059376289040, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
       value: Knight
+      objectReference: {fileID: 0}
+    - target: {fileID: 3078761316220393339, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3078761316220393339, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3078761316220393339, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3078761316220393339, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4433399181805987514, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_LocalPosition.x
@@ -60,6 +108,38 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
       objectReference: {fileID: 0}
+    - target: {fileID: 7873927479541248489, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7873927479541248489, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7873927479541248489, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7873927479541248489, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7989371212444044817, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMax.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7989371212444044817, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchorMin.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7989371212444044817, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 7989371212444044817, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 0
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -93,10 +173,13 @@ MonoBehaviour:
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     <color=#FFFF00>Berserk
-    Surge</color> and <color=#FFA000>Taunt</color> enemies during it.'
-  cooldown: 30
+    Surge</color> and <color=#FFA000>Taunt</color> enemies during it.
+
+    <color=#FFA000>Restores</color>
+    the <color=#FFFF00>Energy</color> you had before casting it when it ends.'
+  cooldown: 10
   cooldownStartsOnCast: 0
-  slot: 0
+  slot: 1
   tags: []
   activeSurgeBlock: 0
 --- !u!114 &7584897366354843561
@@ -121,11 +204,11 @@ MonoBehaviour:
     <color=#FFA000>{duration} seconds</color>.
 
     <color=#FFA000>(AoE) On End or
-    Recast:</color> <color=#FFA000>Interrupt, Stun and Knockback</color> all nearby
-    enemies in a <color=#3278FF>1.25x Range radius</color> for <color=#FFA000>{LiveStunDurationRatio}seconds</color>.'
+    Recast:</color> <color=#FFA000>Interrupt, Stun and 200% Knockback</color> all
+    nearby enemies in a <color=#3278FF>1.25x Range radius</color> for <color=#FFA000>{LiveStunDurationRatio}seconds</color>.'
   cooldown: 20
   cooldownStartsOnCast: 0
-  slot: 1
+  slot: 0
   tags:
   - AoE Effect
   activeSurgeBlock: 0
@@ -136,7 +219,6 @@ MonoBehaviour:
   recastBlockDuration: 0.5
   radiusMultiplier: 1.25
   stunDuration: 2
-  knockback: 10
-  retriggerRate: 0.5
+  knockbackMultiplier: 2
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
   chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}

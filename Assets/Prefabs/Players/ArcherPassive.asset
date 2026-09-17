@@ -12,10 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 009657d7a5a7e3844b9ada055b0289d0, type: 3}
   m_Name: ArcherPassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
-  classDescription: 'Target Range is x2.5 Range.
-
-    Projectiles pierce but lose
-    20% Total Damage/On-Hit Power each hit.'
+  classDescription: Projectiles pierce but lose 20% Total Damage/On-Hit Power each
+    hit.
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 0
   moveSpeedPenalty: 0

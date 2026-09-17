@@ -61,8 +61,14 @@ public class DestroyTheTargetsPD : EventBasePD<DestroyTheTargetsPD.State>
     };
 
     [Header("Target")]
-    // Typed as DummyTargetPD directly — see DPSCheckPD's own identical field for the reasoning.
-    [SerializeField] private DummyTargetPD dummyPrefab;
+    // Plain GameObject (2026-09-02, was DummyTargetPD directly) — DummyTargetPD is now a generic base
+    // (DummyTargetPD<TState>, see its own doc comment) with multiple concrete variants
+    // (DummyTargetPD/KnockbackDummyTargetPD/any future one), each specializing its own predicted State, so
+    // there's no single concrete class every variant IS anymore — same reasoning every real enemy prefab
+    // reference in this codebase is already GameObject-typed, not EnemyBasePD-typed. Only ever used for its
+    // GameObject (hierarchy.Create() below) and then resolved back to IEnemyPD off the spawned instance,
+    // same as before.
+    [SerializeField] private GameObject dummyPrefab;
     [SerializeField] private int dummyCount = 5;
 
     [Header("Placement")]
@@ -109,7 +115,7 @@ public class DestroyTheTargetsPD : EventBasePD<DestroyTheTargetsPD.State>
             Vector3 spawnPos = EventManagerPD.instance != null ? PickSpreadPosition(selection) : transform.position;
             _placedPositionsScratch.Add(spawnPos);
 
-            var id = hierarchy.Create(dummyPrefab.gameObject, spawnPos, Quaternion.identity);
+            var id = hierarchy.Create(dummyPrefab, spawnPos, Quaternion.identity);
             if (!id.HasValue) continue;
 
             currentState.dummyIds.Add(id.Value);

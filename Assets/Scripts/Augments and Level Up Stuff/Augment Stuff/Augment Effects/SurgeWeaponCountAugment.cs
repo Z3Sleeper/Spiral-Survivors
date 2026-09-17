@@ -35,7 +35,7 @@ public class SurgeWeaponCountAugment : AugmentEffectPD<SurgeWeaponCountAugment.S
     [SerializeField] private float bonusMaxEnergyFlat = 25f;
 
     // Plain, not State — mutated only from PredictedEvent listener callbacks, same role/reasoning as
-    // SurgeEndMoveSpeedAugment's own _bonusActive. Without this, picking this augment WHILE already Surging
+    // SurgeEnergySpentMoveSpeedAugment's own _bonusActive. Without this, picking this augment WHILE already Surging
     // subscribes to both events but misses the OnSurgeStarted that already fired for the current Surge — so
     // when that Surge ends, OnSurgeEnded still fires and unconditionally DIVIDES/subtracts a bonus that was
     // never actually granted, corrupting WeaponCount/Strength/OnHitPower (this was the "picking it mid-surge
@@ -47,6 +47,13 @@ public class SurgeWeaponCountAugment : AugmentEffectPD<SurgeWeaponCountAugment.S
         Stats.AddSurgeStartedListener(OnSurgeStarted);
         Stats.AddSurgeEndedListener(OnSurgeEnded);
         Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
+
+        // Picked mid-Surge (2026-09-03 fix) — the Surge already in progress fired its own OnSurgeStarted
+        // before this subscription existed, so without this the weapon-count bonus wouldn't apply until
+        // the NEXT Surge starts. Matters most for a Berserk Surge already in progress (can't be manually
+        // ended early to "re-trigger" the bonus sooner). Reuses OnSurgeStarted() directly rather than
+        // duplicating its body — already idempotent via _surgeBonusGranted, safe to call unconditionally.
+        if (Stats.IsSurging) OnSurgeStarted();
     }
 
     protected override void OnDestroy()

@@ -74,6 +74,11 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private readonly Collider[] _overlapResults = new Collider[32];
     private readonly HashSet<IEnemyPD> _touchedThisTick = new();
     private readonly HashSet<IFriendlyPD> _touchedAlliesThisTick = new();
+    // "Tip" hits — see WeaponHitData.isTip's own doc comment. Populated alongside _touchedThisTick at every
+    // detection site (both the swept sub-arc BoxCasts and the final OverlapBox), so an enemy landing in the
+    // outer 10% of the hitbox in ANY of this tick's checks counts as a tip hit overall (same "any qualifying
+    // detection wins" convention _touchedThisTick itself already uses via HashSet.Add).
+    private readonly HashSet<IEnemyPD> _tipHitsThisTick = new();
 
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
 
@@ -119,7 +124,10 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         float halfRange = rangeScaleTarget != null
             ? designOrbit * RootScale.z
             : (IsMelee ? RangeValue / 2f : 0.25f);
-        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
+        // EffectiveWeaponRange, not the raw WeaponRange stat — see WeaponBasePD.NominalOrbitRadius's own
+        // identical 2026-09-14 doc comment (this is a duplicate of that method, see this method's own doc
+        // comment above for why).
+        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
         return weaponRadiusOffset + _stats.bonusSizePercent * 0.5f + halfRange;
     }
 
@@ -200,6 +208,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
         _touchedThisTick.Clear();
         _touchedAlliesThisTick.Clear();
+        _tipHitsThisTick.Clear();
         Vector3 center;
         Quaternion hitboxRot;
 
@@ -232,12 +241,20 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
                 float dist = sweep.magnitude;
                 if (dist > 0.001f)
                 {
+                    // Tip-zone edges for THIS segment's own landing geometry (segCenter/segRot) — see
+                    // IsInTipZone's own doc comment.
+                    Vector3 segForward = segRot * Vector3.forward;
+                    Vector3 segNearEdge = segCenter - segForward * half.z;
+                    Vector3 segFarEdge  = segCenter + segForward * half.z;
+
                     int n = Physics.BoxCastNonAlloc(segStart, half, sweep / dist,
                         _sweepResults, segRot, dist, CombatLayerMasks.EnemyHurtboxMask);
                     for (int i = 0; i < n; i++)
                     {
                         var enemy = _sweepResults[i].collider.GetComponent<IEnemyPD>();
-                        if (enemy != null) _touchedThisTick.Add(enemy);
+                        if (enemy == null) continue;
+                        _touchedThisTick.Add(enemy);
+                        if (IsInTipZone(enemy.transform.position, segNearEdge, segFarEdge)) _tipHitsThisTick.Add(enemy);
                     }
 
                     int an = Physics.BoxCastNonAlloc(segStart, half, sweep / dist,
@@ -262,11 +279,18 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
             center += hitboxRot * Vector3.forward * centerShift;
         }
 
+        // Tip-zone edges for this tick's final, settled geometry — see IsInTipZone's own doc comment.
+        Vector3 finalForward = hitboxRot * Vector3.forward;
+        Vector3 finalNearEdge = center - finalForward * half.z;
+        Vector3 finalFarEdge  = center + finalForward * half.z;
+
         int oc = Physics.OverlapBoxNonAlloc(center, half, _overlapResults, hitboxRot, CombatLayerMasks.EnemyHurtboxMask);
         for (int i = 0; i < oc; i++)
         {
             var enemy = _overlapResults[i].GetComponent<IEnemyPD>();
-            if (enemy != null) _touchedThisTick.Add(enemy);
+            if (enemy == null) continue;
+            _touchedThisTick.Add(enemy);
+            if (IsInTipZone(enemy.transform.position, finalNearEdge, finalFarEdge)) _tipHitsThisTick.Add(enemy);
         }
 
         int ao = Physics.OverlapBoxNonAlloc(center, half, _overlapResults, hitboxRot, CombatLayerMasks.FriendlyHurtboxMask);
@@ -320,6 +344,22 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         visualHeightTarget.localPosition = new Vector3(p.x, localLift, p.z);
     }
 
+    // ── Tip ───────────────────────────────────────────────────────────────────
+
+    // The outer 10% of the hitbox's own [nearEdge, farEdge] depth — see WeaponHitData.isTip's own doc
+    // comment. t is the enemy's projected fraction along that axis (0 = nearEdge, 1 = farEdge, unclamped —
+    // an enemy caught just outside either end by the physics query's own tolerance still resolves sanely
+    // since only t >= 0.9 matters here). totalLenSq near 0 (a degenerate zero-depth hitbox) reads as never-tip
+    // rather than dividing by ~0.
+    private static bool IsInTipZone(Vector3 enemyPos, Vector3 nearEdge, Vector3 farEdge)
+    {
+        Vector3 axis = farEdge - nearEdge;
+        float totalLenSq = axis.sqrMagnitude;
+        if (totalLenSq < 0.0001f) return false;
+        float t = Vector3.Dot(enemyPos - nearEdge, axis) / totalLenSq;
+        return t >= 0.9f;
+    }
+
     // ── Hit ───────────────────────────────────────────────────────────────────
 
     private void Hit(IEnemyPD enemy)
@@ -329,11 +369,21 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         bool isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, _stats.WeaponOnHitPower);
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.WeaponStrength, onHitPower = _stats.WeaponOnHitPower, isCrit = isCrit };
+        // weaponRadius/weaponOffset/weaponRangeMultiplier — see WeaponHitData's own doc comments on each.
+        // weaponRadius mirrors NominalOrbitRadius's own weaponRadiusOffset formula exactly (WeaponRadius,
+        // plus EffectiveWeaponRange again for an outer-track weapon specifically); weaponOffset is the
+        // universal bonusSizePercent*0.5f clearance term every weapon's orbit gets. weaponRangeMultiplier
+        // (2026-09-14) — this weapon's own hitbox depth is now genuinely scaled by this same stat (see
+        // WeaponManagerPD.SetupWeaponRange's own doc comment), so a consumer normalizing hitDistance back
+        // down to "genuine WeaponRange-only" terms (e.g. OnHitDamageDistanceAugment) needs to divide it out
+        // here too — previously left at the struct default 0/unset, correct back when only ranged weapons
+        // could ever carry a nonzero multiplier at all.
+        float weaponRadius = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.WeaponStrength, onHitPower = _stats.WeaponOnHitPower, isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position), weaponRadius = weaponRadius, weaponOffset = _stats.bonusSizePercent * 0.5f, weaponRangeMultiplier = _stats.weaponRangeScalingBonusPercent * _stats.weaponRangeScalingPenalty, isTip = _tipHitsThisTick.Contains(enemy) };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
-        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
+        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * hitData.onHitPower);
         NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });

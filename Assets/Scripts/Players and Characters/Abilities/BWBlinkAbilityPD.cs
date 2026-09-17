@@ -193,6 +193,9 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         // straddle the teleport instead of both firing together.
         _controller?.NotifyDashStarted();
         _controller?.NotifyDashMovementStarted();
+        // Counts as a genuine dash-like trigger for DashEffectDoubleTriggerAugment too (2026-09-03) — see
+        // PlayerControllerPD._onRealDashStarted's own field comment.
+        _controller?.NotifyRealDashStarted();
 
         // See class doc comment for why this is currentOrigin (the blades' LIVE position), not
         // _bladeDance.currentState.targetPosition (their final resting point).
@@ -225,6 +228,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         // Fired at the NEW (blinked-to) position — see class doc comment.
         _controller?.NotifyDashEnded();
         _controller?.NotifyDashMovementEnded();
+        _controller?.NotifyRealDashEnded();
 
         ApplyBuffAndCooldown();
     }
@@ -279,8 +283,10 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         if (_stats == null || _stats.IsDead || currentState.isActive || currentState.cooldownTimer > 0f) return;
         _controller?.NotifyDashStarted();
         _controller?.NotifyDashMovementStarted();
+        _controller?.NotifyRealDashStarted();
         _controller?.NotifyDashEnded();
         _controller?.NotifyDashMovementEnded();
+        _controller?.NotifyRealDashEnded();
         ApplyBuffAndCooldown();
     }
 

@@ -108,7 +108,6 @@ MonoBehaviour:
   slot: 1
   tags: []
   activeSurgeBlock: 0
-  isActionAbility: 0
   duration: 8
   weaponRangeTotalPercent: 0.75
   executeThresholdPercent: 0.2
@@ -129,15 +128,14 @@ MonoBehaviour:
   abilityName: <color=#FF8700>Axe Throw</color>
   description: "<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>\nThrow
     a returning axe <color=#3278FF>3x Range</color> ahead, dealing \n<color=#FF5000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{strengthPercent}%
-    Strength</color>) damage</color> that <color=#FFA000>Interrupts</color>. Has
-    <color=#FF8700>+100% Crit Damage</color>.\n<color=#FFBE50><i>Size scales with
-    Range</i></color>\n<color=#FFBE50><i>Triggers Weapon Strike effects</i></color>"
+    Strength</color>) damage</color> that <color=#FFA000>Interrupts</color>. Deals
+    <color=#FFA000>double damage</color> on <color=#FF8700>Crit</color>.\n<color=#FFBE50><i>Size
+    scales with Range</i></color>\n<color=#FFBE50><i>Triggers Weapon Strike effects</i></color>"
   cooldown: 8
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 0
-  isActionAbility: 1
   strengthPercent: 1
   maxRangeMultiplier: 3
   projectileSpeed: 20

@@ -70,8 +70,10 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // meaningful against this ability's own low cooldown (dividing an already-small value by (1 + haste/100)
     // still only shaves off a fraction of a second). So instead, for the whole Outbound->Hold->Return window,
     // AbilityHaste converts directly into bonus Attack Speed instead:
-    // 1 point of EffectiveAbilityHaste = attackSpeedPercentPerHaste (1% by default) Total Attack Speed,
-    // ADDED via AddAttackSpeedTotalPercent. Granted once at cast (the fresh-cast branch only — a Hold recast
+    // 1 point of EffectiveAbilityHaste = attackSpeedPercentPerHaste (1% by default) Attack Speed,
+    // ADDED via AddAttackSpeedFlat (2026-09-13, switched from AddAttackSpeedTotalPercent — genuine Total-tier
+    // multiplier was never the intent here, an oversight caught late; this is a plain additive percent, same
+    // tier every other "+X% Attack Speed" grant in this codebase uses). Granted once at cast (the fresh-cast branch only — a Hold recast
     // doesn't re-grant, the buff already spans the whole sequence) and reversed with the identical
     // snapshotted value in EndDance(), same cast-time-snapshot convention as RogueVanishAbilityPD/
     // KnightBigBuffAbilityPD's own applied-percent fields (a live AbilityHaste change mid-dance must not
@@ -240,9 +242,12 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
 
         Vector3 origin = _stats.transform.position;
 
+        // EffectiveWeaponRange fallback (2026-09-16, was plain WeaponRange) — matches TryGetFarthestWeaponReach's
+        // own EffectiveWeaponRange-based GetOuterReach() scale, same reasoning ExeAxeThrowAbilityPD's own
+        // identical trueReach fallback uses.
         float trueReach = (_weaponManager != null && _weaponManager.TryGetFarthestWeaponReach(out float r)
             ? r
-            : _stats.WeaponRange) * castRangeMultiplier;
+            : _stats.EffectiveWeaponRange) * castRangeMultiplier;
 
         // Clamped to trueReach, not just aimed toward it — same shape as ArcherArrowRainAbilityPD's own
         // Activate(): cursor within range targets exactly the cursor's own point, cursor beyond range
@@ -265,7 +270,7 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         // straight into bonus Attack Speed for this ability's whole active window, since a 0-cooldown ability
         // has no cooldown left for AbilityHaste to meaningfully act on.
         _appliedAttackSpeedPercent = _stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste;
-        _stats.AddAttackSpeedTotalPercent(_appliedAttackSpeedPercent);
+        _stats.AddAttackSpeedFlat(_appliedAttackSpeedPercent);
 
         currentState.targetPosition = origin + cursorDir * castDistance;
         currentState.currentOrigin  = origin;
@@ -376,7 +381,7 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     {
         SetPhase(ref state, Phase.Idle);
         if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
-        _stats?.AddAttackSpeedTotalPercent(-_appliedAttackSpeedPercent);
+        _stats?.AddAttackSpeedFlat(-_appliedAttackSpeedPercent);
         _stats?.SetOrbitOriginOverride(null);
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
     }

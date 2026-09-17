@@ -12,19 +12,16 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    public float healthRegenMultiplier       = 1f; // 100%
+    // 2026-09-14: scales off Stats.BonusHealthRegen (was Stats.HealthRegen, the full/total stat) — see that
+    // property's own doc comment. Renamed from healthRegenMultiplier to bonusHealthRegenPercent (now ends in
+    // "Percent", so AugmentDescriptionFormatter's *100 convention applies directly) — the old
+    // HealthRegenMultiplierPercent alias property this needed is gone, no longer necessary.
+    public float bonusHealthRegenPercent = 1f; // 100%
     // Flat floor added to the scaled portion below (2026-08-12, playtesting: this augment did literally
     // nothing for a build with zero HealthRegen investment) — added BEFORE the onHitPower multiply (see
     // OnAllyStrike()), so it still scales with onHitPower same as the rest of the heal, just guarantees a
     // non-zero base even at zero HealthRegen investment.
     [SerializeField] private float baseHeal = 2f;
-
-    // healthRegenMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
-    // convention wouldn't apply to it directly — this alias exists so a description can reference
-    // {HealthRegenMultiplierPercent} for a static fallback (shown outside a live match, when
-    // {LiveHealthRegenRatio} itself is blank — see ShowLiveValues's own doc comment) alongside the live
-    // number.
-    public float HealthRegenMultiplierPercent => healthRegenMultiplier;
 
     // Baseline heal at 100% OnHitPower (varies hit-to-hit, so not baked into the preview — see
     // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention) for
@@ -32,7 +29,7 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
     // what OnAllyStrike actually heals.
     public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseHeal + stats.HealthRegen * healthRegenMultiplier)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseHeal + stats.BonusHealthRegen * bonusHealthRegenPercent)} "
             : "";
 
     protected override void OnApply()
@@ -57,7 +54,7 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
     private void OnAllyStrike(AllyStrikeData data)
     {
         // baseHeal joins the scaled portion INSIDE the onHitPower multiply — see its own field comment.
-        float totalHeal = (baseHeal + Stats.HealthRegen * healthRegenMultiplier) * data.onHitPower;
+        float totalHeal = (baseHeal + Stats.BonusHealthRegen * bonusHealthRegenPercent) * data.onHitPower;
         // Stub (2026-08-30) — HealFromAlly is CharacterStatsPD-specific, not on IFriendlyPD yet (data.ally
         // was widened to IFriendlyPD as part of the combat-targeting migration). Non-player ally healing
         // shape isn't designed yet, same "stub for now" call as DamageNumberManager's own IFriendlyPD

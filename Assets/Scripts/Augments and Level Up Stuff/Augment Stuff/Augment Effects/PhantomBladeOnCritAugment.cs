@@ -6,7 +6,7 @@ using UnityEngine;
 // time same as before (still no AttackSpeed scaling), but a real Strike Crit ALSO shaves cooldownReductionOnCrit
 // off it directly — same "cooldown ticks naturally, a trigger event shaves more off it" shape every
 // ability/dash cooldown-reduction augment in this codebase already uses (OnStrikeHighrollReduceDashCDAugment/
-// OnFirstDodgeReduceAbilityCDAugment/OnStrikeReduceAbilityCDAugment/etc.), just applied to this augment's own
+// OnDodgeReduceAbilityCDAugment/OnStrikeReduceAbilityCDAugment/etc.), just applied to this augment's own
 // internal timer instead of an ability's or dash's. Explicit design goal (user's own words): the old
 // independent-roll trigger "worked as intended" but felt disconnected from actually landing crits — this
 // version summons faster the more you're actually critting, while still guaranteeing a baseline proc even
@@ -43,19 +43,13 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
     // keeps the reduction proportional rather than a flat amount regardless of investment).
     public float cooldownReductionOnCrit = 0.5f;
     public int bladeCount = 3;
-    public float baseDamageMultiplier = 0.6f;
-
-    // baseDamageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
-    // convention wouldn't apply to it directly — this alias exists purely so a description can reference
-    // {BaseDamageMultiplierPercent} and get the correctly-scaled static number, as a fallback for whenever
-    // {LiveBladeDamageRatio} itself is blank (out of a live match — see ShowLiveValues's own doc comment).
-    public float BaseDamageMultiplierPercent => baseDamageMultiplier;
+    public float strengthMultiplierPercent = 0.6f;
 
     // For AugmentDescriptionFormatter's {LiveBladeDamageRatio} token. See
     // PhantomBladeSummonHelper.PreviewDamage's own doc comment for the full shared-formula convention.
     public string LiveBladeDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, baseDamageMultiplier))} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, strengthMultiplierPercent))} "
             : "";
 
     protected override State GetInitialState() => new() { timer = baseTimer };
@@ -112,7 +106,7 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
     {
         if (phantomBladePrefab == null) return;
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, baseDamageMultiplier, bladeColor);
+            Stats.transform.position, bladeCount, strengthMultiplierPercent, bladeColor);
     }
 
     protected override void Simulate(ref State state, float delta)

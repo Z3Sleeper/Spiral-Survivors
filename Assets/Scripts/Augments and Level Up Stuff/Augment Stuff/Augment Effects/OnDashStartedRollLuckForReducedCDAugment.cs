@@ -19,6 +19,11 @@ using UnityEngine;
 // Can overflow into granting multiple dash charges at once — see PlayerControllerPD.ReduceDashCooldown's own
 // doc comment for the cascading "grant a charge, carry the remainder into the next charge's timer, repeat"
 // shape.
+//
+// Also grants its own +3% Highroll Chance (Stats.AddBonusHighrollPercent — see that method's own doc comment
+// for why this is the Bonus tier, not AddHighrollPenalty's Penalty tier, for an ordinary buff like this one)
+// on top of the base trigger — same reasoning DodgeOnHighrollAugment's own identical +3% uses, this augment
+// felt underpowered relying purely on whatever HighrollChance investment the player happened to already have.
 public class OnDashStartedRollLuckForReducedCDAugment : AugmentEffectPD<OnDashStartedRollLuckForReducedCDAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
@@ -28,12 +33,15 @@ public class OnDashStartedRollLuckForReducedCDAugment : AugmentEffectPD<OnDashSt
     // compute (see class doc comment), so a plain field is all this needs now.
     public float cooldownReduction = 5f;
 
+    [SerializeField] private float highrollChanceBonus = 0.03f;
+
     private PlayerControllerPD _controller;
 
     protected override void OnApply()
     {
         _controller = Stats.GetComponent<PlayerControllerPD>();
         if (_controller != null) _controller.AddDashStartedListener(OnDashStarted);
+        Stats.AddBonusHighrollPercent(highrollChanceBonus);
     }
 
     protected override void OnDestroy()

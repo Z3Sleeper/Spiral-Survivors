@@ -36,11 +36,11 @@ using UnityEngine;
 // apart.
 //
 // No AbilityPower scaling anywhere (2026-08-23, explicit removal) — duration/maxHealthPercent/
-// rangePercent/sizePercent are all flat, fixed values, and the AoE's own stunDuration now scales by
-// CharacterStatsPD.AreaEffectPower alone (a direct multiplier, neutral at 1.0) rather than the old additive
-// AreaEffectPower+AbilityPower-1f combination. The "AoE Effects" family's own radius/count/retrigger scaling
-// (AreaEffectSize via RangeScalingAoEBase, AreaEffectCount) is untouched — that's owned by the shared
-// AreaEffectCastHelper/AreaEffectPD chain, not this ability's own AbilityPower term.
+// rangePercent/sizePercent are all flat, fixed values. The AoE's own stunDuration used to also scale by
+// CharacterStatsPD.AreaEffectPower; that stat (and AreaEffectCount, the multi-cast repeat count) were removed
+// entirely (2026-09-13) — stunDuration is now this ability's own plain, unscaled baseline, and TriggerAoE
+// always fires a flat single cast. Radius still scales via AreaEffectSize/RangeScalingAoEBase, owned by the
+// shared AreaEffectCastHelper/AreaEffectPD chain, unaffected by any of this.
 //
 // All three stat grants use the Total tier (AddMaxHealthTotalPercent/AddWeaponRangeTotalPercent/
 // AddSizePercent) rather than the plain Bonus tier the generic stat-pick augments
@@ -68,9 +68,9 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
         // the same cast out, so the AoE only ever goes off once per cast regardless of how it actually ends —
         // see class doc comment.
         public bool aoeTriggered;
-        // Guards FirstSuccessfulInterrupt (FSI) — reset once per AoE trigger (natural end OR recast), not
-        // per retrigger, so a whole AoE (including every AreaEffectCount retrigger) fires FSI at most once,
-        // the first time any enemy is actually interrupted. See OnEnemyInterrupted/CharacterStatsPD.
+        // Guards FirstSuccessfulInterrupt (FSI) — reset once per AoE trigger (natural end OR recast), so a
+        // whole AoE fires FSI at most once, the first time any enemy is actually interrupted. See
+        // OnEnemyInterrupted/CharacterStatsPD.
         // NotifyInterrupted.
         public bool interruptedThisCast;
         public void Dispose() { }
@@ -107,19 +107,16 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // tuning "feel" — this just scales the whole result up/down without touching either of that shared
     // formula's own inputs.
     [SerializeField] private float radiusMultiplier = 2f;
-    // Base stun duration BEFORE CharacterStatsPD.AreaEffectPower scales it (see TriggerAoE) — a direct
-    // multiplier, neutral at 1.0, so a 2s base still stuns for exactly 2s with no AreaEffectPower investment.
     public float stunDuration = 2f;
-    // Flat knockback override, NOT derived from Stats.Knockback (unlike ShieldBreakBurstAugment's own
-    // Stats.Knockback * multiplier) — this ability's oomph is a fixed push regardless of the caster's own
-    // Knockback stat. Passed straight through to AreaEffectCastHelper.Cast's knockback param, which applies
-    // independently of dealDamage (see its own doc comment), so this still knocks enemies back even though
-    // this ability deals no damage at all.
-    [SerializeField] private float knockback = 10f;
-    // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning, same
-    // convention/default as every other "AoE Effects" family member (DashExplosionAugment/
-    // ShieldBreakBurstAugment's own retriggerRate).
-    [SerializeField] private float retriggerRate = 0.5f;
+    // Stats.Knockback * knockbackMultiplier (2026-09-16, was a flat 10f override NOT derived from
+    // Stats.Knockback at all) — now scales with the caster's own Knockback stat, same
+    // "Stats.Knockback * multiplier" shape DashExplosionAugment/ShieldBreakBurstAugment already use, so
+    // KnockbackAugment (and any future Knockback-scaling source) actually affects this ability's own push
+    // too. 2f preserves this ability's previous authored feel exactly (10f / baseKnockback(5f) = 2x).
+    // Passed straight through to AreaEffectCastHelper.Cast's knockback param, which applies independently of
+    // dealDamage (see its own doc comment), so this still knocks enemies back even though this ability deals
+    // no damage at all.
+    [SerializeField] private float knockbackMultiplier = 2f;
 
     [Header("VFX")]
     // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
@@ -204,17 +201,8 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
         return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
     }
 
-    // Mirrors TriggerAoE()'s own stunDuration formula exactly (AreaEffectPower alone, no more AbilityPower —
-    // see class doc comment). Outside a live match, falls back to the base field itself — exact at
-    // AreaEffectPower's own neutral 1.0 baseline, same "neutral stat value == the base field" convention as
-    // every other Live*Ratio in this file.
-    public string LiveStunDurationRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? stunDuration * stats.AreaEffectPower
-            : stunDuration;
-        return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
-    }
+    public string LiveStunDurationRatio(CharacterStatsPD stats) =>
+        $"{AugmentDescriptionFormatter.FormatLiveNumber(stunDuration)} ";
 
     // Mirrors Simulate()'s own tick condition exactly (see that method's own comment) — a cooldown-reduction
     // effect should only ever eat into time that's ACTUALLY counting down right now, not a cooldownTimer
@@ -307,8 +295,8 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // The delayed payoff — interrupt + stun every nearby enemy, no damage, no knockback, no heal (all tossed,
     // see class doc comment). Goes through the shared "AoE Effects" AreaEffectCastHelper.Cast (via the
     // spawned AreaEffectPD chain — the same generic chain class DashExplosionAugment/DashHealAugment/
-    // ShieldBreakBurstAugment all use, not a Knight-specific one), so Stats.AreaEffectCount > 1 gets automatic
-    // multi-cast support (retriggerRate apart) without this class needing to track that itself. Every caller
+    // ShieldBreakBurstAugment all use, not a Knight-specific one) — a flat single cast now (Stats.
+    // AreaEffectCount, the stat that used to let this repeat, was removed entirely 2026-09-13). Every caller
     // is responsible for checking state.aoeTriggered first (see its own doc comment) — this method just marks
     // it unconditionally, it doesn't check it itself, so it stays a plain "do the thing" method callable from
     // either the recast or the natural-end path.
@@ -319,7 +307,6 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
         if (_stats == null || chainPrefab == null) return;
 
         float radius = _stats.RangeScalingAoEBase * radiusMultiplier;
-        int totalCasts = Mathf.Max(1, _stats.AreaEffectCount);
         Vector3 castPosition = _stats.transform.position;
 
         state.interruptedThisCast = false;
@@ -341,9 +328,9 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
         // through as the paired amount — see OnEnemyInterrupted/CharacterStatsPD.NotifyInterrupted's own
         // doc comments) — an enemy NOT successfully interrupted (already uninterruptible this tick) still
         // gets the plain onEnemyHit stun alone, no bonus.
-        chain.Launch(_stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
-            dealDamage: false, hasKnockback: true, knockback: knockback, interrupt: true,
-            onEnemyHit: enemy => enemy.Stun(stunDuration * _stats.AreaEffectPower),
+        chain.Launch(_stats, castPosition, radius, radiusVFXPrefab,
+            dealDamage: false, hasKnockback: true, knockback: _stats.Knockback * knockbackMultiplier, interrupt: true,
+            onEnemyHit: enemy => enemy.Stun(stunDuration),
             onSuccessfulInterrupt: OnEnemyInterrupted,
             vfxPerCast: true);
     }
@@ -356,8 +343,8 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // comment on onSuccessfulInterrupt) — feeds the generic SI/FSI events, gated to fire FSI at most once per
     // AoE trigger via currentState.interruptedThisCast (FSI itself isn't used for anything stun-related here
     // — InterruptTrueStun fires on every SI, see NotifyInterrupted's own doc comment). Passes this same
-    // cast's own (AreaEffectPower-scaled) stun duration as the paired-stun amount, added to InterruptTrueStun's
-    // flat portion for every enemy this cast successfully interrupts. The onEnemyHit Stun() call in TriggerAoE
+    // cast's own stun duration as the paired-stun amount, added to InterruptTrueStun's flat portion for every
+    // enemy this cast successfully interrupts. The onEnemyHit Stun() call in TriggerAoE
     // still fires independently for every hit enemy regardless (including this one) — ApplyStun's own
     // Mathf.Max semantics mean the two calls can never fight each other; whichever produces the longer
     // duration simply wins.
@@ -368,7 +355,7 @@ public class KnightAreaStunHealAbilityPD : PredictedIdentity<KnightAreaStunHealA
     // just this ability's own latest state, not a replayed one — same established pattern this file already
     // used before the rework.
     private void OnEnemyInterrupted(IEnemyPD enemy) =>
-        _stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast, stunDuration * _stats.AreaEffectPower);
+        _stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast, stunDuration);
 
     protected override void Simulate(ref State state, float delta)
     {

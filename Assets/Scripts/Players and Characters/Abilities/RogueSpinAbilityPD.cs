@@ -272,9 +272,12 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         Vector3 dir = _controller != null ? _controller.currentState.cursorDir : Vector3.zero;
         _facingYaw = dir != Vector3.zero ? Quaternion.LookRotation(dir).eulerAngles.y : 0f;
 
+        // EffectiveWeaponRange fallback (2026-09-16, was plain WeaponRange) — matches TryGetFarthestWeaponReach's
+        // own EffectiveWeaponRange-based GetOuterReach() scale, same reasoning ExeAxeThrowAbilityPD's own
+        // identical trueReach fallback uses.
         _damageReach = _weaponManager != null && _weaponManager.TryGetFarthestWeaponReach(out float reach)
             ? reach
-            : _stats.WeaponRange;
+            : _stats.EffectiveWeaponRange;
 
         // CharacterStatsPD.TotalWeaponCount (a pure stat, instant/deterministic) instead of
         // _weaponManager.WeaponCount (the actual spawned GameObject count) — WeaponManagerPD only syncs
@@ -317,6 +320,10 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         // Started/Ended) — matched by NotifyDashMovementEnded in EndActiveWindow below, on EVERY end path
         // including an interrupted one (unlike NotifyDashEnded, which an interrupt skips).
         _controller?.NotifyDashMovementStarted();
+        // Counts as a genuine dash-like trigger for DashEffectDoubleTriggerAugment too (2026-09-03) — see
+        // PlayerControllerPD._onRealDashStarted's own field comment for why this is a separate call from
+        // NotifyDashStarted above, matched by NotifyRealDashEnded below.
+        _controller?.NotifyRealDashStarted();
     }
 
     public void NotifyActivationBlocked() { }
@@ -397,6 +404,8 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         else
         {
             _controller?.NotifyDashEnded();
+            // See NotifyRealDashStarted's own comment in Activate() above.
+            _controller?.NotifyRealDashEnded();
             // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc
             // comment. See the matching NotifyAbilityStart call in Activate() for why this is gated on
             // cooldown > 0 too.
@@ -504,11 +513,11 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, OnHitPowerForEffects());
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = OnHitPowerForEffects(), isCrit = isCrit };
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = OnHitPowerForEffects(), isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position) };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
-        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
+        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * hitData.onHitPower);
         _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });

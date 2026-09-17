@@ -15,10 +15,10 @@ MonoBehaviour:
   displayName: <color=#8C8C8C>Phantom</color> <color=#FFB4FF>Cast</color>
   description: '<color=#FFA000>On <color=#FFB4FF>Ability Cast</color>:</color> <color=#FFA000>Summon</color>
     <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
-    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{DamageMultiplierPercent}%
+    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{strengthMultiplierPercent}%
     Strength</color>) damage x that <color=#FFB4FF>Ability''s</color> base cooldown</color>.
 
-    <color=#8C8C8C>+10%
+    <color=#8C8C8C>+5%
     Phantom Blade Damage and Size</color>'
   icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   effectPrefab: {fileID: 7210901500618420174, guid: 936fe61ff61d9414da16b8131d46ea2b, type: 3}

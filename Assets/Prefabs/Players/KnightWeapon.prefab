@@ -307,10 +307,12 @@ MonoBehaviour:
   - {fileID: 3231712233815679040}
   weaponParticles:
   - {fileID: 7799689323431798566}
-  isRanged: 0
-  rangeMultiplier: 1
+  minEmissionRate: 0
+  maxEmissionRate: 0
+  minEmissionRange: 0
+  maxEmissionRange: 0
   visualHeightTarget: {fileID: 6538681499716106083}
-  meleeHalfExtents: {x: 0.1, y: 0.1, z: 0.5}
+  meleeHalfExtents: {x: 0.2, y: 0.1, z: 0.5}
   orbitPivot: {fileID: 2899133381753418621}
 --- !u!114 &8198260059138025823
 MonoBehaviour:
@@ -334,6 +336,8 @@ MonoBehaviour:
   - {fileID: 8667004372245903466}
   - {fileID: 3231712233815679040}
   tintedMaterialIndex: 0
+  coloredParticleSystems:
+  - {fileID: 7799689323431798566}
   alpha: 1
 --- !u!1 &2965791002601135373
 GameObject:

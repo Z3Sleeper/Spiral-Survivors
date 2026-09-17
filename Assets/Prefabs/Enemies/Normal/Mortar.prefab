@@ -470,14 +470,14 @@ MonoBehaviour:
   postFireDuration: 0.5
   strikesPerAttack: 1
   strikeDamageMultiplier: 1
-  dashSpeedMultiplier: 2
+  dashSpeedMultiplier: 1.5
   dashDistanceBuffer: 0.5
   hazardPrefab: {fileID: 7216769449471555763, guid: 0bf3dab1eec5fe049848161732243cf8, type: 3}
   hazardWidth: 8
   hazardDepth: 2
   projectileTravelDuration: 0.5
   rotationRateDegPerSecond: 30
-  distanceTrackingRateUnitsPerSecond: 4
+  distanceTrackingRateUnitsPerSecond: 2
   projectileVfxPrefab: {fileID: 2942187867930129664, guid: 601c590dfab61944b9497067dfd8e6e2, type: 3}
   projectileArcHeight: 3
   projectileSpawnHeightOffset: 1

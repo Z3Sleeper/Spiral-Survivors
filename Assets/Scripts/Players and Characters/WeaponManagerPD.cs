@@ -39,7 +39,7 @@ public class WeaponManagerPD : MonoBehaviour
     {
         _stats             = stats;
         _currentCount      = stats.WeaponCount;
-        _currentRange      = stats.WeaponRange;
+        _currentRange      = stats.EffectiveWeaponRange;
         _currentSize       = stats.bonusSizePercent;
         _weaponPrefabScale = weaponPrefab.transform.localScale;
         if (stats.isServer) _pendingSpawn = stats.WeaponCount;
@@ -137,13 +137,18 @@ public class WeaponManagerPD : MonoBehaviour
 
     // ── Range / size helpers ──────────────────────────────────────────────────
 
+    // EffectiveWeaponRange, not the raw WeaponRange stat, throughout this whole method (2026-09-14) — this
+    // sets the WEAPON'S OWN actual physical geometry (hitbox depth, model scale, RangeValue), so it needs to
+    // track whatever a class's own weaponRangeScalingPercent trade-off actually leaves the weapon reaching —
+    // see CharacterStatsPD.EffectiveWeaponRange's own doc comment for the full "why" this stays a separate
+    // value from the raw stat any augment might read as its own scaling input.
     public void SetupWeaponRange(IWeaponPD weapon)
     {
         if (!weapon.IsMelee) return;
         if (weapon.hitboxTarget != null)
         {
             float rootZ = weapon.transform.localScale.z;
-            float r     = _stats.WeaponRange;
+            float r     = _stats.EffectiveWeaponRange;
             var s = weapon.hitboxTarget.localScale;
             weapon.hitboxTarget.localScale = new Vector3(s.x, s.y, r / rootZ);
             if (weapon.rangeScaleTarget != null)
@@ -173,11 +178,11 @@ public class WeaponManagerPD : MonoBehaviour
             weapon.transform.localScale = new Vector3(
                 weapon.transform.localScale.x,
                 weapon.transform.localScale.y,
-                _stats.WeaponRange);
+                _stats.EffectiveWeaponRange);
         }
-        weapon.ScaleModel(_stats.WeaponRange);
+        weapon.ScaleModel(_stats.EffectiveWeaponRange);
         weapon.RootScale  = weapon.transform.localScale;
-        weapon.RangeValue = _stats.WeaponRange;
+        weapon.RangeValue = _stats.EffectiveWeaponRange;
     }
 
     // Farthest current outer hit-detection edge across every registered weapon (both rings) — used by
@@ -269,9 +274,13 @@ public class WeaponManagerPD : MonoBehaviour
             _currentOuterCount = targetOuterCount;
         }
 
-        if (_stats.WeaponRange != _currentRange)
+        // EffectiveWeaponRange, not the raw WeaponRange stat (2026-09-14) — this is genuine weapon geometry
+        // (actual model/hitbox size), so it needs to track whatever a class's own weaponRangeScalingPercent
+        // trade-off actually leaves the weapon reaching — see CharacterStatsPD.EffectiveWeaponRange's own doc
+        // comment, and SetupWeaponRange's own identical change below.
+        if (_stats.EffectiveWeaponRange != _currentRange)
         {
-            _currentRange = _stats.WeaponRange;
+            _currentRange = _stats.EffectiveWeaponRange;
             foreach (var weapon in _weapons) SetupWeaponRange(weapon);
             foreach (var weapon in _outerWeapons) SetupWeaponRange(weapon);
         }

@@ -247,8 +247,8 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     // WeaponManagerPD.TryGetFarthestWeaponReach, same "inherit from the actual weapon" pattern
     // RogueSpinAbilityPD/ExeAxeThrowAbilityPD/ArcherArrowRainAbilityPD/BWBladeDanceAbilityPD already use,
     // falling back to the plain WeaponRange stat if no weapon is registered) instead of cursor input, then
-    // converts it the same Atan2 way UpdateAimAngle() above does. Automatically picks up a ranged weapon's own
-    // isRanged/rangeMultiplier this way (see WeaponBasePD.EffectiveWeaponRange's own doc comment) without
+    // converts it the same Atan2 way UpdateAimAngle() above does. Automatically picks up Archer's own
+    // weaponRangeScalingPercent this way (see CharacterStatsPD.EffectiveWeaponRange's own doc comment) without
     // needing a separate hand-tuned multiplier here. Falls back to the character's current forward facing if
     // no enemy is currently in range, same "always have SOME defined direction to freeze the ring at"
     // fallback the free-aim version used for a zero cursorDir. Called every active tick (not just once at
@@ -256,9 +256,12 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     private void UpdateAutoAimAngle()
     {
         if (_stats == null) return;
+        // EffectiveWeaponRange fallback (2026-09-16, was plain WeaponRange) — matches TryGetFarthestWeaponReach's
+        // own EffectiveWeaponRange-based GetOuterReach() scale, same reasoning ExeAxeThrowAbilityPD's own
+        // identical trueReach fallback uses.
         float searchRange = _weaponManager != null && _weaponManager.TryGetFarthestWeaponReach(out float trueReach)
             ? trueReach
-            : _stats.WeaponRange;
+            : _stats.EffectiveWeaponRange;
         bool found = WeaponRangedPD.TryFindAutoAimDirection(_stats.transform.position, searchRange, out Vector3 aimDir);
         Vector3 dir = found ? aimDir : transform.forward;
         _stats.SetFocusFireAimAngle(Mathf.Atan2(dir.z, dir.x) * Mathf.Rad2Deg);

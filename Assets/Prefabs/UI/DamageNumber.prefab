@@ -228,11 +228,13 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::DamageNumber
   _text: {fileID: 5872084163197778109}
   _zDrift: 0.05
+  _spawnZOffset: -0.1
   _maxHeight: 2
   _duration: 1
   _enemyFontSize: 6
   _nonPrioritySize: 4
   _playerFontSize: 6
+  _playerHealFontSize: 4
   _statusMaxHeight: 2
   _statusDuration: 1
   _statusFontSize: 6

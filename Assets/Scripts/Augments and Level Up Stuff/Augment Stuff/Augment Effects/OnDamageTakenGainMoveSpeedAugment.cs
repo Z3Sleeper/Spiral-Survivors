@@ -8,7 +8,7 @@ using UnityEngine;
 // Re-triggering while the buff is already active (e.g. two hits in quick succession) just refreshes the
 // duration back to full — it does NOT re-grant/stack a second copy of the bonus, same "start/end pairing
 // needs a granted guard" convention every timed on-trigger buff in this codebase follows (see
-// OnFirstDodgeGainAttackSpeedAugment's own doc comment for the identical shape). State.timer doubles as
+// OnDodgeGainAttackSpeedAugment's own doc comment for the identical shape). State.timer doubles as
 // both the countdown AND the "is it currently active" flag (> 0 means active), no separate bool needed.
 public class OnDamageTakenGainMoveSpeedAugment : AugmentEffectPD<OnDamageTakenGainMoveSpeedAugment.State>
 {

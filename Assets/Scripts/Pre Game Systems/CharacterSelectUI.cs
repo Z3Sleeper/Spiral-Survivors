@@ -9,7 +9,12 @@ public class CharacterSelectUI : MonoBehaviour
 {
     public static CharacterSelectUI instance;
 
-    [SerializeField] private TextMeshProUGUI playerListText;
+    // One PlayerListEntryUI instance per lobby member, rebuilt (Destroy + Instantiate, same convention
+    // BuildColorPicker already uses) on every RefreshFromLobby — at most 4 lobby members, so this isn't a
+    // hot path worth pooling. See PlayerListEntryUI's own doc comment for why each row carries its own
+    // avatar image instead of one shared rich-text blob.
+    [SerializeField] private Transform playerListContainer;
+    [SerializeField] private PlayerListEntryUI playerListEntryPrefab;
     [SerializeField] private LobbyManager lobbyManager;
     [SerializeField] private CodeButton codeButton;
     [SerializeField] private PlayerColorPalette colorPalette;
@@ -460,7 +465,7 @@ public class CharacterSelectUI : MonoBehaviour
 
     public void RefreshFromLobby(Lobby lobby)
     {
-        if (playerListText == null || CharacterRegistry.instance == null) return;
+        if (playerListContainer == null || playerListEntryPrefab == null || CharacterRegistry.instance == null) return;
         codeButton?.Init(lobby.LobbyId);
 
         // Every client's own reaction to a join/leave — see the method's own doc comment. Runs before the
@@ -506,7 +511,9 @@ public class CharacterSelectUI : MonoBehaviour
             }
         }
 
-        var sb = new System.Text.StringBuilder($"Player List ({lobby.Members.Count}/{lobby.MaxPlayers}):\n");
+        foreach (Transform child in playerListContainer)
+            Destroy(child.gameObject);
+
         foreach (var member in lobby.Members)
         {
             string charName = "...";
@@ -539,9 +546,10 @@ public class CharacterSelectUI : MonoBehaviour
             // Outer <color> covers the glyph AND the rest of the line (player's own color); the nested
             // <color> for readyState overrides just that one span, then reverts to the outer color for
             // everything after it closes — TMP rich text nests/reverts like a stack.
-            sb.AppendLine($"<color=#{colorHex}>■ <color={readyColor}>{readyState}</color> - {member.DisplayName} - {charName} - Spent Points: {powerStr}</color>");
+            string line = $"<color=#{colorHex}>■ <color={readyColor}>{readyState}</color> - {member.DisplayName} - {charName} - Spent Points: {powerStr}</color>";
+            var row = Instantiate(playerListEntryPrefab, playerListContainer);
+            row.SetData(member.Avatar, line);
         }
-        playerListText.text = sb.ToString();
 
         // Re-checked on every lobby refresh, not just once at Awake() — lobbyManager.CurrentLobby isn't
         // necessarily valid yet at Awake()-time for a client still mid-connect, so IsHost could read a stale

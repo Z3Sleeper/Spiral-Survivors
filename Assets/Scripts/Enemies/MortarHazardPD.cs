@@ -176,21 +176,8 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
             currentState.trackedDistance = toTarget.magnitude;
         }
 
-        // Pooled-reuse safety — same reasoning as RemoteSpikeBurstPD.Launch()'s own explicit ResetFill() call.
-        if (_windupFill != null) _windupFill.ResetFill();
-
-        // Scales this hazard's own root — DangerIndicator and WindupFill both live as children underneath it
-        // and inherit the non-uniform width/depth for free via ordinary transform-hierarchy propagation, same
-        // convention RemoteSpikeBurstPD.UpdateView uses (IndicatorMath.ApplyRadialTransform(transform, ...)),
-        // just non-uniform (width != depth) instead of a single radius. No direct DangerIndicator reference
-        // needed — matches every other windup-hazard prefab in this codebase, which only ever slots in
-        // WindupFill (and occasionally a WindupIndicator wrapper), never DangerIndicator itself.
-        // *0.1f — same compensation IndicatorMath.ApplyLineTransform's own "Z scale is 10% of distance" uses:
-        // Unity's built-in Plane primitive is 10x10 world units at scale 1 (unlike a Quad, which is 1x1), so
-        // a DangerIndicator/WindupFill authored as a Plane needs this ratio to make localScale units actually
-        // correspond to world units.
-        var rootScale = transform.localScale;
-        transform.localScale = new Vector3(width * 0.1f, rootScale.y, depth * 0.1f);
+        // Pooled-reuse safety — same reasoning as RemoteSpikeBurstPD.Launch()'s own explicit Hide() call.
+        if (_windupFill != null) _windupFill.Hide();
     }
 
     protected override State GetInitialState() => default;
@@ -331,6 +318,15 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
 
     protected override void UpdateView(State viewState, State? verified)
     {
+        // Re-applied every frame — center/facing both come from this hazard's own root transform, which
+        // LateSimulate's own Attached-phase tracking (or the post-lock frozen position/rotation) already
+        // keeps correct; width/depth are fixed for this hazard's whole life (set once at Launch()).
+        // centerForwardOffset left at its 0 default — this hazard's own root transform.position already IS
+        // the true center (unlike Blitz/Spear/etc., which sit at the near edge), and it's explicitly,
+        // synchronously self-positioned every LateSimulate tick with no separate smoother involved, so it was
+        // never actually susceptible to the jitter ShowRectangle's own doc comment describes.
+        if (_windupFill != null) _windupFill.ShowRectangle(_halfDepth * 2f, _halfWidth * 2f);
+
         // Live, every frame — same feedback_windupfill_self_timed_drift fix as RemoteSpikeBurstPD.UpdateView.
         // Gate reads verified (avoids a stale pooled-reuse timer value reading as "almost done" right after a
         // fresh Launch()); the actual ratio reads viewState once that gate is open, for smoother

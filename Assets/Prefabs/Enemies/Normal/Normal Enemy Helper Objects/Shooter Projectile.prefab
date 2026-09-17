@@ -28,7 +28,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: 0, z: 0, w: 0.7071068}
   m_LocalPosition: {x: 0, y: 0.5, z: 0}
-  m_LocalScale: {x: 0.25, y: 0.25, z: 0.25}
+  m_LocalScale: {x: 0.3, y: 0.3, z: 0.3}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 976488254101132171}
@@ -136,7 +136,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f020ab65c71c45d40a305de212a46ea9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnemyProjectilePD
-  halfExtents: {x: 0.1, y: 0.1, z: 0.25}
+  halfExtents: {x: 0.15, y: 0.15, z: 0.3}
   _renderers:
   - {fileID: 7811775501567159753}
   _visuals: {fileID: 976488254101132171}

@@ -57,6 +57,79 @@ public struct WeaponHitData
     // original hit instead of rolling their own independent chance, same "if it crits, crit on all hits"
     // reasoning PhantomBladePD now uses.
     public bool isCrit;
+    // Whether the hit that fired this event was itself a highroll (WeaponDamageMath.RollDamage's own
+    // isHighroll out-param at the moment this hit rolled its own damage) — same "inherit in lockstep instead
+    // of rolling independently" reasoning as isCrit above (2026-09-14, extended to match). False/unset on any
+    // construction site that doesn't set it — same as isCrit's own default. PhantomBladePD populates this too
+    // (2026-09-14 — used to hardcode isHighroll = false on every hit despite its own damage roll genuinely
+    // being able to highroll; now baked in at Summon() time alongside _isCrit and reported for real).
+    // Consumed via WeaponDamageMath.RollDamageInherited (see that method's own doc comment) — see also isCrit
+    // above.
+    public bool isHighroll;
+    // World-space distance from the ATTACKER (Stats.transform.position), not the striking weapon/projectile's
+    // own current position, to the struck enemy at the moment this hit landed — 0 on any construction site
+    // that doesn't set it (only the 5 real weapon-strike sites do: WeaponMeleePD/WeaponAxePD/
+    // WeaponRangedProjectilePD/ExeAxeThrowProjectilePD/RogueSpinAbilityPD). Added for
+    // PhantomBladeRangeAugment's own distance-accumulation trigger — reads this instead of independently
+    // re-deriving distance, so any future consumer stays in lockstep with exactly what that augment already
+    // sums. Deliberately player-to-enemy, not weapon-to-enemy, so a hit only counts as "far" when it reflects
+    // genuine WeaponRange investment (how far the ATTACKER'S OWN position is from the target), not merely
+    // where a projectile happened to be along its own flight when it connected.
+    //
+    // A "normalized distance" check (any consumer that wants hitDistance to reflect genuine WeaponRange
+    // investment alone, not any other reason a hit could land far from the attacker) factors out THREE
+    // independent things, all 0/neutral by default on any construction site that doesn't set them: weaponRadius
+    // and weaponOffset below (both flat, subtracted from hitDistance), and weaponRangeMultiplier (a scale,
+    // divided into whatever remains) — see OnHitDamageDistanceAugment.OnHit for the reference implementation:
+    // Mathf.Max(0f, hitDistance - weaponRadius - weaponOffset) / (weaponRangeMultiplier > 0 ? weaponRangeMultiplier : 1).
+    public float hitDistance;
+    // How far this weapon's own orbit sits from the player, on top of the universal weaponOffset below,
+    // regardless of any WeaponRange investment at all — CharacterStatsPD.WeaponRadius, PLUS
+    // EffectiveWeaponRange for an OUTER TRACK weapon specifically (OuterTrackAugment's own second ring starts
+    // just past the main track's full reach — see WeaponBasePD.NominalOrbitRadius's own identical
+    // weaponRadiusOffset local variable, which is exactly this value): weaponRadius = IsOuterTrack ?
+    // WeaponRadius + EffectiveWeaponRange : WeaponRadius. Without factoring this out, Bladeweaver (this
+    // project's only character with WeaponRadius > 0) would have every hit read as farther-reaching than an
+    // equivalent WeaponRange investment on any other class, purely because its weapons orbit further from its
+    // own center before even reaching outward by WeaponRange at all — and any class that picks
+    // OuterTrackAugment would get the identical inflation on their own outer-ring hits — the exact same "bait
+    // option, quietly worse/better for one specific character/pick" class of bug weaponRangeMultiplier
+    // already exists to prevent, just for a different stat.
+    public float weaponRadius;
+    // The universal character-clearance term EVERY weapon's own orbit is held out by, so it doesn't start
+    // from literal player center — CharacterStatsPD.bonusSizePercent * 0.5f (see WeaponBasePD.
+    // NominalOrbitRadius's own identical term), defaulting to 0.5 for every character/weapon (bonusSizePercent
+    // defaults to 1). Unlike weaponRadius above (which varies per character/track), this is the SAME baseline
+    // floor hitDistance always carries regardless of build — factored out for the identical "genuine
+    // WeaponRange investment only" reasoning.
+    public float weaponOffset;
+    // Extra range multiplier the striking character's own weaponRangeScalingBonusPercent/weaponRangeScalingPenalty
+    // pair applied on top of the raw WeaponRange stat (CharacterStatsPD.EffectiveWeaponRange — e.g. Archer's
+    // own bow-range boost, or Bladeweaver's/OuterTrackAugment's own reach reductions) — 0 (the default on every
+    // construction site that doesn't set it) is treated as neutral 1 by any consumer, same "0 means unset,
+    // read as 1" convention CharacterStatsPD's own *Percent tiers already use. Set by WeaponMeleePD/
+    // WeaponAxePD/WeaponRangedProjectilePD's own real weapon-strike hits (2026-09-14 — melee/Axe didn't used
+    // to, back when only ranged-flagged prefabs could ever carry a nonzero multiplier at all); ability-driven
+    // hits that mimic a weapon strike (ExeAxeThrowProjectilePD/RogueSpinAbilityPD) deliberately still leave
+    // this at 0/unset — per explicit design, those abilities read the TRUE, unscaled WeaponRange stat for
+    // their own reach, not EffectiveWeaponRange, so there's nothing to normalize away for them.
+    public float weaponRangeMultiplier;
+    // True if this hit landed in the outer 10% of the weapon's own reach — the "tip" for melee/Axe
+    // (WeaponMeleePD/WeaponAxePD, outer 10% of the physical hitbox depth), "snipe" for ranged
+    // (WeaponRangedProjectilePD, outer 10% of the weapon's own targeting range — see that class's own
+    // ProcessHit comment for why it's measured against the targeting range, not the projectile's further-
+    // inflated max travel distance) — same underlying flag, just a different in-game name depending on
+    // weapon type, deliberately reused rather than split into two fields so any future consumer works on both
+    // automatically. False (default) on every construction site that doesn't set it — ExeAxeThrowProjectilePD/
+    // RogueSpinAbilityPD/AoE effects/PhantomBladePD have no equivalent concept defined yet, left for later. An
+    // enemy that overlaps both a tip and non-tip portion of a melee/Axe hitbox in the same tick (e.g.
+    // straddling the 90% boundary across sub-arc segments) counts as a tip hit — same "any qualifying
+    // detection wins" tie-break WeaponAxePD's own inner/outer split already uses (an enemy touching both zones
+    // counts as outer). Deliberately scoped to genuine weapon strikes only (WeaponMeleePD/WeaponAxePD/
+    // WeaponRangedProjectilePD) — NOT ability effects that merely mimic one (ExeAxeThrowProjectilePD/
+    // RogueSpinAbilityPD/AoE effects/PhantomBladePD), which always leave this at its default false. Not a
+    // gap to fill in later — a settled design boundary.
+    public bool isTip;
 }
 
 // Shared payload for CharacterStatsPD._onAllyStrike — fired whenever any of this player's weapons touches
@@ -139,6 +212,25 @@ public static class WeaponDamageMath
 
         isHighroll = roll >= highrollThreshold;
         return isHighroll ? max : roll;
+    }
+
+    // Same roll shape as RollDamage above, EXCEPT the highroll STATUS is dictated by the caller (inherited
+    // from an originating hit/strike event's own WeaponHitData.isHighroll) instead of independently determined
+    // via its own roll-against-threshold check — used by onhit/onstrike-triggered secondary effects
+    // (OnHitDamageAugment, OnHitDamageDistanceAugment, OnHitDamageHealthAugment, OnHitDamageHealthRegenAugment,
+    // AreaEffectCastHelper.Cast's forcedHighroll path, etc.) so they highroll in lockstep with the hit that
+    // triggered them, same "if it crits, crit on all hits" reasoning WeaponHitData.isCrit already uses,
+    // extended to highroll (2026-09-14). Magnitude for the non-highroll case still rolls normally within
+    // [min, max) via luckChance — only the highroll SNAP-TO-MAX is forced rather than independently rolled, so
+    // this doesn't remove damage variance entirely, just the highroll coin-flip specifically.
+    public static float RollDamageInherited(float damage, float luckChance, float luckFloor, float luckCeiling, bool isHighroll)
+    {
+        float max = damage * luckCeiling;
+        if (isHighroll) return max;
+
+        float rawMin = damage * luckFloor;
+        float min = Mathf.Lerp(rawMin, max, luckChance);
+        return GameRandom.instance.NextFloat(min, max);
     }
 
     // Same luck-roll shape as RollDamage above, but with damage fixed at 1 (so the result is a plain
@@ -488,18 +580,29 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     public int     SlotIndex  { get; set; }
     public bool    IsOuterTrack { get; set; }
 
-    // Opt-in per-prefab range multiplier — checked (isRanged = true) on Archer's own WeaponRangedPD prefab,
-    // tuned via rangeMultiplier, rather than inflating the shared WeaponRange stat itself (which every AoE
-    // Effects radius formula now also reads directly — see DashExplosionAugment's own doc comment). isRanged
-    // is a separate flag from IsMelee on purpose: not every non-melee weapon necessarily wants this, and it
-    // keeps the toggle an explicit per-prefab authoring choice rather than an automatic IsMelee side effect.
-    [SerializeField] private bool  isRanged = false;
-    [SerializeField] private float rangeMultiplier = 1f;
-
     // What this weapon's own range-dependent behavior (raycast/fire distance, projectile max range,
-    // GetOuterReach's own ranged-weapon branch below) should actually use — Stats.WeaponRange for every
-    // ordinary weapon, scaled by rangeMultiplier only for the ones explicitly marked isRanged.
-    public float EffectiveWeaponRange => _stats.WeaponRange * (isRanged ? rangeMultiplier : 1f);
+    // GetOuterReach's own ranged-weapon branch below) should actually use — CharacterStatsPD.
+    // EffectiveWeaponRange (2026-09-14 — was Stats.WeaponRange * a per-prefab isRanged/rangeMultiplier field
+    // authored directly on this component, e.g. Archer's own WeaponRangedPD prefab; that whole mechanism
+    // moved onto a proper, augmentable character stat instead — see EffectiveWeaponRange's own doc comment on
+    // CharacterStatsPD for the full "why"). Kept as a same-named forwarding property here rather than deleted
+    // outright, specifically so every existing caller of weapon.EffectiveWeaponRange across this weapon-type
+    // family keeps working unchanged.
+    public float EffectiveWeaponRange => _stats.EffectiveWeaponRange;
+
+    // Just the multiplier half of EffectiveWeaponRange, exposed on its own — for callers that need to know how
+    // much of a hit's own reach came from the character's own weaponRangeScalingBonusPercent/
+    // weaponRangeScalingPenalty pair (e.g. Archer's own bow-range boost, or Bladeweaver's/OuterTrackAugment's
+    // own reach reductions) versus genuine Stats.WeaponRange investment, rather than the already-combined
+    // total. PhantomBladeRangeAugment's own distance-accumulation trigger (WeaponRangedProjectilePD.Launch's
+    // own rangeMultiplier parameter) is the first consumer — dividing a ranged hit's own hitDistance by this
+    // normalizes it back down to melee-equivalent WeaponRange-only distance, so this pair's own scaling
+    // doesn't fill that tracker for free. 2026-09-14 — was isRanged-gated (only ever nonzero for prefabs
+    // explicitly marked isRanged); now unconditional, since EVERY character can carry a nonzero
+    // weaponRangeScalingBonusPercent/Penalty now, not just ranged-flagged prefabs — see the melee/axe
+    // WeaponHitData construction sites' own doc comments for why they now populate this field too, where they
+    // used to correctly leave it at its default-means-neutral-1 value.
+    public float EffectiveRangeMultiplier => _stats.weaponRangeScalingBonusPercent * _stats.weaponRangeScalingPenalty;
 
     // Every weapon (melee or ranged) registers with its owner's WeaponManagerPD the same way — see
     // WeaponMeleePD.TryInit()/WeaponRangedPD's equivalent — and OrbitalPosition() below needs WeaponCount
@@ -824,9 +927,13 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
             ? designOrbit * RootScale.z
             : (IsMelee ? RangeValue / 2f : 0.25f);
         // Outer-track weapons start their own orbit from just past the main track's full reach
-        // (WeaponRadius + WeaponRange) instead of straight from the player — dynamically rescales with
-        // range automatically since both are live stats, recomputed every frame this runs.
-        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
+        // (WeaponRadius + EffectiveWeaponRange) instead of straight from the player — dynamically rescales
+        // with range automatically since both are live stats, recomputed every frame this runs.
+        // EffectiveWeaponRange, not the raw WeaponRange stat (2026-09-14) — this is genuine weapon geometry
+        // (where the outer ring actually starts, relative to how far the main ring actually reaches), so it
+        // needs to track whatever the main ring's weapons are ACTUALLY reaching, including any class's own
+        // weaponRangeScalingPercent trade-off — see CharacterStatsPD.EffectiveWeaponRange's own doc comment.
+        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
         // Character-clearance term — reads _stats.bonusSizePercent directly rather than
         // _stats.transform.lossyScale.x (numerically identical for a player root with no scaled parent,
         // since CharacterStatsPD.AddSizePercent sets transform.localScale = Vector3.one * bonusSizePercent

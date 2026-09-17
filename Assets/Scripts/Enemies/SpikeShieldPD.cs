@@ -116,6 +116,10 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // doc comment), this class just holds the copy it was configured with.
     private float _orbitRadius;
     private float _rotationRateDegPerSecond;
+    // Applied ONLY during the Windup phase's own MoveTowardsAngle call below — see
+    // ShielderGloomPD.windupRotationRateMultiplier's own doc comment for the full reasoning. Not tier-scaled
+    // (unlike _rotationRateDegPerSecond itself) — set once here via Configure() and never touched again.
+    private float _windupRotationRateMultiplier;
     private float _attackRange;
     // Full width, not a half-width — see InAttackRectangle's own comment for the halving done at the
     // actual check.
@@ -197,13 +201,14 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // No longer takes the ready material (2026-08-20) — see SetReadyMaterial's own doc comment for why that
     // has to be pushed separately, later, instead of here.
     public void Configure(ShielderGloomPD owner, float orbitRadius, float rotationRateDegPerSecond,
-        float attackRange, float attackWidth, float windupDuration, float releaseDuration,
-        float attackCooldown, float shieldburstDamageMultiplier, float shieldContactDamageMultiplier,
-        float contactCooldownSeconds)
+        float windupRotationRateMultiplier, float attackRange, float attackWidth, float windupDuration,
+        float releaseDuration, float attackCooldown, float shieldburstDamageMultiplier,
+        float shieldContactDamageMultiplier, float contactCooldownSeconds)
     {
         _owner = owner;
         _orbitRadius = orbitRadius;
         _rotationRateDegPerSecond = rotationRateDegPerSecond;
+        _windupRotationRateMultiplier = windupRotationRateMultiplier;
         _attackRange = attackRange;
         _attackWidth = attackWidth;
         _windupDuration = windupDuration;
@@ -252,7 +257,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         _windupTrackedTarget = null;
         _windupTrackedLastKnownPosition = default;
 
-        if (_windupFill != null) _windupFill.ResetFill();
+        if (_windupFill != null) _windupFill.Hide();
         if (_windupIndicator != null) _windupIndicator.gameObject.SetActive(false);
 
         // Force back to original materials immediately — avoids a one-frame stale "ready"/"stunned" flash on
@@ -403,7 +408,10 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
                     if (toTarget != Vector3.zero)
                     {
                         float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
-                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * _owner.EffectiveAttackSpeed * delta));
+                        // Rate halved (windupRotationRateMultiplier) only for this Windup-phase tracking —
+                        // see ShielderGloomPD.windupRotationRateMultiplier's own doc comment. FreeRotating
+                        // above and Releasing below both use the full, unscaled rate.
+                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * _windupRotationRateMultiplier * _owner.EffectiveAttackSpeed * delta));
                     }
                 }
 
@@ -489,7 +497,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // Interrupt() call), same reasoning EnemyBasePD.Interrupt()'s own doc comment gives for why every
         // other enemy's own OnInterrupted() hides its windup indicator explicitly instead of waiting.
         if (_windupIndicator != null) _windupIndicator.gameObject.SetActive(false);
-        if (_windupFill != null) _windupFill.ResetFill();
+        if (_windupFill != null) _windupFill.Hide();
     }
 
     private static float WrapAngle(float angle) => ((angle % 360f) + 360f) % 360f;
@@ -565,21 +573,17 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
 
         if (_windupIndicator != null)
         {
-            // ApplyLineTransform only ever sizes LENGTH (Z) — width (X) is deliberately left untouched by
-            // that shared helper (SpearGloomPD's own identical call has the same gap, just never needed
-            // fixing there). Width applied here instead, directly on this indicator only, so the shared
-            // helper — and Spear's own usage of it — stays exactly as-is. _attackWidth is already a full
-            // width, same 0.1-world-units-per-scale-unit convention ApplyLineTransform's own
-            // `distance * 0.1f` uses for Z, assuming this indicator is the standard 10-unit-at-scale-1 plane
-            // mesh (matches every other line indicator in this codebase). No counter-scaling against this
-            // Shield's own size-driven root scale needed here (unlike an earlier version of this method) —
-            // the actual hit-check (InAttackRectangle) now scales attackRange/attackWidth by _size too, so
-            // the indicator inheriting the same root scale automatically via ordinary Unity parent-child
-            // inheritance is exactly correct, not a double-count.
-            IndicatorMath.ApplyLineTransform(_windupIndicator, _attackRange);
-            var scale = _windupIndicator.localScale;
-            scale.x = _attackWidth * 0.1f;
-            _windupIndicator.localScale = scale;
+            // _attackWidth is already a full world-space width — ShowRectangle applies the same
+            // 0.1-world-units-per-scale-unit conversion internally that ApplyLineTransform used to apply to
+            // length only, now uniformly to both (see WindupFillPD.ApplyFill's own doc comment). No
+            // counter-scaling against this Shield's own size-driven root scale needed here — the actual
+            // hit-check (InAttackRectangle) scales attackRange/attackWidth by _size too, so passing those
+            // same already-size-scaled values through is exactly correct, not a double-count.
+            // _windupIndicator's own current position IS the near edge — centerForwardOffset shifts the true
+            // center half the distance forward from there, computed PURELY in WindupFillPD's own local space
+            // (see ShowRectangle's own doc comment) rather than a caller-computed world point.
+            if (_windupFill != null)
+                _windupFill.ShowRectangle(_attackRange, _attackWidth, _attackRange * 0.5f);
 
             if (_windupIndicator.gameObject.activeSelf != showIndicator)
                 _windupIndicator.gameObject.SetActive(showIndicator);
@@ -590,7 +594,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             if (showIndicator)
                 _windupFill.SetProgress(1f - Mathf.Clamp01(viewState.phaseTimer / _windupDuration));
             else
-                _windupFill.ResetFill();
+                _windupFill.Hide();
         }
 
         // Instant/predicted (viewState, not verified) same as every other purely-cosmetic view sync in this

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: HealthRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Enduring</color>
-  description: <color=#7DFF00>+1.2 Health Regen</color>
+  description: <color=#7DFF00>+1.5 Health Regen</color>
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   effectPrefab: {fileID: 1700991576779828735, guid: 78c149667900b0c49980a566143b802e, type: 3}
   multiplayerOnly: 0
@@ -25,3 +25,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

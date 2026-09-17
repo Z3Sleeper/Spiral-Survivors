@@ -172,12 +172,17 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         currentState.firedFsiThisLeg = false;
 
         transform.rotation = Quaternion.LookRotation(direction);
-        // Uniform — scales with WeaponRange (not the caster's Size/bonusSizePercent — this was always meant
+        // Uniform — scales with Range (not the caster's Size/bonusSizePercent — this was always meant
         // to be a Range-driven grow, see sphereRadius's own doc comment) on every axis alike, so the hitbox
         // (sphereRadius * transform.lossyScale.x, see LateSimulate()) and the visible model grow together in
         // lockstep automatically via ordinary Unity parent-child scale inheritance — no separate cosmetic
-        // scaling layer needed.
-        float rangeScale = stats.WeaponRange * rangeScaleMultiplier;
+        // scaling layer needed. EffectiveWeaponRange (2026-09-16, was plain WeaponRange) — despite being
+        // ability-spawned, this IS a weapon's own physical geometry (the thrown axe's own model size AND
+        // hitbox radius scale together with it), not an ability cast-range/positioning concern, so it reads
+        // the same real weapon-geometry stat every other weapon-model scale in this codebase reads — see the
+        // emission-rate calc below (Launch's own particle scaling), which was already deliberately matched to
+        // WeaponBasePD.ScaleModel's own identical EffectiveWeaponRange-based formula.
+        float rangeScale = stats.EffectiveWeaponRange * rangeScaleMultiplier;
         transform.localScale = _baseScale * rangeScale;
 
         // Counter-scale — see yScaleFollowers' own doc comment. Divides back OUT the same rangeScale the
@@ -220,12 +225,12 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         SetRenderersEnabled(true);
 
         // See minEmissionRate's own field comment — same formula as WeaponBasePD.ScaleModel's own emission
-        // scaling, same stats.WeaponRange source too (not maxRange — this throw's own travel-distance cap,
-        // a different value), just applied once here instead of every ScaleModel() call since this
+        // scaling, same stats.EffectiveWeaponRange source too (not maxRange — this throw's own travel-distance
+        // cap, a different value), just applied once here instead of every ScaleModel() call since this
         // projectile's own range is fixed for the whole throw.
         if (particleSystems != null && maxEmissionRange > minEmissionRange)
         {
-            float rate = Mathf.Lerp(minEmissionRate, maxEmissionRate, Mathf.InverseLerp(minEmissionRange, maxEmissionRange, stats.WeaponRange));
+            float rate = Mathf.Lerp(minEmissionRate, maxEmissionRate, Mathf.InverseLerp(minEmissionRange, maxEmissionRange, stats.EffectiveWeaponRange));
             for (int i = 0; i < particleSystems.Length; i++)
             {
                 if (particleSystems[i] == null) continue;
@@ -377,12 +382,12 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage * critDamageMultiplier);
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, _stats.OnHitPower);
 
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = damage, onHitPower = _stats.OnHitPower, isCrit = isCrit };
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = damage, onHitPower = _stats.OnHitPower, isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position) };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
 
-        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
+        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll);
 
         // Every hit interrupts — Executioner's own way of interacting with enemies beyond raw damage
         // (Knight has interrupt+stun, Bladeweaver has range+dodge, Archer has a slow, Rogue has dodge+

@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: PhantomBladeOnDashAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#00FFFF>Dancing</color>
-  description: '<color=#FFA000>On <color=#00FFFF>Dash End</color>:</color> <color=#FFA000>Summon</color>
+  description: '<color=#FFA000>On <color=#00FFFF>Dash Start</color>:</color> <color=#FFA000>Summon</color>
     <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
-    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{DamageMultiplierPercent}%
+    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{strengthMultiplierPercent}%
     Strength</color>) damage</color>.
 
-    <color=#8C8C8C>+10% Phantom Blade Damage
+    <color=#8C8C8C>+5% Phantom Blade Damage
     and Size</color>'
   icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   effectPrefab: {fileID: 219488550459493572, guid: 486f99494bb806348a113afcbaac3413, type: 3}

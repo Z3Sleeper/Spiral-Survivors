@@ -2,14 +2,23 @@ using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Completely stationary, no attack chain, immune to stun/knockback/slow outright (crowd control on something
-// that never self-navigates is meaningless, and a permanently-kinematic body must never actually receive a
-// physics push regardless — see OnAwake's own comment). Reuses EnemyBasePD's entire generic damage/health/
-// death/damage-number/hurtbox/size pipeline as-is — a weapon's hit-detection is hardcoded to IEnemyPD
-// everywhere in this codebase (every weapon script, every on-hit augment), so implementing a brand-new
-// parallel "neutral/strikeable" interface would mean touching every one of those sites for no real benefit.
-// The "neutral, not a real hostile enemy" feel comes mostly from what this class DOESN'T do (no AI/self-
-// movement, immune to CC) plus, by design, at the CALL SITE, not in this script: never spawned through
+// Generic abstract base for "neutral, punchable" dummy variants (2026-09-02 restructure) — the exact same
+// relationship EnemyBasePD<TState> has to real enemy types: each concrete variant (DummyTargetPD below,
+// KnockbackDummyTargetPD, any future one) independently supplies its OWN TState, so a variant that needs
+// extra predicted-state fields (e.g. KnockbackDummyTargetPD's own knockbackTimer) just adds them to its own
+// State struct — nothing here needs a field for every variant's own mutable data, same reason EnemyBasePD
+// itself doesn't. (First attempt at this got it wrong: made the plain DummyTargetPD concrete/non-generic and
+// tried to have KnockbackDummyTargetPD inherit from THAT directly, which would have forced a knockbackTimer
+// field onto every plain dummy whether it used it or not — caught and corrected before it shipped.)
+//
+// Completely stationary, no attack chain of its own kind, immune to stun/knockback/slow outright (crowd
+// control on something that never self-navigates is meaningless, and a permanently-kinematic body must never
+// actually receive a physics push regardless — see OnAwake below). Reuses EnemyBasePD's entire generic
+// damage/health/death/damage-number/hurtbox/size pipeline as-is — a weapon's hit-detection is hardcoded to
+// IEnemyPD everywhere in this codebase (every weapon script, every on-hit augment), so implementing a
+// brand-new parallel "neutral/strikeable" interface would mean touching every one of those sites for no real
+// benefit. The "neutral, not a real hostile enemy" feel comes mostly from what this class DOESN'T do (no AI/
+// self-movement, immune to CC) plus, by design, at the CALL SITE, not in this script: never spawned through
 // EnemySpawnerPD, so it never joins ActiveEnemies/spawn-cap tracking or gets targeted by other enemies' own
 // logic. Contact damage: no CanContactDamage override here at all (2026-08-26, was a dedicated
 // canDealContactDamage Inspector bool) — EnemyBasePD's own contactColliderEnabled field already controls
@@ -25,16 +34,54 @@ using UnityEngine;
 // _rigidbody.MovePosition(), the CORRECT Unity API for a kinematic body, not a workaround; StartKillLaunch
 // already guards its own velocity-reset behind !_rigidbody.isKinematic, so it gracefully no-ops there too.
 // HandleKillLaunch DOES un-kinematic the body once the launch finishes (a generic step, not specific to this
-// class) — Simulate's own override below defensively re-locks it the same tick, so this dummy stays
-// kinematic for its entire lingering-corpse window too, not just while alive.
-//
-// Reusable base for any future "neutral, punchable" entity — damage numbers and size-scaled spawn offsets
-// (DamageNumberManager) already work identically to any other enemy with zero extra code here, since both
-// key off IEnemyPD/EnemyBasePD's own generic Size/TakeDamage plumbing. xpValue (an EnemyBasePD field,
-// Inspector-authored) defaults to 1 — set to 0 for a target that grants no XP (ProgressionManager's
-// XPOrbManagerPD.SpawnOrbs already no-ops on xpValue <= 0, confirmed, no extra guard needed here) or a
-// positive value for one that does.
-public class DummyTargetPD : EnemyBasePD<DummyTargetPD.State>
+// class) — Simulate's own override below defensively re-locks it the same tick, so a dummy stays kinematic
+// for its entire lingering-corpse window too, not just while alive.
+public abstract class DummyTargetPD<TState> : EnemyBasePD<TState>
+    where TState : struct, IPredictedData<TState>
+{
+    protected override void OnAwake()
+    {
+        // Forced here, not left as a per-prefab Inspector toggle — "completely stationary, can't be pushed"
+        // is this whole family's own defining trait, not something a future dummy prefab could accidentally
+        // leave unset. stunResistant alone would already be enough (Awake() assigns isStunnable =
+        // !stunResistant immediately before calling OnAwake()), but isStunnable is set explicitly too since
+        // that's what AddKnockbackVelocity/ApplyStun/ApplySlow actually gate on directly, not stunResistant
+        // itself.
+        stunResistant = true;
+        isStunnable   = false;
+
+        // Permanently kinematic — a one-time physical setup, not routed through predicted state/SetKinematic
+        // (that machinery exists for TEMPORARY, resimulation-safe toggle windows like a Windup sub-state;
+        // this never changes for this object's entire life, same category as the plain Awake-time _hurtbox/
+        // _physicsCollider resolution already happening in EnemyBasePD.Awake() just before this runs).
+        // Belt-and-suspenders alongside stunResistant/isStunnable above — those already block
+        // AddKnockbackVelocity's velocity write (and its own derived micro-stun) outright; this just
+        // guarantees nothing else could ever physically displace it either. See Simulate's own override
+        // below for the one path that still un-kinematics it regardless (HandleKillLaunch).
+        if (_rigidbody != null) _rigidbody.isKinematic = true;
+    }
+
+    protected override void Simulate(ref TState state, float delta)
+    {
+        base.Simulate(ref state, delta);
+
+        // Defensive per-tick re-assertion, same convention EnemyBasePD's own base.Simulate() already uses
+        // for externalKinematic just above. The one path that still un-kinematics any dummy despite OnAwake's
+        // own permanent lock: EnemyBasePD.HandleKillLaunch un-kinematics the corpse the instant its own
+        // travel finishes (a generic step, not specific to this family — see StartKillLaunch/HandleKillLaunch's
+        // own doc comments), which would otherwise leave a dummy corpse non-kinematic for however long it
+        // lingers before deathHoldCount actually reaches 0 and it gets deleted. Runs AFTER base.Simulate() so
+        // it re-locks on the SAME tick HandleKillLaunch un-locked it — cheap (a single bool check) every
+        // other tick, when it's already kinematic and this is a no-op.
+        if (_rigidbody != null && !_rigidbody.isKinematic) _rigidbody.isKinematic = true;
+    }
+}
+
+// The plain, mechanic-free dummy — see DummyTargetPD<TState>'s own doc comment for the full shared shell
+// this inherits. xpValue (an EnemyBasePD field, Inspector-authored) defaults to 1 — set to 0 for a target
+// that grants no XP (ProgressionManager's XPOrbManagerPD.SpawnOrbs already no-ops on xpValue <= 0, confirmed,
+// no extra guard needed here) or a positive value for one that does.
+public class DummyTargetPD : DummyTargetPD<DummyTargetPD.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
     {
@@ -56,40 +103,4 @@ public class DummyTargetPD : EnemyBasePD<DummyTargetPD.State>
     // unless this is overridden). This is what actually makes the dummy stationary; HandleMovement itself is
     // never reached.
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false) { }
-
-    protected override void OnAwake()
-    {
-        // Forced here, not left as a per-prefab Inspector toggle — "completely stationary, can't be pushed"
-        // is this class's own defining trait, not something a future dummy prefab could accidentally leave
-        // unset. stunResistant alone would already be enough (Awake() assigns isStunnable = !stunResistant
-        // immediately before calling OnAwake()), but isStunnable is set explicitly too since that's what
-        // AddKnockbackVelocity/ApplyStun/ApplySlow actually gate on directly, not stunResistant itself.
-        stunResistant = true;
-        isStunnable   = false;
-
-        // Permanently kinematic — a one-time physical setup, not routed through predicted state/SetKinematic
-        // (that machinery exists for TEMPORARY, resimulation-safe toggle windows like a Windup sub-state;
-        // this never changes for this object's entire life, same category as the plain Awake-time _hurtbox/
-        // _physicsCollider resolution already happening in EnemyBasePD.Awake() just before this runs).
-        // Belt-and-suspenders alongside stunResistant/isStunnable above — those already block
-        // AddKnockbackVelocity's velocity write (and its own derived micro-stun) outright; this just
-        // guarantees nothing else could ever physically displace it either. See Simulate's own override
-        // below for the one path that still un-kinematics it regardless (HandleKillLaunch).
-        if (_rigidbody != null) _rigidbody.isKinematic = true;
-    }
-
-    protected override void Simulate(ref State state, float delta)
-    {
-        base.Simulate(ref state, delta);
-
-        // Defensive per-tick re-assertion, same convention EnemyBasePD's own base.Simulate() already uses
-        // for externalKinematic just above. The one path that still un-kinematics this dummy despite
-        // OnAwake's own permanent lock: EnemyBasePD.HandleKillLaunch un-kinematics the corpse the instant
-        // its own travel finishes (a generic step, not specific to this class — see StartKillLaunch/
-        // HandleKillLaunch's own doc comments), which would otherwise leave a dummy corpse non-kinematic
-        // for however long it lingers before deathHoldCount actually reaches 0 and it gets deleted. Runs
-        // AFTER base.Simulate() so it re-locks on the SAME tick HandleKillLaunch un-locked it — cheap (a
-        // single bool check) every other tick, when it's already kinematic and this is a no-op.
-        if (_rigidbody != null && !_rigidbody.isKinematic) _rigidbody.isKinematic = true;
-    }
 }

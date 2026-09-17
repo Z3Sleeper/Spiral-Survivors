@@ -48,6 +48,10 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     private Vector3 _baseScale;
     private float _damage;
     private bool  _isCrit;
+    // Baked in at Summon() time same as _isCrit (2026-09-14, was discarded entirely — every hit this blade
+    // lands used to hardcode isHighroll = false regardless of whether its own damage roll actually
+    // highrolled) — see ProcessHit's own comment for where this is now reported.
+    private bool  _isHighroll;
     private float _speed;
     private float _maxRange;
     // Baked in at Summon() time from CharacterStatsPD.phantomBladeOnHitEnabled, same "one-shot bonus baked
@@ -90,7 +94,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     // again to end up radius past it on the opposite side). Speed is derived from that distance and the
     // fixed travelTime, rather than travelTime being derived from a fixed speed, so every blade takes the
     // same time to finish its flight regardless of size.
-    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit, float baseDamageMultiplier, Color color)
+    public void Summon(CharacterStatsPD owner, float damage, float sizeMultiplier, bool isCrit, bool isHighroll, float baseDamageMultiplier, Color color)
     {
         float radius = BaseSpawnRadius * sizeMultiplier;
 
@@ -99,6 +103,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         _owner = owner;
         _damage = damage;
         _isCrit = isCrit;
+        _isHighroll = isHighroll;
         _maxRange = radius * 2f;
         _speed = _maxRange / travelTime;
         _onHitEnabled = owner.phantomBladeOnHitEnabled;
@@ -173,11 +178,13 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
     {
         _hitTargets.Add(enemy);
 
-        // _isCrit was rolled once at Summon() time (see PhantomBladeSummonHelper.SummonAtTarget) and baked
-        // into _damage already — every enemy this blade hits sees the same crit status for its whole
-        // flight, not a fresh per-hit roll.
-        enemy.TakeDamage(_damage, _isCrit, _owner.owner ?? default);
-        _owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = _damage, isCrit = _isCrit, isHighroll = false, attacker = _owner, isPriority = true });
+        // _isCrit/_isHighroll were rolled once at Summon() time (see PhantomBladeSummonHelper.SummonAtTarget)
+        // and baked into _damage already — every enemy this blade hits sees the same crit/highroll status for
+        // its whole flight, not a fresh per-hit roll. isHighroll reported here (2026-09-14, was hardcoded
+        // false — the blade's damage roll could already highroll and inflate _damage, this just makes that
+        // now VISIBLE to the player/downstream listeners too, matching isCrit's own already-correct behavior).
+        enemy.TakeDamage(_damage, _isCrit, _owner.owner ?? default, _isHighroll);
+        _owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = _damage, isCrit = _isCrit, isHighroll = _isHighroll, attacker = _owner, isPriority = true });
 
         // Only fires if some Phantom Blade augment actually enabled it — most blades never touch the OnHit
         // chain at all. weaponDamage uses this blade's own already-rolled damage (the closest available
@@ -185,7 +192,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         // resolved once at Summon() time (see its own doc comment).
         if (_onHitEnabled)
         {
-            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _damage, onHitPower = _onHitPower, isCrit = _isCrit };
+            var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _damage, onHitPower = _onHitPower, isCrit = _isCrit, isHighroll = _isHighroll };
             _owner.NotifyHit(hitData);
         }
     }

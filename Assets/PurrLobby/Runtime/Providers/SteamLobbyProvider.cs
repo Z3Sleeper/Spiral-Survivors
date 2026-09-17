@@ -125,8 +125,16 @@ namespace PurrLobby.Providers
 
         public async Task<Lobby> CreateLobbyAsync(int maxPlayers, Dictionary<string, string> lobbyProperties = null)
         {
+            // 2026-09-15 fix — was silently `return default;` with no event fired at all, unlike every other
+            // failure path below (timeout, Steam rejected) which both call OnError — the ONE case that used
+            // to leave LobbySceneController's loading overlay permanently stuck (nothing ever told it the
+            // attempt was over) was specifically a Create attempt made before Steam finished initializing.
+            // Same message JoinLobbyAsync's own identical IsSteamClientAvailable guard already uses.
             if (!IsSteamClientAvailable)
+            {
+                OnError?.Invoke("Steam isn't available right now.");
                 return default;
+            }
 
             _LobbyCreated ??= Steamworks.CallResult<Steamworks.LobbyCreated_t>.Create();
 
@@ -267,23 +275,60 @@ namespace PurrLobby.Providers
 
         private void HandleSteamInit()
         {
-            if (handleSteamInit)
-            {
-                if (!SteamAPI.Init())
-                {
-                    PurrLogger.LogError("SteamAPI initialization failed.");
-                    OnError?.Invoke("SteamAPI initialization failed.");
-                    return;
-                }
-                // Reset — these are static, so they can survive across separate Editor Play sessions when
-                // Domain Reload is disabled. A fresh successful Init() here means a genuinely NEW Steam
-                // session, so any leftover stop/shutdown state a PREVIOUS session left behind must not block
-                // (or skip) this new session's own eventual shutdown.
-                _steamInitialized = true;
-                _steamShutdownCalled = false;
-                _stopSteamCallbackLoop = false;
-                RunSteamCallbacks();
-            }
+            if (!handleSteamInit) return;
+            // Console-only on failure (2026-09-15, was also OnError?.Invoke(...)) — this is the game's own
+            // boot-time attempt, before the player has clicked anything; nothing should be shown to the
+            // player from here. Player-facing reporting only ever happens off an explicit Create/Join click
+            // now, via EnsureSteamInitialized() below (called from LobbyManager.EnsureProviderReady(), in
+            // turn called from LobbySceneController's own click handlers). Firing OnError here used to
+            // surface as an unprompted "SteamAPI initialization failed." in joinErrorText the instant the
+            // Lobby scene loaded (before any click at all), since _pendingAttemptType defaults to None,
+            // which OnLobbyError's routing treats as Join.
+            if (!TryInitSteamApi())
+                PurrLogger.LogError("SteamAPI initialization failed.");
+        }
+
+        // Re-attempts SteamAPI.Init() if it's not currently available (2026-09-15) — called by
+        // LobbyManager.EnsureProviderReady() right before a Create/Join attempt. The game's own boot-time
+        // init (InitializeAsync -> HandleSteamInit above) is a one-shot, fire-and-forget attempt with no
+        // automatic retry — if Steam's client wasn't fully ready yet at that exact moment (a common race
+        // right after Steam itself launches the game, or if Steam was still starting up), nothing else in
+        // the project ever tries again on its own; the player was just permanently stuck. This gives the
+        // player's own Create/Join click a chance to force a fresh attempt right before it's actually
+        // needed.
+        //
+        // Deliberately does NOT fire OnError itself on failure, unlike HandleSteamInit above — the caller
+        // (LobbySceneController) already knows exactly which UI element the failure belongs to
+        // (createErrorText vs joinErrorText, via its own _pendingAttemptType) and reports it directly off
+        // this method's own return value instead, rather than this also firing the generic OnError and
+        // racing/duplicating that reporting through the deferred event path.
+        //
+        // No-ops (returns true immediately) if Steam's already available — never re-Inits an
+        // already-successful session. Also no-ops (returns false without attempting Init at all) if
+        // handleSteamInit is false — this provider isn't the one responsible for Steam's init in that
+        // configuration, so it's not this method's place to force a retry of something it doesn't own.
+        public bool EnsureSteamInitialized()
+        {
+            if (IsSteamClientAvailable) return true;
+            if (!handleSteamInit) return false;
+            return TryInitSteamApi();
+        }
+
+        // Shared by HandleSteamInit (boot-time, fires its own OnError on failure) and EnsureSteamInitialized
+        // (retry, caller handles its own failure reporting) — the actual SteamAPI.Init() call plus the
+        // success-only bookkeeping, with no failure-reporting side effect of its own.
+        private bool TryInitSteamApi()
+        {
+            if (!SteamAPI.Init()) return false;
+            // Reset — these are static, so they can survive across separate Editor Play sessions when
+            // Domain Reload is disabled. A fresh successful Init() here means a genuinely NEW Steam
+            // session, so any leftover stop/shutdown state a PREVIOUS session left behind must not block
+            // (or skip) this new session's own eventual shutdown.
+            _steamInitialized = true;
+            _steamShutdownCalled = false;
+            _stopSteamCallbackLoop = false;
+            RunSteamCallbacks();
+            return true;
         }
 
         // Deliberately no stop condition tied to this component's own Lobby-scene-scoped lifecycle
@@ -332,18 +377,51 @@ namespace PurrLobby.Providers
 
         public async Task<Lobby> JoinLobbyAsync(string lobbyId)
         {
-            if (!IsSteamClientAvailable || string.IsNullOrEmpty(lobbyId))
+            // Split from the combined guard this used to be (2026-09-12) — LobbyManager.JoinLobby already
+            // separately checks/reports an empty roomId itself before ever calling in here, but nothing
+            // reported a genuinely unavailable Steam client at all, silently returning an invalid Lobby
+            // with zero events fired. See LobbyManager.JoinLobby's own doc comment for why every return
+            // path here needs to fire OnLobbyJoinFailed now — its own redundant fallback invoke was removed
+            // in favor of this being the single source of truth for every failure reason.
+            if (!IsSteamClientAvailable)
+            {
+                OnLobbyJoinFailed?.Invoke("Steam isn't available right now.");
                 return default;
+            }
+            if (string.IsNullOrEmpty(lobbyId))
+                return default;
+
+            // 2026-09-12 fix — was a bare ulong.Parse(lobbyId), which throws a FormatException on anything
+            // that isn't a valid numeric Steam Lobby ID (e.g. a player typing garbage into the join-code
+            // field). That exception propagated all the way up through LobbyManager.RunTask's generic
+            // catch-all, which only logs it and never fires OnRoomJoined/OnRoomJoinFailed/OnError at all —
+            // so nothing ever told the UI the attempt was over, permanently stranding the loading overlay.
+            // Treated as a genuine join failure instead, same event path every other failure already uses,
+            // never even reaching Steam's own API for a code that couldn't possibly be a real lobby ID.
+            if (!ulong.TryParse(lobbyId, out ulong parsedLobbyId))
+            {
+                OnLobbyJoinFailed?.Invoke("That doesn't look like a valid lobby code.");
+                return new Lobby { IsValid = false };
+            }
 
             _LobbyEnter ??= Steamworks.CallResult<Steamworks.LobbyEnter_t>.Create();
 
             var tcs = new TaskCompletionSource<bool>();
-            var cLobbyId = new Steamworks.CSteamID(ulong.Parse(lobbyId));
+            var cLobbyId = new Steamworks.CSteamID(parsedLobbyId);
             var handle = Steamworks.SteamMatchmaking.JoinLobby(cLobbyId);
 
+            // 2026-09-12 fix — was discarding m_EChatRoomEnterResponse entirely (collapsed straight to a
+            // bare bool before OnLobbyJoinFailed ever saw it), so every failure read as the exact same
+            // generic "Failed to join lobby X" message regardless of cause. Captured here so the real
+            // Steam-given reason (doesn't exist/invalid code, full, banned, rate-limited, etc.) can drive a
+            // player-facing message — see DescribeJoinFailure's own doc comment for why that message is
+            // deliberately short/generic and never repeats the raw lobbyId or enum name; the technical
+            // detail (both of those) goes to this Debug.LogWarning instead, for actual debugging.
+            var response = Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseError;
             _LobbyEnter.Set(handle, (result, ioError) =>
             {
-                if (result.m_EChatRoomEnterResponse == (uint)Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess)
+                response = (Steamworks.EChatRoomEnterResponse)result.m_EChatRoomEnterResponse;
+                if (response == Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseSuccess)
                 {
                     _currentLobby = new Steamworks.CSteamID(result.m_ulSteamIDLobby);
                     tcs.TrySetResult(true);
@@ -356,7 +434,8 @@ namespace PurrLobby.Providers
 
             if (!await tcs.Task)
             {
-                OnLobbyJoinFailed?.Invoke($"Failed to join lobby {lobbyId}.");
+                Debug.LogWarning($"[SteamLobbyProvider] Failed to join lobby {lobbyId}: {response}.");
+                OnLobbyJoinFailed?.Invoke(DescribeJoinFailure(response));
                 return new Lobby { IsValid = false };
             }
 
@@ -372,6 +451,39 @@ namespace PurrLobby.Providers
             OnLobbyUpdated?.Invoke(lobby);
             return lobby;
         }
+
+        // Player-facing reason for a failed join — see JoinLobbyAsync's own doc comment for why this
+        // exists (was a single generic message for every cause) and why it's deliberately short/generic:
+        // this is meant for a small UI label next to a join-code field, not a debug log, so it never
+        // repeats the raw lobbyId (a player already knows the code they typed — echoing back a giant Steam
+        // ID number reads as a bug, not information) or the raw Steam enum name (meaningless to a player).
+        // The full technical detail (lobbyId + this exact enum value) is logged separately at the one call
+        // site instead. Every EChatRoomEnterResponse value Steam can actually return here gets its own
+        // case; anything unrecognized falls back to a plain generic line rather than leaking the enum.
+        private static string DescribeJoinFailure(Steamworks.EChatRoomEnterResponse response) => response switch
+        {
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseDoesntExist =>
+                "That lobby code is invalid, or the lobby has already closed.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseFull =>
+                "That lobby is full.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseBanned =>
+                "You've been banned from that lobby.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseNotAllowed =>
+                "You don't have permission to join that lobby.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseMemberBlockedYou =>
+                "Someone in that lobby has blocked you.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseYouBlockedMember =>
+                "You've blocked someone in that lobby.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseRatelimitExceeded =>
+                "Too many join attempts — wait a moment and try again.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseLimited =>
+                "Limited Steam accounts can't join lobbies.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseClanDisabled =>
+                "That lobby is currently disabled.",
+            Steamworks.EChatRoomEnterResponse.k_EChatRoomEnterResponseCommunityBan =>
+                "A restriction on your account is preventing this.",
+            _ => "Couldn't join that lobby."
+        };
 
         public Task LeaveLobbyAsync()
         {
@@ -807,10 +919,29 @@ namespace PurrLobby.Providers
             OnLobbyUpdated?.Invoke(updatedLobby);
         }
 
+        // Explicit design (2026-09-12) for accepting a Steam invite while already in/near a lobby:
+        // 1. Already in this EXACT lobby — no-op, not a redundant rejoin.
+        // 2. In a DIFFERENT lobby — leave it first via the real LeaveLobbyAsync() (not a raw
+        //    SteamMatchmaking.LeaveLobby call), so OnLobbyLeft still fires and every per-lobby reset that
+        //    depends on it (LobbyManager's own _currentLobby/IsStarting/_stableReadyMemberCount reset,
+        //    LobbySceneController.OnRoomLeft's whole ready-flag/watchdog/expected-player reset block) still
+        //    runs — accepting an invite always means "join THEIR lobby instead of mine," never carrying
+        //    stale per-lobby state over from the old one. OnRoomJoined for the new lobby fires right after,
+        //    so any resulting flash back to the main menu panel is momentary.
+        // Not joinable at all while already in the Game scene — LobbyManager/SteamLobbyProvider only exist
+        // in the Lobby scene (not DontDestroyOnLoad), so this callback has nothing to fire into once a
+        // match starts; SetLobbyJoinable(false) at match lock-in (LobbySceneController.LockInThenStart)
+        // additionally stops Steam itself from letting a join through at that point regardless.
         private void OnGameLobbyJoinRequested(Steamworks.GameLobbyJoinRequested_t callback)
         {
             var lobbyId = callback.m_steamIDLobby;
             //PurrLogger.Log($"Invite accepted. Joining lobby {lobbyId.m_SteamID}");
+
+            if (_currentLobby != Steamworks.CSteamID.Nil)
+            {
+                if (_currentLobby == lobbyId) return;
+                _ = LeaveLobbyAsync();
+            }
 
             _ = JoinLobbyAsync(lobbyId.m_SteamID.ToString());
         }

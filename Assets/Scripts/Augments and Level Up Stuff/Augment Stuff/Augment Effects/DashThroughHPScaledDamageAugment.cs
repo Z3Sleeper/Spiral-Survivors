@@ -159,9 +159,9 @@ public class DashThroughHPScaledDamageAugment : AugmentEffectPD<DashThroughHPSca
         float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, isCrit, Stats.HighrollBonus, Stats.CritDamage);
 
-        enemy.TakeDamage(rolled, isCrit, Stats.owner ?? default);
+        enemy.TakeDamage(rolled, isCrit, Stats.owner ?? default, isHighroll);
         Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = true });
 
-        Stats.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolled, onHitPower = Stats.OnHitPower, isCrit = isCrit });
+        Stats.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolled, onHitPower = Stats.OnHitPower, isCrit = isCrit, isHighroll = isHighroll });
     }
 }

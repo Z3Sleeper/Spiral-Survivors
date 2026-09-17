@@ -38,12 +38,13 @@ public class CaptureThePointPD : EventBasePD<CaptureThePointPD.State>
 
     [Header("Zone")]
     [SerializeField] private float zoneRadius = 5f;
-    // Radial indicator (a cylinder, same IndicatorMath.ApplyRadialTransform convention every other radius
-    // telegraph in this codebase uses) — purely visual, sized once at OnEventStart since zoneRadius never
-    // changes mid-event.
-    [SerializeField] private Transform zoneVisual;
-    // Optional progress readout — reuses WindupFillPD exactly as-is (SetProgress expects 0..1, same as every
-    // other live-progress fill in this codebase).
+    // Both the zone's boundary outline AND its fill-progress readout (2026-09-14, replaces a separate
+    // zoneVisual cylinder transform scaled via IndicatorMath.ApplyRadialTransform) — WindupFillPD's own
+    // Radial outline (LineRenderer) now draws the boundary itself, same as every other circular AoE in this
+    // codebase (RemoteSpikeBurstPD/KnockbackDummyTargetPD), so a separate zoneVisual is redundant. Stationary
+    // for this whole event's life (zoneRadius never changes mid-event, and this object's own position is
+    // fixed the instant OnEventStart places it) — centerForwardOffset stays at its 0 default everywhere this
+    // is called, since chargeFill's own current position already IS the zone's center.
     [SerializeField] private WindupFillPD chargeFill;
 
     [Header("Charge")]
@@ -88,8 +89,20 @@ public class CaptureThePointPD : EventBasePD<CaptureThePointPD.State>
         currentState.requiredCharge = baseChargeSeconds * playerCount;
         currentState.b.succeeded = false;
 
-        if (zoneVisual != null) IndicatorMath.ApplyRadialTransform(zoneVisual, zoneRadius);
-        if (chargeFill != null) chargeFill.SetProgress(0f);
+        if (chargeFill != null)
+        {
+            // ShowCircle BEFORE this first SetProgress call, not after (2026-09-14 fix) — WindupFillPD's
+            // circle outline points are computed ONCE and cached the first time RecomputeOutline() runs
+            // (see its own doc comment), using whatever _radius was set at that moment. SetProgress() itself
+            // triggers that first RecomputeOutline() call, so calling it before ShowCircle() had ever set a
+            // real radius permanently poisoned the outline cache with an all-zero circle for this object's
+            // entire life (confirmed live — the exact "outline never appears, all positions read 0,0,0" bug
+            // this fixes). ShowCircle() itself is cheap/side-effect-free (just stores _radius), so calling it
+            // here is safe even though UpdateView's own per-frame call (see its own doc comment) re-asserts
+            // the same radius every frame afterward regardless.
+            chargeFill.ShowCircle(zoneRadius);
+            chargeFill.SetProgress(0f);
+        }
     }
 
     protected override void Simulate(ref State state, float delta)
@@ -141,7 +154,20 @@ public class CaptureThePointPD : EventBasePD<CaptureThePointPD.State>
         base.UpdateView(viewState, verified);
 
         if (chargeFill != null)
+        {
+            // ShowCircle every frame, not just once at OnEventStart (2026-09-14 fix — matches
+            // RemoteSpikeBurstPD/KnockbackDummyTargetPD's own identical convention for a stationary circular
+            // AoE) — WindupFillPD's post-refactor architecture (see its own class doc comment) now owns its
+            // shape internally via _radius, only ever set by ShowCircle, and actively computes fillMesh's own
+            // localScale FROM that each call. This call used to be missing entirely here, so _radius sat at
+            // its unset default of 0 forever — every ApplyFill computed diameter = 0 * 2 * t = 0, collapsing
+            // the whole zone fill to nothing regardless of progress. centerForwardOffset stays at its 0
+            // default — chargeFill's own current position (set once via this root's own transform placement
+            // in OnEventStart) already IS the center, this zone never tracks an independent target the way
+            // Leaper's own live-tracked circle does.
+            chargeFill.ShowCircle(zoneRadius);
             chargeFill.SetProgress(viewState.requiredCharge > 0f ? Mathf.Clamp01(viewState.chargeProgress / viewState.requiredCharge) : 0f);
+        }
     }
 
     // "Capture the Point!\nProgress X%", X to 1 decimal place — per explicit design.

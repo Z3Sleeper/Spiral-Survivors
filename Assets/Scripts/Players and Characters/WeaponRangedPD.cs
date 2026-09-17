@@ -127,7 +127,9 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         float halfRange = rangeScaleTarget != null
             ? designOrbit * RootScale.z
             : (IsMelee ? RangeValue / 2f : 0.25f);
-        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
+        // EffectiveWeaponRange, not the raw WeaponRange stat — see WeaponBasePD.NominalOrbitRadius's own
+        // identical 2026-09-14 doc comment.
+        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
         return weaponRadiusOffset + _stats.bonusSizePercent * 0.5f + halfRange;
     }
 
@@ -348,7 +350,14 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
             var go = hierarchy.GetGameObject(id.Value);
             if (go != null && go.TryGetComponent(out WeaponRangedProjectilePD projectile))
-                projectile.Launch(_stats, dir, _stats.ProjectileSpeed, ricochet, EffectiveWeaponRange);
+            {
+                // weaponRadius/weaponOffset — see WeaponHitData's own doc comments on each; same
+                // NominalOrbitRadius-mirroring formula WeaponMeleePD.Hit/WeaponAxePD's own hit sites use,
+                // computed here (not inside the projectile) since IsOuterTrack is THIS weapon instance's own
+                // property.
+                float weaponRadius = IsOuterTrack ? _stats.WeaponRadius + EffectiveWeaponRange : _stats.WeaponRadius;
+                projectile.Launch(_stats, dir, _stats.ProjectileSpeed, ricochet, EffectiveWeaponRange, EffectiveRangeMultiplier, weaponRadius, _stats.bonusSizePercent * 0.5f);
+            }
         }
     }
 }

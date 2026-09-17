@@ -1,43 +1,80 @@
+using PurrNet.Packing;
+using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// New tech, not a port. 0.25s after every real DashStarted, and separately 0.25s after every real DashEnded,
+// 0.25s after every genuine dash-like Start, and separately 0.25s after every genuine dash-like End,
 // re-invokes that same event again via PlayerControllerPD's own NotifyDashStarted()/NotifyDashEnded() — the
-// exact same public entry point RogueSpinAbilityPD's leap already uses to hook into this shared event pair
-// (see DashThroughInterruptAugment's own doc comment). Doesn't touch StartDash()/EndDash() at all — no second
-// charge spent, no second invincibility grant, no actual movement — purely re-fires the EVENT, so every other
-// "Dash...Augment" reacting to it (DashHealAugment, DashExplosionAugment, PhantomBladeOnDashAugment,
-// DashThroughInterruptAugment) triggers a second time too, from the player's real position/state 0.25s later.
+// exact same public entry point RogueSpinAbilityPD's leap and BWBlinkAbilityPD already use to hook into this
+// shared event pair. Doesn't touch StartDash()/EndDash() at all — no second charge spent, no second
+// invincibility grant, no actual movement — purely re-fires the EVENT, so every other "Dash...Augment"
+// reacting to it (DashHealAugment, DashExplosionAugment, PhantomBladeOnDashAugment) triggers a second time
+// too, from the player's real position/state 0.25s later. "Genuine dash-like Start/End" means a real dash
+// (StartDash/EndDash) OR RogueSpin's leap OR BWBlink's teleport — anything that fires
+// PlayerControllerPD._onRealDashStarted/_onRealDashEnded.
 //
-// Flagged interaction with DashThroughInterruptAugment (per design brief) turned out to have a clean fix
-// rather than just a caveat: that augment used to treat DashStarted/DashEnded as its own stateful sweep
-// window, which a naive retrigger here would have re-armed a second time from a stale position. Fixed at the
-// source instead — PlayerControllerPD now has a separate DashMovementStarted/DashMovementEnded pair
-// (2026-08-13) specifically for stateful movement-window listeners, and DashThroughInterruptAugment was moved
-// onto that pair. This augment only ever retriggers the reward pair (Started/Ended), so it has zero effect on
-// DashThroughInterruptAugment's sweep window — see that augment's own class doc comment for the full story.
+// Listens to _onRealDashStarted/_onRealDashEnded (2026-09-03 rework), NOT the _onDashStarted/_onDashEnded
+// pair its own retrigger fires into — two real bugs this fixes at the root instead of guarding around them:
+// 1. This augment used to listen to the exact same event its own retrigger call re-invokes, so the
+//    retrigger firing the event called straight back into its own listener, re-arming a fresh 0.25s timer
+//    forever — an infinite self-sustaining loop. Listening to a genuinely separate event this augment never
+//    fires into makes that structurally impossible, no reentrancy guard needed.
+// 2. Even with a reentrancy guard (the first fix attempted), a SECOND real trigger of the same type
+//    (Started-after-Started, or Ended-after-Ended) landing before the first one's own 0.25s retrigger fired
+//    would silently stomp/drop the first one's pending timer if tracked as a single bool+float — a real,
+//    easily-hit case: an ability activated mid-dash cleanly ends the dash (EndDash, a natural end — fires
+//    _onRealDashEnded) and then that same ability's own Activate() (e.g. RogueSpin) fires
+//    _onRealDashStarted a moment later, well within the 0.25s window, landing two genuine "Started" events
+//    close together. Fixed by tracking a LIST of independent pending retrigger timers instead of one shared
+//    slot (see State below) — every genuine trigger gets its own retrigger fired at its own time, no matter
+//    how many land close together.
 public class DashEffectDoubleTriggerAugment : AugmentEffectPD<DashEffectDoubleTriggerAugment.State>
 {
-    public struct State : IPredictedData<State>
+    public struct State : IPredictedData<State>, IDuplicate<State>
     {
-        public bool  awaitingRetriggerStart;
-        public float retriggerStartTimer;
-        public bool  awaitingRetriggerEnd;
-        public float retriggerEndTimer;
-        public void Dispose() { }
+        // Each entry counts down independently from retriggerDelay to 0; reaching 0 fires that one
+        // retrigger and removes the entry. Never more than a handful of entries at once in practice (would
+        // need several genuine dash-like triggers within the same 0.25s window), so a plain list scan every
+        // tick is cheap.
+        public DisposableList<float> pendingStartTimers;
+        public DisposableList<float> pendingEndTimers;
+
+        public void Dispose()
+        {
+            pendingStartTimers.Dispose();
+            pendingEndTimers.Dispose();
+        }
+
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.pendingStartTimers = pendingStartTimers.Duplicate();
+            copy.pendingEndTimers = pendingEndTimers.Duplicate();
+            return copy;
+        }
     }
 
     [SerializeField] private float retriggerDelay = 0.25f;
 
     private PlayerControllerPD _controller;
 
+    // A default DisposableList<T> has no valid backing list — GetInitialState() only ever runs on true
+    // spawn, same convention DashThroughInterruptAugment's own touchedEnemies list already uses.
+    protected override State GetInitialState()
+    {
+        var s = default(State);
+        s.pendingStartTimers = DisposableList<float>.Create(2);
+        s.pendingEndTimers = DisposableList<float>.Create(2);
+        return s;
+    }
+
     protected override void OnApply()
     {
         _controller = Stats.GetComponent<PlayerControllerPD>();
         if (_controller != null)
         {
-            _controller.AddDashStartedListener(OnDashStarted);
-            _controller.AddDashEndedListener(OnDashEnded);
+            _controller.AddRealDashStartedListener(OnRealDashStarted);
+            _controller.AddRealDashEndedListener(OnRealDashEnded);
         }
     }
 
@@ -46,45 +83,46 @@ public class DashEffectDoubleTriggerAugment : AugmentEffectPD<DashEffectDoubleTr
         base.OnDestroy();
         if (_controller != null)
         {
-            _controller.RemoveDashStartedListener(OnDashStarted);
-            _controller.RemoveDashEndedListener(OnDashEnded);
+            _controller.RemoveRealDashStartedListener(OnRealDashStarted);
+            _controller.RemoveRealDashEndedListener(OnRealDashEnded);
         }
     }
 
-    private void OnDashStarted()
-    {
-        currentState.awaitingRetriggerStart = true;
-        currentState.retriggerStartTimer = retriggerDelay;
-    }
-
-    private void OnDashEnded()
-    {
-        currentState.awaitingRetriggerEnd = true;
-        currentState.retriggerEndTimer = retriggerDelay;
-    }
+    private void OnRealDashStarted() => currentState.pendingStartTimers.Add(retriggerDelay);
+    private void OnRealDashEnded() => currentState.pendingEndTimers.Add(retriggerDelay);
 
     protected override void Simulate(ref State state, float delta)
     {
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (_controller == null) return;
 
-        if (state.awaitingRetriggerStart)
+        // Iterated backwards so RemoveAt on a firing entry doesn't skip the next one — same convention
+        // every other per-entry countdown list in this codebase uses (e.g. EnemyBaseState.contactCooldowns).
+        for (int i = state.pendingStartTimers.Count - 1; i >= 0; i--)
         {
-            state.retriggerStartTimer -= delta;
-            if (state.retriggerStartTimer <= 0f)
+            float t = state.pendingStartTimers[i] - delta;
+            if (t <= 0f)
             {
-                state.awaitingRetriggerStart = false;
+                state.pendingStartTimers.RemoveAt(i);
                 _controller.NotifyDashStarted();
+            }
+            else
+            {
+                state.pendingStartTimers[i] = t;
             }
         }
 
-        if (state.awaitingRetriggerEnd)
+        for (int i = state.pendingEndTimers.Count - 1; i >= 0; i--)
         {
-            state.retriggerEndTimer -= delta;
-            if (state.retriggerEndTimer <= 0f)
+            float t = state.pendingEndTimers[i] - delta;
+            if (t <= 0f)
             {
-                state.awaitingRetriggerEnd = false;
+                state.pendingEndTimers.RemoveAt(i);
                 _controller.NotifyDashEnded();
+            }
+            else
+            {
+                state.pendingEndTimers[i] = t;
             }
         }
     }

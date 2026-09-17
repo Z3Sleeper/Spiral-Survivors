@@ -14,6 +14,18 @@ using UnityEngine;
 // duration, same event-driven window as everything else here, not a fixed timer of its own. All AbilityPower
 // scaling was already removed earlier the same day and never came back.
 //
+// Energy snapshot-and-refund (2026-09-17) — the whole reason this ability got any real use before was Surge
+// being a "free" resource dump on Knight (energy usually refilled to max well before this came off cooldown,
+// even sooner with ability haste), making Surge as a universal mechanic something you never had to think
+// about on this class. Explicit fix, per design: Activate() snapshots CurrentEnergy the instant the ability
+// starts; EndBuff() (every end path funnels through it — natural Surge drain-out, a hard Interrupt, or the
+// dead-caster backstop below) refunds that EXACT snapshotted amount via CharacterStatsPD.SetEnergyRaw, a
+// direct write immune to bonusEnergyGainPercent or any other energy-gain modifier (per explicit design — this
+// is returning energy the player already had, not a new "gain" event that anything should be able to
+// influence). Net effect: casting this now genuinely spends your current energy pool for its duration (Surge
+// still drains it live the whole time, same as any Surge) and hands the ORIGINAL amount straight back the
+// moment it ends, rather than being a functionally-free trigger.
+//
 // Duration is event-driven, not timed: the buff ends the instant the resulting Berserk Surge itself ends
 // (_onSurgeEnded), whether that's the Surge naturally draining dry or a hard interrupt cutting it short
 // (PlayerControllerPD.Interrupt() -> CharacterStatsPD.ForceEndSurge(), see both of their own doc comments —
@@ -47,6 +59,10 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
     {
         public bool  isActive;
         public float cooldownTimer;
+        // Snapshotted in Activate(), restored (via CharacterStatsPD.SetEnergyRaw — bypasses every energy-gain
+        // modifier, see that method's own doc comment) in EndBuff() regardless of which end path got there.
+        // See class doc comment for the full 2026-09-17 redesign this belongs to.
+        public float energySnapshot;
         public void Dispose() { }
     }
 
@@ -163,6 +179,10 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
 
         currentState.isActive      = true;
         currentState.cooldownTimer = EffectiveCooldown;
+        // Snapshot BEFORE StartBerserkSurge()/SetTaunting() below touch anything else — see State.
+        // energySnapshot's own doc comment. Restored verbatim in EndBuff() via SetEnergyRaw, regardless of
+        // how much (if any) the Surge itself drains this down to in the meantime.
+        currentState.energySnapshot = _stats.CurrentEnergy;
 
         // Direct cross-identity mutation, same pattern as RogueVanishAbilityPD.Activate() — safe since
         // Activate() is only ever called from PlayerControllerPD's own Simulate(), deterministically,
@@ -208,6 +228,11 @@ public class KnightBigBuffAbilityPD : PredictedIdentity<KnightBigBuffAbilityPD.S
         state.isActive = false;
         if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
         _stats?.SetTaunting(false);
+        // Refunds the energy snapshotted at Activate() — every end path (natural Surge drain-out, a hard
+        // Interrupt, or the dead-caster backstop in Simulate()) routes through this one method, so this one
+        // call covers all of them. SetEnergyRaw is a direct, unmodified write — see its own doc comment for
+        // why this is deliberately immune to bonusEnergyGainPercent/forcedSurge, unlike GainEnergy().
+        _stats?.SetEnergyRaw(state.energySnapshot);
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);

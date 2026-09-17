@@ -63,6 +63,20 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     private float _knockback;
     private float _damageDropoff;
     private float _onHitDropoff;
+    // WeaponRangedPD.EffectiveRangeMultiplier at Launch time — carried into every hit's own
+    // WeaponHitData.weaponRangeMultiplier (see that field's own doc comment).
+    private float _rangeMultiplier;
+    // The firing weapon's own weaponRadius/weaponOffset at Launch time — carried into every hit's own
+    // identically-named WeaponHitData fields (see their own doc comments). Computed by WeaponRangedPD itself
+    // (not here) since weaponRadius depends on THAT weapon instance's own IsOuterTrack.
+    private float _weaponRadius;
+    private float _weaponOffset;
+    // The raw targeting range passed into Launch() (Stats.WeaponRange scaled by the firing weapon's own
+    // isRanged/rangeMultiplier), captured separately from _maxRange (which is this same value further
+    // inflated by the 10% travel buffer — see Launch()'s own comment). Used for the isTip threshold (see
+    // ProcessHit's own comment) — hits landing past _effectiveWeaponRange, into the travel-buffer zone, still
+    // count as tips too, since the isTip check has no upper bound on hitDistance.
+    private float _effectiveWeaponRange;
     // Plain view-layer bookkeeping, not predicted state — same instant-predicted-hide pattern as
     // PhantomBladePD, guards SetRenderersEnabled(false) from running every frame once already hidden.
     private bool _hiddenOnExpire;
@@ -131,11 +145,19 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // weapon's own isRanged/rangeMultiplier if it's set) — passed in rather than re-read here so this
     // projectile's own max travel distance can never drift out of sync with the raycast/aim distance
     // WeaponRangedPD itself just used to find this target.
-    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, int ricochets, float effectiveWeaponRange)
+    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, int ricochets, float effectiveWeaponRange, float rangeMultiplier, float weaponRadius, float weaponOffset)
     {
         _stats = stats;
         _speed          = speed;
-        _maxRange       = effectiveWeaponRange * 1.25f;
+        _maxRange       = effectiveWeaponRange * 1.1f;
+        _effectiveWeaponRange = effectiveWeaponRange;
+        // Carried into every hit's own WeaponHitData.weaponRangeMultiplier below (see that field's own doc
+        // comment) — this weapon's EffectiveRangeMultiplier, not effectiveWeaponRange itself, so a consumer
+        // can normalize a hit's raw distance back down to WeaponRange-only terms.
+        _rangeMultiplier = rangeMultiplier;
+        // Carried into every hit's own identically-named WeaponHitData fields — see their own doc comments.
+        _weaponRadius = weaponRadius;
+        _weaponOffset = weaponOffset;
         _critChance     = stats.CritChance;
         _critDamage     = stats.CritDamage;
         _knockback      = stats.Knockback;
@@ -245,11 +267,22 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         // state.currentDamage/currentOnHitPower are this shot's already ricochet-decayed values BEFORE this
         // hit's own decay below is applied — downstream on-hit effects see exactly what this specific hit
         // (e.g. the 3rd bounce) actually represented, not the shot's original full-power baseline.
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = state.currentDamage, onHitPower = state.currentOnHitPower, isCrit = isCrit };
+        float hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position);
+        // "Snipe" — ranged weapons' own name for WeaponHitData.isTip (see that field's own doc comment).
+        // Threshold is _effectiveWeaponRange * 0.9f with NO upper bound, so this counts as a tip both when a
+        // shot connects within the outer 10% of its own targeting range AND when it connects past
+        // _effectiveWeaponRange entirely, out in the 10% travel-buffer zone (_maxRange) — anything in or past
+        // the last 10% of the weapon's effective range is a Tip Strike; the "past" case is only reachable by
+        // ranged weapons, since melee/Axe have no equivalent travel allowance beyond their own hitbox depth.
+        // player-to-enemy hitDistance, same convention every other isTip/hitDistance consumer uses, not the
+        // projectile's own distanceTravelled (which resets to 0 per ricochet leg and wouldn't reflect how far
+        // this target actually was from the player).
+        bool isTip = _effectiveWeaponRange > 0f && hitDistance >= _effectiveWeaponRange * 0.9f;
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = state.currentDamage, onHitPower = state.currentOnHitPower, isCrit = isCrit, isHighroll = isHighroll, hitDistance = hitDistance, weaponRadius = _weaponRadius, weaponOffset = _weaponOffset, weaponRangeMultiplier = _rangeMultiplier, isTip = isTip };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
-        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
+        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll);
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _knockback * state.currentOnHitPower);
         _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });

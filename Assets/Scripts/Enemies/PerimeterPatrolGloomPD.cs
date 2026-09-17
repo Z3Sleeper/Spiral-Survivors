@@ -13,20 +13,19 @@ using UnityEngine;
 // now follows too (see its own doc comment). This prefab simply not wiring up that child is what actually
 // keeps it damage-free; flip contactColliderEnabled / wire up the child later if that's ever wanted.
 //
-// Permanently kinematic (OnAwake + a per-tick Simulate() re-assertion, see below) so it's immune to knockback
-// DISPLACEMENT — same one-time-permanent-lock precedent DummyTargetPD.OnAwake()/Simulate() already
-// establishes — but deliberately does NOT set stunResistant/isStunnable the way DummyTargetPD does, since
-// this enemy should still be affected by Stun/Slow and the micro-stun a knockback hit derives. Confirmed via
-// EnemyBasePD.AddKnockbackVelocity's own implementation: the velocity write is gated behind
-// `!_rigidbody.isKinematic`, but the derived ApplyStun() call right after it runs unconditionally regardless
-// of kinematic state — so "immune to the push, not the stun" is already exactly how a permanently-kinematic,
-// still-stunnable enemy behaves, no changes needed to AddKnockbackVelocity/Stun/Slow themselves. The
-// per-tick Simulate() override exists because OnAwake's own lock alone was NOT actually sufficient — see
-// that override's own doc comment for the real bug this fixed (2026-08-29).
+// A completely ordinary (non-kinematic) EnemyBasePD physically, same as any target-chasing enemy — no
+// special CC immunity, no permanent kinematic lock (2026-09-13, explicit design reversal: this used to be
+// permanently kinematic specifically to be immune to knockback DISPLACEMENT, but that made it feel like a
+// different kind of object from every other enemy for no real benefit). Fully affected by knockback now,
+// same as anything else — a hit shoving it off its patrol line is fine and expected, since HandleActiveState
+// below just keeps aiming fresh at the SAME current waypoint every tick regardless of where a knockback push
+// left it, so it self-corrects back toward the route on its own with no extra recovery logic needed.
 //
-// A permanently-kinematic rigidbody can't be moved via AddForce/velocity at all (Unity no-ops it), so
-// HandleActiveState below moves it with _rigidbody.MovePosition() instead — the correct API for a
-// kinematic body, same one EnemyBasePD.HandleKillLaunch already uses to move a kinematic corpse.
+// Moves via the same AddForce(dir * EffectiveMoveSpeed * delta * 5f, ForceMode.VelocityChange) shape
+// EnemyBasePD.HandleMovement's own plain (no preferredRange) approach branch uses for a normal chasing
+// enemy — HandleMovement itself isn't reused directly (it's built around _target, which this enemy never
+// sets), but the movement math is identical, just aimed at the current patrol waypoint instead of a target's
+// position.
 public class PerimeterPatrolGloomPD : EnemyBasePD<PerimeterPatrolGloomPD.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -48,40 +47,12 @@ public class PerimeterPatrolGloomPD : EnemyBasePD<PerimeterPatrolGloomPD.State>
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;
 
     [Header("Patrol Settings")]
-    // Separate tuning knob from the normal EffectiveMoveSpeed-driven AddForce system every other enemy
-    // uses — this one moves via MovePosition instead (see class doc comment), which needs its own scale
-    // to feel right rather than assuming the same numbers translate directly.
-    [SerializeField] private float moveSpeedScalar = 1f;
     // Distance at which this enemy advances to the next waypoint in the loop.
     [SerializeField] private float waypointArriveTolerance = 0.5f;
 
     // Cached once in Launch() below — re-fetching PlayableAreaPD.GetInsetPerimeter every tick would be
     // wasteful even though that method is itself cached internally.
     private Vector3[] _perimeter;
-
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        // Permanent — see class doc comment. Deliberately does NOT touch stunResistant/isStunnable.
-        if (_rigidbody != null) _rigidbody.isKinematic = true;
-    }
-
-    protected override void Simulate(ref State state, float delta)
-    {
-        base.Simulate(ref state, delta);
-
-        // Defensive per-tick re-assertion (2026-08-29 — real bug, confirmed via testing: this enemy WAS
-        // visibly getting knocked back despite OnAwake's own lock above) — same convention DummyTargetPD's
-        // own identical override already uses. Root cause: EnemyBasePD.Simulate()'s own pooled-respawn
-        // reset block unconditionally sets _rigidbody.isKinematic = false ("in case a previous life died
-        // mid-kill-launch") EVERY spawn, including the very first one — which runs AFTER OnAwake() already
-        // locked it true, silently undoing it before this enemy's first real tick. Nothing was ever
-        // re-locking it afterward, so it was never actually kinematic in practice. Runs AFTER base.Simulate()
-        // so it re-locks on the SAME tick anything else (the respawn reset, or a hypothetical future
-        // kill-launch path) un-locks it — cheap (a single bool check) every other tick, when it's already
-        // kinematic and this is a no-op.
-        if (_rigidbody != null && !_rigidbody.isKinematic) _rigidbody.isKinematic = true;
-    }
 
     // Called by the spawning Event right after hierarchy.Create()/ConfigureSpawn — same "mutate right
     // after Create()" convention every other spawned one-shot in this codebase uses. startingWaypointIndex
@@ -130,6 +101,9 @@ public class PerimeterPatrolGloomPD : EnemyBasePD<PerimeterPatrolGloomPD.State>
 
         Quaternion targetRotation = Quaternion.LookRotation(dir);
         _rigidbody.MoveRotation(Quaternion.Slerp(transform.rotation, targetRotation, 10f * delta));
-        _rigidbody.MovePosition(transform.position + dir * (EffectiveMoveSpeed * moveSpeedScalar * delta));
+        // Same AddForce shape EnemyBasePD.HandleMovement's own plain-approach branch uses for a normal
+        // chasing enemy (see class doc comment) — moveSpeed/EffectiveMoveSpeed is this prefab's own tuning
+        // knob now, no separate scalar needed.
+        _rigidbody.AddForce(dir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
     }
 }

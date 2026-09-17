@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1f45f9a0e2938364393d51a102b8747d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ConstantMovementAugment
-  moveSpeedFlat: 1.5
+  moveSpeedFlat: 3

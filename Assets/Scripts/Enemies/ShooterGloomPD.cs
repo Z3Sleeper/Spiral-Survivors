@@ -6,9 +6,17 @@ using UnityEngine;
 // Ported from _OldSystemArchive/Enemies/ShooterGloom.cs. Waits at preferred range, fires on cooldown. The
 // DashingAway/Windup/Shooting sequence for one shot (or one multishot burst) is an "ongoing attack" (see
 // EnemyBasePD.CaptureAttackAnchor) — it always resolves against whichever target it committed to when it
-// started, even if _target gets reassigned mid-sequence (taunt/invisible). Each shot re-commits fresh (see
-// CommitToCurrentTarget) for whether/where the NEXT shot in the chain aims. Multishot uses the shared
+// started, even if _target gets reassigned mid-sequence (taunt/invisible). Multishot uses the shared
 // MultishotMath formula (WeaponBasePD.cs) — same behavior as the player's own WeaponRangedPD.
+//
+// Rapidfire burst-lock (2026-09-12): only the FIRST shot in a chain commits/tracks a target at all (via
+// CommitToCurrentTarget in EnterWindup, then live-tracked/re-snapped through Windup/FirePause/EnterShooting
+// as described below). The instant that first shot actually fires, State.burstLocked flips true (in
+// EnterShooting) and every later shot in the SAME chain reuses that exact locked aim untouched — no more
+// re-tracking or re-facing between shots (see State.burstLocked's own doc comment, and the FirePause/Shooting
+// cases' own comments). This is what gives multi-shot attacks their "keep facing and shooting in the same
+// direction until all shots are consumed" burst feel, while staying interruptible the entire time (CC rules
+// unchanged — see below). burstLocked resets false at the start of every fresh chain (EnterWindup).
 //
 // Only the FIRST attack in a chain can dash away (2026-08-27) — every later shot in the same multishot
 // burst skips Windup entirely and goes straight from Shooting into a brief FirePause (see class doc comment
@@ -45,6 +53,12 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         public float shooterStateTimer;
         public float attackCooldownTimer;
         public int   shotsRemaining;
+        // True once the FIRST shot of this attack chain has actually fired (2026-09-12 rapidfire rework —
+        // see class doc comment) — from that point on, every later shot in the same chain reuses the exact
+        // same locked facing/aim direction instead of re-tracking the target, giving the "keep facing and
+        // shooting in the same direction until all shots are consumed" burst feel. Reset false at the start
+        // of every fresh chain (EnterWindup).
+        public bool burstLocked;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
         public State Duplicate()
@@ -237,11 +251,22 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 if (_target != null) HandleMovement(ref state, delta);
                 if (state.attackCooldownTimer <= 0f && TargetInRange())
                 {
-                    // Decrement/refill lives here (the actual start of the attempt, now always Windup — see
+                    // Decrement lives here (the actual start of the attempt, now always Windup — see
                     // class doc comment) so an attempt cancelled via Interrupt() mid-windup/dash still
                     // counts against the budget. See EnterMoving's own comment for why the reset moved here
                     // too.
-                    if (state.shotsRemaining <= 0) state.shotsRemaining = shotsPerAttack;
+                    // Unconditional reset to shotsPerAttack (2026-09-14, was "refill only if <= 0") — this
+                    // IS the start of a fresh attack sequence, so shotsRemaining should always begin a chain
+                    // at the authored max, full stop. Belt-and-suspenders with the Shooting case's own fix
+                    // (2026-09-14) that stops a chain from ever ending early just because the target went
+                    // invalid mid-sequence — before that fix, a chain truncated that way could leave
+                    // shotsRemaining sitting at some nonzero-but-not-full leftover value, and this old
+                    // refill-only-if-<=0 logic would silently UNDER-fire the NEXT chain by however many shots
+                    // got skipped (confirmed live: a Rogue vanishing right after shot 1 of a 3-shot attack
+                    // left shotsRemaining at 2, so the next attack only fired 2 shots instead of 3). An
+                    // unconditional reset here removes any possibility of that regardless of what ended the
+                    // previous chain.
+                    state.shotsRemaining = shotsPerAttack;
                     state.shotsRemaining--;
                     // Ongoing attack starts here — see CaptureAttackAnchor's own doc comment.
                     CaptureAttackAnchor(ref state);
@@ -261,11 +286,19 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                 // keeps the body visibly re-aiming during the pause instead of sitting frozen at whatever
                 // angle the previous state ended on, and keeps _windupTrackedTargetLastKnownPosition
                 // maximally fresh right up until EnterShooting's own final refresh+fire. Reached either from
-                // a dash landing OR from Shooting's own chain-continuation branch below (every shot past the
-                // first) — no minAttackRange/dash check here either way; only the FIRST attack in a chain
-                // can ever dash (see class doc comment).
-                SnapFaceTarget(_windupTrackedTarget);
-                RefreshTrackedTargetLastKnownPosition();
+                // a dash landing (before ANY shot in this chain has fired — burstLocked still false, see
+                // State.burstLocked's own doc comment) OR from Shooting's own chain-continuation branch below
+                // (every shot past the first, burstLocked already true by then) — no minAttackRange/dash
+                // check here either way; only the FIRST attack in a chain can ever dash (see class doc
+                // comment). Gated on !burstLocked (2026-09-12 rapidfire rework) — once the first shot has
+                // actually fired, every later shot in the burst deliberately stops re-tracking/re-facing at
+                // all, keeping the exact same locked aim for the rest of the chain instead of visibly
+                // re-aiming shot to shot as the target moves.
+                if (!state.burstLocked)
+                {
+                    SnapFaceTarget(_windupTrackedTarget);
+                    RefreshTrackedTargetLastKnownPosition();
+                }
                 if (state.shooterStateTimer <= 0f) EnterShooting(ref state);
                 break;
 
@@ -299,13 +332,22 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
             case ShooterState.Shooting:
                 if (state.shooterStateTimer <= 0f)
                 {
-                    // IsTargetStillValid — a target that went invisible-and-non-taunting since the last shot
-                    // shouldn't get chained into another one against them; see that property's own doc comment.
-                    // !IsCrowdControlled — a true Stun() landing mid-sequence never interrupts the shot that
-                    // just finished above, but stops the chain from continuing into another one, falling
-                    // through to PostShot instead (a Slow does NOT stop the chain — see IsCrowdControlled's
-                    // own doc comment, hard CC only).
-                    if (state.shotsRemaining > 0 && IsTargetStillValid && !IsCrowdControlled)
+                    // Always fires every remaining shot in the chain now (2026-09-14, IsTargetStillValid
+                    // dropped from this condition) — explicit design change: previously a target going
+                    // invisible-and-non-taunting (or dying) mid-sequence ended the chain early, leaving
+                    // shotsRemaining stranded at a nonzero-but-not-full value (see the Moving case's own
+                    // 2026-09-14 fix for the follow-on under-firing bug that caused on the NEXT attack). Now
+                    // the chain always burns through shotsPerAttack shots regardless of target validity —
+                    // FireShots only ever reads _windupTrackedTargetLastKnownPosition (frozen the instant the
+                    // committed target goes invalid, see that field's own doc comment), so losing the target
+                    // mid-sequence simply means every remaining shot in this burst fires at their last known
+                    // position instead of the chain aborting. Only !IsCrowdControlled still stops it early —
+                    // a true hard CC landing mid-sequence never interrupts the shot that just finished above,
+                    // but stops the chain from continuing into another one, falling through to PostShot
+                    // instead (a Slow does NOT stop the chain — see IsCrowdControlled's own doc comment, hard
+                    // CC only). Interrupt() (the other thing that can end a chain, per class design) already
+                    // zeroes shotsRemaining itself in OnInterrupted, independent of this check.
+                    if (state.shotsRemaining > 0 && !IsCrowdControlled)
                     {
                         // Continuing the chain — skips Windup entirely (2026-08-27, explicit design: only
                         // the FIRST attack can dash, every later one commits straight to firing after a
@@ -317,11 +359,16 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
                         // entry condition, so it can never be <= 0 at this point.
                         state.shotsRemaining--;
                         CaptureAttackAnchor(ref state);
-                        // Re-commits to the current target fresh for this NEXT shot — same "each shot in a
-                        // burst re-evaluates target fresh" behavior the old BetweenShots→EnterWindup path
-                        // used to give for free, preserved explicitly now that this shot skips Windup
-                        // (which is where that re-commit used to happen).
-                        CommitToCurrentTarget();
+                        // Deliberately NOT re-committing to the current target here anymore (2026-09-12
+                        // rapidfire rework, was CommitToCurrentTarget() — "each shot in a burst re-evaluates
+                        // target fresh"). This shot reuses the exact same _windupTrackedTarget/
+                        // _windupTrackedTargetLastKnownPosition the FIRST shot locked in (see
+                        // State.burstLocked's own doc comment) — explicit design: a rapidfire burst keeps
+                        // facing and firing in the same direction for its whole duration rather than visibly
+                        // re-aiming shot to shot. IsTargetStillValid above still independently decides
+                        // whether the chain continues AT ALL (reads the live _targetStats, not the locked
+                        // _windupTrackedTarget) — untouched by this, a genuinely dead/vanished target still
+                        // ends the chain via EnterPostShot below, same as before.
                         EnterFirePause(ref state);
                     }
                     else
@@ -394,10 +441,10 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     }
 
     // Captures _targetStats as this attack's committed target and seeds _windupTrackedTargetLastKnownPosition
-    // to match, in one step — shared by EnterWindup (the first shot in a chain) and Shooting's own chain-
-    // continuation branch (every later shot, which skips Windup entirely — see class doc comment), so both
-    // commit points stay identically seeded. See _windupTrackedTarget's own doc comment for why this needs
-    // to be captured once, not read live off _targetStats later.
+    // to match, in one step — called once per chain now, from EnterWindup only (2026-09-12 rapidfire rework
+    // — Shooting's own chain-continuation branch used to call this too, for every later shot; it no longer
+    // does, see State.burstLocked's own doc comment for why). See _windupTrackedTarget's own doc comment for
+    // why this needs to be captured once, not read live off _targetStats later.
     private void CommitToCurrentTarget()
     {
         _windupTrackedTarget = _targetStats;
@@ -412,6 +459,9 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         state.shooterStateTimer = windupDuration;
         SnapFaceTarget(_windupTrackedTarget);
         SetShooterState(ref state, ShooterState.Windup);
+        // Fresh chain — see State.burstLocked's own doc comment. Live tracking resumes for this chain's own
+        // first shot until EnterShooting locks it back in.
+        state.burstLocked = false;
     }
 
     private void EnterShooting(ref State state)
@@ -420,14 +470,20 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         // Decrement moved to the attack-start sites (Moving/Shooting's own chain-continuation branch,
         // above) — see their own comment.
         SetShooterState(ref state, ShooterState.Shooting);
-        // One more refresh right before firing (2026-08-26) — covers the DashingAway window: unlike Windup,
-        // DashingAway has no tracking phase of its own, so if the committed target flickered invalid->valid
-        // (or valid->invalid) WHILE dashing, this is what actually catches it before the shot resolves,
-        // rather than firing at whatever position was last recorded back at the end of Windup. Both the
-        // dash-away-then-fire and fire-directly branches funnel through here, so both get this same freshest-
-        // possible check regardless of whether a dash happened at all.
-        RefreshTrackedTargetLastKnownPosition();
-        SnapFaceTarget(_windupTrackedTarget);
+        if (!state.burstLocked)
+        {
+            // One more refresh right before firing (2026-08-26) — covers the DashingAway window: unlike
+            // Windup, DashingAway has no tracking phase of its own, so if the committed target flickered
+            // invalid->valid (or valid->invalid) WHILE dashing, this is what actually catches it before the
+            // shot resolves, rather than firing at whatever position was last recorded back at the end of
+            // Windup. Both the dash-away-then-fire and fire-directly branches funnel through here, so both
+            // get this same freshest-possible check regardless of whether a dash happened at all. Only ever
+            // runs for the FIRST shot of a chain (2026-09-12 rapidfire rework) — locks in right after, so
+            // every later shot in the same burst keeps reusing this exact aim instead of re-tracking.
+            RefreshTrackedTargetLastKnownPosition();
+            SnapFaceTarget(_windupTrackedTarget);
+            state.burstLocked = true;
+        }
         FireShots(ref state);
     }
 
@@ -585,6 +641,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         currentState.shooterStateId      = 0;
         currentState.shooterStateTimer   = 0f;
         currentState.shotsRemaining      = shotsPerAttack;
+        currentState.burstLocked         = false;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         // In case death happened mid-Windup/Shooting, while kinematic was on — HandleActiveState would
         // correct this on the next tick anyway (shooterStateId resets to Moving above), but resetting

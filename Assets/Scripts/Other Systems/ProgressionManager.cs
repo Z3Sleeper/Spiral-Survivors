@@ -457,7 +457,7 @@ public static class ProgressionManager
         StatType.MaxHealth         => 10f,
         StatType.MoveSpeed         => 1f,
         StatType.AttackSpeed       => 5f,
-        StatType.HealthRegen       => 0.2f,
+        StatType.HealthRegen       => 0.25f,
         // Fraction of MaxEnergy per second, not flat units (2026-08-23 rework — see
         // CharacterStatsPD.baseEnergyRegen's own doc comment). 0.0125 = +1.25% per tier (nerfed 2026-08-24
         // from 2.5%, alongside baseEnergyRegen's own 10% -> 5% nerf), 4 tiers max (EnergyRegenCosts) = +5%

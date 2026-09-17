@@ -6,9 +6,12 @@ using UnityEngine;
 // DashHealAugment, ShieldBreakBurstAugment, KnightAreaStunHealAbilityPD) spawns this same class and just
 // passes different Launch() parameters (targetAllies/dealDamage/onEnemyHit/onAllyHit/onCastComplete — see
 // AreaEffectCastHelper.Cast's own doc comment for the full breakdown) rather than each needing its own
-// near-duplicate chain type. Adds Stats.AreaEffectCount > 1 support (a full retriggerRate-apart multi-cast
-// sequence) to whatever single AreaEffectCastHelper.Cast() call the owning augment/ability would otherwise
-// have to fire directly. One instance per trigger, each fully self-contained (own position, own countdown),
+// near-duplicate chain type. Supports a totalCasts > 1 sequence (a full retriggerRate-apart multi-cast) on
+// top of whatever single AreaEffectCastHelper.Cast() call the owning augment/ability would otherwise have to
+// fire directly — every caller currently passes a flat totalCasts of 1 (Stats.AreaEffectCount, the stat that
+// used to drive this, was removed entirely 2026-09-13), but the class itself stays generic in case a future
+// caller wants a genuine multi-cast sequence again. One instance per trigger, each fully self-contained (own
+// position, own countdown),
 // so multiple overlapping triggers (e.g. back-to-back dashes) each get their own independent chain instead of
 // sharing one overwritable slot. This exists instead of a List<T> inside a single shared State struct because
 // IPredictedData<TState> structs are snapshotted BY VALUE for rollback — a List<T> field would only copy the
@@ -66,11 +69,23 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     private AudioClip _hitSfxOverride;
     // See Launch()'s own doc comment on the parameter this mirrors.
     private bool _vfxPerCast;
+    // See AreaEffectCastHelper.Cast's own doc comment — passed straight through to every cast in the chain.
+    private bool? _forcedCrit;
+    private bool? _forcedHighroll;
 
     private PredictedEvent _onRecast;
 
     protected override State GetInitialState() => default;
 
+    // totalCasts/retriggerRate default to a single, non-repeating cast (2026-09-13, moved to the end of the
+    // parameter list with defaults once AreaEffectCount — the stat that used to drive this for most callers —
+    // was removed entirely) — every caller except ArcherArrowRainAbilityPD just omits them now. ArrowRain is
+    // the one remaining genuine use: its own 20-tick DoT needs a fresh, fully independent tick-tracking
+    // instance per cast (so an overlapping recast can't corrupt an already-ticking one — see
+    // [[project_areaeffectpd_multicast_still_needed]]), which is exactly what spawning one of these per
+    // trigger already gives for free; it passes totalCasts/retriggerRate explicitly (as named args, since
+    // they're no longer in their old leading positional slots).
+    //
     // totalCasts is the FULL count including the immediate cast fired from here (e.g. totalCasts=3 means
     // this cast now, then 2 more retriggers). Pooled — Launch() runs on every reuse, unlike LateAwake()
     // (not guaranteed to re-fire on pooled reuse), so _onRecast's one-time construction lives here instead,
@@ -78,21 +93,18 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     // vfxPerCast: false (default) spawns the radius VFX exactly once for the whole chain regardless of
     // totalCasts — correct for a caller whose totalCasts represents rapid inner ticks of one ongoing effect
     // (ArcherArrowRainAbilityPD's 20-tick DoT: one visible zone, not 20 flashes). true spawns it fresh on
-    // EVERY cast including the first, including retriggers — correct for a caller whose totalCasts instead
-    // represents Stats.AreaEffectCount recasts of a whole discrete burst spaced retriggerRate apart (e.g.
-    // DashHealAugment/DashExplosionAugment/ShieldBreakBurstAugment/KnightAreaStunHealAbilityPD), where each
-    // recast is its own distinct, perceptible event that should visibly flash same as the first one did —
-    // silently losing the VFX on every recast after the first (the actual bug this flag fixes) happened
-    // because those callers share this exact totalCasts/retriggerRate mechanism with ArrowRain's own
-    // once-only need, with nothing to tell the two cases apart before now.
-    public void Launch(CharacterStatsPD owner, Vector3 position, int totalCasts, float retriggerRate,
-        float radius, GameObject radiusVFXPrefab,
+    // EVERY cast including the first — every other caller here still passes this explicitly even though
+    // totalCasts is always 1 for them now, since it's harmless (identical single-spawn result either way at
+    // totalCasts == 1) and matches how each was already tuned/tested.
+    public void Launch(CharacterStatsPD owner, Vector3 position, float radius, GameObject radiusVFXPrefab,
         bool targetAllies = false, bool dealDamage = true, float damagePercent = 0f, float onHitPowerPercent = 0f,
         bool notifyOnHit = true,
         bool hasKnockback = false, float? knockback = null, bool interrupt = false,
         Action<IEnemyPD> onEnemyHit = null, Action<IFriendlyPD> onAllyHit = null, Action<int> onCastComplete = null,
         Action<IEnemyPD> onSuccessfulInterrupt = null,
-        bool overrideHitSfx = false, AudioClip hitSfxOverride = null, bool vfxPerCast = false)
+        bool overrideHitSfx = false, AudioClip hitSfxOverride = null, bool vfxPerCast = false,
+        int totalCasts = 1, float retriggerRate = 0f,
+        bool? forcedCrit = null, bool? forcedHighroll = null)
     {
         if (_onRecast == null)
         {
@@ -120,6 +132,8 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         _overrideHitSfx = overrideHitSfx;
         _hitSfxOverride = hitSfxOverride;
         _vfxPerCast = vfxPerCast;
+        _forcedCrit = forcedCrit;
+        _forcedHighroll = forcedHighroll;
 
         currentState.remainingCasts = Mathf.Max(1, totalCasts) - 1;
         currentState.retriggerTimer = retriggerRate;
@@ -165,7 +179,8 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
             hasKnockback: _hasKnockback, knockback: _knockback, interrupt: _interrupt,
             onEnemyHit: _onEnemyHit, onAllyHit: _onAllyHit, onCastComplete: _onCastComplete,
             onSuccessfulInterrupt: _onSuccessfulInterrupt,
-            overrideHitSfx: _overrideHitSfx, hitSfxOverride: _hitSfxOverride);
+            overrideHitSfx: _overrideHitSfx, hitSfxOverride: _hitSfxOverride,
+            forcedCrit: _forcedCrit, forcedHighroll: _forcedHighroll);
     }
 
     protected override void UpdateView(State viewState, State? verified)

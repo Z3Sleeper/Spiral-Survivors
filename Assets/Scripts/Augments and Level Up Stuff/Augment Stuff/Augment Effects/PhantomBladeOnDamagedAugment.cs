@@ -20,21 +20,15 @@ public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamage
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private Color bladeColor = Color.white;
     public int bladeCount = 3;
-    public float damageMultiplier = 0.06f;
+    public float strengthMultiplierPercent = 0.06f;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
-
-    // damageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100 convention
-    // wouldn't apply to it directly — this alias exists purely so a description can reference
-    // {DamageMultiplierPercent} and get the correctly-scaled static number, as a fallback for whenever
-    // {LiveBladeDamageRatio} itself is blank (out of a live match — see ShowLiveValues's own doc comment).
-    public float DamageMultiplierPercent => damageMultiplier;
 
     // Damage per 1 point of pre-mitigation damage taken (the trigger's own per-event input varies hit-to-
     // hit, so isn't baked in — same "baseline coefficient" convention as OnHitDamageHealthAugment.
     // LiveBonusHealthRatio's own doc comment) for AugmentDescriptionFormatter's {LiveBladeDamageRatio} token.
     public string LiveBladeDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, damageMultiplier))} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, strengthMultiplierPercent))} "
             : "";
 
     protected override void OnApply()
@@ -59,6 +53,6 @@ public class PhantomBladeOnDamagedAugment : AugmentEffectPD<PhantomBladeOnDamage
         if (Stats == null || Stats.IsDead) return;
 
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, (damageMultiplier * data.preMitigationDamage), bladeColor);
+            Stats.transform.position, bladeCount, (strengthMultiplierPercent * data.preMitigationDamage), bladeColor);
     }
 }

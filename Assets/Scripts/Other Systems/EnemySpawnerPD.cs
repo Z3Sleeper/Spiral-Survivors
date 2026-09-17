@@ -137,13 +137,24 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private float cycleInterval = 180f;
 
     [Header("Mid-cycle Events")]
-    // Flat placeholder duration between StartEvent() and ResolveEvent() (see the "Mid-cycle event trigger"
-    // block in Simulate()) — a real event will eventually decide its own resolution instead of this fixed 1
-    // minute, once actual event TYPES exist (see EventManagerPD's own doc comment). Trigger point itself
-    // (60s into a Tier Cycle's pre-boss window, 2026-08-21 — moved back from 90s, see the "Mid-cycle event
-    // trigger" block's own doc comment for why) is NOT a separate tunable — deliberately hardcoded against
-    // cycleInterval directly in Simulate(), same as the Quarter escalation thresholds right above it.
-    [SerializeField] private float eventDuration = 60f;
+    // Flat timeout between StartEvent() and the "ran out of time" ResolveEvent() call (see the "Mid-cycle
+    // event trigger" block in Simulate()) — every event still succeeds or fails on its own actual win
+    // condition well before this if the players are fast; this is purely the outer failure deadline. Raised
+    // 2026-09-02 from 60 to 90 — events are meant to be clearable in ~30s, this just adds extra leeway on
+    // top rather than being the expected completion time itself. Trigger point itself (60s into a Tier
+    // Cycle's pre-boss window, 2026-08-21 — moved back from 90s, see the "Mid-cycle event trigger" block's
+    // own doc comment for why) is NOT a separate tunable — deliberately hardcoded against cycleInterval
+    // directly in Simulate(), same as the Quarter escalation thresholds right above it. At cycleInterval's
+    // own default (180s), this now leaves a 30s buffer before the boss spawns (was 60s at the old 60s
+    // value) — still no overlap, just a tighter margin; retune cycleInterval too if that buffer ever needs
+    // to grow back.
+    //
+    // This is the ONE real source of truth for how long an event lasts — EventBasePD's own "Time Remaining"
+    // display (and its white<->red end-of-event flash) reads it live via the public getter below instead of
+    // carrying its own separately-authored copy, which used to be able to silently drift out of sync with
+    // this actual value.
+    [SerializeField] private float eventDuration = 90f;
+    public float EventDuration => eventDuration;
 
     [Header("Elite Scaling")]
     // First/last elite of the cycle fire this far INTO the cycle, as a percent of cycleInterval (0.25 =
@@ -196,28 +207,41 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // prefabs across a different "level" with a different tier progression means retuning these growth
     // curves once here, not re-tuning every individual tier's own hand-authored numbers on every prefab.
     // Move speed, damage, AND xp all grow LINEARLY (tier1 + this fraction of tier1 per tier step above 1).
-    // Health was ALSO exponential originally (healthExponentialTierBase = 5, i.e. 5/25/125 for a
-    // tier1-baseline 5-health enemy) but switched to linear on 2026-08-20 — that curve assumed player damage
-    // output scaled roughly as aggressively per tier as it was tuned for, which turned out not to hold up in
-    // practice, leaving high-tier enemies dramatically overtanky relative to what players could actually put
-    // out. healthTierGrowth originally launched at 4 using the SAME "1 + (tier-1)*growth" shape the other
-    // stats use (tier1/tier2/tier3/tier4 = 1x/5x/9x/13x, matching the old exponential curve's own
-    // already-validated tier1/tier2 value before tapering off instead of continuing to 25x/125x), then
-    // retuned further to 8 (1x/9x/17x/25x) off live testing — but that additive shape only ever matches the
-    // originally-intended 1x/5x/10x/15x sequence AT tier 2, then permanently diverges (9 vs 10, 13/17 vs 15,
-    // ...). Reworked 2026-08-30 to its own different shape instead — see _tierHealthMultiplier's own
-    // computation for the actual formula (growth*(tier-1), floored at 1x), value retuned back to 5 to
-    // land exactly on 1x/5x/10x/15x. Health is now the ONE exception to the shared additive formula every
-    // other stat below still uses — retune directly here (or switch shape again) if live testing calls for
-    // it. xp was
+    // Health went through several shapes: pure exponential originally (healthExponentialTierBase = 5, i.e.
+    // 5/25/125 for a tier1-baseline 5-health enemy), switched to pure linear on 2026-08-20 (assumed player
+    // damage output scaled roughly as aggressively per tier as tuned for — didn't hold up, T4 enemies read as
+    // dramatically overtanky), then reworked 2026-08-30 to growth*(tier-1) floored at 1x (1x/5x/10x/15x with
+    // growth=5). That pure-linear shape then turned out to undershoot at T4 in live play (T1/T2 felt right,
+    // T3 unclear, T4 clearly underpowered) — player damage output itself doesn't scale purely linearly
+    // (Strength grows linearly per level, but stat-augments/augments stack exponentially/multiplicatively on
+    // top), so a pure-linear health curve permanently falls behind. Reworked AGAIN 2026-09-16 to a hybrid
+    // linear+exponential shape combining both: healthTierGrowth*(tier-1) + healthExponentialTierBase^(tier-1)
+    // — see _tierHealthMultiplier's own computation for the exact formula. growth=2, exponentialBase=3 lands
+    // exactly on 1x/5x/13x/33x for tiers 1-4 (tier1 needs no floor — the formula already lands on exactly 1x
+    // there since growth*0 + base^0 = 0+1). Health remains the ONE exception to the shared additive formula
+    // every other stat below still uses — retune growth/exponentialBase directly here (or switch shape
+    // again) if live testing calls for it. xp was
     // ALSO exponential originally (xpExponentialTierBase = 5, i.e. 5/25/125/625 for a tier1-baseline 5xp
     // enemy) but switched to linear on 2026-08-12 after live T4 testing showed it snowballing the player's
     // level curve — a single T3/T4 kill's xp vastly outstripped GameManagerPD.xpToNextLevel's own much slower
     // (roughly arithmetic-step) growth. xpTierGrowth originally launched at 4 (5/25/45/65 for that same
     // tier1-baseline 5xp enemy) but has since been retuned to 3 (5/20/35/50).
     [SerializeField] private float moveSpeedTierGrowth = 0.25f;
+    // Identical "1 + (tier-1)*growth" shape/value as moveSpeedTierGrowth (2026-09-14, added) — Stuart's own
+    // starting point, tuned to match for now purely as a starting reference point; own independent field/
+    // scalar/ConfigureSpawn param throughout (same "coincidentally the same rate, not a true pairing" framing
+    // difficultyAttackSpeedGrowthPerLevel's own doc comment already established for the difficulty side), so
+    // retune freely without touching moveSpeedTierGrowth. Feeds EnemyBasePD.attackSpeed on top of whatever
+    // difficultyAttackSpeedGrowthPerLevel already contributes — see the SpawnEnemy call site's own comment for
+    // how the two combine.
+    [SerializeField] private float attackSpeedTierGrowth = 0.25f;
     [SerializeField] private float damageTierGrowth = 0.5f;
-    [SerializeField] private float healthTierGrowth = 5f;
+    // 2026-09-16, was 5f (pure-linear shape) — now the LINEAR half of health's hybrid formula, see this
+    // header's own doc comment above. healthExponentialTierBase is the EXPONENTIAL half.
+    [SerializeField] private float healthTierGrowth = 2f;
+    // Exponential half of health's hybrid formula (2026-09-16, reintroduced) — see this header's own doc
+    // comment above for the full derivation. 3f combined with healthTierGrowth=2f lands on 1x/5x/13x/33x.
+    [SerializeField] private float healthExponentialTierBase = 3f;
     [SerializeField] private float xpTierGrowth = 3f;
     // Fully independent from xpTierGrowth (2026-08-29 — upgrade points are no longer derived from XP at all,
     // see EnemyBasePD.pointsValue's own doc comment) — no relationship to xpTierGrowth's own value, tune
@@ -226,15 +250,25 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // Stuart's own reference example exactly.
     [SerializeField] private float pointsTierGrowth = 1f;
 
-    // Public passthroughs (2026-08-21) — lets anything outside this spawner (e.g. DPSCheckPD scaling its own
-    // dummy target's stats) replicate the EXACT SAME "1f + (tier - 1) * growth" formula this class applies to
-    // every spawned enemy, reading the live, single-source-of-truth value instead of hand-duplicating a
-    // magic number that could silently drift out of sync if these are ever retuned.
-    public float MoveSpeedTierGrowth => moveSpeedTierGrowth;
-    public float DamageTierGrowth    => damageTierGrowth;
-    public float HealthTierGrowth    => healthTierGrowth;
-    public float XpTierGrowth        => xpTierGrowth;
-    public float PointsTierGrowth    => pointsTierGrowth;
+    // Public formula methods (2026-08-21, was raw-growth-constant passthroughs; reworked 2026-09-16 to
+    // return the actual computed multiplier instead) — lets anything outside this spawner (e.g. DPSCheckPD/
+    // DestroyTheTargetsPD/PerimeterPatrolEventPD scaling their own event targets via EventTargetScalingPD)
+    // replicate the EXACT SAME per-tier scaling this class applies to every spawned enemy for a given tier
+    // number, by calling the one real implementation instead of hand-copying its shape. The old passthrough-
+    // only version (raw growth constant, shape re-derived by the caller) silently fell out of sync the moment
+    // health's own shape diverged from the shared "1 + (tier-1)*growth" formula every other stat still uses
+    // (see healthTierGrowth's own doc comment) — EventTargetScalingPD's hand-copied health formula kept using
+    // the OLD shared shape for a full rework cycle until caught by hand. These methods are the fix: nothing
+    // outside this class ever re-derives the formula itself again, only calls it.
+    public float ComputeTierMoveSpeedMultiplier(int tierNumber)   => 1f + (tierNumber - 1) * moveSpeedTierGrowth;
+    public float ComputeTierAttackSpeedMultiplier(int tierNumber) => 1f + (tierNumber - 1) * attackSpeedTierGrowth;
+    public float ComputeTierDamageMultiplier(int tierNumber)      => 1f + (tierNumber - 1) * damageTierGrowth;
+    // Hybrid linear+exponential shape — see healthTierGrowth's own doc comment above for the full derivation.
+    // The ONE place this formula is allowed to exist; _tierHealthMultiplier's own Simulate()-tick computation
+    // calls this too rather than keeping a second, hand-synced copy.
+    public float ComputeTierHealthMultiplier(int tierNumber)      => healthTierGrowth * (tierNumber - 1) + Mathf.Pow(healthExponentialTierBase, tierNumber - 1);
+    public float ComputeTierXpMultiplier(int tierNumber)          => 1f + (tierNumber - 1) * xpTierGrowth;
+    public float ComputeTierPointsMultiplier(int tierNumber)      => 1f + (tierNumber - 1) * pointsTierGrowth;
 
     [Header("Difficulty Scaling")]
     // Linear per difficulty level off GamePresets.instance.Difficulty (1-6), same "multiply base, no
@@ -284,6 +318,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // ever runs from within this same Simulate() call (directly or via SpawnElite), so these are always
     // fresh by the time it's called.
     private float _tierMoveSpeedMultiplier = 1f;
+    private float _tierAttackSpeedMultiplier = 1f;
     private float _tierDamageMultiplier = 1f;
     private float _tierHealthMultiplier = 1f;
     private float _tierXpMultiplier = 1f;
@@ -485,9 +520,26 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         // suddenly de-scale spawns/enemy toughness for whoever remains.
         int playerCount = GameManagerPD.instance != null ? GameManagerPD.instance.FixedPlayerCount : 1;
         if (playerCount <= 0) playerCount = 1;
-        // Single shared "how much harder is co-op" multiplier — same value GameManagerPD divides earned
-        // XP by. Applied here to spawn-rate acceleration and boss/elite health/damage/XP alike, so "more
-        // spawns" and "tougher, more valuable enemies" always move together as one number.
+        // Single shared "how much harder is co-op" multiplier. Uniform across every category now
+        // (2026-09-02, was spawn-rate acceleration for Normal/Pleb, health/XP for Elite/Boss only — see
+        // SpawnElite's own doc comment for why that split existed and why it's gone): health and points
+        // scale by this for Normal/Pleb/Elite/Boss alike, damage never does (matching the Elite/Boss
+        // convention this was extended FROM — "tougher, more valuable enemies," not "harder-hitting" or
+        // "more frequent" ones). Spawn timers (spawnTimer/plebSpawnTimer below) no longer read this at all
+        // — spawn cadence is now identical regardless of player count, only each individual enemy's own
+        // toughness/value scales with it.
+        //
+        // XP deliberately does NOT scale by this anymore (2026-09-03 fix) — it used to (reusing this same
+        // value as SpawnEnemy's own xpMultiplier param), paired with an equal-and-opposite division back
+        // out in GameManagerPD.AwardXP, on the reasoning that total enemy COUNT also scaled with player
+        // count back then, so inflating-then-normalizing per-kill value was what kept overall XP gained
+        // roughly the same across solo/co-op. Enemy count no longer scales with player count at all (see
+        // this comment's own history above) — so with a fixed total number of kills either way, XP now has
+        // to stay flat at the SOURCE for total XP gained to actually stay equal; see AwardXP's own doc
+        // comment for the full reasoning. Points keeps the coopScale bump deliberately (see
+        // pointsTierGrowth's own doc comment) — it's the intended replacement for co-op's old "more
+        // enemies (used to) mean more total points" effect, and AwardUpgradePoints was never paired with
+        // any offsetting division, so this is genuinely additive there, not a no-op like it was for XP.
         float coopScale = 1f + (playerCount - 1) * (GameManagerPD.instance != null ? GameManagerPD.instance.CoopToughnessScalar : 0f);
 
         // ── Boss tracking ──────────────────────────────────────────────────
@@ -530,17 +582,15 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         // why this is the one place that needs to run (SpawnEnemy, the only reader, only ever gets called
         // later in this same Simulate() call, directly or via SpawnElite).
         int tierNumber = GetCurrentTierNumber(state.bossesDefeated);
-        _tierMoveSpeedMultiplier = 1f + (tierNumber - 1) * moveSpeedTierGrowth;
-        _tierDamageMultiplier    = 1f + (tierNumber - 1) * damageTierGrowth;
-        // Deliberately NOT the shared "1 + (tier-1)*growth" shape every other stat here uses (2026-08-30) —
-        // explicit design: health growth * (tier - 1), floored at 1x for tier 1 (where the raw formula
-        // would otherwise give 0x). With growth=5 this lands exactly on 1x/5x/10x/15x for tiers 1-4, which
-        // the additive shape can't produce past tier 2 (it only ever matches at tier 2, then diverges —
-        // see healthTierGrowth's own doc comment for the earlier 1x/5x/9x/13x-vs-intended-1x/5x/10x/15x
-        // mismatch this replaces).
-        _tierHealthMultiplier    = Mathf.Max(1f, healthTierGrowth * (tierNumber - 1));
-        _tierXpMultiplier        = 1f + (tierNumber - 1) * xpTierGrowth;
-        _tierPointsMultiplier    = 1f + (tierNumber - 1) * pointsTierGrowth;
+        // Routed through the Compute* methods below (2026-09-16, was inline duplicates of the same math) so
+        // this cached-per-tick computation and any outside caller (EventTargetScalingPD) share the exact same
+        // single implementation — see those methods' own doc comment for why.
+        _tierMoveSpeedMultiplier   = ComputeTierMoveSpeedMultiplier(tierNumber);
+        _tierAttackSpeedMultiplier = ComputeTierAttackSpeedMultiplier(tierNumber);
+        _tierDamageMultiplier    = ComputeTierDamageMultiplier(tierNumber);
+        _tierHealthMultiplier    = ComputeTierHealthMultiplier(tierNumber);
+        _tierXpMultiplier        = ComputeTierXpMultiplier(tierNumber);
+        _tierPointsMultiplier    = ComputeTierPointsMultiplier(tierNumber);
         _currentTierNumber       = tierNumber;
 
         // Read off GameManagerPD.Difficulty, NOT GamePresets directly (2026-08-21 fix) — see
@@ -615,9 +665,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         }
 
         // ── Normal enemies ─────────────────────────────────────────────────
+        // Spawn cadence no longer coop-scaled (2026-09-02, was `delta * coopScale`) — see coopScale's own
+        // doc comment for why. Health/points scale by coopScale, XP stays flat (1f, 2026-09-03) — see
+        // coopScale's own doc comment for why those diverge — damage stays flat too (1f).
         if (!bossAlive)
         {
-            state.spawnTimer -= delta * coopScale;
+            state.spawnTimer -= delta;
             if (state.spawnTimer <= 0f)
             {
                 state.spawnTimer += state.spawnInterval;
@@ -625,7 +678,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
                 {
                     int pick = state.currentSetIndices[GameRandom.instance.Next(state.currentSetIndices.Count)];
                     if (tier.normal != null && pick < tier.normal.Length)
-                        SpawnEnemy(tier.normal[pick], EnemySpawnCategory.Normal, 1f, 1f, 1f);
+                        SpawnEnemy(tier.normal[pick], EnemySpawnCategory.Normal, coopScale, 1f, 1f, coopScale);
                 }
             }
         }
@@ -635,7 +688,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         // spawn blackout was removed — right up until the boss actually spawns too. Nothing left alive
         // when it does spawn either way, since every currently-alive enemy (plebs included) gets wiped
         // right before that happens below.
-        state.plebSpawnTimer -= delta * coopScale;
+        //
+        // Spawn cadence no longer coop-scaled (2026-09-02, was `delta * coopScale`) — see coopScale's own
+        // doc comment for why. Health/points scale by coopScale (points still zeroed during a boss fight
+        // regardless, per the comment above — coopScale only applies when it isn't) — XP stays flat
+        // (2026-09-03, was coopScale) — damage stays flat too (1f).
+        state.plebSpawnTimer -= delta;
         if (state.plebSpawnTimer <= 0f)
         {
             state.plebSpawnTimer += state.plebSpawnInterval;
@@ -645,7 +703,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
                 {
                     if (EnemyBasePD.ActivePlebCount >= maxPlebEnemies) break;
                     var prefab = tier.pleb[GameRandom.instance.Next(tier.pleb.Length)];
-                    SpawnEnemy(prefab, EnemySpawnCategory.Pleb, 1f, 1f, bossAlive ? 0f : 1f);
+                    SpawnEnemy(prefab, EnemySpawnCategory.Pleb, coopScale, 1f, bossAlive ? 0f : 1f, bossAlive ? 0f : coopScale);
                 }
             }
         }
@@ -715,7 +773,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             _bossPool[roll] = _bossPool[_bossPool.Count - 1];
             _bossPool.RemoveAt(_bossPool.Count - 1);
 
-            var id = SpawnEnemy(prefab, EnemySpawnCategory.Boss, coopScale, 1f, coopScale);
+            var id = SpawnEnemy(prefab, EnemySpawnCategory.Boss, coopScale, 1f, 1f, coopScale);
             if (id.HasValue) state.activeBosses.Add(id.Value);
         }
     }
@@ -773,13 +831,16 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
 
     // Spawns exactly one elite per scheduled slot — count is fixed by baseEliteCount regardless of player
     // count (see field comment); co-op difficulty instead comes entirely from scaling each elite's own
-    // health/XP by the same shared coopScale the caller already computed, which is what keeps total elite
-    // XP output consistent between solo and multiplayer instead of just throwing more bodies at a bigger
-    // group. Damage is deliberately NOT coop-scaled (2026-08-27 fix — was coopScale * eliteStatMultiplier
-    // before this, an oversight; damage output shouldn't climb just because more players joined, matching
-    // SpawnBosses' own identical health-and-XP-only, damage-flat convention). Threat Level 3+ additionally
-    // doubles Health/Damage only (not XP — see threatLevel3EliteStatMultiplier's own doc comment) — for
-    // damage this is now the ONLY multiplier applied, not stacked on top of coopScale anymore.
+    // health/points by the same shared coopScale the caller already computed. XP is deliberately flat
+    // (2026-09-03, was also coopScale — see coopScale's own doc comment for why XP no longer scales at
+    // all: count is fixed here too, same as it's always been for elites, so flat XP is what keeps total
+    // elite XP output equal between solo and co-op, not an inflate-then-cancel round-trip). Damage is
+    // deliberately NOT coop-scaled either (2026-08-27 fix — was coopScale * eliteStatMultiplier before
+    // this, an oversight; damage output shouldn't climb just because more players joined, matching
+    // SpawnBosses' own identical health-and-points-only, damage-flat convention). Threat Level 3+
+    // additionally doubles Health/Damage only (not XP/points — see threatLevel3EliteStatMultiplier's own
+    // doc comment) — for damage this is now the ONLY multiplier applied, not stacked on top of coopScale
+    // anymore.
     private void SpawnElite(ref State state, in TierEnemies tier, float coopScale)
     {
         if (tier.elite == null || tier.elite.Length == 0 || state.currentSetIndices.Count == 0) return;
@@ -806,7 +867,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             if (skip == 0)
             {
                 SpawnEnemy(tier.elite[idx], EnemySpawnCategory.Elite,
-                    coopScale * eliteStatMultiplier, eliteStatMultiplier, coopScale);
+                    coopScale * eliteStatMultiplier, eliteStatMultiplier, 1f, coopScale);
                 return;
             }
             skip--;
@@ -886,12 +947,21 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         _ => tier4NamePrefix
     };
 
-    // healthMultiplier/damageMultiplier/xpMultiplier arriving here are each category's own existing elite/
-    // co-op scalar (e.g. coopScale) — tier scaling multiplies on top of that, not the other way around (per
+    // healthMultiplier/damageMultiplier/xpMultiplier/pointsMultiplier arriving here are each category's own
+    // existing elite/co-op scalar (e.g. coopScale, or 1f where that category doesn't get one — see each
+    // call site's own comment) — tier scaling multiplies on top of that, not the other way around (per
     // explicit design: tier is the base transformation every category shares, elite/co-op is layered on top
     // of whatever tier already produced). Folded in here, the one choke point every spawn call already goes
     // through, rather than touching each of the 4 call sites above individually.
-    private PredictedObjectID? SpawnEnemy(GameObject prefab, EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier)
+    //
+    // xpMultiplier and pointsMultiplier are genuinely separate parameters now (2026-09-03, was one shared
+    // xpMultiplier reused for both) — every call site passes 1f for xpMultiplier (XP no longer scales with
+    // co-op at all, see coopScale's own doc comment for why) and coopScale for pointsMultiplier (points
+    // still does). Kept as two params rather than collapsed back down, even though several call sites still
+    // pass the same category-gating value (e.g. Pleb's bossAlive-during-boss-fight zero) into both — that
+    // shared gating is a coincidence of what each category needs today, not a reason to re-couple XP and
+    // points at this choke point again.
+    private PredictedObjectID? SpawnEnemy(GameObject prefab, EnemySpawnCategory category, float healthMultiplier, float damageMultiplier, float xpMultiplier, float pointsMultiplier)
     {
         if (prefab == null) return null;
         var id = hierarchy.Create(prefab, GetSpawnPosition(), Quaternion.identity);
@@ -917,17 +987,13 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
                 _tierHealthMultiplier * healthMultiplier * _difficultyHealthScalar,
                 _tierDamageMultiplier * damageMultiplier * _difficultyDamageScalar,
                 _tierXpMultiplier * xpMultiplier,
-                // Reuses the incoming xpMultiplier param for points' own per-category half too — per this
-                // method's own doc comment just above, that value arriving here is really just "each
-                // category's own existing elite/co-op scalar," not something XP-specific, so it's equally
-                // correct for points (2026-08-29 — points is no longer derived from XP, but the CATEGORY
-                // scaling both still share is the same number either way).
-                _tierPointsMultiplier * xpMultiplier,
+                _tierPointsMultiplier * pointsMultiplier,
                 moveSpeedMultiplier,
                 attackCooldownMultiplier,
-                // Difficulty-only (no tier component, no per-category bump) — see
-                // difficultyAttackSpeedGrowthPerLevel's own doc comment.
-                _difficultyAttackSpeedScalar,
+                // Tier * difficulty (2026-09-14 — tier component added; was difficulty-only). No per-category
+                // bump, unlike move speed's own Threat Level 4 Pleb exception above — see attackSpeedTierGrowth/
+                // difficultyAttackSpeedGrowthPerLevel's own doc comments.
+                _tierAttackSpeedMultiplier * _difficultyAttackSpeedScalar,
                 _currentTierNumber);
         }
 

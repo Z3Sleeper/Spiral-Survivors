@@ -13,9 +13,9 @@ MonoBehaviour:
   m_Name: OnDashStartedReduceAbilityCDAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Flash of Brilliance</color>
-  description: <color=#FFA000>On <color=#00FFFF>Dash</color> Start:</color> <color=#FFA000>Reduce</color>
+  description: <color=#FFA000>On <color=#00FFFF>Dash Start</color>:</color> <color=#FFA000>Reduce</color>
     your <color=#FFB4FF>Ability</color> <color=#FFA000>cooldowns</color> by <color=#FFB4FF>{LiveCooldownReduction}</color>
-    <color=#FFA000>seconds</color> <color=#FFA000>(15% of each <color=#FFB4FF>Ability's</color>
+    <color=#FFA000>seconds</color> <color=#FFA000>(7.5% of each <color=#FFB4FF>Ability's</color>
     base cooldown)</color>.
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   effectPrefab: {fileID: 5942689307888114997, guid: 3d1d4bec9f2bb2c4fb683bf937dfd63c, type: 3}
@@ -25,7 +25,8 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  tags: []
+  tags:
+  - Dash Effect
   requiredTags: []
   incompatibleTags: []
   unlockTag: 

@@ -231,7 +231,6 @@ MonoBehaviour:
   rangeFollowers:
   - {fileID: 1719263058978148157}
   particleRangeTarget: {fileID: 6007262855334068418}
-  tipOffset: 0
   xRangeScaleRatio: 0.05
   yScaleFollowers:
   - {fileID: 7916714521472660137}
@@ -244,6 +243,11 @@ MonoBehaviour:
   hitboxTipScalesWithX: 1
   hitboxTipScalesWithY: 0
   hitboxTipScalesWithZ: 1
+  hitboxBackTip: {fileID: 0}
+  hitboxBackTipOffset: 0
+  hitboxBackTipScalesWithX: 0
+  hitboxBackTipScalesWithY: 0
+  hitboxBackTipScalesWithZ: 0
   _renderers:
   - {fileID: 8001060567344131347}
   - {fileID: 4639130679624453648}
@@ -252,6 +256,10 @@ MonoBehaviour:
   - {fileID: 3231712233815679040}
   weaponParticles:
   - {fileID: 9092831110853863887}
+  minEmissionRate: 0
+  maxEmissionRate: 0
+  minEmissionRange: 0
+  maxEmissionRange: 0
   isRanged: 0
   rangeMultiplier: 1
   visualHeightTarget: {fileID: 6538681499716106083}
@@ -279,6 +287,8 @@ MonoBehaviour:
   - {fileID: 8667004372245903466}
   - {fileID: 3231712233815679040}
   tintedMaterialIndex: 0
+  coloredParticleSystems:
+  - {fileID: 9092831110853863887}
   alpha: 1
 --- !u!1 &2965791002601135373
 GameObject:

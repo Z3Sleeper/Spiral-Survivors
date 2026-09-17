@@ -4,7 +4,11 @@ using UnityEngine;
 // New tech, not a port. When THIS player kills an enemy, the corpse launches directly away from the killer
 // at a constant speed, acting as a moving hitbox that deals 100%* unpenalized damage (rolled once, at the
 // moment of the kill — not re-rolled per enemy it passes through) to every other enemy it touches along the
-// way. Once it's travelled its full distance, it dies for real.
+// way. Once it's travelled its full distance, it dies for real. Crit/highroll are both inherited from the
+// killing blow itself (enemy.WasKilledByCrit/WasKilledByHighroll — see EnemyBasePD's own doc comments) rather
+// than independently determined, and baked into the launch's own damage exactly once at OnEnemyDeath time —
+// EnemyBasePD.HandleKillLaunch simply replicates that same pre-baked damage/isCrit/isHighroll for every enemy
+// the corpse subsequently touches, never re-rolling per hit.
 //
 // Subscribes to the general CharacterStatsPD.OnEnemyDeath (fires on every machine for every enemy death,
 // carrying the killer) and filters killer == Stats itself, rather than anything killer-local-machine-only —
@@ -49,16 +53,19 @@ public class OnKillLaunchEnemiesAugment : AugmentEffectPD<OnKillLaunchEnemiesAug
     {
         if (killer != Stats) return;
 
-        // Inherits the killing hit's own crit status rather than rolling an independent chance — whether
-        // THIS specific hit crit is already decided, so this just reads it off the enemy (see
-        // EnemyBasePD.TakeDamage's own killedByCrit capture).
+        // Inherits the killing hit's own crit/highroll status rather than rolling independently — whether
+        // THIS specific hit crit/highrolled is already decided, so this just reads it off the enemy (see
+        // EnemyBasePD.TakeDamage's own killedByCrit/killedByHighroll capture). isHighroll extended to match
+        // isCrit (2026-09-14, was independently rolled) — same "onhit/onstrike effects inherit rather than
+        // roll" convention every other onhit-triggered damage effect in this codebase now follows.
         bool isCrit = enemy.WasKilledByCrit;
+        bool isHighroll = enemy.WasKilledByHighroll;
 
         // Anything that deals damage rolls luck variance — no exceptions. Rolled once here, not re-rolled
-        // per enemy the launched corpse later touches — same "whether it crits is a property of the whole
-        // flight" reasoning PhantomBladeSummonHelper.SummonAtTarget uses, just with crit status inherited
-        // instead of independently rolled.
-        float rolled = WeaponDamageMath.RollDamage(damagePercent, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
+        // per enemy the launched corpse later touches — same "whether it crits/highrolls is a property of
+        // the whole flight" reasoning PhantomBladeSummonHelper.SummonAtTarget uses, just with both statuses
+        // inherited from the killing blow instead of independently rolled/determined.
+        float rolled = WeaponDamageMath.RollDamageInherited(damagePercent, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, isHighroll);
         rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, isCrit, Stats.HighrollBonus, Stats.CritDamage);
         float damage = rolled * Stats.Strength;
 

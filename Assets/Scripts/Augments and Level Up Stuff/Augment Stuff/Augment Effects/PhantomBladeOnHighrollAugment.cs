@@ -8,7 +8,9 @@ using UnityEngine;
 // as before (still no AttackSpeed scaling), but a real Strike Highroll ALSO shaves
 // cooldownReductionOnHighroll off it directly, scaled by that hit's own onHitPower (same convention
 // OnStrikeHighrollReduceDashCDAugment's identical reduction already uses). No longer reacts to actual
-// weapon hits any other way. baseDamageMultiplier lowered 6f/600% -> 0.6f/60% in the same pass (set directly
+// weapon hits any other way. baseDamageMultiplier (renamed strengthMultiplierPercent, 2026-09-13, see
+// PhantomBladeRangeAugment's own sibling doc comment for the family-wide normalization) lowered 6f/600% ->
+// 0.6f/60% in the same pass (set directly
 // on the prefab, matching every other Phantom Blade augment's own per-blade damage standard — Highroll no
 // longer gets an outsized per-blade payout, its own edge is now purely "the bigger cooldown reduction on a
 // rarer trigger" instead) — bladeCount (3) unchanged, already matched PhantomBladeOnCritAugment's own.
@@ -40,19 +42,13 @@ public class PhantomBladeOnHighrollAugment : AugmentEffectPD<PhantomBladeOnHighr
     // identical reduction already uses — see its own doc comment for the full reasoning.
     public float cooldownReductionOnHighroll = 2.5f;
     public int bladeCount = 3;
-    public float baseDamageMultiplier = 6f;
-
-    // baseDamageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100
-    // convention wouldn't apply to it directly — this alias exists purely so a description can reference
-    // {BaseDamageMultiplierPercent} and get the correctly-scaled static number, as a fallback for whenever
-    // {LiveBladeDamageRatio} itself is blank (out of a live match — see ShowLiveValues's own doc comment).
-    public float BaseDamageMultiplierPercent => baseDamageMultiplier;
+    public float strengthMultiplierPercent = 6f;
 
     // For AugmentDescriptionFormatter's {LiveBladeDamageRatio} token. See
     // PhantomBladeSummonHelper.PreviewDamage's own doc comment for the full shared-formula convention.
     public string LiveBladeDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, baseDamageMultiplier))} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, strengthMultiplierPercent))} "
             : "";
 
     protected override State GetInitialState() => new() { timer = baseTimer };
@@ -107,7 +103,7 @@ public class PhantomBladeOnHighrollAugment : AugmentEffectPD<PhantomBladeOnHighr
     {
         if (phantomBladePrefab == null) return;
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, baseDamageMultiplier, bladeColor);
+            Stats.transform.position, bladeCount, strengthMultiplierPercent, bladeColor);
     }
 
     protected override void Simulate(ref State state, float delta)

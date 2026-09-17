@@ -52,7 +52,11 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     [Header("Grab")]
     [SerializeField] private float grabRadius = 15f;
     [SerializeField] private float windupDuration = 1f;
-    [SerializeField] private float pullDuration = 0.25f;
+    // Flat units/sec (2026-09-12, was pullDuration — a flat seconds-to-arrive value, meaning every held
+    // pleb took the same time regardless of how far it started) — matches KingOrbiterPD's own shotSpeed
+    // value (30f) per explicit design, so both bosses' pull feels like the same consistent travel speed.
+    // See IEnemyPD.OrbitTarget's own doc comment for the MoveTowards mechanic this now drives.
+    [SerializeField] private float pullSpeed = 30f;
     // Gap between each held pleb's own windup START (2026-08-17 — used to pull the whole group in one shot)
     // — pleb i's own windup begins i * pullSequentialDelay after Pulling started, REGARDLESS of whether an
     // earlier pleb's own windup/pull has finished yet (confirmed live design intent: windups overlap, they
@@ -74,8 +78,9 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     // hold (see IEnemyPD.SetDamageOverride's own doc comment) — "using a grabbed pleb like a weapon" hits as
     // hard as its wielder, scaled independently of the pleb's own tuning. Split (2026-08-11) into two separate
     // multipliers so Pulling (still being reeled in) and Holding (actively orbiting/chasing) can be tuned
-    // independently — TryStartGrab applies pullDamageMultiplier at selection, HandleActiveState's own
-    // Pulling->Holding transition switches every held pleb over to orbitDamageMultiplier.
+    // independently — RefreshHeldDamageOverrides (called every Simulate tick, 2026-09-16) is the real source
+    // of truth for which one currently applies to each held pleb, switching it the instant THAT pleb's own
+    // orbitPhase moves past Pulling, independent of whether the rest of the group has also arrived yet.
     [SerializeField] private float pullDamageMultiplier  = 1f;
     [SerializeField] private float orbitDamageMultiplier = 0.5f;
     // Single source of truth for how many plebs one grab pulls — retuning this alone is enough to change the
@@ -216,6 +221,40 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         return s;
     }
 
+    // Overridden (2026-09-16) so RefreshHeldDamageOverrides below runs EVERY tick regardless of dashing/
+    // offset-chasing — base EnemyBasePD.Simulate() only calls HandleActiveState() when neither of those is
+    // true, so logic that must run unconditionally every tick has to live here instead (same gotcha
+    // KingOrbiterPD/BlitzGloomPD/KingSpikePD's own identical Simulate() overrides already exist for).
+    protected override void Simulate(ref State state, float delta)
+    {
+        base.Simulate(ref state, delta);
+        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
+        if (B.isDead || B.wiped) return;
+        RefreshHeldDamageOverrides(ref state);
+    }
+
+    // Keeps every currently-held pleb's own contact-damage override correctly matched to its LIVE orbitPhase,
+    // every tick — 2026-09-16 fix, same reasoning/shape as KingOrbiterPD's own identical
+    // RefreshHeldDamageOverrides (see that method's own doc comment for the full "why"): a pleb should STOP
+    // dealing pullDamageMultiplier's elevated contact damage the INSTANT its own pull movement ends (reaches
+    // WaitingToOrbit), even before the REST of this group has also arrived and the old batch-gated
+    // AllArrivedAtOrbitSlot switch (HandleActiveState's own Pulling case, below) actually fires. Supersedes
+    // that batch switch and TryStartGrab's own initial one-time set as the real source of truth — recomputing
+    // fresh every tick from each pleb's own live IsPulling means there's no edge-detection/timing state to
+    // track or get wrong here. No EnrageDamageMultiplier factor — matches this class's own existing damage*
+    // multiplier formula shape exactly (unlike KingOrbiterPD, a boss, this normal enemy's damage override
+    // never included that factor to begin with).
+    private void RefreshHeldDamageOverrides(ref State state)
+    {
+        for (int i = 0; i < state.heldPlebs.Count; i++)
+        {
+            var go = hierarchy.GetGameObject(state.heldPlebs[i]);
+            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+            float multiplier = enemy.IsPulling ? pullDamageMultiplier : orbitDamageMultiplier;
+            enemy.SetDamageOverride(true, damage * multiplier);
+        }
+    }
+
     protected override void HandleActiveState(ref State state, float delta, bool dashJustEnded = false)
     {
         var phase = GetPhase(ref state);
@@ -293,17 +332,18 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                 if (count > 0 && state.pullSequenceIndex >= count && AllArrivedAtOrbitSlot(state.heldPlebs))
                 {
                     SetHurtboxDisabled(false);
-                    // Pull -> orbit damage multiplier switch — see pullDamageMultiplier/orbitDamageMultiplier's
-                    // own doc comment. Also releases every held pleb into actually orbiting (BeginOrbiting) —
-                    // each one has been frozen at its own slot (WaitingToOrbit) since finishing its own
-                    // staggered pull-in; releasing them all in this SAME tick is what keeps their angular
-                    // spacing exactly even instead of drifting (see EnemyOrbitPhase's own doc comment).
+                    // No longer sets the orbit damage override here (2026-09-16 — RefreshHeldDamageOverrides
+                    // already switched each pleb over individually the instant IT finished pulling, not
+                    // gated on the whole group like this release point is). Still releases every held pleb
+                    // into actually orbiting (BeginOrbiting) — each one has been frozen at its own slot
+                    // (WaitingToOrbit) since finishing its own staggered pull-in; releasing them all in this
+                    // SAME tick is what keeps their angular spacing exactly even instead of drifting (see
+                    // EnemyOrbitPhase's own doc comment).
                     for (int i = 0; i < count; i++)
                     {
                         var go = hierarchy.GetGameObject(state.heldPlebs[i]);
                         if (go != null && go.TryGetComponent(out IEnemyPD enemy))
                         {
-                            enemy.SetDamageOverride(true, damage * orbitDamageMultiplier);
                             enemy.BeginOrbiting();
                         }
                     }
@@ -408,8 +448,10 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             chosen.SetHurtboxDisabled(true);
             // "Using a grabbed pleb like a weapon" — see pullDamageMultiplier/orbitDamageMultiplier's own doc
             // comment. Applied from the moment of selection, same as every other freeze/untargetable effect
-            // above, not deferred to BeginPull — switched to orbitDamageMultiplier once Holding actually
-            // begins (see HandleActiveState's own Pulling->Holding transition).
+            // above, not deferred to BeginPull. Immediately superseded by RefreshHeldDamageOverrides
+            // (2026-09-16, called every Simulate tick) — that continuously-self-correcting refresh is the
+            // real source of truth for this pleb's own damage from here on; this first set just avoids a
+            // one-tick gap before RefreshHeldDamageOverrides' own next run.
             chosen.SetDamageOverride(true, damage * pullDamageMultiplier);
             chosen.ClaimForOrbit(ObjectId);
         }
@@ -437,7 +479,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         // mid-sequence for a vanishingly rare case) — just skipped so it doesn't error trying to orbit
         // something that no longer resolves.
         if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
-            enemy.OrbitTarget(ObjectId, transform.position, EffectiveHoldOrbitRadius, pullDuration, holdOrbitAngularSpeed, SlotAngleDeg(i, count));
+            enemy.OrbitTarget(ObjectId, transform.position, EffectiveHoldOrbitRadius, pullSpeed, holdOrbitAngularSpeed, SlotAngleDeg(i, count));
     }
 
     // Direct-state gate (2026-08-31) for HandleActiveState's own Pulling-case release check — see
@@ -538,7 +580,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             if (indicator != null) indicator.gameObject.SetActive(false);
         if (_windupFills == null) return;
         foreach (var fill in _windupFills)
-            if (fill != null) fill.ResetFill();
+            if (fill != null) fill.Hide();
     }
 
     protected override void UpdateView(State viewState, State? verified)
@@ -553,13 +595,17 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             var indicator = _windupIndicators[i];
             if (indicator == null) continue;
 
-            // Per-slot windup window, not phase-level (2026-08-17 — used to be one shared Windup phase for
-            // the whole group) — slot i shows its own indicator only while viewState.phaseTimer (elapsed
-            // since Pulling began, see that case's own comment) falls within ITS OWN
-            // [i*pullSequentialDelay, i*pullSequentialDelay+windupDuration) window, independent of every
-            // other slot's own window (they can and do overlap).
+            // Per-slot windup window (2026-08-17) THROUGH the actual pull-in movement (2026-09-14 fix, was
+            // gated to localElapsed < windupDuration — hid this slot's indicator the instant DispatchPull
+            // actually fired, before that pleb had even started moving toward its slot, let alone arrived;
+            // per explicit design, this pleb's own indicator should stay up for its ENTIRE movement,
+            // independent of every other slot — they can and do overlap). Shows from the moment this slot's
+            // own windup window opens (localElapsed >= 0), only hiding once this SPECIFIC pleb has actually
+            // arrived at its orbit slot (IsWaitingToOrbit) or become invalid (dead/unresolvable) — no upper
+            // time bound anymore, since "how long the pull-in takes" is now speed-based (pullSpeed), not a
+            // fixed duration this view code could estimate against (see pullSpeed's own doc comment).
             float localElapsed = viewState.phaseTimer - i * pullSequentialDelay;
-            bool slotFilled = pullingPhase && i < heldCount && localElapsed >= 0f && localElapsed < windupDuration;
+            bool slotFilled = pullingPhase && i < heldCount && localElapsed >= 0f;
 
             // Near edge = the orbit slot itself (this Orbiter's position + the holdOrbitRadius/SlotAngleDeg
             // offset this pleb is being pulled TO), NOT this Orbiter's own center — far edge = the target
@@ -569,7 +615,11 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             if (slotFilled)
             {
                 var go = hierarchy.GetGameObject(viewState.heldPlebs[i]);
-                slotFilled = go != null;
+                // IsPulling (2026-09-16, was !enemy.IsWaitingToOrbit — same bug/fix as
+                // KingOrbiterPD.UpdatePullLineIndicators, see IEnemyPD.IsPulling's own doc comment) — a pleb
+                // whose orbitPhase has moved PAST WaitingToOrbit into Orbiting used to read IsWaitingToOrbit as
+                // false again, silently re-admitting it here.
+                slotFilled = go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead && enemy.IsPulling;
                 if (slotFilled) spikyPos = go.transform.position;
             }
 
@@ -577,17 +627,9 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             if (indicator.gameObject.activeSelf != slotFilled)
             {
                 indicator.gameObject.SetActive(slotFilled);
-                if (fill != null && !slotFilled) fill.ResetFill();
+                if (fill != null && !slotFilled) fill.Hide();
             }
             if (!slotFilled) continue;
-
-            // Live, every frame, off this slot's own localElapsed — see feedback_windupfill_self_timed_drift:
-            // a self-timed StartFill() runs on its own Time.deltaTime clock, independent of the tick-based
-            // phaseTimer that actually gates DispatchPull(), and can drift out of sync with it even though
-            // windupDuration itself is fixed (never attack-speed-scaled) — a fixed duration doesn't guarantee
-            // the two clocks stay aligned.
-            if (fill != null)
-                fill.SetProgress(Mathf.Clamp01(localElapsed / windupDuration));
 
             float   rad = SlotAngleDeg(i, heldCount) * Mathf.Deg2Rad;
             Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
@@ -599,17 +641,34 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             if (distance <= 0.001f) continue;
             Vector3 aim = toTarget / distance;
 
-            // Positioned directly at the WORLD-space midpoint between the two edges above, then scaled to
-            // span exactly that distance — NOT IndicatorMath.ApplyLineTransform, which offsets along the
-            // indicator's own LOCAL Z assuming its rotation stays fixed/inherited. Every other line indicator
-            // in this codebase only ever faces one direction (the owning enemy's own body facing), so that
-            // assumption holds; these 3 indicators each independently rotate to face a DIFFERENT live target
-            // every frame, which broke that assumption (indicators were shooting out both sides of the
-            // Orbiter instead of stopping at their target — a real, confirmed bug, not theoretical).
+            // Positioned directly at the WORLD-space midpoint between the two edges above — every other line
+            // indicator in this codebase only ever faces one direction (the owning enemy's own body facing),
+            // but these 3 indicators each independently rotate to face a DIFFERENT live target every frame,
+            // so this sets rotation explicitly here (LookRotation(aim)) rather than relying on any inherited
+            // facing. ROTATION MUST BE SET BEFORE SetProgress below — WindupFillPD's own outline still reads
+            // this object's CURRENT transform.forward/.right for its corner math (see RecomputeOutline's own
+            // doc comment on why the outline can't avoid a genuine world-space read the way the fill mesh's
+            // own position now does), so setting it after would read last frame's stale facing instead. This
+            // object is also explicitly, synchronously self-positioned every frame with no separate smoother
+            // involved, so — unlike Blitz/Spear/etc.'s passively-inherited-rotation case — it was never
+            // actually susceptible to the jitter ShowRectangle's own doc comment describes.
             indicator.SetPositionAndRotation(slotPos + aim * (distance * 0.5f), Quaternion.LookRotation(aim));
-            var scale = indicator.localScale;
-            scale.z = distance * 0.1f;
-            indicator.localScale = scale;
+
+            // Near edge = the orbit slot itself, far edge = the target pleb's live position — length is the
+            // distance already computed above; width left at -1 (authored default), matching the old code's
+            // own behavior (only ever set scale.z, never touched X). centerForwardOffset left at its 0
+            // default — indicator's own position (just set above) already IS the true center.
+            if (fill != null)
+            {
+                fill.ShowRectangle(distance);
+                // Live, every frame, off this slot's own localElapsed — see
+                // feedback_windupfill_self_timed_drift: a self-timed StartFill() runs on its own
+                // Time.deltaTime clock, independent of the tick-based phaseTimer that actually gates
+                // DispatchPull(), and can drift out of sync with it even though windupDuration itself is
+                // fixed (never attack-speed-scaled) — a fixed duration doesn't guarantee the two clocks stay
+                // aligned.
+                fill.SetProgress(Mathf.Clamp01(localElapsed / windupDuration));
+            }
         }
     }
 }

@@ -13,8 +13,8 @@ MonoBehaviour:
   m_Name: DashThroughHPScaledDamageAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Bulldoze</color>
-  description: <color=#00FFFF>Dashing</color> through enemies deals <color=#FFA000>{LiveDamageRatio}</color><color=#FFA000>(<color=#FF5000>100%
-    Strength</color> + <color=#00FF00>100% Bonus Health</color>)</color> damage to
+  description: <color=#00FFFF>Dashing</color> through enemies deals <color=#FFA000>{LiveDamageRatio}</color><color=#FFA000>(<color=#FF5000>150%
+    Strength</color> + <color=#00FF00>300% Bonus Health</color>)</color> damage to
     them and <color=#FFA000>triggers</color> <color=#FFA000>On Hit Effects</color>
     at <color=#FFA000>100% On Hit Power</color>.
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}

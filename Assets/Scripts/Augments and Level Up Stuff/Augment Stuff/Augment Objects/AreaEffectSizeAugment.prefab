@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c8a8404f36c9f7c40ab786c7f1c21337, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AreaEffectSizeAugment
-  bonusAreaEffectSizePercent: 0.3
+  bonusAreaEffectSizePercent: 0.5
   bonusAreaEffectPowerPercent: 0.3

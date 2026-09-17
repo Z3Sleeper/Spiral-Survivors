@@ -13,14 +13,16 @@ MonoBehaviour:
   m_Name: PhantomBladePassiveAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#FF0050>Storm</color>
-  description: '<color=#FFA000>Every 20 seconds:</color> <color=#FFA000>Summon</color>
+  description: '<color=#FFA000>Every 10 seconds:</color> <color=#FFA000>Summon</color>
     <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
-    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{DamageMultiplierPercent}%
-    Strength</color>) damage</color>. <color=#FFA000>Cooldown</color> scales with
-    <color=#FF0050>Attack Speed</color>.
+    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{strengthMultiplierPercent}%
+    Strength</color>) damage</color>.
 
-    <color=#8C8C8C>+10% Phantom Blade Damage
-    and Size</color>'
+    <color=#FFA000>Cooldown</color> is hastened
+    by <color=#FF0050>Attack Speed</color>.
+
+    <color=#8C8C8C>+5% Phantom Blade
+    Damage and Size</color>'
   icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   effectPrefab: {fileID: 1399879852338491240, guid: 8d56dff38fa01564fb9f7497d3f4920d, type: 3}
   multiplayerOnly: 0

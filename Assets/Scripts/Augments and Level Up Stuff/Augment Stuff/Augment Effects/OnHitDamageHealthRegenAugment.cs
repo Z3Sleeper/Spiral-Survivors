@@ -8,9 +8,9 @@ using UnityEngine;
 // instead — same "guarantee non-zero output even with zero investment in the primary scaling stat" purpose
 // the old baseDamage served, just now itself a real scaling stat instead of a flat number; healthRegenBonusFlat
 // is untouched, a separate one-time permanent stat grant, not a per-hit damage floor. Rolls luck variance
-// (the "*" annotation) and inherits data.isCrit from the triggering hit instead of rolling its own — see
-// OnHitDamageAugment's own doc comment for the full reasoning, including why this deliberately doesn't
-// call Stats.NotifyCritStrike on its own crit.
+// (the "*" annotation) and inherits data.isCrit/data.isHighroll from the triggering hit (via
+// WeaponDamageMath.RollDamageInherited) instead of rolling its own — see OnHitDamageAugment's own doc comment
+// for the full reasoning, including why this deliberately doesn't call Stats.NotifyCritStrike on its own crit.
 public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRegenAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -50,10 +50,10 @@ public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRe
 
         // Anything that deals damage rolls luck variance — no exceptions.
         float preRoll = (Stats.HealthRegen * onHitHealthRegenPercent + Stats.Strength * onHitStrengthPercent) * data.onHitPower;
-        float rolled = WeaponDamageMath.RollDamage(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
-        rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, data.isCrit, Stats.HighrollBonus, Stats.CritDamage);
+        float rolled = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll);
+        rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, data.isHighroll, data.isCrit, Stats.HighrollBonus, Stats.CritDamage);
 
-        enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default);
-        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = false });
+        enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default, data.isHighroll);
+        Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = data.isCrit, isHighroll = data.isHighroll, attacker = Stats, isPriority = false });
     }
 }

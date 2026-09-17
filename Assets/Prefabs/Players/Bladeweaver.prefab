@@ -181,7 +181,7 @@ MonoBehaviour:
     Range</color> for up to <color=#FFA000>{holdDuration} seconds</color>. <color=#FFA000>Recast</color>
     to recall them early.
 
-    Gain <color=#FF0050>{LiveAttackSpeedBonusRatio}%</color>
+    Gain <color=#FF0050>+{LiveAttackSpeedBonusRatio}%</color>
     <color=#FF0050>Attack Speed</color> for the duration.
 
     <color=#FFBE50><i>Attack

@@ -16,7 +16,7 @@ MonoBehaviour:
   description: 'Gain a <color=#FFA000>Second Blade Track</color> outside your first
     that spins in the opposite direction.
 
-    <color=#3278FF>-25% Total Range</color>'
+    <color=#3278FF>-40% Weapon Range Scaling</color>'
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 2849589214751653731, guid: 9717396f46b52a64384661412fb91029, type: 3}
   multiplayerOnly: 0

@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: PhantomBladeOnHealAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#8C8C8C>Phantom</color> <color=#7DFF00>Recovery</color>
-  description: '<color=#FFA000>Every <color=#7DFF00>10 Healing</color> Done:</color>
+  description: '<color=#FFA000>Every <color=#7DFF00>10 Health Restored</color>:</color>
     <color=#FFA000>Summon</color> <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom
-    Blades</color> piercing the nearest 3 enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{DamageMultiplierPercent}%
+    Blades</color> piercing the nearest 3 enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{strengthMultiplierPercent}%
     Strength</color>) damage</color>.
 
-    <color=#8C8C8C>+10% Phantom Blade Damage
+    <color=#8C8C8C>+5% Phantom Blade Damage
     and Size</color>'
   icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   effectPrefab: {fileID: 5500538201021886777, guid: 8e5837c8b7d9d53488e75b5f8f649c74, type: 3}

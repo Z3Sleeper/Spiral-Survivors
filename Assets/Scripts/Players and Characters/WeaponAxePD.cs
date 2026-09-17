@@ -66,6 +66,14 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
     private readonly HashSet<IEnemyPD>            _touchedThisTick  = new();
     private readonly HashSet<IEnemyPD>            _outerHitsThisTick = new();
+    // "Tip" hits — see WeaponHitData.isTip's own doc comment. Completely independent of the inner/outer
+    // (handle/axehead) split above — the outer 10% of the TOTAL hitbox (handle near edge to axehead far
+    // edge), computed fresh from whatever ComputeZones() actually returns each check (see ComputeTipEdges),
+    // so it automatically tracks range/tier/OuterXZMultiplier scaling without a separate formula to keep in
+    // sync. Populated at every detection site (inner box AND outer capsule alike — a handle hit can't
+    // realistically land in the outer 10% given the zones' own relative sizes, so no special-casing needed
+    // to keep the two concepts from interfering).
+    private readonly HashSet<IEnemyPD>            _tipHitsThisTick   = new();
 
     // Ally-strike detection (OnStrikeHealAllyAugment and future "hit ally, do something" augments) — always
     // runs now, no enable gate (see CharacterStatsPD.NotifyAllyStrike's own doc comment).
@@ -127,7 +135,9 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         float halfRange = rangeScaleTarget != null
             ? designOrbit * RootScale.z
             : (IsMelee ? RangeValue / 2f : 0.25f);
-        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.WeaponRange : _stats.WeaponRadius;
+        // EffectiveWeaponRange, not the raw WeaponRange stat — see WeaponBasePD.NominalOrbitRadius's own
+        // identical 2026-09-14 doc comment.
+        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
         return weaponRadiusOffset + _stats.bonusSizePercent * 0.5f + halfRange;
     }
 
@@ -177,6 +187,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         _outerHitsThisTick.Clear();
         _touchedAlliesThisTick.Clear();
         _outerAlliesThisTick.Clear();
+        _tipHitsThisTick.Clear();
 
         (Vector3 innerCenter, Vector3 innerExt, Vector3 outerPoint1, Vector3 outerPoint2, float capsuleRadius, Quaternion rot) zones;
 
@@ -203,6 +214,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
 
                 transform.rotation = tip * Quaternion.Euler(0f, stepAngle, 0f);
                 var newSegZones = ComputeZones(hb);
+                var (segTipNear, segTipFar) = ComputeTipEdges(newSegZones);
 
                 Vector3 innerDelta = newSegZones.innerCenter - segZones.innerCenter;
                 float   id = innerDelta.magnitude;
@@ -213,7 +225,9 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                     for (int i = 0; i < c; i++)
                     {
                         var e = _innerSweep[i].collider.GetComponent<IEnemyPD>();
-                        if (e != null) _touchedThisTick.Add(e);
+                        if (e == null) continue;
+                        _touchedThisTick.Add(e);
+                        if (IsInTipZone(e.transform.position, segTipNear, segTipFar)) _tipHitsThisTick.Add(e);
                     }
 
                     int ac = Physics.BoxCastNonAlloc(segZones.innerCenter, newSegZones.innerExt, innerDelta / id,
@@ -234,7 +248,10 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
                     for (int i = 0; i < c; i++)
                     {
                         var e = _outerSweep[i].collider.GetComponent<IEnemyPD>();
-                        if (e != null) { _touchedThisTick.Add(e); _outerHitsThisTick.Add(e); }
+                        if (e == null) continue;
+                        _touchedThisTick.Add(e);
+                        _outerHitsThisTick.Add(e);
+                        if (IsInTipZone(e.transform.position, segTipNear, segTipFar)) _tipHitsThisTick.Add(e);
                     }
 
                     int ac = Physics.CapsuleCastNonAlloc(segZones.outerPoint1, segZones.outerPoint2, newSegZones.capsuleRadius,
@@ -257,18 +274,25 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
             zones = ComputeZones(hb);
         }
 
+        var (tipNear, tipFar) = ComputeTipEdges(zones);
+
         int ic = Physics.OverlapBoxNonAlloc(zones.innerCenter, zones.innerExt, _innerOverlap, zones.rot, CombatLayerMasks.EnemyHurtboxMask);
         for (int i = 0; i < ic; i++)
         {
             var e = _innerOverlap[i].GetComponent<IEnemyPD>();
-            if (e != null) _touchedThisTick.Add(e);
+            if (e == null) continue;
+            _touchedThisTick.Add(e);
+            if (IsInTipZone(e.transform.position, tipNear, tipFar)) _tipHitsThisTick.Add(e);
         }
 
         int oc = Physics.OverlapCapsuleNonAlloc(zones.outerPoint1, zones.outerPoint2, zones.capsuleRadius, _outerOverlap, CombatLayerMasks.EnemyHurtboxMask);
         for (int i = 0; i < oc; i++)
         {
             var e = _outerOverlap[i].GetComponent<IEnemyPD>();
-            if (e != null) { _touchedThisTick.Add(e); _outerHitsThisTick.Add(e); }
+            if (e == null) continue;
+            _touchedThisTick.Add(e);
+            _outerHitsThisTick.Add(e);
+            if (IsInTipZone(e.transform.position, tipNear, tipFar)) _tipHitsThisTick.Add(e);
         }
 
         int aic = Physics.OverlapBoxNonAlloc(zones.innerCenter, zones.innerExt, _innerOverlap, zones.rot, CombatLayerMasks.FriendlyHurtboxMask);
@@ -364,6 +388,34 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         return (innerCenter, innerExt, outerPoint1, outerPoint2, capsuleRadius, rot);
     }
 
+    // The TOTAL hitbox's own [near, far] depth edges — handle's own back face to the axehead capsule's own
+    // forward-most reach — for the tip-zone check below. Derived entirely from whatever ComputeZones() just
+    // returned rather than re-deriving handleHZ/bladeHZ/centerShift by hand, so this can never drift out of
+    // sync with range/tier/OuterXZMultiplier scaling or a future hitboxTip addition. The capsule's own radius
+    // (not capsuleHalfHeight, which only measures its SIDEWAYS extent along hb.right) is what actually
+    // determines its forward/back reach from outerCenter — see ComputeZones's own capsuleRadius comment.
+    private static (Vector3 near, Vector3 far) ComputeTipEdges(
+        (Vector3 innerCenter, Vector3 innerExt, Vector3 outerPoint1, Vector3 outerPoint2, float capsuleRadius, Quaternion rot) zones)
+    {
+        Vector3 forward = zones.rot * Vector3.forward;
+        Vector3 near = zones.innerCenter - forward * zones.innerExt.z;
+        Vector3 outerCenter = (zones.outerPoint1 + zones.outerPoint2) * 0.5f;
+        Vector3 far = outerCenter + forward * zones.capsuleRadius;
+        return (near, far);
+    }
+
+    // See WeaponMeleePD's own identical helper — same "outer 10% of the [near, far] depth" definition,
+    // shared conceptually (not literally shared code, per this file's own "duplicate rather than touch
+    // WeaponBasePD" convention) across both weapon types.
+    private static bool IsInTipZone(Vector3 enemyPos, Vector3 nearEdge, Vector3 farEdge)
+    {
+        Vector3 axis = farEdge - nearEdge;
+        float totalLenSq = axis.sqrMagnitude;
+        if (totalLenSq < 0.0001f) return false;
+        float t = Vector3.Dot(enemyPos - nearEdge, axis) / totalLenSq;
+        return t >= 0.9f;
+    }
+
     protected override void UpdateView(State viewState, State? verified)
     {
         if (!_initialized) TryInit();
@@ -392,7 +444,11 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
     private void UpdateOuterBladeVisual()
     {
         Transform hb = hitboxTarget != null ? hitboxTarget : transform;
-        float fullRange = _stats.WeaponRange;
+        // EffectiveWeaponRange (2026-09-16, was WeaponRange directly) — this is the weapon's own physical
+        // blade geometry, same "real weapon geometry reads EffectiveWeaponRange, never the raw stat" convention
+        // every other weapon-geometry consumer in this codebase already follows; this call site was missed
+        // when that convention was established.
+        float fullRange = _stats.EffectiveWeaponRange;
         float sx = hb.lossyScale.x;
         float outerXZ = outerXZExtent * Mathf.Lerp(sx, fullRange, outerXZRangeScaleRatio);
         float baseOuter = outerXZExtent * sx;
@@ -433,11 +489,15 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         // Computed here (moved above NotifyStrikeHighroll) so that call can pass this hit's own onHitPower too.
         float onHitPower = isOuter ? _stats.WeaponOnHitPower : _stats.WeaponOnHitPower * innerOnHitPowerMultiplier;
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, onHitPower);
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = onHitPower, isCrit = isCrit };
+        // weaponRadius/weaponOffset/weaponRangeMultiplier — see WeaponMeleePD.Hit's own identical 2026-09-14
+        // doc comment. IsOuterTrack (this weapon's own orbit-track property) here, NOT the isOuter local
+        // above (this hit's own inner/outer HITBOX ZONE, handle vs. blade — an unrelated concept).
+        float weaponRadius = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = onHitPower, isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position), weaponRadius = weaponRadius, weaponOffset = _stats.bonusSizePercent * 0.5f, weaponRangeMultiplier = _stats.weaponRangeScalingBonusPercent * _stats.weaponRangeScalingPenalty, isTip = _tipHitsThisTick.Contains(enemy) };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
-        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default);
+        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * onHitPower);
         NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });

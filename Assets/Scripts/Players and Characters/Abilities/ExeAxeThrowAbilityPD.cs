@@ -158,15 +158,22 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
                 ? _controller.currentState.cursorDir
                 : transform.forward;
 
+            // EffectiveWeaponRange fallback (2026-09-16, was plain WeaponRange) — TryGetFarthestWeaponReach's
+            // own GetOuterReach() is itself EffectiveWeaponRange-based real weapon geometry, so this fallback
+            // (only reached with zero weapons equipped at all) matches that same real-world-distance scale
+            // instead of the uncompressed player-facing stat number.
             float trueReach = _weaponManager != null && _weaponManager.TryGetFarthestWeaponReach(out float r)
                 ? r
-                : _stats.WeaponRange;
+                : _stats.EffectiveWeaponRange;
             float maxRange = trueReach * maxRangeMultiplier;
 
             // spawnOffsetBase scales with the caster's own Size (bonusSizePercent) — see that field's own
             // doc comment — so a bigger caster (Size augments) doesn't spawn the throw back inside their
-            // own now-bigger body.
-            float spawnOffset = spawnOffsetBase * _stats.bonusSizePercent + _stats.WeaponRange * spawnOffsetRangeMultiplier;
+            // own now-bigger body. RangeWorldUnits (2026-09-16, was plain WeaponRange) — this is the ABILITY's
+            // own spawn positioning, not weapon geometry, so it reads the TRUE (un-Archer/Bladeweaver-scaled)
+            // Range stat as a world-space distance, same "class ability reads true Range" convention
+            // EffectiveWeaponRange's own doc comment establishes.
+            float spawnOffset = spawnOffsetBase * _stats.bonusSizePercent + _stats.RangeWorldUnits * spawnOffsetRangeMultiplier;
             Vector3 spawnPos = origin + throwDir * spawnOffset;
 
             var id = hierarchy.Create(projectilePrefab, spawnPos, Quaternion.LookRotation(throwDir));

@@ -5324,6 +5324,10 @@ MonoBehaviour:
   particleSystems:
   - {fileID: 8388190693487065069}
   - {fileID: 4981104190417431645}
+  minEmissionRate: 40
+  maxEmissionRate: 80
+  minEmissionRange: 10
+  maxEmissionRange: 50
 --- !u!114 &3650817367354450114
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -5352,6 +5356,9 @@ MonoBehaviour:
   - {fileID: 3281861446792973146}
   - {fileID: 8520737353316060949}
   tintedMaterialIndex: 0
+  coloredParticleSystems:
+  - {fileID: 8388190693487065069}
+  - {fileID: 4981104190417431645}
   alpha: 1
 --- !u!114 &7951618835084280162
 MonoBehaviour:

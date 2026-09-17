@@ -139,7 +139,7 @@ MonoBehaviour:
     Become
     <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>{moveSpeedFlat}% total
     Move Speed</color> for <color=#FFA000>{duration} seconds</color>.'
-  cooldown: 20
+  cooldown: 25
   cooldownStartsOnCast: 0
   slot: 1
   tags: []

@@ -47,5 +47,5 @@ MonoBehaviour:
   phantomBladePrefab: {fileID: 2942187867930129664, guid: 9123ce90c4dafb44cb96c2ca62f56ace, type: 3}
   bladeColor: {r: 1, g: 0, b: 1, a: 1}
   bladeCount: 3
-  damageMultiplier: 0.06
-  phantomBladeDamageBonus: 0.1
+  strengthMultiplierPercent: 0.2
+  phantomBladeDamageBonus: 0.05

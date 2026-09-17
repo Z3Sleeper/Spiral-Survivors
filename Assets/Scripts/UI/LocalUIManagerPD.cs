@@ -20,6 +20,11 @@ public class LocalUIManagerPD : MonoBehaviour
     // different tint without touching code.
     [SerializeField] private Color invincibleHealthBarColor = Color.white;
     [SerializeField] private Slider shieldBar;
+    // Sits BEHIND shieldBar (2026-09-13, reinstated — was briefly replaced with a tint-swap on shieldBar
+    // itself, but that hid recharge progress entirely whenever any shield was still up, e.g. sitting at half
+    // shield gave no indication of how close the next full recharge was). Always shows recharge progress
+    // (0->1 as UIShieldRechargeTimer counts down) regardless of current shield amount — see
+    // UpdateHealthAndShields's own doc comment.
     [SerializeField] private Slider shieldRegenBar;
     [SerializeField] private TextMeshProUGUI healthText;
     [SerializeField] private TextMeshProUGUI healthRegenText;
@@ -37,10 +42,10 @@ public class LocalUIManagerPD : MonoBehaviour
     // not every frame like statsNumbersText — see BuildStatsWords.
     [SerializeField] private TextMeshProUGUI statsWordsText;
     [SerializeField] private TextMeshProUGUI statsNumbersText;
-    // Visibility is a persisted Settings toggle (Settings.ControlsVisible), not a fixed default — applied
+    // Visibility is a persisted Settings toggle (Settings.HideControls), not a fixed default — applied
     // once here at Awake (this is the live scene reference Settings.ApplyOnLoad's own static-context callback
     // can't reach, same "needs a live component reference" reasoning Settings.ApplySavedMixerVolumes already
-    // has for the AudioMixer) and pushed live via SetControlsVisible whenever the Settings toggle changes
+    // has for the AudioMixer) and pushed live via SetControlsHidden whenever the Settings toggle changes
     // mid-session.
     [SerializeField] private GameObject controlsUI;
     // The restored Dash/Energy/Ability panel (2026-08-21) — visibility AND the position/size of
@@ -198,7 +203,7 @@ public class LocalUIManagerPD : MonoBehaviour
         levelUpScreen.SetActive(false);
         if (tintScreenOverlay != null) tintScreenOverlay.SetActive(false);
         statsUI.SetActive(false);
-        if (controlsUI != null) controlsUI.SetActive(Settings.ControlsVisible);
+        if (controlsUI != null) controlsUI.SetActive(!Settings.HideControls);
         SetExpandedUIHidden(Settings.HideExpandedUI);
         pauseScreen.SetActive(false);
         if (settingsPanel != null) settingsPanel.SetActive(false);
@@ -282,25 +287,33 @@ public class LocalUIManagerPD : MonoBehaviour
     // plain show/hide. Called by PlayerControllerPD's own Tab press/release.
     public void SetStatsVisible(bool visible) => statsUI.SetActive(visible);
 
-    // Called by Settings.OnControlsVisibilityChanged whenever that toggle changes mid-session, so the panel
-    // reacts immediately instead of only on the next scene load — see controlsUI's own doc comment.
-    public void SetControlsVisible(bool visible)
+    // Renamed from SetControlsVisible(bool visible) (2026-09-03, alongside Settings.HideControls' own
+    // rename) — matches SetExpandedUIHidden's identical hidden=true polarity below instead of the old
+    // inverted visible=true one. Called by Settings.OnControlsVisibilityChanged whenever that toggle
+    // changes mid-session, so the panel reacts immediately instead of only on the next scene load — see
+    // controlsUI's own doc comment.
+    public void SetControlsHidden(bool hidden)
     {
-        if (controlsUI != null) controlsUI.SetActive(visible);
+        if (controlsUI != null) controlsUI.SetActive(!hidden);
     }
 
     // Compact (no ExpandedPlayerUI) vs expanded (Dash/Energy/Ability panel showing) anchored positions/size
     // — author-given values, 2026-08-21. Z is always 0 for both states on both elements, so these only carry
     // X/Y (anchoredPosition) plus playerUIBackground's own height (sizeDelta.y) for the compact/expanded pair.
-    private static readonly Vector2 CompactPlayerUIBackgroundPos = new(0f, 0f);
-    private const float CompactPlayerUIBackgroundHeight = 190f;
-    private static readonly Vector2 ExpandedPlayerUIBackgroundPos = new(0f, 95f);
-    private const float ExpandedPlayerUIBackgroundHeight = 380f;
-    private static readonly Vector2 CompactBuffBarPos = new(0f, 60f);
-    private static readonly Vector2 ExpandedBuffBarPos = new(0f, 240f);
+    // 2026-09-08: first pass bumped height/pos.y (both states) plus both buffBar pos.y to stop the buff
+    // icons clipping against the background (190/0 compact, 380/95 expanded before that; buffBar 60/240) —
+    // deliberately not shrinking the icons themselves. Second pass same day: buffBar now sits ABOVE
+    // playerUIBackground instead (buffBar left untouched from the first pass), so playerUIBackground itself
+    // shrunk back down (225/25 -> 150/-15 compact, 400/110 -> 320/70 expanded) to make room above it.
+    private static readonly Vector2 CompactPlayerUIBackgroundPos = new(0f, -10f);
+    private const float CompactPlayerUIBackgroundHeight = 160f;
+    private static readonly Vector2 ExpandedPlayerUIBackgroundPos = new(0f, 70f);
+    private const float ExpandedPlayerUIBackgroundHeight = 320f;
+    private static readonly Vector2 CompactBuffBarPos = new(0f, 90f);
+    private static readonly Vector2 ExpandedBuffBarPos = new(0f, 260f);
 
     // Called by Settings.OnHideExpandedUIChanged whenever that toggle changes mid-session (same reasoning as
-    // SetControlsVisible above), and once from Awake() to apply whatever was already saved. hidden=true
+    // SetControlsHidden above), and once from Awake() to apply whatever was already saved. hidden=true
     // means the Dash/Energy/Ability panel is OFF and playerUIBackground/buffBar sit at their compact
     // position/size — see Settings.HideExpandedUI's own doc comment for the naming (checked = hidden).
     public void SetExpandedUIHidden(bool hidden)
@@ -788,6 +801,15 @@ public class LocalUIManagerPD : MonoBehaviour
     private float _lastAbility1CooldownDisplay = float.NaN;
     private float _lastAbility2CooldownDisplay = float.NaN;
 
+    // shieldRegenBar sits behind shieldBar and always shows recharge progress (0->1 as UIShieldRechargeTimer
+    // counts down to 0) regardless of current shield amount — including while sitting at partial shield,
+    // since CharacterStatsPD's own shield-regen gate (Simulate) ticks the recharge timer any time
+    // shield < MaxShield, not just at 0. A brief tint-swap-on-shieldBar-itself version of this existed
+    // 2026-09-13 but was reverted the same day: it only showed recharge progress once shield was FULLY
+    // depleted, giving no feedback at all while sitting at partial shield. MaxShield <= 0 (no shield source
+    // picked at all) forces 0 fill — without this, a character who never has any shield capacity would show
+    // UIShieldRechargeTimer's own never-touched-since-spawn value as a permanently "fully recharged" bar
+    // instead of an empty one.
     private void UpdateHealthAndShields()
     {
         SetSlider(healthBar, _stats.UIHealth / _stats.MaxHealth);
@@ -799,7 +821,10 @@ public class LocalUIManagerPD : MonoBehaviour
             _healthBarInvincibleTintShown = _stats.UIIsInvincible;
             healthBarFillImage.color = _healthBarInvincibleTintShown ? invincibleHealthBarColor : _healthBarDefaultColor;
         }
-        SetSlider(shieldRegenBar, (_stats.shieldRechargeTime - _stats.UIShieldRechargeTimer) / _stats.shieldRechargeTime);
+
+        SetSlider(shieldRegenBar, _stats.MaxShield > 0f && _stats.shieldRechargeTime > 0f
+            ? (_stats.shieldRechargeTime - _stats.UIShieldRechargeTimer) / _stats.shieldRechargeTime
+            : 0f);
 
         if (_stats.UIHealth != _lastUIHealthForText || _stats.MaxHealth != _lastMaxHealthForText ||
             _stats.UIShield != _lastUIShieldForText || _stats.MaxShield != _lastMaxShieldForText)
@@ -1047,7 +1072,10 @@ public class LocalUIManagerPD : MonoBehaviour
         _statsSB.AppendLine($" {FormatStat(_stats.Strength, 1)}");
         _statsSB.AppendLine($" {_stats.AttackSpeed:G4}");
         _statsSB.AppendLine($" {_stats.EnergyRegen:G4}");
-        _statsSB.AppendLine($" {_stats.WeaponRange * 5f:G4}");
+        // No * 5f compensation anymore (2026-09-16) — WeaponRange itself is now the plain, uncompressed
+        // player-facing number; that display hack existed only because WeaponRange used to carry a hidden
+        // * 0.2f world-unit compression directly (see CharacterStatsPD.WeaponRange's own doc comment).
+        _statsSB.AppendLine($" {_stats.WeaponRange:G4}");
         _statsSB.AppendLine($" {_stats.MoveSpeed:G4}");
         _statsSB.AppendLine($" {_stats.EffectiveDashHaste:G4}");
         _statsSB.AppendLine($" {Mathf.Min(_stats.CritChance * 100f, 100f):G4}%");

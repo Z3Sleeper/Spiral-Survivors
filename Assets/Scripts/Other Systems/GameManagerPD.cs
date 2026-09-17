@@ -108,10 +108,15 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     [SerializeField] private int xpLevelStepInterval = 5;
 
     [Header("Co-op Difficulty")]
-    // The single shared "how much harder is co-op" knob: divides earned XP per extra player here, AND
-    // (via CoopToughnessScalar, read by EnemySpawnerPD) scales boss health and elite health/damage there.
-    // One value on purpose — tougher enemies should mean less XP per enemy, not two independently-tuned
-    // numbers that could drift out of balance with each other.
+    // The single shared "how much harder is co-op" knob — read via CoopToughnessScalar below by
+    // EnemySpawnerPD/EventTargetScalingPD, scales health (every category) and points (every category) up
+    // with player count. Deliberately does NOT touch XP anywhere anymore (2026-09-03 fix — see AwardXP's
+    // own doc comment for why the old "multiply XP value by this, then divide back out on pickup" pairing
+    // was removed): XP-per-orb needs to be genuinely player-count-invariant now that total enemy count no
+    // longer scales with player count either (see EnemySpawnerPD's own coopScale doc comment for that
+    // history) — multiplying then dividing by the same factor was already a mathematical no-op for XP
+    // specifically, just needlessly round-tripped through two separately-tuned formulas that could in
+    // principle drift out of sync, so both sides were deleted outright rather than left as dead ceremony.
     [SerializeField] private float coopToughnessScalar = 0.5f;
 
     [Header("Upgrade Points")]
@@ -370,6 +375,20 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
 
     // Called from XPOrbPD.UpdateView() off a verified collection transition — deterministic, so every
     // machine applies the exact same XP/level result.
+    //
+    // No coop division anymore (2026-09-03 fix, was `value * avgXPMod / coopXPPenalty` where coopXPPenalty
+    // used the exact same 1f+(playerCount-1)*coopToughnessScalar formula EnemySpawnerPD's own coopScale
+    // does) — that division existed to cancel out an equal coopScale multiplier baked into `value` at
+    // spawn time, which made sense back when total enemy COUNT also scaled with player count: cancelling
+    // the per-kill value inflation was what kept "more, individually-cheaper kills" summing to the
+    // same-ish total XP over a run regardless of team size. Enemy count is no longer player-count-scaled
+    // for ANY category (see EnemySpawnerPD's own coopScale doc comment, 2026-09-02) — so with a fixed
+    // total number of kills/orbs over a run either way, the only way to keep total XP gained equal between
+    // solo and co-op is for `value` to never carry a coopScale factor in the first place (confirmed —
+    // EnemySpawnerPD/EventTargetScalingPD's own xpMultiplier no longer multiplies by coopScale either).
+    // Per-player pacing in co-op is now simply that same fixed total pool split across more players, an
+    // unavoidable consequence of more people sharing the same amount of content, not something an XP
+    // formula can or should try to compensate for.
     public void AwardXP(float value)
     {
         int liveCount = CharacterStatsPD.All.Count;
@@ -382,14 +401,7 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
             totalMod += stats.XPModifier;
         float avgXPMod = totalMod / liveCount;
 
-        // Fixed at game start, not live — see State.fixedPlayerCount's own doc comment. A player
-        // disconnecting mid-run shouldn't suddenly relax this penalty for whoever remains. Falls back to
-        // liveCount only in the (shouldn't-happen-once-gameStarted) case fixedPlayerCount hasn't been set.
-        int coopPlayerCount = currentState.fixedPlayerCount > 0 ? currentState.fixedPlayerCount : liveCount;
-        float coopXPPenalty = 1f + (coopPlayerCount - 1) * coopToughnessScalar;
-        if (coopXPPenalty <= 0f) coopXPPenalty = 1f;
-
-        currentState.currentXP += value * avgXPMod / coopXPPenalty;
+        currentState.currentXP += value * avgXPMod;
 
         while (currentState.currentXP >= currentState.xpToNextLevel)
         {

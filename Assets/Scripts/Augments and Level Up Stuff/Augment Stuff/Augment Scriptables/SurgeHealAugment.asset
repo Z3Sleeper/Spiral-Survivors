@@ -13,9 +13,12 @@ MonoBehaviour:
   m_Name: SurgeHealAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Life Cycle</color>
-  description: <color=#FFA000>While <color=#FFFF00>Surging</color>:</color> <color=#7DFF00>Heal</color>
-    <color=#7DFF00>{LiveHealPerSecondRatio}</color><color=#FFA000>(0.4 + <color=#7DFF00>200%
-    Health Regen</color>)</color> each <color=#FFA000>second</color>.
+  description: '<color=#FFFF00>+25 Max Energy</color>
+
+    <color=#FFA000>While <color=#FFFF00>Surging</color>:</color>
+    <color=#7DFF00>Heal</color> <color=#7DFF00>{LiveHealPerSecondRatio}</color><color=#FFA000>(0.4
+    + <color=#7DFF00>{bonusHealthRegenPercent}% Bonus Health Regen</color>)</color>
+    <color=#7DFF00>Health</color> each <color=#FFA000>second</color>.'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 1217341854176319314, guid: 03ecdb62bafea3c4084703a5895e83b5, type: 3}
   multiplayerOnly: 0

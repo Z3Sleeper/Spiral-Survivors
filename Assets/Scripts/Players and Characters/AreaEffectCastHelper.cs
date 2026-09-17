@@ -3,16 +3,17 @@ using System.Collections.Generic;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Shared cast logic for anything using the "AoE Effects" AreaEffectSize/Power/Count stats — DashExplosionAugment/
+// Shared cast logic for anything using the "AoE Effects" AreaEffectSize stat — DashExplosionAugment/
 // DashHealAugment/ShieldBreakBurstAugment/KnightAreaStunHealAbilityPD (all via the shared AreaEffectPD for
 // multi-cast chains) — augment or ability, whatever else follows the same shape. One single Cast() method
 // covers every existing combination (damage, knockback, onhit, stun, heal, self-heal-by-hit-count, ...) instead
 // of a new near-duplicate method per augment — see its own doc comment for the full parameter breakdown.
 // Centralizing this means every caller's immediate-cast path and any chain-retrigger path can never silently
-// drift out of sync with each other, same rationale as PhantomBladeSummonHelper. Damage/onHitPower scale by
-// owner.AreaEffectPower directly — callers are responsible for scaling radius by owner.AreaEffectSize
-// themselves before calling in (radius is just "how big," not something this helper needs to know is
-// AreaEffectSize-derived).
+// drift out of sync with each other, same rationale as PhantomBladeSummonHelper. Callers are responsible for
+// scaling radius by owner.AreaEffectSize themselves before calling in (radius is just "how big," not
+// something this helper needs to know is AreaEffectSize-derived). AreaEffectPower/AreaEffectCount (the
+// damage/onhit-power multiplier and the multi-cast repeat count) were removed entirely (2026-09-13) — damage/
+// onHitPower below are now each caller's own plain baseline, unscaled.
 public static class AreaEffectCastHelper
 {
     // Bumped from 32 (see PhantomBladeSummonHelper's own comment on the same pattern) — OverlapSphereNonAlloc
@@ -42,10 +43,8 @@ public static class AreaEffectCastHelper
     // (DashExplosionAugment's own call). Defaults to false ("no knockback at all") rather than every caller
     // needing to remember to explicitly opt out — DashExplosionAugment/ShieldBreakBurstAugment/
     // KnightAreaStunHealAbilityPD all explicitly pass hasKnockback: true. Only meaningful when hasKnockback
-    // is true: knockback null means "use the default" (owner.Knockback exactly — deliberately NOT scaled by
-    // AreaEffectPower, since knockback is an onhit-power-style stat, not a damage stat); a specific value
-    // overrides entirely (ShieldBreakBurstAugment's own reworked knockback, itself also deliberately
-    // AreaEffectPower-free).
+    // is true: knockback null means "use the default" (owner.Knockback exactly); a specific value overrides
+    // entirely (ShieldBreakBurstAugment's own reworked knockback).
     //
     // onEnemyHit/onAllyHit: per-target extra, invoked once per target actually hit/found (after
     // damage/knockback are applied, for enemies) — e.g. ShieldBreakBurstAugment's Stun, or a caller doing its
@@ -69,6 +68,12 @@ public static class AreaEffectCastHelper
     // existed. A caller expecting many simultaneous/rapid hits per cast (ArcherArrowRainAbilityPD: up to 20
     // ticks * every enemy in radius) should pass overrideHitSfx: true and leave hitSfxOverride null for
     // silence, rather than letting owner.hitSfx spam on every single tick.
+    // forcedCrit/forcedHighroll: null (default, every existing caller) rolls independently exactly as before —
+    // only a caller reacting to an originating hit/strike event (e.g. TipStrikeRangeExplosionAugment, an
+    // _onHit listener) passes the triggering WeaponHitData's own isCrit/isHighroll here, so this cast's own
+    // damage crits/highrolls in lockstep with the hit that caused it instead of independently re-rolling —
+    // same "inherit rather than roll" reasoning WeaponDamageMath.RollDamageInherited's own doc comment
+    // describes, threaded through this shared helper (2026-09-14) rather than duplicated per caller.
     public static void Cast(PredictedHierarchy hierarchy, CharacterStatsPD owner, Vector3 position, float radius,
         GameObject radiusVFXPrefab, bool targetAllies = false,
         bool dealDamage = false, float damagePercent = 0f, float onHitPowerPercent = 0f, bool notifyOnHit = true,
@@ -76,7 +81,8 @@ public static class AreaEffectCastHelper
         bool interrupt = false,
         Action<IEnemyPD> onEnemyHit = null, Action<IFriendlyPD> onAllyHit = null, Action<int> onCastComplete = null,
         Action<IEnemyPD> onSuccessfulInterrupt = null,
-        bool overrideHitSfx = false, AudioClip hitSfxOverride = null)
+        bool overrideHitSfx = false, AudioClip hitSfxOverride = null,
+        bool? forcedCrit = null, bool? forcedHighroll = null)
     {
         int hitCount = 0;
 
@@ -109,13 +115,23 @@ public static class AreaEffectCastHelper
 
                 if (dealDamage)
                 {
-                    bool isCrit = GameRandom.instance.NextFloat() < owner.CritChance;
+                    bool isCrit = forcedCrit ?? (GameRandom.instance.NextFloat() < owner.CritChance);
 
-                    float baseDamage = owner.Strength * damagePercent * owner.AreaEffectPower;
-                    float rolledDamage = WeaponDamageMath.RollDamage(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, owner.Highroll, out bool dmgHighroll);
+                    float baseDamage = owner.Strength * damagePercent;
+                    bool dmgHighroll;
+                    float rolledDamage;
+                    if (forcedHighroll.HasValue)
+                    {
+                        dmgHighroll = forcedHighroll.Value;
+                        rolledDamage = WeaponDamageMath.RollDamageInherited(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, dmgHighroll);
+                    }
+                    else
+                    {
+                        rolledDamage = WeaponDamageMath.RollDamage(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, owner.Highroll, out dmgHighroll);
+                    }
                     rolledDamage = WeaponDamageMath.ApplyCritAndHighroll(rolledDamage, dmgHighroll, isCrit, owner.HighrollBonus, owner.CritDamage);
 
-                    enemy.TakeDamage(rolledDamage, isCrit, owner.owner ?? default);
+                    enemy.TakeDamage(rolledDamage, isCrit, owner.owner ?? default, dmgHighroll);
                     owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolledDamage, isCrit = isCrit, isHighroll = dmgHighroll, attacker = owner, isPriority = true, overrideSfx = overrideHitSfx, sfx = hitSfxOverride });
 
                     if (notifyOnHit)
@@ -126,10 +142,12 @@ public static class AreaEffectCastHelper
                         // separately (2026-08-19 fix) meant a single hit could highroll TWICE — once here,
                         // once more in whichever on-hit augment consumes this onHitPower for its own roll —
                         // a hit is only ever supposed to be able to highroll once.
-                        float onHitPower = owner.OnHitPower * onHitPowerPercent * owner.AreaEffectPower;
+                        float onHitPower = owner.OnHitPower * onHitPowerPercent;
 
-                        // isCrit inherited from this same hit, matching every other onhit-notify call site.
-                        owner.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolledDamage, onHitPower = onHitPower, isCrit = isCrit });
+                        // isCrit/isHighroll inherited from this same hit (isHighroll added 2026-09-14, was
+                        // left unset/false here — a real gap, since this IS this cast's own real highroll
+                        // status), matching every other onhit-notify call site.
+                        owner.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolledDamage, onHitPower = onHitPower, isCrit = isCrit, isHighroll = dmgHighroll });
                     }
                 }
 

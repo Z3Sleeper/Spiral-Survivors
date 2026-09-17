@@ -25,7 +25,10 @@ public class Settings : MonoBehaviour
     private const string MusicVolumeKey = "MusicVolume";
     private const string FramerateKey = "TargetFramerate";
     private const string SeeOtherPlayerDamageKey = "SeeOtherPlayerDamage";
-    private const string ControlsVisibilityKey = "ControlsVisibility";
+    // Renamed from ControlsVisibilityKey/"ControlsVisibility" (2026-09-03, alongside HideControls' own
+    // rename below) — a fresh key, not just a fresh default, so nobody's already-saved preference under the
+    // OLD positive polarity gets silently reinterpreted backwards by the new inverted read.
+    private const string ControlsHiddenKey = "ControlsHidden";
     private const string HideExpandedUIKey = "HideExpandedUI";
     private static readonly int[] FramerateOptions = { 30, 60, 120, 144, -1 };
 
@@ -36,29 +39,36 @@ public class Settings : MonoBehaviour
     // 0% maps to this instead of -infinity (Log10(0) is undefined) — matches the mixer's own
     // m_SuspendThreshold, effectively silent either way.
     private const float MinDb = -80f;
-    // Master only — a fresh install (no saved MasterVolume PlayerPrefs key) opens at 80%, not "true 100%".
-    // SFX/Music both still default to 100% (see their own PlayerPrefs.GetFloat calls below) — this is
-    // deliberately NOT applied to them.
-    private const float MasterDefaultPercent = 80f;
+    // Master — a fresh install (no saved MasterVolume PlayerPrefs key) opens at 100%, matching SFX/Music's
+    // own 100% default (see their own PlayerPrefs.GetFloat calls below). Was 80f; changed 2026-09-03 per
+    // explicit "volumes maxed by default" request.
+    private const float MasterDefaultPercent = 100f;
 
-    public static bool SeeOtherPlayerDamage { get; private set; }
-    // Opt-out default (unlike SeeOtherPlayerDamage's opt-in) — a new "Controls" reminder panel should be
-    // visible out of the box for anyone who hasn't touched this setting yet, not hidden until they go find
-    // the toggle. Read by LocalUIManagerPD.Awake() (the live scene reference this static context can't
+    // Default true/checked (2026-09-03, was false/opt-in) — explicit "see other players' damage numbers by
+    // default" request.
+    public static bool SeeOtherPlayerDamage { get; private set; } = true;
+    // Default false/unchecked (opt-out, unlike SeeOtherPlayerDamage's opt-in) — a new "Controls" reminder
+    // panel should be visible out of the box for anyone who hasn't touched this setting yet, not hidden
+    // until they go find the toggle. Renamed+inverted 2026-09-03 (was ControlsVisible, true=shown,
+    // default true) to match the Inspector's own "Hide Controls Panel in Game" label — checked now
+    // directly means hidden, same polarity as HideExpandedUI just below (checked=default=hidden there;
+    // this one still defaults to NOT hidden, only the naming/polarity changed, not the actual default
+    // behavior). Read by LocalUIManagerPD.Awake() (the live scene reference this static context can't
     // reach — same "needs a live component" reasoning ApplySavedMixerVolumes already documents for the
-    // AudioMixer) and pushed live via LocalUIManagerPD.SetControlsVisible on change.
-    public static bool ControlsVisible { get; private set; } = true;
-    // Default true (checked) — new players get the compact HUD (world-space Dash/Energy/Ability UI only,
-    // ExpandedPlayerUI hidden) out of the box; opting into the old expanded LocalUI panel is an explicit
-    // choice, not the default. Read by LocalUIManagerPD.Awake() (the live scene reference this static
-    // context can't reach) and pushed live via LocalUIManagerPD.SetExpandedUIHidden on change.
-    public static bool HideExpandedUI { get; private set; } = true;
+    // AudioMixer) and pushed live via LocalUIManagerPD.SetControlsHidden on change.
+    public static bool HideControls { get; private set; } = false;
+    // Default false/unchecked (2026-09-03, was true — new players used to get the compact HUD with
+    // ExpandedPlayerUI hidden by default; explicit request flipped this to NOT hidden by default instead).
+    // Read by LocalUIManagerPD.Awake() (the live scene reference this static context can't reach) and
+    // pushed live via LocalUIManagerPD.SetExpandedUIHidden on change.
+    public static bool HideExpandedUI { get; private set; } = false;
 
     // TODO: status popups (DamageNumberManager.SpawnStatusOnPlayer/SpawnStatusAtLocation) currently have no
     // visibility gating at all — every client always sees every player's popups. Add a SEPARATE toggle here
     // (own PlayerPrefs key, e.g. "SeeOtherPlayerStatusPopups") when this gets revisited — deliberately NOT
     // reusing SeeOtherPlayerDamage, per explicit request to keep status popups fully independent of damage
-    // numbers. Default should stay "visible" (opt-out, not opt-in) unlike SeeOtherPlayerDamage's default-off.
+    // numbers. Default should stay "visible" (both this and SeeOtherPlayerDamage now default visible too,
+    // 2026-09-03 — keep them matching unless a future request says otherwise).
     // IMPORTANT: StatusPopupKind.Death must be EXEMPT from this toggle when it's added — explicit request
     // that everyone always sees a death, regardless of this (or any future ally-visibility) setting.
 
@@ -67,16 +77,29 @@ public class Settings : MonoBehaviour
     {
         AudioListener.volume = PlayerPrefs.GetFloat(VolumeKey, MasterDefaultPercent) / 100f;
         Application.targetFrameRate = PlayerPrefs.GetInt(FramerateKey, -1);
-        SeeOtherPlayerDamage = PlayerPrefs.GetInt(SeeOtherPlayerDamageKey, 0) == 1;
-        ControlsVisible = PlayerPrefs.GetInt(ControlsVisibilityKey, 1) == 1;
-        HideExpandedUI = PlayerPrefs.GetInt(HideExpandedUIKey, 1) == 1;
+        SeeOtherPlayerDamage = PlayerPrefs.GetInt(SeeOtherPlayerDamageKey, 1) == 1;
+        HideControls = PlayerPrefs.GetInt(ControlsHiddenKey, 0) == 1;
+        HideExpandedUI = PlayerPrefs.GetInt(HideExpandedUIKey, 0) == 1;
         // SFX/Music deliberately NOT applied here — this static callback has no live AudioMixer reference to
         // call SetFloat on (unlike AudioListener.volume/Application.targetFrameRate, which are global engine
         // state, not asset-instance state). See ApplySavedMixerVolumes' own doc comment for where/how they
         // actually get applied this early instead.
     }
 
-    private void Awake()
+    // Was Awake() (2026-09-03 fix) — Awake only ever fires ONCE, the first time this GameObject (which
+    // starts inactive as a hidden panel) gets activated. That one-shot sync raced against the Toggle
+    // components' own internal init on that same first activation — SetIsOnWithoutNotify could get called
+    // before/clobbered around the Toggle's own OnEnable, leaving the VISUAL checked-state stuck on
+    // whatever the prefab was authored with (checked) forever after, even though the static Settings
+    // properties it read from stayed correct the whole time (never touched again after that one bad
+    // sync) — which is exactly why the underlying setting always behaved correctly while the toggle's own
+    // displayed state didn't, and why a single manual click "fixed" it (a real click drives the Toggle's
+    // own normal state directly, no longer dependent on this sync). OnEnable fires every single time the
+    // panel is shown, not just once, so it re-stamps every control from the actual saved values on every
+    // open — every line in this method is idempotent (just re-applying already-correct values), so this is
+    // a pure safety upgrade with no downside for the sliders/dropdown either, even though only the 3
+    // toggles were reported as visibly wrong.
+    private void OnEnable()
     {
         float saved = PlayerPrefs.GetFloat(VolumeKey, MasterDefaultPercent);
         SetVolume(saved);
@@ -94,7 +117,7 @@ public class Settings : MonoBehaviour
         if (seeOtherPlayerDamageToggle != null)
             seeOtherPlayerDamageToggle.SetIsOnWithoutNotify(SeeOtherPlayerDamage);
         if (controlsVisibilityToggle != null)
-            controlsVisibilityToggle.SetIsOnWithoutNotify(ControlsVisible);
+            controlsVisibilityToggle.SetIsOnWithoutNotify(HideControls);
         if (hideExpandedUIToggle != null)
             hideExpandedUIToggle.SetIsOnWithoutNotify(HideExpandedUI);
     }
@@ -112,16 +135,21 @@ public class Settings : MonoBehaviour
         PlayerPrefs.Save();
     }
 
+    // Method/field names kept as-is (2026-09-03 fix) despite the HideControls rename above — this is still
+    // wired to the same Inspector Toggle's OnValueChanged, no rewiring needed. Only the internal polarity
+    // changed: value now means "hide" directly (matching the Inspector's own "Hide Controls Panel in Game"
+    // label) instead of being assigned straight into the old positive-phrased ControlsVisible, which is
+    // what made checking "Hide..." actually SHOW the panel before this fix.
     public void OnControlsVisibilityChanged(bool value)
     {
-        ControlsVisible = value;
-        PlayerPrefs.SetInt(ControlsVisibilityKey, value ? 1 : 0);
+        HideControls = value;
+        PlayerPrefs.SetInt(ControlsHiddenKey, value ? 1 : 0);
         PlayerPrefs.Save();
         // Pushes the change live for whichever player is currently in a match — see LocalUIManagerPD.
-        // SetControlsVisible's own doc comment. Settings can be opened outside a live match too (main menu/
+        // SetControlsHidden's own doc comment. Settings can be opened outside a live match too (main menu/
         // lobby), where instance is null — same harmless no-op every other cross-scene singleton reference
         // in this codebase already treats that as.
-        LocalUIManagerPD.instance?.SetControlsVisible(value);
+        LocalUIManagerPD.instance?.SetControlsHidden(value);
     }
 
     public void OnHideExpandedUIChanged(bool value)

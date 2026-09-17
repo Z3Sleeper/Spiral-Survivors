@@ -28,12 +28,9 @@ public class LineIndicatorPD : PredictedIdentity<LineIndicatorPD.State>
     // across reuses, same prefab structure every time.
     public WindupFillPD Fill { get; private set; }
 
-    // Child holding the actual rendered line mesh, offset forward from this root by half the line's own span
-    // — rotating THIS root (or its PredictedTransform-smoothed Visuals copy) sweeps the offset mesh around
-    // the fixed root position, same effect as re-deriving a moving center point every tick without actually
-    // needing to. Sized/offset once per spawn (Launch), never touched again — span is a per-caller constant
-    // (e.g. KingOrbiterPD.shootingRange), not something that varies tick to tick.
-    [SerializeField] private Transform pivot;
+    // This life's own total span, captured once at Launch() — lets SetTraveled (2026-09-14) recompute the
+    // remaining-length shrink without the caller needing to keep re-passing the original span every call.
+    private float _span;
 
     private void Awake()
     {
@@ -45,14 +42,51 @@ public class LineIndicatorPD : PredictedIdentity<LineIndicatorPD.State>
     // Called once immediately after hierarchy.Create() returns — same "mutate right after Create()" pattern
     // as every other spawned effect in this codebase (RemoteSpikeBurstPD.Launch(), MortarHazardPD.Launch()).
     // Root position/initial rotation already came from hierarchy.Create()'s own spawn params — this only
-    // sizes the pivot's fixed local offset, which SetAim never touches again.
+    // sizes the shape, which SetAim never touches again.
+    //
+    // Fill.ShowRectangle, not a manually-poked pivot child (2026-09-14 fix, replaces a stale pre-refactor
+    // direct pivot.localPosition/localScale write) — WindupFillPD's post-refactor architecture (see its own
+    // class doc comment) now owns its fillMesh/outline shape EXCLUSIVELY via _length/_width/_centerForwardOffset,
+    // only ever set through ShowCircle/ShowRectangle, and actively recomputes fillMesh's transform from those
+    // every single call — including every one of the plain SetProgress() calls KingOrbiterPD's own
+    // UpdateShootIndicatorFills/UpdatePersistentIndicatorFills make every render frame. Since ShowRectangle was
+    // never called anywhere in this class, those internal fields sat permanently at their zero defaults, and
+    // every one of those per-frame SetProgress calls silently collapsed the mesh AND the outline (Linear mode
+    // recomputes both fully every call, no caching) back down to a zero-size quad at local origin — confirmed
+    // live as "the indicator line never shows up at all, every outline position reads 0,0,0". centerForwardOffset:
+    // span * 0.5f is the exact "WindupIndicator sits at the NEAR EDGE, reaching length forward" case — see
+    // ShowRectangle's own doc comment — matching this class's own "root stays at the fixed near edge, only the
+    // rendered shape reaches forward from it" design (previously done by hand via the now-removed pivot field).
     public void Launch(float span)
     {
-        if (pivot == null) return;
-        pivot.localPosition = new Vector3(0f, 0f, span * 0.5f);
-        var scale = pivot.localScale;
-        scale.z = span * 0.1f;
-        pivot.localScale = scale;
+        _span = span;
+        if (Fill == null) return;
+        Fill.ShowRectangle(span, centerForwardOffset: span * 0.5f);
+    }
+
+    // Shrinks the shown shape to only the REMAINING (untraveled) portion of this life's own total span,
+    // "collapsing in behind" whatever's flying along it (2026-09-14) — same visual concept as BlitzGloomPD/
+    // KingSpikePD's own dash/charge indicators, just achieved differently here: those unparent and physically
+    // reposition the WHOLE indicator object forward, since their indicator is a passively-Visuals-inherited
+    // child that otherwise has no independent position of its own; THIS object's root is already independent
+    // (spawned via hierarchy.Create(), its own PredictedTransform, never Visuals-parented at all — see class
+    // doc comment) and deliberately never repositioned after spawn, so shrinking is done purely by shifting
+    // WHERE within the fixed root's own local frame the shown rectangle starts: centerForwardOffset moves the
+    // shape's center forward by `traveled` (hiding the traveled portion behind the root, which nothing ever
+    // renders past anyway) while its length shrinks to match, so the far edge (this life's own fixed maximum
+    // reach) never moves. traveled is caller-derived — KingOrbiterPD's own ShootFlight/Persistent Volley
+    // callers pass a live Vector3.Distance to the flying pleb's own transform.position (2026-09-14, was
+    // IEnemyPD.LaunchRemainingDistance — a raw, non-interpolated predicted-state read that desynced visibly
+    // from the pleb's own separately-smoothed Visuals position; see UpdateShootIndicatorFills's own doc
+    // comment for the full story). That's safe here specifically because it's a DIFFERENT object's own live
+    // position being read (this indicator is never parented under the pleb), same category as
+    // UpdatePullLineIndicators' own plebPos read — not the self-referential live-transform-of-a-still-parented-
+    // object pattern that's unsafe elsewhere in this codebase.
+    public void SetTraveled(float traveled)
+    {
+        if (Fill == null) return;
+        float remaining = Mathf.Max(0f, _span - traveled);
+        Fill.ShowRectangle(remaining, centerForwardOffset: traveled + remaining * 0.5f);
     }
 
     // Own-identity self-write, own Simulate-context call — same shape as WeaponMeleePD's orbit position/

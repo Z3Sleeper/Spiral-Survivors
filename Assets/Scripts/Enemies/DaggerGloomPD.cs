@@ -66,6 +66,10 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     // snapshot-and-reset treatment instead of just incrementing this field directly.
     [SerializeField] private int   attacksPerAttack   = 1;
     [SerializeField] private float dashSpeedMultiplier = 4f;
+    // Flat + size-scaled (2026-09-03, was preferredRange/4f) — decoupled from preferredRange, matching
+    // KingSpikePD.postChargeDashOffsetDistance's own flat-variable convention instead of deriving from the
+    // shared approach/retreat/attack-range field. See EnterDashToTarget's own call site.
+    [SerializeField] private float dashOffsetDistance = 2f;
     // Captured once in OnAwake(), reset back onto attacksPerAttack every pooled reuse in LateAwake() —
     // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
     // pattern EnemyBasePD's own maxHealth/damage/moveSpeed/xpValue/enemyName already use (and BlitzGloomPD's
@@ -337,7 +341,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         // 0° — continues straight past the target's own live position instead of stopping at/before it,
         // ending up on its far side from wherever Dagger approached from. See
         // EnemyBasePD.StartOffsetChase's own doc comment for the full angular convention.
-        StartOffsetChase(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, preferredRange / 4f, 0f);
+        StartOffsetChase(ref state, EffectiveMoveSpeed * dashSpeedMultiplier, dashOffsetDistance * size, 0f);
     }
 
     private void EnterPostSpin(ref State state)
@@ -395,7 +399,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         // why (UpdateView's own edge-detection bookkeeping, not ours to set — would silently skip its
         // _animator.Play(IdleHash, ...) call otherwise).
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
-        if (_windupFill != null) _windupFill.ResetFill();
+        if (_windupFill != null) _windupFill.Hide();
     }
 
     // ── View ───────────────────────────────────────────────────────────────
@@ -410,8 +414,10 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         // Re-applied every frame — same reasoning as every other indicator in this rebuild: if spinRadius
         // changes at runtime, the indicator should never silently drift out of sync with it. Radial
         // (cylinder), not line — this is an AoE, not a directional reach. * size matches EnterSpin's own
-        // hit-check exactly (see that method's comment).
-        if (_windupIndicator != null) IndicatorMath.ApplyRadialTransform(_windupIndicator.transform, spinRadius * size);
+        // hit-check exactly (see that method's comment). centerForwardOffset left at its 0 default —
+        // _windupIndicator's own current position (WindupFillPD's own transform) already IS the center.
+        if (_windupIndicator != null && _windupFill != null)
+            _windupFill.ShowCircle(spinRadius * size);
 
         var ss = (DaggerState)viewState.stateId;
 
@@ -435,7 +441,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         _lastVisualState = ss;
 
         if (_windupIndicator != null) _windupIndicator.SetActive(ss == DaggerState.Windup);
-        if (_windupFill != null && ss != DaggerState.Windup) _windupFill.ResetFill();
+        if (_windupFill != null && ss != DaggerState.Windup) _windupFill.Hide();
 
         if (_animator == null) return;
         switch (ss)
@@ -461,7 +467,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
-        if (_windupFill != null)      _windupFill.ResetFill();
+        if (_windupFill != null)      _windupFill.Hide();
         // Snaps out of whatever attack pose this enemy died mid-animation in — see SpearGloomPD's own
         // OnDeathStop comment for why (stateId is frozen from here on, so nothing else will do this).
         // Guarded on activeInHierarchy — see SpearGloomPD's own comment on the same guard.
@@ -476,7 +482,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.stateTimer          = 0f;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
-        if (_windupFill != null)      _windupFill.ResetFill();
+        if (_windupFill != null)      _windupFill.Hide();
         // In case death happened mid-Windup/Spinning, while kinematic was on — HandleActiveState would
         // correct this on the next tick anyway (stateId resets to Moving above), but resetting explicitly
         // here avoids even a one-tick window where a freshly-reused instance reads as kinematic.

@@ -15,10 +15,10 @@ MonoBehaviour:
   displayName: <color=#8C8C8C>Phantom</color> <color=#00FF00>Pain</color>
   description: '<color=#FFA000>On Damage Taken:</color> <color=#FFA000>Summon</color>
     <color=#8C8C8C>{bladeCount}</color> <color=#8C8C8C>Phantom Blades</color> piercing
-    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{DamageMultiplierPercent}%
+    the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{strengthMultiplierPercent}%
     Strength</color>) damage x Damage Taken</color>.
 
-    <color=#8C8C8C>+10% Phantom
+    <color=#8C8C8C>+5% Phantom
     Blade Damage and Size</color>'
   icon: {fileID: 21300000, guid: 6e1ca9defbc3d7642801fc9393657df0, type: 3}
   effectPrefab: {fileID: 6538933261643551541, guid: a68034d8267332145886ae31ef0f3a4a, type: 3}

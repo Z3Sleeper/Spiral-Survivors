@@ -19,6 +19,12 @@ public class PlayerUIWorldSpace : MonoBehaviour
     // invincibility ends. Exposed so it can be tuned/reused for a different tint without touching code.
     [SerializeField] private Color invincibleHealthBarColor = Color.white;
     [SerializeField] private Slider shieldBar;
+    // Sits BEHIND shieldBar (2026-09-13, reinstated — mirrors LocalUIManagerPD's own identical revert) —
+    // always shows recharge progress regardless of current shield amount, since a brief tint-swap-on-
+    // shieldBar-itself version hid recharge progress entirely while any shield was still up (e.g. sitting at
+    // half shield gave no indication of how close the next full recharge was). See Update()'s own doc
+    // comment for the full mechanic.
+    [SerializeField] private Slider shieldRegenBar;
     [SerializeField] private GameObject dashUI;
     [SerializeField] private Image dashChargeCooldownImage;
     [SerializeField] private GameObject[] dashNotches;
@@ -131,6 +137,18 @@ public class PlayerUIWorldSpace : MonoBehaviour
         {
             float value = _stats.MaxShield > 0f ? _stats.UIShield / _stats.MaxShield : 0f;
             if (!Mathf.Approximately(shieldBar.value, value)) shieldBar.value = value;
+        }
+        // shieldRegenBar sits behind shieldBar and always shows recharge progress regardless of current
+        // shield amount — see LocalUIManagerPD's own identical UpdateHealthAndShields doc comment for the
+        // full mechanic (a brief tint-swap-on-shieldBar-itself version existed 2026-09-13 but was reverted
+        // the same day for hiding recharge progress while any shield was still up). MaxShield <= 0 forces 0
+        // fill so a no-shield character never reads as a permanently "recharged" bar.
+        if (shieldRegenBar != null)
+        {
+            float value = _stats.MaxShield > 0f && _stats.shieldRechargeTime > 0f
+                ? (_stats.shieldRechargeTime - _stats.UIShieldRechargeTimer) / _stats.shieldRechargeTime
+                : 0f;
+            if (!Mathf.Approximately(shieldRegenBar.value, value)) shieldRegenBar.value = value;
         }
 
         UpdateAbility1();

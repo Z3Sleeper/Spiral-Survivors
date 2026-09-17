@@ -41,16 +41,24 @@ public class SurgeHealAugment : AugmentEffectPD<SurgeHealAugment.State>
     }
 
     [SerializeField] private float healBase = 0.4f;
-    // 2f = 200% (this codebase's percent fields store the fraction).
-    public float healthRegenPercent = 2f;
+    // 2f = 200% (this codebase's percent fields store the fraction). Scales off Stats.BonusHealthRegen
+    // (2026-09-14, was Stats.HealthRegen, the full/total stat) — see that property's own doc comment. Renamed
+    // from healthRegenPercent to bonusHealthRegenPercent for family-wide naming consistency with every other
+    // "percent of Bonus HealthRegen" healing augment (DashHealAugment/OnDodgeHealHealthRegenAugment/
+    // OnHitHealHealthRegenAugment/OnStrikeHealAllyAugment/HealthRegenOnEnemyDeathAugment).
+    public float bonusHealthRegenPercent = 2f;
     [SerializeField] private float tickInterval = 0.25f;
+    // Same flat, unconditional +25 Max Energy every other Surge-family augment grants (SurgeWeaponCountAugment/
+    // SurgeStackingAttackSpeedAugment/FullEnergyBerserkSurgeAugment/DeathPreventedBerserkAugment) — "more
+    // Surge uptime per full-to-empty cycle," granted once in OnApply(), same shape as those.
+    [SerializeField] private float bonusMaxEnergyFlat = 25f;
 
     // Baseline heal-per-second at 100% HealPower (the crit/HealPower multiply itself isn't included since
     // it varies per-tick, not a stat to preview) for AugmentDescriptionFormatter's {LiveHealPerSecondRatio}
     // token.
     public string LiveHealPerSecondRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(healBase + stats.HealthRegen * healthRegenPercent)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(healBase + stats.BonusHealthRegen * bonusHealthRegenPercent)} "
             : "";
 
     // Tracks how much has actually been granted via Stats.Heal so far — mutated only from UpdateView() off
@@ -62,6 +70,7 @@ public class SurgeHealAugment : AugmentEffectPD<SurgeHealAugment.State>
     {
         Stats.AddSurgeStartedListener(OnSurgeStarted);
         Stats.AddSurgeEndedListener(OnSurgeEnded);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 
     protected override void OnDestroy()
@@ -100,7 +109,7 @@ public class SurgeHealAugment : AugmentEffectPD<SurgeHealAugment.State>
         state.desiredTotalHealed += TickAmount(tickInterval);
     }
 
-    private float TickAmount(float duration) => (healBase + Stats.HealthRegen * healthRegenPercent) * duration;
+    private float TickAmount(float duration) => (healBase + Stats.BonusHealthRegen * bonusHealthRegenPercent) * duration;
 
     protected override void UpdateView(State viewState, State? verified)
     {

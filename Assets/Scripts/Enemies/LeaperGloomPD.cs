@@ -43,12 +43,21 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         public Vector3 leapStart;
         public Vector3 leapTarget;            // live-tracked through Windup, frozen the instant Leaping begins
         public int     leapsRemaining;
-        // Current tracked bearing/distance from leapStart during Windup — same CompressedFloat/rate-cap shape
-        // as MortarHazardPD.State's identical fields, needed in predicted State (not a plain field) for the
-        // same reason: MoveTowardsAngle/MoveTowards read their own previous value every tick, which a
-        // rollback replay must restore correctly. Meaningless outside Windup (leapTarget itself is what
-        // matters once Leaping locks it).
-        public CompressedFloat facingAngleDeg;
+        // Tracked direction/distance from leapStart during Windup, needed in predicted State (not a plain
+        // field) since Vector3.RotateTowards/Mathf.MoveTowards both read their own previous value every
+        // tick, which a rollback replay must restore correctly. Meaningless outside Windup (leapTarget itself
+        // is what matters once Leaping locks it).
+        // leapDirection is a plain Vector3 (2026-09-14, replaces a CompressedFloat facingAngleDeg bearing
+        // tracked via Mathf.Atan2/Mathf.MoveTowardsAngle) — matches BlitzGloomPD.state.blitzDirection/
+        // TrackWindupTarget exactly now. The scalar-angle approach relied on Mathf.DeltaAngle's mod-360
+        // wraparound logic, and facingAngleDeg was never re-normalized back into a canonical range between
+        // ticks (only reset at each fresh EnterWindup) — a real, confirmed-live bug where the tracked bearing
+        // would occasionally snap SEVERAL DEGREES BACKWARDS (opposite the player's own strafe direction)
+        // during ordinary Windup tracking, with no equivalent issue on Blitz's identical-purpose vector-based
+        // tracking. A 3D direction vector has no periodic/wraparound representation to go wrong in the first
+        // place — Vector3.RotateTowards always rotates along the single shortest great-circle arc between two
+        // unit vectors, unconditionally, so this class of bug is structurally impossible here.
+        public Vector3 leapDirection;
         public CompressedFloat trackedDistance;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
@@ -169,19 +178,36 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private Vector3 _yAxisMoversRestPosition;
     private bool    _yAxisMoversRestPositionCaptured;
 
-    // Plain (not predicted State) shadow of state.leapTarget, written in lockstep inside EnterWindup() —
-    // the same deterministic Simulate() call that decides leapTarget itself, so this is available
-    // instantly on every machine with no network round-trip, unlike reading it back off `verified`.
-    // Reading it off `viewState` instead wouldn't work either: PurrDiction linearly interpolates every
-    // State field (including plain Vector3s) between simulated ticks for smooth rendering, and leapTarget
-    // is a discrete "decided once" value — viewState would show it sliding in from whatever it was
-    // previously rather than snapping instantly. A plain field isn't part of State, so it isn't subject to
-    // that interpolation at all.
+    // Plain (not predicted State) shadow of state.leapTarget, written in lockstep inside EnterWindup()/the
+    // Windup tracking loop — the same deterministic Simulate() call that decides leapTarget itself, so this
+    // is available instantly on every machine with no network round-trip, unlike reading it back off
+    // `verified`. MUST stay exactly equal to the real state.leapTarget the actual leap/hit-detection uses
+    // (2026-09-14 — a prior version of this comment proposed reading viewState.trackedDistance/facingAngleDeg
+    // instead to avoid a one-frame visual snap; reverted, since that would let the shown indicator diverge
+    // from where the attack genuinely resolves — the entire point of a windup indicator is that it's a
+    // truthful preview, and a smaller visual imperfection is strictly preferable to indicator/hitbox desync).
     private Vector3 _leapTargetSnapshot;
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
+    // Reinstated (2026-09-14) — Leaping unparents _windupIndicator from wherever it's normally parented (see
+    // UpdateView's own Leaping-transition comment for why), so this is needed again to know where to put it
+    // back once the leap ends.
     private Transform _windupIndicatorParent;
+    // The indicator's own AUTHORED local position/rotation under _windupIndicatorParent, captured once
+    // alongside it (2026-09-14 fix) — every reparent-BACK site restores these explicitly instead of trusting
+    // SetParent(parent, worldPositionStays: true) to land back on them. worldPositionStays:true computes a
+    // BRAND NEW local pose that preserves whatever WORLD pose the indicator happened to be frozen at during
+    // Leaping (see UpdateView's own Leaping-entry comment — position is deliberately frozen there, and
+    // rotation is whatever it last passively inherited the instant before unparenting) — and nothing ever
+    // reset that baked pose back to identity afterward, so it silently persisted into every subsequent Windup
+    // for the rest of this Leaper's life. First windup after a fresh spawn/pooled reuse was always correct
+    // (the indicator's local pose was still whatever OnRespawnReset/the prefab left it at); ONLY Leapers that
+    // had already completed at least one full Leap showed the tracked-indicator lag/offset bug this fixes —
+    // confirmed live, this is exactly the "second-leap-onward only" symptom that gave the bug away.
+    private Vector3    _windupIndicatorLocalPos;
+    private Quaternion _windupIndicatorLocalRot;
+    private bool       _windupIndicatorLocalPoseCaptured;
 
     protected override void OnAwake()
     {
@@ -204,17 +230,26 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
         distanceTrackingRateUnitsPerSecond = _authoredDistanceTrackingRateUnitsPerSecond;
 
-        // Null-coalesced, not unconditional — LateAwake() re-fires on every pooled reuse, but by that
-        // point the indicator could already be unparented from a previous life interrupted mid-leap (e.g.
-        // death during Leaping). Caching only when still unset means this reliably captures the true
-        // original parent exactly once (the first real spawn), without needing a second, separate
-        // Awake() method — EnemyBasePD already declares its own private Awake() (which sets up
-        // _renderers/_originalColors, _hurtbox, etc.), and adding another same-named private Awake() here
-        // risked one silently not running (this is what caused Leaper-only NREs/stuck-red hit-flash: this
-        // enemy's _originalColors was never actually populated).
+        // Null-coalesced, not unconditional — LateAwake() re-fires on every pooled reuse, but by that point
+        // the indicator could already be unparented from a previous life interrupted mid-Leaping (e.g. death
+        // during Leaping). Caching only when still unset means this reliably captures the true original
+        // parent exactly once (the first real spawn).
         if (_windupIndicator != null) _windupIndicatorParent ??= _windupIndicator.transform.parent;
 
-        // Guarded to a single real capture per instance, same reasoning as _windupIndicatorParent above —
+        // Guarded the same way as _yAxisMoversRestPosition below — a single real capture per instance, not
+        // unconditional, for the identical reason: a pooled reuse could already be mid-Leaping (unparented,
+        // local pose meaningless right now) by the time LateAwake() re-fires, so only the FIRST ever capture
+        // (fresh spawn, local pose still whatever the prefab authored) is trustworthy. See
+        // _windupIndicatorLocalPos/_windupIndicatorLocalRot's own doc comment for why this needs restoring
+        // explicitly at all.
+        if (_windupIndicator != null && !_windupIndicatorLocalPoseCaptured)
+        {
+            _windupIndicatorLocalPos = _windupIndicator.transform.localPosition;
+            _windupIndicatorLocalRot = _windupIndicator.transform.localRotation;
+            _windupIndicatorLocalPoseCaptured = true;
+        }
+
+        // Guarded to a single real capture per instance —
         // UpdateView() bails out immediately on death (before it ever reaches the branch that resets
         // _yAxisMovers back to rest), so a Leaper that dies mid-Leaping (arc-bobbed up) gets pooled with
         // its visuals still elevated. An unconditional recapture here would then bake that elevated position
@@ -232,6 +267,23 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // AFTER OnConfigureSpawn, on this life's first Simulate() tick) — this LateAwake() assignment is
         // only ever a placeholder until then.
         currentState.leapsRemaining      = leapsPerAttack;
+    }
+
+    // Reparents _windupIndicator back under _windupIndicatorParent AND restores its exact authored local
+    // pose (2026-09-14 fix) — every call site that reparents it back used to pass SetParent(parent, true)
+    // (worldPositionStays), which computes a BRAND NEW local pose to preserve whatever WORLD pose the
+    // indicator happened to be frozen at during Leaping, instead of restoring the ORIGINAL one — see
+    // _windupIndicatorLocalPos/_windupIndicatorLocalRot's own doc comment for the live-confirmed bug this
+    // fixes (every Windup after a Leaper's first completed Leap silently inherited a corrupted local
+    // rotation/position offset). worldPositionStays:false here is deliberate, not just "doesn't matter" — no
+    // visual pop is possible from the switch either way, since every call site below either SetActive(false)s
+    // the indicator in the same breath or it's already inactive.
+    private void ReparentWindupIndicatorHome()
+    {
+        if (_windupIndicator == null) return;
+        _windupIndicator.transform.SetParent(_windupIndicatorParent, false);
+        _windupIndicator.transform.localPosition = _windupIndicatorLocalPos;
+        _windupIndicator.transform.localRotation = _windupIndicatorLocalRot;
     }
 
     // Tier1-authored leapsPerAttack, scaled by leapsPerAttackTierGrowth per tier above 1 (see that field's
@@ -323,13 +375,29 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
                     float targetDistance = toTarget.magnitude;
                     if (targetDistance > 0.0001f)
                     {
-                        float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
-                        state.facingAngleDeg = Mathf.MoveTowardsAngle(state.facingAngleDeg, targetAngle, rotationRateDegPerSecond * delta * EffectiveAttackSpeed);
+                        Vector3 dir = toTarget / targetDistance;
+                        // Vector3.RotateTowards, not Mathf.Atan2+MoveTowardsAngle (2026-09-14) — see
+                        // state.leapDirection's own doc comment for the confirmed-live backwards-snap bug this
+                        // replaces. Matches BlitzGloomPD.TrackWindupTarget exactly, including the
+                        // maxMagnitudeDelta: 0f (both state.leapDirection and dir are already unit vectors, so
+                        // magnitude should never change, only direction).
+                        Vector3 newDir = Vector3.RotateTowards(state.leapDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
                         state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, distanceTrackingRateUnitsPerSecond * delta * EffectiveAttackSpeed);
 
-                        float rad = state.facingAngleDeg * Mathf.Deg2Rad;
-                        Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
-                        state.leapTarget = state.leapStart + dir * state.trackedDistance;
+                        // The Leaper's own REAL body now actually turns to match leapDirection (2026-09-14 —
+                        // previously this bearing was computed but never applied to any transform at all,
+                        // which is what let it silently drift out of sync with whatever the body visually
+                        // faced). Same _rigidbody.MoveRotation(Quaternion.LookRotation(dir)) convention
+                        // EnemyBasePD.SnapFaceTarget's own kinematic-rotation writes already use. This is now
+                        // the single source of truth for this Leaper's facing — the tick-accurate physics
+                        // root's own rotation, not a separate parallel value — so _windupIndicator (a child of
+                        // Visuals, which continuously interpolates TOWARD this same tick-accurate rotation)
+                        // can go back to plain passive inheritance for its own facing, no explicit per-frame
+                        // rotation write or unparenting needed on the indicator side at all (see UpdateView's
+                        // own comment).
+                        _rigidbody.MoveRotation(Quaternion.LookRotation(newDir));
+                        state.leapDirection = newDir;
+                        state.leapTarget = state.leapStart + newDir * state.trackedDistance;
                         _leapTargetSnapshot = state.leapTarget;
                     }
                 }
@@ -446,23 +514,25 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // of Windup, not just at the Windup->Leaping handoff.
         state.leapStart = transform.position;
 
-        // Seeds the tracked bearing/distance to match _windupTrackedTarget's CURRENT position relative to
+        // Seeds the tracked direction/distance to match _windupTrackedTarget's CURRENT position relative to
         // leapStart — same seeding MortarHazardPD.Launch() does for its own identical tracking fields, so
-        // the first tracked Windup tick's rate-capped MoveTowardsAngle/MoveTowards starts from the real
+        // the first tracked Windup tick's rate-capped RotateTowards/MoveTowards starts from the real
         // current bearing/range instead of snapping in from a stale (or zeroed) previous life's value.
         Vector3 targetPos = _windupTrackedTarget.transform.position;
         targetPos.y = 0f;
         Vector3 toTarget = targetPos - state.leapStart;
         toTarget.y = 0f;
-        if (toTarget.sqrMagnitude > 0.0001f)
-            state.facingAngleDeg = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
         state.trackedDistance = toTarget.magnitude;
         state.leapTarget = targetPos;
         _leapTargetSnapshot = state.leapTarget;
 
         // CharacterStatsPD overload (not the ref-state one) — faces _windupTrackedTarget specifically, not
-        // whatever live _target currently is, same reasoning as the rest of this method.
-        SnapFaceTarget(_windupTrackedTarget);
+        // whatever live _target currently is, same reasoning as the rest of this method. Its own returned dir
+        // (not a separately-computed Atan2) seeds state.leapDirection — matches BlitzGloomPD.EnterWindup
+        // exactly (2026-09-14), only written on a non-zero return so a degenerate/guard-failed snap holds
+        // whatever leapDirection a previous life left rather than stomping it with zero.
+        Vector3 snapDir = SnapFaceTarget(_windupTrackedTarget);
+        if (snapDir != Vector3.zero) state.leapDirection = snapDir;
         state.stateTimer    = windupDuration;
         state.attackElapsed = 0f;
         SetLeapState(ref state, LeapState.Windup);
@@ -567,18 +637,19 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
         // up — Interrupt() mutates currentState out-of-band (from a different identity's own Simulate(),
         // not this enemy's own HandleActiveState flow this tick), which was leaving the windup indicator
-        // visibly stuck for a stray tick before UpdateView's viewState caught up to the interrupt. Also
-        // re-parents back immediately (Windup unparents the indicator to world root — see UpdateView's own
-        // reparenting block) since an interrupt only ever fires during Windup (Leaping isn't interruptible
-        // per CanBeInterrupted below), so it's always unparented at this exact point.
+        // visibly stuck for a stray tick before UpdateView's viewState caught up to the interrupt.
         // _lastVisualState deliberately NOT written here — see SpearGloomPD.OnInterrupted's own comment for
         // why (UpdateView's own edge-detection bookkeeping, not ours to set).
-        if (_windupIndicator != null)
-        {
-            _windupIndicator.SetActive(false);
-            _windupIndicator.transform.SetParent(_windupIndicatorParent, true);
-        }
-        if (_windupFill != null) _windupFill.ResetFill();
+        if (_windupIndicator != null) _windupIndicator.SetActive(false);
+        if (_windupFill != null) _windupFill.Hide();
+        // Explicit reparent, not left for UpdateView's own edge-detected transition to eventually catch up —
+        // an interrupt during Windup leaves _windupIndicator unparented (see UpdateView's own transition
+        // comment), and relying on the next natural stateId change to fix it assumes UpdateView keeps
+        // running normally afterward, which isn't guaranteed (e.g. this instance getting pooled/deactivated
+        // before another view tick happens) — same "leftover circle on the ground" class of bug this
+        // codebase has hit before. Fixed immediately here instead.
+        if (_windupIndicator != null && _windupIndicator.transform.parent != _windupIndicatorParent)
+            ReparentWindupIndicatorHome();
     }
 
     // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
@@ -639,24 +710,31 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // doesn't stop execution from continuing into the rest of THIS method afterward. If death happens
         // while stateId still reads Windup/Leaping (e.g. killed by AoE/DoT mid-leap, never transitioning
         // back to Moving first), the SetActive(...) call further down would immediately re-enable the very
-        // indicator OnDeathStop() just hid. Since the indicator is unparented to world root during that
-        // window, it'd then sit there forever, detached and visible, with nothing left to ever hide it
-        // again once this enemy itself is deleted/pooled — this was the "leftover circle on the ground"
-        // bug. Bailing here preserves whatever OnDeathStop() already did.
+        // indicator OnDeathStop() just hid. Bailing here preserves whatever OnDeathStop() already did.
         if (viewState.b.isDead) return;
 
-        // Sourced from _leapTargetSnapshot (a plain field, not predicted State) — instantly available on
-        // every machine the moment EnterWindup() decides it, with no network round-trip and no
-        // interpolation blend (see the field's own doc comment). Re-applied every frame the state is
-        // Windup/Leaping so the indicator always tracks whatever the current leapTarget is, rather than
-        // snapshotting once on entry.
+        // state.leapDirection/trackedDistance (see HandleActiveState's own Windup case) describe the tracked
+        // target as a direction+distance from state.leapStart. HandleActiveState's Windup case now applies
+        // leapDirection directly to this Leaper's own REAL body (_rigidbody.MoveRotation, 2026-09-14) — the
+        // physics root's rotation IS the tracked direction now, a single source of truth, not a separate
+        // parallel value the indicator had to fight to reproduce. _windupIndicator (a child of Visuals, which already continuously interpolates
+        // toward that same tick-accurate rotation for rendering, same as this enemy's own body mesh) needs NO
+        // explicit position/rotation write of its own anymore — plain passive inheritance is already correct,
+        // same reasoning every other purely-cosmetic child of Visuals in this codebase already relies on. This
+        // replaces an earlier version that wrote an explicit WORLD rotation directly onto _windupIndicator
+        // every frame — technically correct in isolation, but a world write on an object still parented under
+        // a continuously-smoothed ancestor is exactly the class of read-timing mismatch the fill-mesh jitter
+        // fix already had to solve for position; the actual fix was making the SOURCE (the body's own real
+        // rotation) correct, not fighting the smoother with a second, competing write on the child.
+        // trackedDistance is exactly "how far forward along the tracked bearing the target sits," safe to
+        // pass straight into ShowCircle's centerForwardOffset (pure local space, see its own doc comment) —
+        // WindupIndicator's inherited facing now genuinely matches it by construction. * size (2026-08-26
+        // fix) — matches the actual landing hit-check's own landRadius * size below; the indicator wasn't
+        // scaling with Elite size at all (unlike DaggerGloomPD's spinRadius * size), so an Elite Leaper's true
+        // damage radius silently reached past its own drawn circle.
         var ss = (LeapState)viewState.stateId;
-        if (_windupIndicator != null && (ss == LeapState.Windup || ss == LeapState.Leaping))
-            _windupIndicator.transform.position = new Vector3(_leapTargetSnapshot.x, 0.05f, _leapTargetSnapshot.z);
-        // * size (2026-08-26 fix) — matches the actual landing hit-check's own landRadius * size below; the
-        // indicator wasn't scaling with Elite size at all (unlike DaggerGloomPD's spinRadius * size), so an
-        // Elite Leaper's true damage radius silently reached past its own drawn circle.
-        if (_windupIndicator != null) IndicatorMath.ApplyRadialTransform(_windupIndicator.transform, landRadius * size);
+        if (_windupFill != null && ss == LeapState.Windup)
+            _windupFill.ShowCircle(landRadius * size, viewState.trackedDistance);
 
         // Purely cosmetic arc bob — safe off viewState (a transient misprediction here is an imperceptible
         // visual wobble, not a discrete value that needs to be exactly right).
@@ -701,29 +779,62 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         }
 
         if (ss == _lastVisualState) return;
-        bool wasWindupOrLeap = _lastVisualState == LeapState.Windup || _lastVisualState == LeapState.Leaping;
+        LeapState previousState = _lastVisualState;
+        bool wasWindupOrLeap = previousState == LeapState.Windup || previousState == LeapState.Leaping;
         bool isWindupOrLeap  = ss == LeapState.Windup || ss == LeapState.Leaping;
         _lastVisualState = ss;
 
-        // Unparented for the whole Windup->Leaping window (not re-parented in between, matching old
-        // LeaperGloom's identical behavior) — Visuals continuously interpolates toward the leaper's own
-        // rapidly-moving body during Leaping, and a child whose world position is being explicitly
-        // overridden every frame gets visibly dragged along by that interpolation between corrections,
-        // producing a violent jitter. Detaching entirely removes any parent to fight against.
         if (_windupIndicator != null)
         {
-            if (isWindupOrLeap && !wasWindupOrLeap)
+            if (ss == LeapState.Leaping && previousState != LeapState.Leaping)
+            {
+                // Entering Leaping specifically (not the whole Windup->Leaping window — Windup no longer
+                // needs unparenting at all now that the Leaper's own body actually tracks leapDirection, see
+                // this method's own top-of-function comment). The target is now FROZEN
+                // (_leapTargetSnapshot/trackedDistance/leapDirection only ever update during the Windup
+                // case, see HandleActiveState's own comment), but the Leaper's own body is about to move fast
+                // via its own kinematic arc — unparenting removes _windupIndicator from Visuals'
+                // continuously-interpolating hierarchy entirely, same fix the old system originally used.
+                // Uses _leapTargetSnapshot (the RAW simulated value), deliberately NOT viewState — this MUST
+                // stay exactly equal to state.leapTarget, the value EnterLeap/the actual jump and hit
+                // detection use, or the indicator would stop being a truthful preview of where the attack
+                // really lands (see _leapTargetSnapshot's own doc comment — a prior version of this fix tried
+                // reading viewState instead to smooth out a snap, and that was reverted specifically because
+                // it broke this guarantee). _leapTargetSnapshot itself is a plain field (no interpolation
+                // blend, see its own doc comment), so this write can't be stale either. centerForwardOffset
+                // stays at its 0 default — this object's own (now frozen) position IS the center; no
+                // per-frame ShowCircle call needed for the rest of Leaping since nothing here changes again
+                // until the leap ends.
                 _windupIndicator.transform.SetParent(null, true);
-            else if (!isWindupOrLeap && wasWindupOrLeap)
-                _windupIndicator.transform.SetParent(_windupIndicatorParent, true);
+                _windupIndicator.transform.position = new Vector3(_leapTargetSnapshot.x, 0.05f, _leapTargetSnapshot.z);
+                if (_windupFill != null)
+                {
+                    _windupFill.ShowCircle(landRadius * size);
+                    // Forces an immediate redraw using the NEW position/offset set just above — the "live,
+                    // every frame" SetProgress call further up this same method already ran THIS frame,
+                    // before this transition block, using the OLD (still-trackedDistance) values, since
+                    // ShowCircle only ever updates the fields SetProgress reads, not the rendered result
+                    // itself. Without this second call, fillMesh/the outline would render one frame with the
+                    // brand-new WindupIndicator position but the stale offset from last frame — a visible
+                    // one-frame flash to the wrong spot before the NEXT frame's SetProgress call caught up
+                    // and self-corrected.
+                    _windupFill.SetProgress(viewState.attackElapsed / (windupDuration + leapDuration));
+                }
+            }
+            else if (previousState == LeapState.Leaping && ss != LeapState.Leaping)
+            {
+                // Leaving Leaping — reparent back to wherever this indicator originally lived (captured once
+                // in LateAwake), same as every other pooled-reuse-safe field in this codebase. See
+                // ReparentWindupIndicatorHome's own doc comment for why this restores the exact original local
+                // pose explicitly rather than trusting SetParent's own worldPositionStays.
+                ReparentWindupIndicatorHome();
+            }
+            _windupIndicator.SetActive(isWindupOrLeap);
         }
-
-        if (_windupIndicator != null)
-            _windupIndicator.SetActive(ss == LeapState.Windup || ss == LeapState.Leaping);
         // Reset once the whole Windup+Leaping span is over (Leaping->Landing) — the live SetProgress block
         // above already covers driving it forward throughout both states, this just clears it back to 0 on
         // the way out (Landing/PostLeap/Moving all have nothing to show).
-        if (_windupFill != null && !isWindupOrLeap) _windupFill.ResetFill();
+        if (_windupFill != null && !isWindupOrLeap) _windupFill.Hide();
 
         if (_animator == null) return;
         switch (ss)
@@ -743,7 +854,13 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
-        if (_windupFill != null)      _windupFill.ResetFill();
+        if (_windupFill != null)      _windupFill.Hide();
+        // Explicit reparent, fixed immediately rather than left for OnRespawnReset's own defensive check to
+        // catch on the NEXT pooled reuse (which could be a long time away) — same "leftover circle on the
+        // ground" class of bug OnInterrupted's own identical fix addresses. Dying mid-Windup/Leaping leaves
+        // _windupIndicator unparented (see UpdateView's own transition comment).
+        if (_windupIndicator != null && _windupIndicator.transform.parent != _windupIndicatorParent)
+            ReparentWindupIndicatorHome();
         // Snaps out of whatever attack pose this enemy died mid-animation in — see SpearGloomPD's own
         // OnDeathStop comment for why (stateId is frozen from here on, so nothing else will do this).
         // Guarded on activeInHierarchy — see SpearGloomPD's own comment on the same guard.
@@ -760,11 +877,11 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         currentState.attackElapsed       = 0f;
         if (_yAxisMovers != null) _yAxisMovers.localPosition = _yAxisMoversRestPosition;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
-        if (_windupFill != null)      _windupFill.ResetFill();
-        // In case death happened mid-Windup/Leaping, while the indicator was unparented — a fresh reuse
-        // should never inherit a previous life's detached indicator.
+        if (_windupFill != null)      _windupFill.Hide();
+        // In case death happened mid-Leaping, while the indicator was unparented — a fresh reuse should
+        // never inherit a previous life's detached indicator.
         if (_windupIndicator != null && _windupIndicator.transform.parent != _windupIndicatorParent)
-            _windupIndicator.transform.SetParent(_windupIndicatorParent, true);
+            ReparentWindupIndicatorHome();
         // In case death happened mid-Windup/Leaping, while kinematic was on — HandleActiveState would
         // correct this on the next tick anyway (stateId resets to Moving above), but resetting explicitly
         // here avoids even a one-tick window where a freshly-reused instance reads as kinematic, and

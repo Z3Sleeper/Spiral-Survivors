@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: DashThroughInterruptAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Sorry to Interrupt</color>
-  description: '<color=#00FFFF>Dashing</color> through enemies <color=#FFA000>Interrupts</color>
-    their attacks.
+  description: 'Every third <color=#00FFFF>Dash</color> <color=#FFA000>Interrupts</color>
+    enemies you pass through.
 
-    <color=#FFA000>On Interrupt:</color> Gain <color=#00FFFF>+1</color>
+    <color=#FFA000>On Interrupt:</color> Gain <color=#00FFFF>+{dashHastePerStack}</color>
     <color=#9664FF>Stacking</color> <color=#00FFFF>Dash Haste</color>.
 
     <color=#FFBE50>Current

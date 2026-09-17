@@ -6,15 +6,14 @@ using UnityEngine;
 // enemies, and knock them back. No stun, no interrupt, no onhit trigger (unlike DashExplosionAugment) — not
 // part of this augment's spec anymore.
 //
-// "AoE Effects" tag (2026-07-25): damage/knockback/radius/count now all route through the shared
-// AreaEffectCastHelper (same one DashExplosionAugment/DashHealAugment use). Damage scales with
-// Stats.AreaEffectPower, radius with Stats.AreaEffectSize, and the whole cast repeats Stats.AreaEffectCount
-// times — same as every other area effect. Radius formula standardized (2026-08-10) across
+// "AoE Effects" tag (2026-07-25): damage/knockback/radius now all route through the shared
+// AreaEffectCastHelper (same one DashExplosionAugment/DashHealAugment use). Radius scales with
+// Stats.AreaEffectSize — damage used to also scale with Stats.AreaEffectPower and the cast could repeat
+// Stats.AreaEffectCount times, both removed entirely (2026-09-13). Radius formula standardized (2026-08-10) across
 // DashExplosionAugment/DashHealAugment/ShieldBreakBurstAugment: Stats.RangeScalingAoEBase * radiusMultiplier —
 // extracted onto CharacterStatsPD itself on 2026-08-12 (single source of truth after the 0.5 -> 1
 // WeaponRange-coefficient retune needed touching every family member by hand), same shape
-// KnightAreaStunHealAbilityPD already uses. Knockback deliberately does NOT scale with AreaEffectPower (see
-// its own comment below). Every cast — including AreaEffectCount == 1, always today — goes through a
+// KnightAreaStunHealAbilityPD already uses. Every cast (a flat single cast now) goes through a
 // spawned AreaEffectPD (pooled, so this costs a reactivate, not a real spawn; the exact same prefab
 // DashExplosionAugment uses, since the class isn't tied to any one augment), rather than a separate
 // direct-cast path kept in sync by hand. Only the invincibility grant (not per-enemy, so just granted
@@ -24,8 +23,7 @@ using UnityEngine;
 // Knockback reworked per explicit instruction: no longer an augment-owned flat value entirely separate from
 // the player's own stat (the old baseKnockback field) — now Stats.Knockback * knockbackMultiplier, i.e.
 // inherited from the player's actual Knockback stat and scaled by an augment-specific multiplier (default 2x,
-// exposed below) instead of being wholly disconnected from it. Deliberately NOT scaled by Stats.AreaEffectPower
-// (per the "AoE Effects" default rules — knockback only ever scales off the player's own Knockback stat).
+// exposed below) instead of being wholly disconnected from it.
 //
 // hierarchy.Create()/Launch() fire directly inside the PredictedEvent listener (OnShieldBreak) — same "safe
 // because PredictedEvent guarantees exactly-once-per-real-occurrence" reasoning as DashExplosionAugment's
@@ -42,16 +40,13 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
     // scaling itself.
     [SerializeField] private float radiusMultiplier    = 1.25f;
     [SerializeField] private float knockbackMultiplier = 2f;
-    // How long between each retrigger cast when Stats.AreaEffectCount > 1 — exposed for tuning.
-    [SerializeField] private float retriggerRate        = 0.5f;
 
-    // Mirrors AreaEffectCastHelper.Cast's own damage formula (Stats.AreaEffectPower directly — see that
-    // method's own doc comment), minus the luck/crit roll (baseline preview, not a randomly-sampled one — see
-    // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention), for
-    // AugmentDescriptionFormatter's {LiveStrengthRatio} token.
+    // Mirrors AreaEffectCastHelper.Cast's own damage formula, minus the luck/crit roll (baseline preview, not
+    // a randomly-sampled one — see OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the
+    // full convention), for AugmentDescriptionFormatter's {LiveStrengthRatio} token.
     public string LiveStrengthRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * damagePercent * stats.AreaEffectPower)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * damagePercent)} "
             : "";
 
     [Header("VFX")]
@@ -86,14 +81,13 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
         Vector3 castPosition = Stats.transform.position;
         float radius = Stats.RangeScalingAoEBase * radiusMultiplier;
         float knockback = Stats.Knockback * knockbackMultiplier;
-        int totalCasts = Mathf.Max(1, Stats.AreaEffectCount);
 
         var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
         if (!chainId.HasValue) return;
 
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-            chain.Launch(Stats, castPosition, totalCasts, retriggerRate, radius, radiusVFXPrefab,
+            chain.Launch(Stats, castPosition, radius, radiusVFXPrefab,
                 damagePercent: damagePercent, notifyOnHit: false, hasKnockback: true, knockback: knockback, vfxPerCast: true);
     }
 }

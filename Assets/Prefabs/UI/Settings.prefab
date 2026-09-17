@@ -4238,8 +4238,8 @@ MonoBehaviour:
   musicVolumeInput: {fileID: 4917597433076154441}
   framerateDropdown: {fileID: 312349998145300725}
   seeOtherPlayerDamageToggle: {fileID: 2307818784567917167}
-  controlsVisibilityToggle: {fileID: 0}
-  hideExpandedUIToggle: {fileID: 0}
+  controlsVisibilityToggle: {fileID: 6009223810564717864}
+  hideExpandedUIToggle: {fileID: 2620586454173485189}
   audioMixer: {fileID: 24100000, guid: 0f8a092caa0b11148a04e048e5bfd7ad, type: 2}
 --- !u!1 &5903867980451583874
 GameObject:
@@ -4907,7 +4907,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: See Controls in Game
+  m_text: Hide Controls Panel in Game
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

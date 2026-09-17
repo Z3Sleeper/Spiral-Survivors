@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: HealthAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FF00>Chonk</color>
-  description: <color=#00FF00>+60 Max Health</color>
+  description: <color=#00FF00>+30 Max Health</color>
   icon: {fileID: 21300000, guid: 9cf65f16df07ae0469354e6feeab6453, type: 3}
   effectPrefab: {fileID: 5639814992278396488, guid: 5de4b62bee678664e922e0fa722796df, type: 3}
   multiplayerOnly: 0
@@ -25,3 +25,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

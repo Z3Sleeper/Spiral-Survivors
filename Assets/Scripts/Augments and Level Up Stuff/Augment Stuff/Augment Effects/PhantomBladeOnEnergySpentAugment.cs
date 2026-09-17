@@ -24,19 +24,15 @@ public class PhantomBladeOnEnergySpentAugment : AugmentEffectPD<PhantomBladeOnEn
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private Color bladeColor = Color.white;
     public int bladeCount = 3;
-    public float damageMultiplier = 0.6f;
+    public float strengthMultiplierPercent = 0.6f;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
     [SerializeField] private float energySpentPerSummon = 50f;
-
-    // damageMultiplier itself doesn't end in "Percent" — see PhantomBladeOnDashAugment's own identical alias
-    // for the full reasoning.
-    public float DamageMultiplierPercent => damageMultiplier;
 
     // For AugmentDescriptionFormatter's {LiveBladeDamageRatio} token — see
     // PhantomBladeSummonHelper.PreviewDamage's own doc comment for the full shared-formula convention.
     public string LiveBladeDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, damageMultiplier))} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(PhantomBladeSummonHelper.PreviewDamage(stats, strengthMultiplierPercent))} "
             : "";
 
     protected override void OnApply()
@@ -65,7 +61,7 @@ public class PhantomBladeOnEnergySpentAugment : AugmentEffectPD<PhantomBladeOnEn
         {
             currentState.energySpentSinceLastSummon -= energySpentPerSummon;
             PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-                Stats.transform.position, bladeCount, damageMultiplier, bladeColor);
+                Stats.transform.position, bladeCount, strengthMultiplierPercent, bladeColor);
         }
     }
 }

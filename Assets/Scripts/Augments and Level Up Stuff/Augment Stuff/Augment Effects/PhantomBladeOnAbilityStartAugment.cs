@@ -21,14 +21,8 @@ public class PhantomBladeOnAbilityStartAugment : AugmentEffectPD<PhantomBladeOnA
     [SerializeField] private GameObject phantomBladePrefab;
     [SerializeField] private Color bladeColor = Color.white;
     public int bladeCount = 3;
-    public float damageMultiplier = 0.12f;
+    public float strengthMultiplierPercent = 0.12f;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
-
-    // damageMultiplier itself doesn't end in "Percent", so AugmentDescriptionFormatter's *100 convention
-    // wouldn't apply to it directly — this alias exists purely so a description can reference
-    // {DamageMultiplierPercent} as a static fallback for whenever {LiveBladeDamageRatio} itself is blank
-    // (out of a live match — see ShowLiveValues's own doc comment).
-    public float DamageMultiplierPercent => damageMultiplier;
 
     // No single number to preview (the actual blade damage depends on which of this character's two
     // abilities was cast) — shows both class abilities' own actual values instead, "Ability1/Ability2", for
@@ -40,7 +34,7 @@ public class PhantomBladeOnAbilityStartAugment : AugmentEffectPD<PhantomBladeOnA
         float ability1Value = 0f, ability2Value = 0f;
         foreach (var ability in stats.GetComponents<IAbilityPD>())
         {
-            float value = PhantomBladeSummonHelper.PreviewDamage(stats, damageMultiplier * ability.BaseCooldownDuration);
+            float value = PhantomBladeSummonHelper.PreviewDamage(stats, strengthMultiplierPercent * ability.BaseCooldownDuration);
             if (ability.Slot == AbilitySlot.Ability1) ability1Value = value;
             else if (ability.Slot == AbilitySlot.Ability2) ability2Value = value;
         }
@@ -72,6 +66,6 @@ public class PhantomBladeOnAbilityStartAugment : AugmentEffectPD<PhantomBladeOnA
         if (baseCooldown <= 0f) return;
 
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, damageMultiplier * baseCooldown, bladeColor);
+            Stats.transform.position, bladeCount, strengthMultiplierPercent * baseCooldown, bladeColor);
     }
 }

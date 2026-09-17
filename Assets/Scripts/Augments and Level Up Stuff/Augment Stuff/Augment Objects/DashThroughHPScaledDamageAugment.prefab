@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 71520ed2206231c41a7347e3ea89d40f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DashThroughHPScaledDamageAugment
-  strengthPercent: 1
-  bonusHealthPercent: 1
+  strengthPercent: 1.5
+  bonusHealthPercent: 3
   sweepRadius: 1.5

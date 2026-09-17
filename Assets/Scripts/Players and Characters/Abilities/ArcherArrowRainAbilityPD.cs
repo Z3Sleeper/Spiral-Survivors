@@ -15,31 +15,14 @@ using UnityEngine;
 // chosen so the total damage dealt over one full rain comes out to exactly the ability's stated 500%
 // Unpenalized Strength (20 ticks * 25% = 500%, spaced 0.25s apart = 5s total).
 //
-// AreaEffectPower scaling (no AbilityPower — removed 2026-08-23):
-// - Damage: applied automatically inside Cast() itself (every "AoE Effects" family member gets this for
-//   free) — no extra scaling needed from this ability.
-// - Slow: slowPercent (already "how much slow," an Inspector-friendly percent — see its own doc comment)
-//   gets scaled by AreaEffectPower directly (hand-rolled here since Slow isn't something
-//   AreaEffectCastHelper knows about), then converted to the "speed remains" multiplier EnemyBasePD.Slow()
-//   actually takes right at the end — see SpawnChain's own comment. EnemyBasePD.Slow's own 90%-max clamp
-//   means it's safe to hand it an arbitrarily large scaled value without checking here first.
-//
-// Stats.AreaEffectCount is handled as its own, OUTER tier of casting — "recast the entire rain again at the
-// same location" (not a fresh cursor read), spaced recastRetriggerRate apart — rather than folded into
-// tickCount/tickInterval (the INNER, fixed-by-design 20-tick DoT this ability's whole spec is built around).
-// Implemented via this ability's own predicted State (recastsRemaining/recastTimer/castPosition) rather than
-// AreaEffectPD's own single-tier retrigger, since that only supports one tier of repeated casts, not "repeat
-// an already-repeating thing again."
+// AreaEffectPower/AreaEffectCount (the damage/onhit-power multiplier and the multi-cast repeat count) were
+// removed entirely (2026-09-13) — this ability's damage/slow are now its own plain, unscaled baseline, and it
+// only ever casts once per Activate(), no outer recast tier anymore.
 public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbilityPD.State>, IAbilityPD
 {
     public struct State : IPredictedData<State>
     {
         public float cooldownTimer;
-        // Outer-recast bookkeeping — see class doc comment for why Stats.AreaEffectCount is handled here,
-        // as a second tier of casting, rather than folded into tickCount/tickInterval.
-        public int     recastsRemaining;
-        public float   recastTimer;
-        public Vector3 castPosition;
         public void Dispose() { }
     }
 
@@ -79,35 +62,22 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // alongside the live number below.
     public float TotalDamagePercent => tickCount * strengthPercentPerTick;
 
-    // Mirrors AreaEffectCastHelper.Cast's own damage formula exactly (owner.AreaEffectPower directly — see
-    // that method's own doc comment), summed across the whole rain, minus the luck/crit roll each tick
-    // independently rolls — baseline preview, not a randomly-sampled one, same convention as every augment's
-    // own Live*Ratio.
+    // Summed across the whole rain, minus the luck/crit roll each tick independently rolls — baseline
+    // preview, not a randomly-sampled one, same convention as every augment's own Live*Ratio.
     public string LiveDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(tickCount * strengthPercentPerTick * stats.Strength * stats.AreaEffectPower)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(tickCount * strengthPercentPerTick * stats.Strength)} "
             : "";
 
-    // Mirrors SpawnChain's own scaledSlowAmount formula exactly (see its own doc comment). Outside a live
-    // match, falls back to slowPercent itself — exact at AreaEffectPower's own 1.0 baseline.
-    public string LiveSlowRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? slowPercent * stats.AreaEffectPower
-            : slowPercent;
-        return $"{AugmentDescriptionFormatter.FormatLivePercent(value)}";
-    }
+    public string LiveSlowRatio(CharacterStatsPD stats) =>
+        $"{AugmentDescriptionFormatter.FormatLivePercent(slowPercent)}";
     // How much slow this applies, as a straight percent (0.8 = 80% slower, i.e. 20% speed remains) — not
     // the "how much speed remains" multiplier EnemyBasePD.Slow() itself takes, converted at the call site
     // in SpawnChain instead so this field reads the way you'd actually want to type a value into it.
     // Reapplied on every tick an enemy is still standing in the zone, so it effectively stays refreshed the
-    // whole time they remain inside, not just once on first contact. Scaled by AreaEffectPower at cast time
-    // — see SpawnChain's own comment.
+    // whole time they remain inside, not just once on first contact.
     public float slowPercent = 0.35f;
     [SerializeField] private float slowDuration = 0.5f;
-    // How long between each outer recast (a full repeat of the entire rain, at the same cast location) when
-    // Stats.AreaEffectCount > 1 — see class doc comment for why this is a separate tier from tickInterval.
-    [SerializeField] private float recastRetriggerRate = 0.5f;
 
     [Header("VFX")]
     // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
@@ -187,17 +157,21 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         currentState.cooldownTimer = EffectiveCooldown;
 
         // Start and End fire back to back — there's no active window in between (see class doc comment).
-        // The rain itself (including any outer recasts) keeps going in the background via Simulate() below.
-        // Skipped entirely at 0 (raw, un-hasted) cooldown — an ability that can be spammed with no downtime
+        // The rain itself keeps ticking in the background via the spawned AreaEffectPD chain's own Simulate()
+        // (this ability's own Simulate() below only ticks its cooldown). Skipped entirely at 0 (raw,
+        // un-hasted) cooldown — an ability that can be spammed with no downtime
         // shouldn't be firing "a real ability cast" notifications on every cast (PhantomBladeOnAbilityStartAugment
         // and any future listener would otherwise see it fire far more often than intended).
         if (cooldown > 0f) _stats.NotifyAbilityStart(this);
 
         Vector3 origin = _stats.transform.position;
 
+        // EffectiveWeaponRange fallback (2026-09-16, was plain WeaponRange) — matches TryGetFarthestWeaponReach's
+        // own EffectiveWeaponRange-based GetOuterReach() scale, same reasoning ExeAxeThrowAbilityPD's own
+        // identical trueReach fallback uses.
         float trueReach = (_weaponManager != null && _weaponManager.TryGetFarthestWeaponReach(out float r)
             ? r
-            : _stats.WeaponRange) * castRangeMultiplier;
+            : _stats.EffectiveWeaponRange) * castRangeMultiplier;
 
         // Clamped to trueReach, not just aimed toward it — Mathf.Min naturally covers both halves of the
         // spec: cursor within range casts exactly at the cursor's own point, cursor beyond range casts at
@@ -209,16 +183,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         float   castDistance   = Mathf.Min(cursorDistance, trueReach);
         Vector3 castPosition   = origin + cursorDir * castDistance;
 
-        currentState.castPosition = castPosition;
         SpawnChain(castPosition);
-
-        // AreaEffectCount recasts the WHOLE rain again at this SAME location (not a fresh cursor read),
-        // spaced recastRetriggerRate apart — ticked down in Simulate() below. totalCasts - 1 since this
-        // Activate() call already fired the first one, same "immediate cast now, N-1 more retriggers"
-        // convention AreaEffectPD's own totalCasts uses.
-        int totalCasts = Mathf.Max(1, _stats.AreaEffectCount);
-        currentState.recastsRemaining = totalCasts - 1;
-        currentState.recastTimer = recastRetriggerRate;
 
         if (cooldown > 0f) _stats.NotifyAbilityEnd(this);
     }
@@ -232,45 +197,15 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     {
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (state.cooldownTimer > 0f) state.cooldownTimer -= delta;
-
-        if (state.recastsRemaining > 0)
-        {
-            state.recastTimer -= delta;
-            if (state.recastTimer <= 0f)
-            {
-                SpawnChain(state.castPosition);
-                state.recastsRemaining--;
-                if (state.recastsRemaining > 0) state.recastTimer = recastRetriggerRate;
-            }
-        }
     }
 
-    // Shared by the initial cast (Activate()) and every outer AreaEffectCount recast (Simulate()) — both
-    // spawn an identical chain at the given position, just at different times, so the actual cast logic
-    // lives in exactly one place. Reads Stats live each time rather than snapshotting at Activate() — a
-    // recast picking up a stat change from an augment picked in between is correct here (each cast is a
-    // fully self-contained instantaneous burst with nothing to reverse later), unlike RogueVanishAbilityPD/
-    // KnightBigBuffAbilityPD's own cast-time snapshots, which exist specifically to keep an add/subtract
-    // pair in lockstep — there's no such pair here.
+    // Called once per Activate() — the whole rain is a single cast now, no outer recast tier anymore.
     private void SpawnChain(Vector3 position)
     {
         if (chainPrefab == null) return;
 
         float radius = castRadius * _stats.AreaEffectSize;
-
-        // AreaEffectPower is already applied automatically inside Cast() itself (every "AoE Effects" family
-        // member gets this for free) — no extra scaling needed from this ability.
-
-        // Slow strength (not duration) scales with AreaEffectPower too — scaling it UP means MORE slow, so
-        // this scales slowPercent (already "how much slow," see its own doc comment) directly, then converts
-        // to the "speed remains" multiplier EnemyBasePD.Slow() actually takes right at the end.
-        // EnemyBasePD.ApplySlow's own 90%-max clamp means this is safe to hand an arbitrarily large scaled
-        // value without checking here first. Same "1 + bonus-over-neutral" shape every other Total-tier stat
-        // in this codebase uses — neutral (100%/1.0, no bonus) stays exactly 1x, +30% AreaEffectPower means
-        // +30% total, not a raw AreaEffectPower multiply (which would double the baseline even with zero
-        // bonus).
-        float scaledSlowAmount    = slowPercent * _stats.AreaEffectPower;
-        float scaledSlowMultiplier = 1f - scaledSlowAmount;
+        float slowMultiplier = 1f - slowPercent;
 
         var chainId = hierarchy.Create(chainPrefab, position, Quaternion.identity);
         if (!chainId.HasValue) return;
@@ -282,9 +217,9 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         // zone would otherwise spam the caster's hitSfx into an unlistenable wall of noise (see
         // HitFeedbackData's own doc comment for the general mechanism this uses).
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-            chain.Launch(_stats, position, tickCount, tickInterval, radius, radiusVFXPrefab,
+            chain.Launch(_stats, position, radius, radiusVFXPrefab,
                 dealDamage: true, damagePercent: strengthPercentPerTick, notifyOnHit: false,
-                onEnemyHit: enemy => enemy.Slow(scaledSlowMultiplier, slowDuration),
-                overrideHitSfx: true);
+                onEnemyHit: enemy => enemy.Slow(slowMultiplier, slowDuration),
+                overrideHitSfx: true, totalCasts: tickCount, retriggerRate: tickInterval);
     }
 }

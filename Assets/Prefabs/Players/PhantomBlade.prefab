@@ -316,7 +316,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1238a52265f481340915b15b9db9d9fe, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladePD
-  travelTime: 0.5
+  travelTime: 0.4
   bladeHalfExtents: {x: 0.2, y: 0.1, z: 1}
   _renderers:
   - {fileID: 3271742700763148934}
@@ -324,6 +324,7 @@ MonoBehaviour:
   - {fileID: 42549508322602881}
   - {fileID: 1230640816757097958}
   - {fileID: 5613993470342062763}
+  colorPropertyName: _BaseColor
 --- !u!114 &571825129314863271
 MonoBehaviour:
   m_ObjectHideFlags: 0

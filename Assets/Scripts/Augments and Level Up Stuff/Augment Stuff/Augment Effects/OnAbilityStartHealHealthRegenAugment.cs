@@ -18,9 +18,9 @@ public class OnAbilityStartHealHealthRegenAugment : AugmentEffectPD<OnAbilitySta
 
     // Flat per second of BaseCooldownDuration — guarantees a non-zero heal even at zero HealthRegen
     // investment, same "flat floor" reasoning OnHitHealHealthRegenAugment.baseHeal already establishes.
-    public float flatHealPerCooldownSecond = 2f;
-    // 0.5f = 50% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
-    public float bonusHealthRegenPercent = 0.5f;
+    public float flatHealPerCooldownSecond = 1f;
+    // 0.25f = 25% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
+    public float bonusHealthRegenPercent = 0.25f;
 
     // No single number to preview (the actual heal depends on which of this character's two abilities was
     // cast) — shows both class abilities' own actual values instead, "Ability1/Ability2", for

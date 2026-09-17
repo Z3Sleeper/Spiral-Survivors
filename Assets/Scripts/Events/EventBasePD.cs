@@ -94,16 +94,6 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     // Same "trivial passthrough" shape as IEnemyPD.ObjectId's own implementation on EnemyBasePD.
     public PredictedObjectID ObjectId => id.objectId;
 
-    // Message OnEventStart's own base implementation announces to every player via a white Custom status
-    // popup the instant this event begins — e.g. "Capture the Point!". Inspector-editable per event PREFAB
-    // (2026-08-26 — was a mandatory abstract C# method every event had to override; moved to a shared field
-    // here instead specifically so this can be tuned without touching code). Leave blank to skip the start
-    // announcement entirely for a given event. Static text, not live State — this only ever fires once, at
-    // the very start.
-    [Header("Event Feedback")]
-    [Tooltip("Shown to every player via a white status popup the instant this event starts. Leave blank to skip it.")]
-    [SerializeField] private string startAnnouncement;
-
     // Shared, opt-in placement constraint (2026-08-21) — off by default, so an event that doesn't place
     // anything player-sensitive is unaffected. A concrete event's own OnEventStart passes these straight
     // through to EventManagerPD.TryGetEventSpawnPoint/TryGetSpawnAreaPoint's own avoidPlayers/playerOffset
@@ -126,24 +116,14 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     // methods need override+base" convention UpdateView below already follows — before/after doing its own
     // event-specific setup.
     //
-    // Also fires a Custom status popup (the floating "Stunned!"/"Dodged!"-style callout above a player's own
-    // head, NOT the persistent description panel) on EVERY player, white by default, reading startAnnouncement
-    // above for the message — a one-time, attention-grabbing "this is starting NOW" the persistent description
-    // panel alone doesn't provide. Its display duration is multiplied by EventManagerPD.AnnouncementDurationMultiplier
-    // (one shared, centrally-tunable knob — see that property's own doc comment for why it lives there and
-    // not per-event-prefab) on top of DamageNumber's normal status-popup baseline. CharacterStatsPD.
-    // NotifyStatusPopup is already resimulation-safe (relayed through its own PredictedEvent, same as every
-    // other Simulate()-context status-popup caller in this codebase — e.g. CharacterStatsPD.TakeDamage/
-    // Slow/etc.), so this is safe to call directly from here despite OnEventStart itself running from
-    // Simulate()-context.
+    // Used to also fire a floating Custom status popup ("Stunned!"/"Dodged!"-style callout above every
+    // player's own head) reading a per-event startAnnouncement string the instant the event began — removed
+    // entirely 2026-09-02, per explicit design, along with the startAnnouncement field itself and
+    // EventManagerPD.AnnouncementDurationMultiplier (which had no other consumer). The persistent event
+    // description panel (ShowEventPanel, still below) is the only start-of-event feedback now.
     public virtual void OnEventStart(PlayableAreaPD playableArea, int currentTier)
     {
         LocalUIManagerPD.instance?.ShowEventPanel();
-
-        if (string.IsNullOrEmpty(startAnnouncement)) return;
-        float durationMultiplier = EventManagerPD.instance != null ? EventManagerPD.instance.AnnouncementDurationMultiplier : 2f;
-        foreach (var stats in CharacterStatsPD.All.Values)
-            stats.NotifyStatusPopup(startAnnouncement, Color.white, durationMultiplier);
     }
 
     // Event-specific sweep-up (tear down anything THIS event spawned) — called once by
@@ -174,45 +154,61 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
         GetBase(ref state).elapsedTime += delta;
     }
 
+    // Threshold below which the flash's own target color switches from yellow to red (2026-09-02) — see
+    // GetDescriptionColor's own doc comment for the full flash shape this feeds into.
+    [SerializeField] private float lowTimeWarningThreshold = 30f;
+
+    // Single source of truth for "how much time does this event have left" (2026-09-02, replaces the old
+    // DisplayedTimeoutSeconds hardcoded constant) — reads EnemySpawnerPD.EventDuration LIVE instead of
+    // carrying a second, separately-authored copy of the same number. EnemySpawnerPD.eventDuration is the
+    // ONE real value that actually decides when EnemySpawnerPD calls ResolveEvent() on a still-running event
+    // (see that field's own doc comment); this now reads that exact same field, so the display (both the
+    // "Time Remaining" text below and GetDescriptionColor's own red-flash threshold) can never drift out of
+    // sync with the real timeout the way the old hardcoded copy could. Falls back to 60f only if
+    // EnemySpawnerPD.instance is somehow missing (shouldn't normally happen — an event can't be running
+    // without the spawner that started it).
+    private float GetTimeRemaining(TState viewState)
+    {
+        float duration = EnemySpawnerPD.instance != null ? EnemySpawnerPD.instance.EventDuration : 60f;
+        return Mathf.Max(0f, duration - GetBase(ref viewState).elapsedTime);
+    }
+
     // "Flash" for the event's ENTIRE lifetime (2026-08-20 — used to settle on white after FlashDuration=5s;
-    // now just keeps going the whole time) — a white/yellow triangle wave with a 1-second period (white at
-    // 0s, yellow at 0.5s, white at 1s, yellow at 1.5s, ...). Driven off elapsedTime (State-backed,
-    // resimulation-safe, pause-aware), not Time.time — same reasoning every other cosmetic-but-state-driven
-    // value in this codebase uses. Shared across every event (per explicit design), same as
+    // now just keeps going the whole time) — a white/[yellow or red] triangle wave with a 1-second period
+    // (white at 0s, target color at 0.5s, white at 1s, target color at 1.5s, ...). Driven off elapsedTime
+    // (State-backed, resimulation-safe, pause-aware), not Time.time — same reasoning every other cosmetic-
+    // but-state-driven value in this codebase uses. Shared across every event (per explicit design), same as
     // GetEventDescription — no concrete event needs to override this.
+    //
+    // Target color swaps from yellow to red once GetTimeRemaining drops to/below lowTimeWarningThreshold
+    // (2026-09-02, "the event is about to time out" tell) — same triangle-wave shape and period throughout,
+    // only the color it flashes TOWARD changes, so this never introduces a new flash rhythm to learn, just a
+    // more urgent-reading one near the end.
     //
     // A companion black-to-white BACKGROUND flash (same wave, same phase) was tried alongside this
     // (2026-08-28) to make an event's start harder to miss, but immediately walked back the same day — it
     // read as an epilepsy-risk flash in practice, not just "noticeable." Do not re-add a full-panel color
-    // flash for this purpose; EventBasePD.AnnouncementDurationMultiplier (on EventManagerPD, lengthening
-    // the floating status-popup callout instead) is the direction that was kept.
+    // flash for this purpose. The floating status-popup callout this comment used to point to as "the
+    // direction that was kept" was itself removed entirely 2026-09-02 (see OnEventStart's own doc comment)
+    // — the persistent description panel this fill drives is the only start-of-event feedback left.
     private Color GetDescriptionColor(TState viewState)
     {
         float elapsed = GetBase(ref viewState).elapsedTime;
 
         float phase = elapsed % 1f;
         float t = phase < 0.5f ? phase / 0.5f : (1f - phase) / 0.5f;
-        return Color.Lerp(Color.white, Color.yellow, t);
+        Color target = GetTimeRemaining(viewState) <= lowTimeWarningThreshold ? Color.red : Color.yellow;
+        return Color.Lerp(Color.white, target, t);
     }
 
-    // Flat 60s, matching EnemySpawnerPD's own default eventDuration (the actual, real timeout that decides
-    // when EnemySpawnerPD calls ResolveEvent() on a still-running event) — see this field's own comment for
-    // the coupling that creates. Deliberately NOT threaded through from EnemySpawnerPD via OnEventStart —
-    // per explicit design, this only needs to LOOK right, counting down off elapsedTime (already
-    // State-backed/resimulation-safe) is enough to naturally match EnemySpawnerPD as long as the two values
-    // agree. If EnemySpawnerPD's own eventDuration is ever retuned away from 60, update this constant too —
-    // nothing enforces them staying in sync automatically.
-    private const float DisplayedTimeoutSeconds = 60f;
-
     // "Time Remaining: X seconds" (no decimal precision — whole seconds, ceiling-rounded so it shows the
-    // full DisplayedTimeoutSeconds for that first partial second rather than immediately reading one short,
-    // same Mathf.CeilToInt convention PausePD's own countdown display already uses) — appended below
-    // whatever GetEventDescription(viewState) returns, generically, for every event, since every event
-    // shares this same EnemySpawnerPD-driven timeout window. No concrete event needs to build this itself.
+    // full duration for that first partial second rather than immediately reading one short, same
+    // Mathf.CeilToInt convention PausePD's own countdown display already uses) — appended below whatever
+    // GetEventDescription(viewState) returns, generically, for every event, since every event shares this
+    // same EnemySpawnerPD-driven timeout window. No concrete event needs to build this itself.
     private string BuildFullDescription(TState viewState)
     {
-        float remaining = Mathf.Max(0f, DisplayedTimeoutSeconds - GetBase(ref viewState).elapsedTime);
-        return $"{GetEventDescription(viewState)}\nTime Remaining: {Mathf.CeilToInt(remaining)} seconds";
+        return $"{GetEventDescription(viewState)}\nTime Remaining: {Mathf.CeilToInt(GetTimeRemaining(viewState))} seconds";
     }
 
     // NOT virtual — a fixed, generic "mark resolved" primitive every event shares identically; no concrete
