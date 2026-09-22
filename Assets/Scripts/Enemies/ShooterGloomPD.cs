@@ -80,9 +80,10 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     private static readonly int PostShotSpeedHash = Animator.StringToHash("PostShotSpeed");
 
     [Header("Shooter Settings")]
-    // The "too close" trigger threshold — separate from preferredRange (which governs the normal approach/
-    // backpedal hold distance via HandleMovement) since a player closing distance faster than backpedal can
-    // keep up needs an actual evasive dash, not just movement hysteresis.
+    // The "too close" trigger threshold — separate from preferredRange (which governs the normal approach
+    // hold distance via HandleMovement, standing still once close rather than backing away — see
+    // EnemyBasePD.HandleMovement's own doc comment) since a player closing distance while too close needs an
+    // actual evasive dash, not just movement hysteresis.
     [SerializeField] private float minAttackRange     = 8f;
     [SerializeField] private float windupDuration     = 0.25f;
     [SerializeField] private float shootDuration      = 0.1f;

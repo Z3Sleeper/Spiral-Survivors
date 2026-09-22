@@ -166,6 +166,7 @@ MonoBehaviour:
   tintedMaterialIndex: 0
   coloredParticleSystems:
   - {fileID: 50025376275331398}
+  coloredTrailRenderers: []
   alpha: 1
 --- !u!114 &7951618835084280162
 MonoBehaviour:

@@ -17,7 +17,7 @@ TagManager:
   - EnemyPhysics
   - Friendly
   - Enemy
-  - BoundsCollision
+  - 
   - 
   - XPOrb
   - Obstacle

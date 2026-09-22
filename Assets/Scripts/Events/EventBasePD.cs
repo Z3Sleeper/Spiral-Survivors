@@ -121,18 +121,19 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     // entirely 2026-09-02, per explicit design, along with the startAnnouncement field itself and
     // EventManagerPD.AnnouncementDurationMultiplier (which had no other consumer). The persistent event
     // description panel (ShowEventPanel, still below) is the only start-of-event feedback now.
-    public virtual void OnEventStart(PlayableAreaPD playableArea, int currentTier)
-    {
-        LocalUIManagerPD.instance?.ShowEventPanel();
-    }
+    // Showing/hiding the shared description panel moved OUT of here (2026-09-17 fix — see UpdateView's own
+    // doc comment for the full mechanism and the misprediction bug this closes) — this base implementation is
+    // now an intentional no-op, kept virtual (not removed) purely so a concrete event's own override still has
+    // something generic to call base. into, same override+base convention as Cleanup/UpdateView.
+    public virtual void OnEventStart(PlayableAreaPD playableArea, int currentTier) { }
 
     // Event-specific sweep-up (tear down anything THIS event spawned) — called once by
-    // EventManagerPD.ResolveEvent(), for EITHER outcome. Virtual, not abstract — the base implementation
-    // hides the shared event description panel (LocalUIManagerPD.HideEventPanel) generically; a concrete
-    // event that overrides this for its own sub-object teardown MUST call base.Cleanup() too, same
-    // override+base convention as OnEventStart/UpdateView. Does NOT destroy this event itself — see
-    // EventBaseState.resolved's own doc comment.
-    public virtual void Cleanup() => LocalUIManagerPD.instance?.HideEventPanel();
+    // EventManagerPD.ResolveEvent(), for EITHER outcome. Virtual, not abstract — a concrete event that
+    // overrides this for its own sub-object teardown MUST still call base.Cleanup() too (currently a no-op,
+    // kept for the same override+base convention as OnEventStart/UpdateView — panel hiding moved to
+    // UpdateView, see its own doc comment). Does NOT destroy this event itself — see EventBaseState.resolved's
+    // own doc comment.
+    public virtual void Cleanup() { }
 
     // Called every UpdateView (render-frame) while this event is active — returns whatever EVENT-SPECIFIC
     // text the shared description panel should show right now (see LocalUIManagerPD.SetEventDescription's
@@ -216,20 +217,61 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
     // destruction reasoning this exists for.
     public void MarkResolved() => B.resolved = true;
 
-    // Deferred, VERIFIED-state-gated self-destruction — same "state-critical, only despawn once
-    // server-confirmed" convention as RemoteSpikeBurstPD/MortarHazardPD/EnemyProjectilePD's own one-shot
+    // Plain, not State — mutated only from UpdateView (a real-rendered-frame-only call, never replayed under
+    // resimulation, same "safe as a plain field" reasoning every other UpdateView-only toggle in this codebase
+    // relies on, e.g. SurgeEnergySpentMoveSpeedAugment's own _bonusActive). Edge-detects the first tick THIS
+    // SPECIFIC event instance's own state goes verified — see UpdateView's own doc comment for why.
+    private bool _panelShown;
+
+    // Panel show/hide + content moved onto VERIFIED state (2026-09-17 fix, real bug: a non-host client briefly
+    // showed the WRONG event's panel content for a live frame or two before correcting) — root cause: this
+    // used to call ShowEventPanel() directly from OnEventStart() (Simulate()-context) and unconditionally
+    // wrote SetEventDescription/SetEventDescriptionColor off live viewState every UpdateView, with no gate at
+    // all. Simulate() runs speculatively ahead of confirmation on a non-host client and gets replayed as
+    // corrections land — EventManagerPD.StartEvent()'s own random event-prefab pick (GameRandom.instance.Next)
+    // can land on a DIFFERENT index in a client's early speculative pass than the eventual server-confirmed
+    // replay, any time something else earlier in that same tick (anything at all drawing from the SAME shared
+    // GameRandom stream — e.g. EnemySpawnerPD's own spawn-roll calls, which run before the event trigger in
+    // its own Simulate()) consumes a different number of draws between the two passes — not a bug in
+    // GameRandom itself (same call sequence always gives the same result), just ordinary stream-position drift
+    // that's effectively unavoidable for any random draw sitting downstream of other conditional draws in the
+    // same tick. Rather than chase every possible upstream source of that drift, this event instance's own
+    // panel content is now gated on ITS OWN verified.HasValue: a mispredicted instance that never actually
+    // gets server-confirmed simply never flips _panelShown, so its content is never shown at all, not shown-
+    // then-corrected. Once _panelShown is true (this instance genuinely exists, confirmed), content keeps
+    // updating off live viewState as before — same "gate on first verified, then follow live for smoothness"
+    // shape GetEventDescription's own doc comment already describes for a live charge percentage.
+    //
+    // Deferred, VERIFIED-state-gated self-destruction below is unchanged — same "state-critical, only despawn
+    // once server-confirmed" convention as RemoteSpikeBurstPD/MortarHazardPD/EnemyProjectilePD's own one-shot
     // deletion. A concrete event that overrides UpdateView for its own visuals MUST call
     // base.UpdateView(viewState, verified) — same "PD lifecycle methods need override+base" convention every
-    // other override in this codebase already follows — or this check (and therefore this event's own
-    // eventual teardown) silently never runs.
+    // other override in this codebase already follows — or none of this (panel or teardown) ever runs.
     protected override void UpdateView(TState viewState, TState? verified)
     {
-        LocalUIManagerPD.instance?.SetEventDescription(BuildFullDescription(viewState));
-        LocalUIManagerPD.instance?.SetEventDescriptionColor(GetDescriptionColor(viewState));
+        if (verified.HasValue && !_panelShown)
+        {
+            LocalUIManagerPD.instance?.ShowEventPanel();
+            _panelShown = true;
+        }
+
+        if (_panelShown)
+        {
+            LocalUIManagerPD.instance?.SetEventDescription(BuildFullDescription(viewState));
+            LocalUIManagerPD.instance?.SetEventDescriptionColor(GetDescriptionColor(viewState));
+        }
 
         if (!verified.HasValue) return;
         var v = verified.Value;
-        if (GetBase(ref v).resolved) DestroyEvent();
+        if (GetBase(ref v).resolved)
+        {
+            if (_panelShown)
+            {
+                LocalUIManagerPD.instance?.HideEventPanel();
+                _panelShown = false;
+            }
+            DestroyEvent();
+        }
     }
 
     // No dedicated event-success SFX (2026-08-26, removed) — TriggerBonusAugmentRound() already sets

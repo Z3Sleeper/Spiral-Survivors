@@ -2,27 +2,29 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Persistent, LIVE-tracked relationship — not a one-way accumulator like OnEnemyDeathHealthStackingAugment/
-// SurgeStackingAttackSpeedAugment (whose stacks only ever grow over a run). Grants moveSpeedPerStack(1) flat
-// Move Speed for every perStackMissingHealthPercent(15%) of CURRENT missing health (1 - CurrentHealth/
-// MaxHealth), in discrete whole-stack THRESHOLD steps, not a smooth gradient — e.g. exactly 20% missing health
-// grants only 1 stack (20% cleared the first 15% threshold, not yet the second 30% one), not a fractional
-// 1.33 stacks. Field deliberately named perStackMissingHealthPercent, not missingHealthPercentPerStack —
-// AugmentDescriptionFormatter's *100 auto-scale only fires on an EndsWith("Percent") check, so "Percent" has
-// to be the actual trailing suffix, not buried mid-name (same "PerUnit vs Percent" trap
-// OnHitDamageDistanceAugment's own perUnitDistancePercent rename fixed 2026-09-13 for the identical reason).
-// Healing back up loses stacks live, the instant CurrentHealth crosses back below a threshold —
-// same "recomputed every tick, not earned-and-kept" shape HealthToAttackSpeedAugment already uses for its own
-// live Health-derived bonus (see that class's own doc comment for the full architecture reasoning: Simulate()
-// recomputes state.desiredAmount deterministically every tick off already-predicted Stats reads, but the
-// actual Stats.AddMoveSpeedFlat delta only ever fires off a CONFIRMED transition in verified state via
-// UpdateView, so a mid-resimulation pass can never double-apply).
+// SurgeStackingAttackSpeedAugment (whose stacks only ever grow over a run). Grants perStackMoveSpeedPercent
+// (8%, Bonus-tier via AddMoveSpeedPercent, 2026-09-19 — was moveSpeedPerStack(1) flat via AddMoveSpeedFlat,
+// converted project-wide alongside every other flat-Move-Speed augment now that Move Speed no longer comes
+// off Stat augments, per explicit design) Move Speed for every perStackMissingHealthPercent(15%) of CURRENT
+// missing health (1 - CurrentHealth/MaxHealth), in discrete whole-stack THRESHOLD steps, not a smooth
+// gradient — e.g. exactly 20% missing health grants only 1 stack (20% cleared the first 15% threshold, not
+// yet the second 30% one), not a fractional 1.33 stacks. Both perStackMoveSpeedPercent and
+// perStackMissingHealthPercent are deliberately named with "Percent" as the actual trailing suffix, not
+// buried mid-name — AugmentDescriptionFormatter's *100 auto-scale only fires on an EndsWith("Percent") check
+// (same "PerUnit vs Percent" trap OnHitDamageDistanceAugment's own perUnitDistancePercent rename fixed
+// 2026-09-13 for the identical reason). Healing back up loses stacks live, the instant CurrentHealth crosses
+// back below a threshold — same "recomputed every tick, not earned-and-kept" shape HealthToAttackSpeedAugment
+// already uses for its own live Health-derived bonus (see that class's own doc comment for the full
+// architecture reasoning: Simulate() recomputes state.desiredAmount deterministically every tick off
+// already-predicted Stats reads, but the actual Stats.AddMoveSpeedPercent delta only ever fires off a
+// CONFIRMED transition in verified state via UpdateView, so a mid-resimulation pass can never double-apply).
 //
 // Stack count itself is capped at maxStacks(5) — 5 stacks * 15%/stack = 75% missing health (25% Health
 // remaining) reaches the cap; going lower than 25% Health grants no further stacks. StackPower, however,
-// multiplies the OUTPUT (moveSpeedPerStack * stackCount * Stats.StackPower), uncapped — the 5-stack ceiling
-// bounds how many discrete thresholds can ever be "earned," not the final Move Speed number a high-StackPower
-// build can reach from those same 5 stacks, same "cap the stacks, not the scaled total" shape every other
-// StackPower-scaled stacking augment in this family already uses.
+// multiplies the OUTPUT (perStackMoveSpeedPercent * stackCount * Stats.StackPower), uncapped — the 5-stack
+// ceiling bounds how many discrete thresholds can ever be "earned," not the final Move Speed number a
+// high-StackPower build can reach from those same 5 stacks, same "cap the stacks, not the scaled total"
+// shape every other StackPower-scaled stacking augment in this family already uses.
 public class MissingHealthMoveSpeedStackingAugment : AugmentEffectPD<MissingHealthMoveSpeedStackingAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -33,13 +35,14 @@ public class MissingHealthMoveSpeedStackingAugment : AugmentEffectPD<MissingHeal
     }
 
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
-    // {moveSpeedPerStack}/{perStackMissingHealthPercent}/{maxStacks} tokens directly in the description text.
-    public float moveSpeedPerStack = 1f;
+    // {perStackMoveSpeedPercent}/{perStackMissingHealthPercent}/{maxStacks} tokens directly in the
+    // description text.
+    public float perStackMoveSpeedPercent = 0.08f;
     public float perStackMissingHealthPercent = 0.15f;
     public int   maxStacks = 5;
 
-    // Current live stack count (0-maxStacks) and total Move Speed this augment is granting RIGHT NOW
-    // (moveSpeedPerStack * stackCount * StackPower) for AugmentDescriptionFormatter's {LiveStackCount}/
+    // Current live stack count (0-maxStacks) and total Move Speed PERCENT this augment is granting RIGHT NOW
+    // (perStackMoveSpeedPercent * stackCount * StackPower) for AugmentDescriptionFormatter's {LiveStackCount}/
     // {LiveMoveSpeedRatio} tokens — reads the passed-in `stats` directly (not currentState), same convention
     // every other Live*Ratio method in this codebase uses so this also resolves correctly for a not-yet-picked
     // level-up preview against a live character. Falls back to "0" outside a live match/with no character
@@ -56,10 +59,10 @@ public class MissingHealthMoveSpeedStackingAugment : AugmentEffectPD<MissingHeal
 
     public string LiveMoveSpeedRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(moveSpeedPerStack * LiveStackCountOf(stats) * stats.StackPower)}"
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(perStackMoveSpeedPercent * LiveStackCountOf(stats) * stats.StackPower * 100f)}"
             : "0";
 
-    // Tracks how much has actually been granted via Stats.AddMoveSpeedFlat so far — mutated only from
+    // Tracks how much has actually been granted via Stats.AddMoveSpeedPercent so far — mutated only from
     // UpdateView() off verified state, so the delta applied each time is always correct regardless of how
     // many times a given tick gets resimulated. Can go negative-delta (stacks lost) just as easily as
     // positive (stacks gained) — see class doc comment.
@@ -72,7 +75,7 @@ public class MissingHealthMoveSpeedStackingAugment : AugmentEffectPD<MissingHeal
 
         float missingHealthPercent = Stats.MaxHealth > 0f ? Mathf.Clamp01(1f - Stats.CurrentHealth / Stats.MaxHealth) : 0f;
         int stackCount = Mathf.Min(maxStacks, Mathf.FloorToInt(missingHealthPercent / perStackMissingHealthPercent));
-        state.desiredAmount = moveSpeedPerStack * stackCount * Stats.StackPower;
+        state.desiredAmount = perStackMoveSpeedPercent * stackCount * Stats.StackPower;
     }
 
     protected override void UpdateView(State viewState, State? verified)
@@ -85,7 +88,7 @@ public class MissingHealthMoveSpeedStackingAugment : AugmentEffectPD<MissingHeal
         if (Mathf.Approximately(desired, _appliedAmount)) return;
 
         float delta = desired - _appliedAmount;
-        Stats.AddMoveSpeedFlat(delta);
+        Stats.AddMoveSpeedPercent(delta);
         _appliedAmount = desired;
     }
 }

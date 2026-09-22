@@ -443,7 +443,7 @@ MonoBehaviour:
   moveSpeed: 12
   attackSpeed: 1
   backpedalSpeedDivisor: 2.5
-  maxHealth: 100
+  maxHealth: 75
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
@@ -459,9 +459,11 @@ MonoBehaviour:
   isStunnable: 1
   _renderers:
   - {fileID: 3448404629509916890}
-  _accentRenderers: []
+  _accentRenderers:
+  - {fileID: 4488095065069691406}
+  - {fileID: 4239904763616150255}
+  - {fileID: 7513441139847270458}
   invulnerableShell: {fileID: 484935195704614788}
-  moveSpeedScalar: 1
   waypointArriveTolerance: 0.5
 --- !u!54 &-6973549993052189348
 Rigidbody:

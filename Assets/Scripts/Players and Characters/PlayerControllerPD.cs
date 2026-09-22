@@ -9,6 +9,16 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
 
     private CharacterStatsPD _stats;
     private Collider _physicsCollider;
+    // Fetched via GetComponent in Awake() — same convention as BWBlinkAbilityPD's own identical field. Used
+    // by EndDash() to snap the visual cleanly to a TeleportSafetyPD-corrected position instead of letting the
+    // normal correction-smoothing layer visibly slide/drift into it (see EndDash()'s own comment).
+    private PredictedTransform _predictedTransform;
+    // Public passthrough (2026-09-19) — TeleportSafetyPD's callers (BWBlinkAbilityPD, any future teleport
+    // ability) read this instead of independently re-finding/duplicating the "PhysicsCollider" child lookup
+    // this class already does in Awake(). Falls back to 0.5 if the collider is missing or isn't actually a
+    // SphereCollider (every player prefab's own PhysicsCollider child is one today, per its own prefab setup,
+    // but this stays defensive rather than assuming).
+    public float PhysicsColliderRadius => _physicsCollider is SphereCollider sc ? sc.radius : 0.5f;
     // Class-unique ability components, if this character has any — resolved once in Awake() (same-
     // GameObject siblings, same as _stats), generic behind IAbilityPD so PlayerControllerPD never needs to
     // know which concrete class it's holding. A character can carry one of each (e.g. Rogue's
@@ -25,15 +35,23 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     private const float DashDuration = 0.35f;
     private const float DashSpeed    = 30f;
 
-    // Knockback() derives an approximate stun duration from the force it's given, same shape as
-    // EnemyBasePD.AddKnockbackVelocity's own formula (stunDuration = ln(force/threshold)/drag when force
-    // exceeds threshold, else 0) — these two SerializeFields exist purely to tune that estimate, not to
-    // actually apply drag themselves (that's the Rigidbody's own configured linear drag doing the real
-    // decay). Defaults match the enemy-side constants; retune here if the player's own Rigidbody drag is
-    // configured differently and the stun window ends up feeling too long/short relative to how long the
-    // knockback slide actually looks.
-    [SerializeField] private float knockbackStunDrag = 9f;
-    [SerializeField] private float knockbackStunThreshold = 1f;
+    // The player Rigidbody's own real linearDamping value outside of a dash/special-movement window — used
+    // for TWO things now (2026-09-21, renamed from knockbackStunDrag once it took on this second role):
+    // 1. Knockback() derives an approximate stun duration from the force it's given, same shape as
+    //    EnemyBasePD.AddKnockbackVelocity's own formula (stunDuration = ln(force/threshold)/damping when force
+    //    exceeds threshold, else 0) — this tunes that ESTIMATE, not to actually apply damping itself (that's
+    //    the Rigidbody's own real linearDamping doing the real decay); its value is meant to always EXACTLY
+    //    MATCH the Rigidbody's own configured Linear Damping (confirmed live, 2026-09-21: both are 9).
+    // 2. The canonical value StartDash/StartSpecialMovement's own linearDamping-zeroing restores to once a
+    //    dash/special-movement window ends (EndDash/EndSpecialMovement/the death path in Simulate()) — see
+    //    StartDash's own comment for why that zeroing exists at all. Reused directly here rather than caching
+    //    a second copy of the same number.
+    // Private, not [SerializeField] (2026-09-21, was Inspector-editable) — per explicit design, this and the
+    // two fields below are meant to be entirely script-controlled with no Inspector exposure, specifically so
+    // this value can never accidentally drift out of sync with the Rigidbody's own real Linear Damping
+    // setting the way an Inspector field could.
+    private const float normalLinearDamping = 9f;
+    private const float knockbackStunThreshold = 1f;
 
     // Per-instance, not static — each player's dash events are its own, not a shared global channel.
     // Surge events live on CharacterStatsPD instead, since StartSurge()/TryEndSurge() are defined there.
@@ -252,6 +270,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         public bool isDashing;
         public float dashTimer;
         public Vector3 dashVelocity;
+        // Captured in StartDash(), read back in EndDash() — see that method's own doc comment. The one
+        // position in the whole dash window guaranteed clear of obstacles, since the player was already
+        // standing there before the dash began; used as TeleportSafetyPD's total-failure fallback.
+        public Vector3 dashStartPosition;
         // Same shape as isDashing/dashTimer/dashVelocity above, driven externally by StartSpecialMovement()
         // (called from an ability component's own Activate(), e.g. RogueSpinAbilityPD) rather than input
         // read directly here — PlayerControllerPD doesn't know or care which ability is running, just that
@@ -259,6 +281,12 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         public bool isSpecialMoving;
         public float specialMoveTimer;
         public Vector3 specialVelocity;
+        // Same shape/purpose as dashStartPosition above, just for the special-movement window instead —
+        // captured in StartSpecialMovement(), read back in EndSpecialMovement()'s own TeleportSafetyPD
+        // resolution (2026-09-19, added once RogueSpinAbilityPD's leap started phasing through Obstacles the
+        // same layer-collision change that let real dashes do the same — see ResolveTeleportSafeLanding's own
+        // doc comment).
+        public Vector3 specialMoveStartPosition;
         // Set by Stun()/Knockback() — while > 0, blocks starting a dash/ability (see lockedOut/IsLockedOut)
         // and suppresses the normal movement AddForce (see Simulate()'s own Movement section), letting
         // whatever velocity Knockback() applied decay on its own via the Rigidbody's own linear drag instead
@@ -294,6 +322,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         }
         var physicsChild = transform.Find("PhysicsCollider");
         if (physicsChild != null) _physicsCollider = physicsChild.GetComponent<Collider>();
+        if (_rigidbody != null) _predictedTransform = _rigidbody.GetComponent<PredictedTransform>();
         _orbLayer = LayerMask.GetMask("XPOrb");
         _lastKnownMaxCharges = _stats != null ? _stats.dashCharges : 1;
     }
@@ -557,12 +586,37 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             // needs a matching Ended or a movement-window listener (DashThroughInterruptAugment's own sweep)
             // gets stuck open forever; this path used to only fire the reward pair, silently skipping the
             // movement pair since it doesn't route through EndDash().
+            //
+            // ResolveTeleportSafeLanding calls added 2026-09-19 — dying mid-dash/mid-leap is a THIRD way
+            // (alongside a natural end and an Interrupt()) this window can close, and since dashes/leaps can
+            // now phase through Obstacles, a death landing inside one would otherwise leave the corpse stuck
+            // there forever (this path deliberately bypasses EndDash()/EndSpecialMovement() themselves to
+            // preserve its own distinct, already-correct event-firing shape below, so the position fix has to
+            // be called directly here too rather than picked up for free). Called BEFORE the velocity zeroing
+            // right after, matching EndDash/EndSpecialMovement's own "resolve position first, everything else
+            // after" ordering — per explicit design, the position correction must land before any paired
+            // effect (e.g. a lethal hit's own Knockback(), which calls Interrupt() — and therefore this exact
+            // dash/special-movement end — before applying its own impulse) rather than after.
+            // linearDamping restored here too — this early-return skips the Movement section entirely (where
+            // that's normally reasserted every tick, see its own comment there for why it has to be per-tick
+            // rather than a one-shot StartDash/EndDash toggle), so this needs its own copy of the same
+            // state-driven reassertion. Still safe for the identical reason: driven by state.isDashing/
+            // isSpecialMoving (properly rolled-back predicted State), not "did some other method happen to
+            // run," and this block itself runs every tick the player is dead, not just once on the transition
+            // into death — so it self-corrects on any resimulation the same way the Movement section's own
+            // copy does.
+            if ((state.isDashing || state.isSpecialMoving) && _rigidbody != null)
+                _rigidbody.rb.linearDamping = normalLinearDamping;
+
             if (state.isDashing)
             {
+                ResolveTeleportSafeLanding(state.dashStartPosition, state.dashVelocity);
                 state.isDashing = false;
                 _onDashEnded.Invoke();
                 _onDashMovementEnded.Invoke();
             }
+            if (state.isSpecialMoving)
+                ResolveTeleportSafeLanding(state.specialMoveStartPosition, state.specialVelocity);
             state.isSpecialMoving = false;
             if (_rigidbody != null)
             {
@@ -647,32 +701,46 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             else _ability2.NotifyActivationBlocked();
         }
 
-        // Dash timer
+        // Dash timer — deferred-by-one-tick end (2026-09-21 fix, confirmed live via ResolveSafeTravelVelocity's
+        // own diagnostic logging): ending the INSTANT dashTimer first dropped to <= 0 meant EndDash() ran (and
+        // zeroed the rigidbody's velocity) in the SAME tick the Movement section below was about to apply
+        // THIS tick's own dashVelocity — since velocity is a plain value integrated once per tick using
+        // whatever it's set to by the end of Simulate(), EndDash's own zero-out was always the last write,
+        // silently dropping that entire tick's worth of movement. Every dash was landing short of its own
+        // intended distance by almost exactly one tick, invisible before only because the old post-hoc
+        // TeleportSafetyPD correction was generous enough to paper over it. Fix: let the tick where the timer
+        // FIRST goes non-positive still count as a full dashing tick (isDashing stays true, Movement below
+        // still applies dashVelocity normally) — only call EndDash() at the START of the NEXT tick, once the
+        // timer is ALREADY <= 0 from a previous tick's own decrement. Errs toward a small overshoot (at most
+        // one tick's worth of extra travel) rather than the old systematic shortfall — a much safer direction
+        // for TeleportSafetyPD's own step-size/margin tolerances to absorb.
         if (state.isDashing)
         {
-            state.dashTimer -= delta;
             if (state.dashTimer <= 0f)
                 EndDash(ref state);
+            else
+                state.dashTimer -= delta;
         }
 
-        // Special movement timer — same shape as the dash timer above.
+        // Special movement timer — same shape/same fix as the dash timer above.
         if (state.isSpecialMoving)
         {
-            state.specialMoveTimer -= delta;
             if (state.specialMoveTimer <= 0f)
                 EndSpecialMovement(ref state);
+            else
+                state.specialMoveTimer -= delta;
         }
 
         // Stun timer — see State.stunTimer/trueStunTimer's own doc comments. trueStunTimer nested inside,
         // same "always <= stunTimer" shape as EnemyBasePD's own tick-down. The Movement section below and
-        // lockedOut above just re-check state.stunTimer > 0f fresh every tick — the one falling-edge action
-        // needed is re-enabling _physicsCollider (see Knockback()'s own doc comment for why it's disabled in
-        // the first place), same immediate-revert-on-the-exiting-edge shape as EndDash/EndSpecialMovement.
+        // lockedOut above just re-check state.stunTimer > 0f fresh every tick — no falling-edge action needed
+        // here at all (2026-09-22): _physicsCollider is left enabled throughout a knockback slide now (see
+        // Knockback()'s own doc comment), and linearDamping's own per-tick reassertion in Movement already
+        // covers the falling edge for that.
         if (state.stunTimer > 0f)
         {
             state.stunTimer -= delta;
             if (state.trueStunTimer > 0f) state.trueStunTimer -= delta;
-            if (state.stunTimer <= 0f && _physicsCollider != null) _physicsCollider.enabled = true;
         }
 
         // Surge — blocked from STARTING while weapons are disabled (e.g. a special action) or while any
@@ -694,6 +762,20 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // move input — see SetForceMovement's own doc comment.
         else if (_forceMovement)
             moveDir = state.lastMoveDir;
+
+        // Reasserted every tick from State, same reasoning as the velocity writes right below (and the same
+        // lesson as DummyTargetPD's own per-tick kinematic-lock pattern) — 2026-09-21 fix, was a one-shot
+        // toggle in StartDash/EndDash/StartSpecialMovement/EndSpecialMovement (plus a separate copy in the
+        // death path below) instead. That was a genuine simulation-safety gap: linearDamping isn't part of
+        // PurrDiction's own tracked/rolled-back UnityRigidbodyState (confirmed by reading that struct — it
+        // only tracks linearVelocity/angularVelocity/isKinematic/isSleeping/useGravity), so a TRANSITION-based
+        // toggle can desync across a resimulation — a speculative StartDash() could zero it, but if the
+        // eventual corrected replay of that same tick never actually calls StartDash() (the dash input turned
+        // out to be mispredicted), nothing in the corrected timeline would ever call EndDash() to restore it
+        // either, leaving the real Rigidbody stuck at 0 permanently. Driving it from state.isDashing/
+        // isSpecialMoving directly here instead means every replay — speculative or corrected — always ends
+        // this exact tick with the right value, regardless of what any other, possibly-discarded pass did.
+        _rigidbody.rb.linearDamping = (state.isDashing || state.isSpecialMoving) ? 0f : normalLinearDamping;
 
         if (state.isDashing)
             _rigidbody.velocity = state.dashVelocity;
@@ -758,8 +840,14 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     {
         state.isDashing    = true;
         state.currentCharges--;
-        state.dashVelocity = state.lastMoveDir * DashSpeed;
         state.dashTimer    = DashDuration;
+        // See its own doc comment — captured here as the one guaranteed-clear position for EndDash()'s own
+        // TeleportSafetyPD fallback.
+        state.dashStartPosition = _rigidbody.position;
+        // Pre-adjusted (2026-09-20) so a natural, uninterrupted dash already lands on a safe spot instead of
+        // relying purely on EndDash()'s own post-hoc correction — see ResolveSafeTravelVelocity's own doc
+        // comment for the full reasoning.
+        state.dashVelocity = ResolveSafeTravelVelocity(state.dashStartPosition, state.lastMoveDir, DashSpeed, DashDuration);
 
         if (state.chargeRegenTimer <= 0f)
             state.chargeRegenTimer = _stats.DashCooldown;
@@ -769,6 +857,13 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // touching any other overlapping invincibility source.
         _stats.GrantCommittedInvincibility(state.dashTimer);
         if (_physicsCollider != null) _physicsCollider.enabled = false;
+        // linearDamping itself is handled every tick in the Movement section below, not here — see that
+        // block's own comment for why a one-shot toggle here would be simulation-unsafe. (Confirmed live why
+        // zeroing it matters at all: even though dashVelocity is force-reassigned to _rigidbody.velocity every
+        // single tick, Unity's own physics step applies linear drag damping as part of integrating THAT SAME
+        // tick, using whatever velocity was just set — so a non-zero drag, 9 on the player's own Rigidbody,
+        // silently ate a consistent ~15% off the real distance traveled every tick, regardless of how
+        // carefully ResolveSafeTravelVelocity computed the intended distance.)
         _rigidbody.velocity = Vector3.zero;
         _onDashStarted.Invoke();
         _onDashMovementStarted.Invoke();
@@ -780,10 +875,191 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // _onDashInterrupted INSTEAD (never both — see that event's own doc comment for why "reward on
     // completion" listeners need this distinction) and cancels the committed invincibility grant immediately
     // rather than leaving it to run out.
+    // Speed-up cap for ResolveSafeTravelVelocity below (2026-09-20) — a correction that would need to travel
+    // faster than this multiple of the caller's own base speed is discarded entirely in favor of "dash in
+    // place" (zero velocity) instead of actually applying it. Only caps SPEEDING UP: slowing down (an obstacle
+    // sat close to the start of the path) has no equivalent cap and never gets discarded — coming to a stop
+    // right at an obstacle's edge is exactly the intended behavior.
+    //
+    // Deliberately intended as THE multiplier for every dash-style movement going forward, not a per-ability
+    // tunable — this is a QOL BUFF, not a safety cap first and foremost: with a 1.0 multiplier, a dash either
+    // cleanly clears an obstacle or it doesn't, with nothing in between. At 1.25, a dash that was aimed just
+    // slightly short of actually clearing an obstacle gets a "grace distance" boost to travel a bit farther
+    // than its own normal speed would allow, so a near-miss still carries the player all the way through
+    // instead of leaving them short. It's deliberately "cheating" the player's own dash distance upward within
+    // a small margin specifically to make dashing over/through obstacles feel more forgiving — the fallback to
+    // "dash in place" only exists for the case where even that boosted distance still isn't enough (a
+    // sufficiently deep/wide obstacle), not as the main point of this value. Private, not [SerializeField]
+    // (2026-09-21) — see normalLinearDamping's own comment for why these particular fields are entirely
+    // script-controlled rather than Inspector-editable.
+    private const float maxDashSpeedUpMultiplier = 1.25f;
+
+    // Recomputes a dash-style movement's own velocity so, if uninterrupted, it lands exactly on a safe
+    // (non-obstructed, per TeleportSafetyPD) spot by the time its own duration runs out — shared by StartDash()
+    // and StartSpecialMovement() (2026-09-20), the same START-side pairing ResolveTeleportSafeLanding below
+    // already is for the END of these same two movement kinds. Rather than always moving at a flat speed and
+    // relying on the END-of-window correction (EndDash/EndSpecialMovement's own ResolveTeleportSafeLanding
+    // call, left completely UNCHANGED — still the backstop for an INTERRUPTED window or a mid-window death,
+    // either of which can land at an arbitrary point along the path this pre-check never sees) to visibly snap
+    // the player out of an obstacle at the very last moment, this computes the movement's own NATURAL
+    // (uncorrected) endpoint up front and searches for a corrected one.
+    //
+    // Searches the FORWARD (clear-the-obstacle) and BACKWARD (stop-short) directions SEPARATELY via
+    // TeleportSafetyPD.FindSafeTeleportPositionOneDirection (2026-09-21 fix — was one bidirectional
+    // FindSafeTeleportPosition call, "whichever direction finds a clear spot first wins") and explicitly
+    // prefers forward when it's within the speed-up grace cap, falling back to backward otherwise. The
+    // bidirectional version was picking the far side almost every time the obstacle sat well inside the
+    // movement's own full range: the natural endpoint lands past the WHOLE obstacle in that case, so
+    // "keep going" only needs a tiny step while "back up" has to cross the obstacle's entire width first —
+    // forward reliably won that race, got rejected by the speed cap, and fell back to "dash in place" far
+    // more often than intended, discarding a perfectly good near-side stop that was never actually
+    // considered. Searching each direction independently and choosing deliberately (not by which one
+    // happens to resolve first) fixes that — see maxDashSpeedUpMultiplier's own doc comment for why forward
+    // is still preferred when it's actually reachable within the grace margin.
+    //
+    // The forward search's own maxDistance is bounded tightly to the grace margin itself
+    // (naturalDistance * (multiplier - 1)) rather than some larger cap — anything beyond that distance would
+    // only get rejected by the speed check anyway, so there's no reason to search (or accept) further out.
+    // The backward search's maxDistance is bounded to the movement's own natural travel distance (plus one
+    // step's worth of margin), same reasoning as before: it walks straight back toward startPosition, which
+    // is ALWAYS already clear (the player was already standing there), so that bound is mathematically
+    // guaranteed to reach a clear spot before running out of room — genuine total failure (the
+    // !nearEndpoint.HasValue branch below) should be unreachable in ordinary play.
+    //
+    // Total failure on BOTH searches falls back to "dash in place" (Vector3.zero) — deliberately NOT the
+    // original uncorrected speed: falling back to full speed would just recreate the exact obstacle-landing
+    // problem this whole system exists to avoid.
+    //
+    // Deliberately does NOT constrain this to the playable area's own boundary (unlike BWBlink's own
+    // isValidPosition) — real physical Rigidbody motion is still genuinely blocked by the solid Bounds wall
+    // collider itself (neither a dash nor a special-movement window was ever made to phase through Bounds,
+    // only decorative Obstacles), so no precomputed velocity here could ever actually carry the player past it
+    // regardless; this only ever needs to resolve around Obstacles.
+    private Vector3 ResolveSafeTravelVelocity(Vector3 startPosition, Vector3 direction, float speed, float duration)
+    {
+        if (duration <= 0f) return direction * speed;
+
+        float naturalDistance = speed * duration;
+        Vector3 naturalEndpoint = startPosition + direction * naturalDistance;
+        Vector2 direction2D = new Vector2(direction.x, direction.z);
+        Vector2 backwardDirection2D = -direction2D;
+        float physicsRadius = PhysicsColliderRadius;
+        float stepSize = physicsRadius * 0.5f;
+        // physicsRadius + stepSize, NOT the -0.05f convention ResolveTeleportSafeLanding's own post-hoc
+        // correction still uses (unchanged there) — that -0.05 deliberately makes the query MORE permissive
+        // than the player's true size, accepting a spot before the player's real collider has actually
+        // cleared the wall by a hair, relying on Unity's own physics to gently resolve the last sliver of
+        // overlap. That's invisible for a stationary post-hoc correction, but confirmed live here to produce
+        // a visible "bump" outward on the clear-the-obstacle path specifically — the player is still carrying
+        // dash momentum FORWARD into that residual overlap when it resolves, instead of resting into it from
+        // a stop. A flat +0.05f margin (tried first) wasn't generous enough to reliably absorb it either —
+        // this path is inherently the TIGHTEST case (the accepted point is, by construction, the very first
+        // sample that just barely clears, unlike the near-side stop-short path, which never gets anywhere
+        // near this tight and has never shown the bump), so it needs real headroom, not a token buffer. Tied
+        // to stepSize itself (a full extra half-radius) rather than another flat guess, so the margin scales
+        // sensibly with the player's own size instead of needing its own separate tuning.
+        float checkRadius = physicsRadius + stepSize;
+        int obstacleMask = LayerMask.GetMask("Bounds", "Obstacle");
+
+        // Try clearing the obstacle first — bounded to exactly the grace margin, so anything this finds is
+        // automatically within the speed cap already (no separate check needed).
+        float graceDistance = Mathf.Max(0f, naturalDistance * (maxDashSpeedUpMultiplier - 1f));
+        if (graceDistance > 0f)
+        {
+            Vector3? clearedEndpoint = TeleportSafetyPD.FindSafeTeleportPositionOneDirection(
+                naturalEndpoint,
+                direction2D,
+                stepSize,
+                checkRadius,
+                obstacleMask,
+                maxDistance: graceDistance);
+
+            if (clearedEndpoint.HasValue)
+            {
+                float clearedDistance = Vector3.Distance(startPosition, clearedEndpoint.Value);
+                return direction * (clearedDistance / duration);
+            }
+        }
+
+        // Couldn't clear it within the grace margin — get as close as possible instead.
+        Vector3? nearEndpoint = TeleportSafetyPD.FindSafeTeleportPositionOneDirection(
+            naturalEndpoint,
+            backwardDirection2D,
+            stepSize,
+            checkRadius,
+            obstacleMask,
+            maxDistance: naturalDistance + stepSize);
+
+        if (!nearEndpoint.HasValue) return Vector3.zero;
+
+        float nearDistance = Vector3.Distance(startPosition, nearEndpoint.Value);
+        return direction * (nearDistance / duration);
+    }
+
+    // Shared by EndDash() and EndSpecialMovement() (2026-09-19) — any dash-STYLE movement window (a real
+    // dash, RogueSpinAbilityPD's leap, and any future ability built on StartSpecialMovement) ends up needing
+    // the exact same "did this window's own end point land inside something it phased through, and if so
+    // where's the nearest safe spot" resolution, so it lives here once rather than being copy-pasted per
+    // caller. See TeleportSafetyPD's own doc comment for the full algorithm.
+    //
+    // startPosition is the one position in the whole window guaranteed clear of obstacles (the player was
+    // already standing there before the window began — StartDash()/StartSpecialMovement() each capture their
+    // own), used both as FindOutwardDirection's known-clear raycast anchor AND as FindSafeTeleportPosition's
+    // total-failure fallback (same "always have a known-safe fallback" shape BWBlinkAbilityPD's own
+    // pre-teleport-position fallback uses).
+    //
+    // fallbackTravelVelocity (dashVelocity/specialVelocity, already XZ-plane-only in practice) is used ONLY
+    // if FindOutwardDirection itself finds nothing to raycast against (e.g. the end position turned out not
+    // to actually be blocked) — the normal case instead resolves the wall's own true outward surface normal,
+    // not the raw travel direction, since backing straight along the original travel vector doesn't
+    // correspond to moving away from the wall's own actual surface once it's hit at an angle (confirmed live:
+    // using the travel direction directly used to "spit the player out" at a diagonal).
+    //
+    // FindSafeTeleportPositionMultiDirectional, not the plain two-direction FindSafeTeleportPosition
+    // (2026-09-21) — same reasoning as BWBlinkAbilityPD's own identical swap: an interrupted/dead dash is
+    // resolving a single STATIC embedded position, same as a teleport, not a moving-through-space search
+    // along one fixed axis, so it can benefit from the same 8-direction sideways consideration (e.g. an
+    // interrupt landing well past the midpoint of a long, narrow obstacle). The wall's own true outward
+    // normal (searchDirection2D above) is still passed in as the "forward" reference, so it still wins ties
+    // exactly as before — this only adds the sideways options that direction-only search never had.
+    //
+    // ResetInterpolation() only fires when a correction actually happened, so the overwhelmingly common
+    // uneventful case pays zero extra cost here beyond the queries this always makes regardless.
+    private void ResolveTeleportSafeLanding(Vector3 startPosition, Vector3 fallbackTravelVelocity)
+    {
+        Vector3 currentPosition = _rigidbody.position;
+        int obstacleMask = LayerMask.GetMask("Bounds", "Obstacle");
+        Vector2 searchDirection2D = TeleportSafetyPD.FindOutwardDirection(startPosition, currentPosition, obstacleMask)
+            ?? new Vector2(fallbackTravelVelocity.x, fallbackTravelVelocity.z);
+        float physicsRadius = PhysicsColliderRadius;
+        float stepSize = physicsRadius * 0.5f;
+        // physicsRadius + stepSize, NOT the old -0.05f (2026-09-21 fix, same margin fix as
+        // ResolveSafeTravelVelocity/BWBlinkAbilityPD — see ResolveSafeTravelVelocity's own doc comment for
+        // the full derivation of why a MORE permissive margin causes a visible "boop" and why a
+        // step-size-proportional buffer is the fix, not another flat guess).
+        Vector3 safePosition = TeleportSafetyPD.FindSafeTeleportPositionMultiDirectional(
+            currentPosition,
+            searchDirection2D,
+            stepSize,
+            physicsRadius + stepSize,
+            obstacleMask) ?? startPosition;
+        if (safePosition != currentPosition)
+        {
+            _rigidbody.position = safePosition;
+            if (_stats != null) _stats.transform.position = safePosition;
+            _predictedTransform?.ResetInterpolation();
+        }
+    }
+
     private void EndDash(ref State state, bool interrupted = false)
     {
         state.isDashing = false;
         if (_physicsCollider != null) _physicsCollider.enabled = true;
+        // linearDamping restoration handled every tick in the Movement section, not here — see that block's
+        // own comment.
+
+        ResolveTeleportSafeLanding(state.dashStartPosition, state.dashVelocity);
+
         _rigidbody.velocity = Vector3.zero;
         if (interrupted)
         {
@@ -818,10 +1094,16 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (_stats == null || _rigidbody == null) return;
 
         currentState.isSpecialMoving = true;
-        currentState.specialVelocity = direction * speed;
+        // See its own doc comment — captured here as ResolveTeleportSafeLanding's known-clear anchor/fallback,
+        // and now also as ResolveSafeTravelVelocity's own start position.
+        currentState.specialMoveStartPosition = _rigidbody.position;
+        // Pre-adjusted (2026-09-20) so a natural, uninterrupted window already lands on a safe spot — see
+        // ResolveSafeTravelVelocity's own doc comment.
+        currentState.specialVelocity = ResolveSafeTravelVelocity(currentState.specialMoveStartPosition, direction, speed, duration);
         currentState.specialMoveTimer = duration;
 
         if (_physicsCollider != null) _physicsCollider.enabled = false;
+        // linearDamping handled every tick in the Movement section — see StartDash's own comment.
         _rigidbody.velocity = Vector3.zero;
     }
 
@@ -829,6 +1111,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     {
         state.isSpecialMoving = false;
         if (_physicsCollider != null) _physicsCollider.enabled = true;
+        // linearDamping restoration handled every tick in the Movement section — see EndDash's own comment.
+
+        ResolveTeleportSafeLanding(state.specialMoveStartPosition, state.specialVelocity);
+
         _rigidbody.velocity = Vector3.zero;
     }
 
@@ -982,19 +1268,18 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // Derives an approximate stun duration from the impulse's magnitude via the same
     // ln(magnitude/threshold)/drag formula as the enemy side and applies it as a knockback (non-true) stun.
     //
-    // Also disables _physicsCollider for the duration — same push-collider-off convention as
-    // StartDash/StartSpecialMovement (re-enabled on the stun's own falling edge, see Simulate()'s own stun
-    // tick-down block), NOT the separate bounds collider that keeps players in the level, which is untouched
-    // and stays active throughout so a knocked-back player still can't get shoved out of bounds. Without
-    // this, the push collider could snag on terrain/other players mid-slide (cutting the knockback short
-    // unpredictably) or shove other players/enemies around involuntarily while sliding through them.
+    // Deliberately leaves _physicsCollider enabled throughout (2026-09-22, was disabled for the duration same
+    // as StartDash/StartSpecialMovement) — a knockback should never shove a player through real Obstacle/
+    // Bounds geometry the way a dash's own predicted-safe-landing math is now allowed to (see
+    // ResolveSafeTravelVelocity's own doc comment); colliding with solid geometry mid-slide and stopping there
+    // is the intended behavior, same as any other physical object being launched. linearDamping is left
+    // untouched (still normalLinearDamping throughout, unlike dashing/special-moving) — the stunDuration
+    // formula right below is already derived from that real decay rate, so this was correct as-is.
     public void Knockback(Vector3 impulse)
     {
         if (_rigidbody == null || _stats == null || _stats.IsDead) return;
 
         Interrupt();
-
-        if (_physicsCollider != null) _physicsCollider.enabled = false;
 
         // Guarded by !isKinematic — no player script sets this rigidbody kinematic today, but
         // PredictedRigidbody's velocity setter throws ("not supported") if ever attempted on a kinematic
@@ -1006,7 +1291,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
 
         float speed = impulse.magnitude;
         float stunDuration = speed > knockbackStunThreshold
-            ? Mathf.Log(speed / knockbackStunThreshold) / knockbackStunDrag
+            ? Mathf.Log(speed / knockbackStunThreshold) / normalLinearDamping
             : 0f;
         ApplyStun(stunDuration);
     }

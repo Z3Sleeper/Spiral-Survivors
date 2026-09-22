@@ -26,24 +26,14 @@ public class ReviveZonePD : PredictedIdentity<ReviveZonePD.State>
     {
         _stats = GetComponentInParent<CharacterStatsPD>();
 
-        // Scale itself is no longer set here — reviveArea/reviveProgressArea are parented under Visuals,
-        // which scales normally with the character's own Size stat, so a one-time Awake() value would go
-        // stale the instant a Size augment is picked afterward. Both now recompute live every UpdateView()
-        // tick instead (see its own comment) — this just handles the one-time initial hide.
+        // Scale itself is no longer set here — reviveArea/reviveProgressArea are parented under a dedicated
+        // anchor object registered in CharacterStatsPD.unscaledSizeChildren (2026-09-19), which keeps that
+        // anchor's own WORLD scale pinned to its originally-authored value regardless of the character's
+        // current Size — so these two children's own local scale already IS true world units directly, no
+        // live per-frame counter-scaling needed here at all (see UpdateView()'s own comment for the formula
+        // this replaced). This just handles the one-time initial hide.
         if (reviveArea != null) reviveArea.SetActive(false);
         if (reviveProgressArea != null) reviveProgressArea.SetActive(false);
-    }
-
-    // reviveRadius is a fixed WORLD-unit gameplay value (see Simulate()'s own distance check) — dividing by
-    // the object's live parent lossyScale.x cancels out whatever the character's current Size scaling has
-    // accumulated up to that point, so the ring's actual world-space size always matches the real revive
-    // radius exactly, same "divide out the live parent scale" technique PlayerRangeIndicatorPD already uses
-    // for its own range ring and for the identical reason (Size augments shouldn't balloon/shrink something
-    // that represents a fixed gameplay radius).
-    private static float GetParentScale(GameObject go)
-    {
-        float scale = go.transform.parent != null ? go.transform.parent.lossyScale.x : 1f;
-        return scale > 0f ? scale : 1f;
     }
 
     // ── Simulation ─────────────────────────────────────────────────────────
@@ -92,12 +82,15 @@ public class ReviveZonePD : PredictedIdentity<ReviveZonePD.State>
             _wasDeadLastFrame = isDead;
         }
 
-        // Recomputed every tick (not just on the isDead transition above) so a Size change mid-run — or
-        // even mid-revive — never leaves either ring showing a stale radius. See GetParentScale's own
-        // comment for why the division is needed at all.
+        // No parent-scale division needed anymore (2026-09-19) — reviveArea/reviveProgressArea now sit under
+        // an anchor object whose own world scale CharacterStatsPD.unscaledSizeChildren already keeps pinned
+        // to its authored value regardless of the character's current Size, so reviveRadius (a fixed
+        // WORLD-unit gameplay value — see Simulate()'s own distance check) converts directly to a local
+        // scale with no extra correction. Still recomputed every tick (not just the isDead transition above)
+        // so a Size change mid-run never leaves either ring showing a stale radius.
         if (reviveArea != null)
         {
-            float diameterScale = (reviveRadius / CylinderBaseRadius) / GetParentScale(reviveArea);
+            float diameterScale = reviveRadius / CylinderBaseRadius;
             var s = reviveArea.transform.localScale;
             reviveArea.transform.localScale = new Vector3(diameterScale, s.y, diameterScale);
         }
@@ -105,7 +98,7 @@ public class ReviveZonePD : PredictedIdentity<ReviveZonePD.State>
         if (reviveProgressArea != null && _stats.CurrentReviveTime > 0f)
         {
             float t = Mathf.Clamp01(viewState.chargeTimer / _stats.CurrentReviveTime);
-            float diameterScale = (reviveRadius / CylinderBaseRadius) * t / GetParentScale(reviveProgressArea);
+            float diameterScale = (reviveRadius / CylinderBaseRadius) * t;
             var s = reviveProgressArea.transform.localScale;
             reviveProgressArea.transform.localScale = new Vector3(diameterScale, s.y, diameterScale);
         }

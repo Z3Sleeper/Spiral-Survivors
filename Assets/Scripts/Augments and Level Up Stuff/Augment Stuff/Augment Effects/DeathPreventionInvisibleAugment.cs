@@ -15,7 +15,10 @@ using UnityEngine;
 //
 // Also activates CharacterStatsPD's Death Prevention mechanic (Stats.ActivateDeathPreventions() — see its
 // own doc comment for the "already active elsewhere, shrink the grant timer instead" stacking rule). On a
-// save landing (_onDeathPrevented), grants invisibility + a flat 5 Move Speed for 3 seconds.
+// save landing (_onDeathPrevented), grants invisibility + a Bonus-tier PERCENT Move Speed buff
+// (AddMoveSpeedPercent, 2026-09-19 — was AddMoveSpeedFlat, converted project-wide alongside every other
+// flat-Move-Speed augment now that Move Speed no longer comes off Stat augments, per explicit design) for 3
+// seconds.
 //
 // The buff timer is armed directly inside the PredictedEvent listener (OnDeathPrevented) — safe, since
 // PredictedEvent guarantees a listener fires exactly once per real occurrence regardless of resimulation,
@@ -47,7 +50,10 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
     // above) — ExtraAttackSpeedWhileInvisible derives the actual incremental grant from the difference
     // between this and baseAttackSpeedFlat, so retuning either field independently keeps composing correctly.
     [SerializeField] private float attackSpeedFlatWhileInvisible = 0.6f;
-    [SerializeField] private float onSaveMoveSpeedFlat                   = 5f;
+    // Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection can resolve
+    // {onSaveMoveSpeedPercent} directly as a description token; only public fields/properties/methods are
+    // checked. Still Inspector-serializable either way.
+    public float onSaveMoveSpeedPercent = 0.30f;
     [SerializeField] private float onSaveDuration                       = 3f;
 
     // The actual amount granted/reverted by OnInvisibleChanged — see attackSpeedFlatWhileInvisible's own doc
@@ -117,13 +123,13 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
             // GrantInvisibility fires _onInvisibleChanged itself (rising edge) — OnInvisibleChanged above
             // reacts to it, so the Attack Speed passive composes automatically with no extra call here.
             Stats.GrantInvisibility(onSaveDuration);
-            Stats.AddMoveSpeedFlat(onSaveMoveSpeedFlat);
+            Stats.AddMoveSpeedPercent(onSaveMoveSpeedPercent);
         }
         else
         {
             // Only reverts the Move Speed half — invisibility itself is left to the shared timer (see class
             // doc comment), not explicitly turned off here.
-            Stats.AddMoveSpeedFlat(-onSaveMoveSpeedFlat);
+            Stats.AddMoveSpeedPercent(-onSaveMoveSpeedPercent);
         }
     }
 }

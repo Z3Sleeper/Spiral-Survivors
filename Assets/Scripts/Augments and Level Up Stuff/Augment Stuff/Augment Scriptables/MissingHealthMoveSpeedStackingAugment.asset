@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: MissingHealthMoveSpeedStackingAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFFFF>Crunch Time</color>
-  description: Gain <color=#FFFFFF>+{moveSpeedPerStack} <color=#9664FF>Stacking</color>
+  description: Gain <color=#FFFFFF>+{perStackMoveSpeedPercent} <color=#9664FF>Stacking</color>
     Move Speed</color> for every <color=#00FF00>{perStackMissingHealthPercent}% Missing
     Health</color> <color=#9664FF>(Max {maxStacks} Stacks)</color>.
   icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}

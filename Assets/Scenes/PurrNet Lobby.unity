@@ -2195,7 +2195,7 @@ MonoBehaviour:
     while <color=#00FFFF>Dashing</color>.\nWith good timing you can even pass right
     through enemy attacks, triggering a <color=#FFFFFF>Dodge</color>!
   - Your <color=#FF00FF>Shield</color> is a percent of your <color=#00FF00>Max Health</color>.\nRaise
-    your <color=#00FF00>Health</color> to increase your <color=#FFA000>Shield</color>!
+    your <color=#00FF00>Health</color> to increase your <color=#FF00FF>Shield</color>!
   - Hold <color=#FFA000>Right Click</color> to <color=#FFFF00>Surge</color> to dispatch
     threats quickly!\n<color=#FFFF00>Surging</color> doubles your <color=#FF0050>Attack
     Speed</color> but halves your <color=#FFFFFF>Move Speed</color>.
@@ -13870,14 +13870,14 @@ MonoBehaviour:
       keys:
       - SpiralSurvivors
       values:
-      - v0.6
+      - v0.6.1
       stringKeys: []
       stringValues: []
   searchRoomArgs:
     keys:
     - SpiralSurvivors
     values:
-    - v0.6
+    - v0.6.1
     stringKeys: []
     stringValues: []
   OnRoomJoined:
@@ -20320,7 +20320,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Version 0.6
+  m_text: Version 0.6.1
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}

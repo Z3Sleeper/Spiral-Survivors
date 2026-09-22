@@ -187,7 +187,7 @@ public interface IEnemyPD
     // tail" shape. Callers should go through CharacterStatsPD.NotifyInterrupted rather than calling this
     // directly — that's the one place this actually gets invoked from.
     void InterruptTrueStun(float additionalResistibleDuration = 0f);
-    // Hard on/off switch for this enemy's own normal approach/backpedal movement (HandleMovement) —
+    // Hard on/off switch for this enemy's own normal approach movement (HandleMovement) —
     // deliberately generic/public so ANOTHER entity (at least another enemy; nothing restricts it to that)
     // can freeze/unfreeze a DIFFERENT enemy's movement from the outside, e.g. one enemy anchoring/rooting
     // another as part of its own attack. Does NOT touch isStunnable, the rigidbody's kinematic state, attack
@@ -346,6 +346,19 @@ public interface IEnemyPD
     // while not currently orbiting (nothing reads orbitAngularSpeedDegPerSec unless orbitPhase == Orbiting).
     void SetOrbitAngularSpeed(float angularSpeedDegPerSec);
 
+    // Owner-driven, recomputed every tick from the OWNER's own live stun state (see OrbiterGloomPD/
+    // KingOrbiterPD's own RefreshHeldDamageOverrides for the call site — `IsTrueStunned && isStunnable` on
+    // the OWNER, meaning it's genuinely frozen by a true stun right now, not just carrying an unexpired timer
+    // through a committed phase it can't be frozen during). While true: this held enemy's own LateSimulate()
+    // skips the whole orbit-position recompute (sits still at wherever it already was), OnContactTrigger
+    // blocks its contact damage, and UpdateView shows the yellow stun tint — three effects off one flag.
+    // Never a one-shot transition (same reasoning as [[feedback_untracked_rigidbody_property_needs_per_tick_reassertion]]
+    // even though this isn't a Rigidbody property — a predicted State bool still needs to self-correct every
+    // tick rather than rely on a paired start/end call, so it can never desync or get stuck set if the owner's
+    // own stun ends on a resimulated tick that took a different path) — reasserted unconditionally every tick
+    // the pleb is held, true or false, not just toggled on stun-start/stun-end.
+    void SetOrbitFrozen(bool frozen);
+
     // Independent, fixed-direction/fixed-distance straight-line launch — e.g. a boss "shooting" a held enemy
     // at a target. Deliberately NOT built on the shared isDashing/HandleDash dash primitives (several pleb
     // subclasses use that same isDashing/dashJustEnded plumbing for their own attack-chain bookkeeping — an
@@ -479,6 +492,13 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // See IEnemyPD.OrbitTarget's own doc comment for the full pull->orbit mechanism this drives.
     public int   orbitPhase; // EnemyOrbitPhase
     public PredictedObjectID orbitOwnerId;
+    // See IEnemyPD.SetOrbitFrozen's own doc comment — recomputed fresh every tick by the OWNER's own
+    // RefreshHeldDamageOverrides (never a one-shot transition), true only while the owner is genuinely
+    // frozen by a true stun mid-Orbit. Read by this enemy's own LateSimulate() (skips the whole position
+    // recompute), OnContactTrigger (blocks contact damage), and UpdateView (drives the yellow stun tint) —
+    // three independent effects off one shared flag, same "recompute fully every tick, no edge-detection
+    // state to track" shape RefreshHeldDamageOverrides itself already uses for damageOverride.
+    public bool orbitFrozen;
     // Changes every tick while Orbiting — CompressedFloat for the same reason SpikeShieldPD.facingAngle/
     // CharacterStatsPD.weaponOrbitAngle already use it (a plain float here would pay PurrNet's full
     // "changed" cost every single tick instead of a quantized/compressed one).
@@ -668,20 +688,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // already uses just below: it's slow-interaction infrastructure (see EffectiveAttackSpeed's own doc
     // comment), not something meant to be hand-tuned per enemy in the Inspector.
     [HideInInspector] public float attackSpeed = 1f;
-    public float backpedalSpeedDivisor = 2.5f;
     public float maxHealth = 75f;
     [NonSerialized] public float baseHealth;
     public float preferredRange = 0f;
     public float rangeToleranceFar = 0.3f;
     public float rangeToleranceClose = 0.3f;
-    // Disables ONLY the "too close, back away" half of preferredRange's approach/retreat behavior — see
-    // HandleMovement's own doc comment (2026-08-28) for both this field's specific purpose and why it exists
-    // at all: a ranged enemy that never backpedals can never walk itself out of the arena chasing distance
-    // from the player, which was the actual root cause behind the bounds-restriction/strafe system this
-    // replaces. "Too far, approach" is completely untouched — this enemy still closes distance normally, it
-    // just never retreats once close, holding position instead. False by default — every existing enemy
-    // that wants to hold range keeps backpedaling exactly as before; opt in per-prefab (King Orbiter first).
-    public bool backpedalDisabled = false;
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
@@ -939,7 +950,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public bool IsCrowdControlled => IsTrueStunned;
     // moveSpeed scaled down by whatever slow is currently active (1f = no active slow) — the only thing
     // HandleMovement's own AddForce calls should read instead of the raw moveSpeed field, so a slow actually
-    // affects ordinary chase/backpedal movement. Dash-style burst movement (BlitzGloomPD/DaggerGloomPD/
+    // affects ordinary chase movement. Dash-style burst movement (BlitzGloomPD/DaggerGloomPD/
     // MortarGloomPD/ShooterGloomPD/SpearGloomPD's own dashSpeedMultiplier, KingSpikePD's ChargeSpeed) now
     // reads THIS too (2026-08-13 — used to bypass it entirely, reading baseMoveSpeed directly), baked in
     // once at dash start rather than live like HandleMovement's own per-tick read — see
@@ -1346,6 +1357,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (IsStunned) return;
         ref var b = ref B;
         if (b.isDead) return;
+        // Held-orbit freeze (see IEnemyPD.SetOrbitFrozen's own doc comment) — separate from IsStunned above,
+        // since this enemy's OWN stunTimer is untouched here; it's a derived freeze off the OWNER's stun.
+        if (b.orbitFrozen) return;
 
         // IFriendlyPD (2026-08-30, was CharacterStatsPD + the !stats.owner.HasValue guard) — targets any
         // registered friendly, not just a connected player. The old guard is dropped entirely rather than
@@ -1457,6 +1471,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             b.damageOverridden         = false;
             b.damageOverride           = 0f;
             b.orbitPhase               = (int)EnemyOrbitPhase.None;
+            b.orbitFrozen              = false;
 
             // Defensive — in case a previous life died mid-kill-launch (still kinematic, physics collider
             // still disabled) and got pooled before that ever got a chance to clean itself up.
@@ -1723,9 +1738,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             // proactively StopOrbiting() every enemy it's holding the instant it goes away. This just guards
             // against some future teardown path that skips that call, so a held enemy never gets stuck
             // orbiting a GameObject that no longer resolves.
-            b.orbitPhase = (int)EnemyOrbitPhase.None;
+            b.orbitPhase  = (int)EnemyOrbitPhase.None;
+            b.orbitFrozen = false;
             return;
         }
+
+        // See IEnemyPD.SetOrbitFrozen's own doc comment — the owner's own RefreshHeldDamageOverrides sets
+        // this fresh every tick, so skipping the whole recompute-and-move below here is enough on its own;
+        // nothing else needs to know this enemy is currently owner-stun-frozen.
+        if (b.orbitFrozen) return;
 
         // Orbiting at angularSpeedDegPerSec == 0 (2026-08-22 fix) skips this whole recompute-and-move —
         // nothing legitimately updates once the angle stops advancing (only Orbiting itself ever advances
@@ -1966,7 +1987,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // is already claiming the color this frame, checked AFTER the flash-timer block above so a flash
         // that just expired this same tick is already reflected in _isFlashing. Continuously repainted every
         // frame it's active (not edge-triggered), same self-correcting reasoning as the dead-red paint above.
-        bool wantStunTint = !viewB.isDead && !_isFlashing && viewB.trueStunTimer > 0f;
+        // orbitFrozen (2026-09-21) also paints this tint — a held pleb visually reads as "stunned" while its
+        // OWNER's own stun is what's actually freezing it (see IEnemyPD.SetOrbitFrozen's own doc comment);
+        // this enemy's own trueStunTimer is untouched by that, so it needs the explicit OR here.
+        bool wantStunTint = !viewB.isDead && !_isFlashing && (viewB.trueStunTimer > 0f || viewB.orbitFrozen);
         if (wantStunTint)
         {
             if (_renderers != null)
@@ -2201,8 +2225,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (_target == null) return;
 
         ref var b = ref GetBase(ref state);
-        // See IEnemyPD.SetMovementDisabled's own doc comment — a hard gate on the normal approach/backpedal
-        // movement this method drives (both the facing-rotation and the AddForce calls below), set by
+        // See IEnemyPD.SetMovementDisabled's own doc comment — a hard gate on the normal approach movement
+        // this method drives (both the facing-rotation and the AddForce calls below), set by
         // another entity (typically a different enemy) rather than this enemy's own state machine. Attack
         // sequences already go kinematic/collider-disabled through their own separate mechanisms during a
         // windup/dash/etc., so this is specifically for "keep this enemy otherwise fully alive and attacking
@@ -2230,17 +2254,23 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // the boundary at all (confirmed live — an enemy could slide tangentially along a wall corner-to-
         // corner while staying outside the whole time, since neither the tangential term nor the target-
         // relative radial term were ever guaranteed to reduce distance from the wall). Rather than keep
-        // hardening a system fighting arbitrary arena geometry, the call was to drop it project-wide and
-        // instead design any enemy/boss that could realistically wander far out of bounds (ranged bosses with
-        // an enrage timer especially — King Orbiter today, any future one) so the scenario structurally can't
-        // arise (a tighter preferredRange, a pull-toward-center bias, or no backpedal/kiting at all) — see
+        // hardening a system fighting arbitrary arena geometry, the call was to drop it project-wide — see
         // PlayableAreaPD.TryGetInwardSteering, the general-purpose steering primitive this used to lean on.
         // That method was itself removed entirely 2026-09-17 (confirmed dead, zero remaining callers,
         // alongside the whole innerObstructions system it was built to service — see PlayableAreaPD's own
-        // class doc comment). approachDir/retreatDir are just the plain toward/away-from-target directions
-        // now, same as every enemy used before this system ever existed.
+        // class doc comment).
+        //
+        // Backpedal removed project-wide (2026-09-22) — the SAME root cause this bounds-restriction system
+        // above was fighting (an enemy backing directly away from its target, with no awareness of what's
+        // behind it, could walk itself out of bounds or into an obstacle) applied just as much to the
+        // preferredRange "too close, back away" retreat force as it did to the old strafe system, just for
+        // ranged/kiting enemies specifically rather than every enemy. Rather than reintroduce some bespoke
+        // safety check just for retreating, the retreat force is gone entirely: an enemy that's too close to
+        // its preferred range now simply stands still (still fully facing/tracking the target, still able to
+        // attack) instead of backing away. "Too far, approach" is completely untouched. backpedalDisabled/
+        // backpedalSpeedDivisor are removed too — standing still is now the only "too close" behavior, so
+        // there's nothing left to opt in or out of per-prefab.
         Vector3 approachDir = dir;
-        Vector3 retreatDir  = -dir;
 
         if (preferredRange > 0)
         {
@@ -2254,18 +2284,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 else if (distToTarget < preferredRange - rangeToleranceClose)
                 {
                     b.atPreferredRange = false;
-                    // backpedalDisabled (2026-08-28) — suppresses ONLY this "too close, back away" force,
-                    // never the "too far, approach" branch above. See that field's own doc comment.
-                    if (!backpedalDisabled)
-                        _rigidbody.AddForce(retreatDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
                 }
             }
             else
             {
                 if (distToTarget > preferredRange)
                     _rigidbody.AddForce(approachDir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
-                else if (distToTarget < preferredRange && !backpedalDisabled)
-                    _rigidbody.AddForce(retreatDir * (EffectiveMoveSpeed / backpedalSpeedDivisor * delta * 5f), ForceMode.VelocityChange);
 
                 if (Mathf.Abs(distToTarget - preferredRange) <= 0.1f)
                     b.atPreferredRange = true;
@@ -3202,10 +3226,14 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     {
         B.orbitPhase   = (int)EnemyOrbitPhase.None;
         B.orbitOwnerId = default;
+        B.orbitFrozen  = false;
     }
 
     // See IEnemyPD.SetOrbitAngularSpeed's own doc comment.
     public void SetOrbitAngularSpeed(float angularSpeedDegPerSec) => B.orbitAngularSpeedDegPerSec = angularSpeedDegPerSec;
+
+    // See IEnemyPD.SetOrbitFrozen's own doc comment.
+    public void SetOrbitFrozen(bool frozen) => B.orbitFrozen = frozen;
 
     // See IEnemyPD.LaunchAlong's own doc comment for the full contract; LateSimulate() does the actual
     // per-tick movement (checked ahead of the orbit-phase branch there).

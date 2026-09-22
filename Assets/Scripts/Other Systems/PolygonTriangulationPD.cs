@@ -69,6 +69,23 @@ public static class PolygonTriangulationPD
         return triangles;
     }
 
+    // Shared winding-normalization helper (2026-09-20, extracted out of PlayableAreaBoundsPD once
+    // PolygonMeshExtrusionPD.BuildPrismMesh also needed a GUARANTEED winding to compute each side wall's own
+    // outward direction correctly — see that method's own doc comment for the ring/annulus bug this fixed.
+    // Same shoelace-sign convention EarClipTriangulate's own internal normalization above and
+    // PlayableAreaPD.ComputeInsetPerimeter already use. Reverses `points` in place if its current winding
+    // doesn't match wantCCW.
+    public static void EnsureWinding(Vector2[] points, bool wantCCW)
+    {
+        float signedArea = 0f;
+        int n = points.Length;
+        for (int i = 0, j = n - 1; i < n; j = i++)
+            signedArea += points[j].x * points[i].y - points[i].x * points[j].y;
+
+        bool isCCW = signedArea > 0f;
+        if (isCCW != wantCCW) System.Array.Reverse(points);
+    }
+
     private static bool IsConvexVertex(Vector2 a, Vector2 b, Vector2 c) =>
         (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) > 0f;
 

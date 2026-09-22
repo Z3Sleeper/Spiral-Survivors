@@ -1,4 +1,5 @@
 using PurrNet.Packing;
+using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -24,65 +25,18 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
 
     [SerializeField] private GameObject[] eventPrefabs;
 
-    // Hand-authored replacement (2026-08-27) for the old PlayableAreaPD.RandomPoint/GetInsetPerimeter-derived
-    // event placement — see PlayableAreaPD.GetInsetPerimeter's own doc comment for why that approach was
-    // abandoned (only correct for a convex outerBoundary; a concave notch or a very sharp corner produces
-    // broken/overshooting results, and building a proper general fix — a straight-skeleton algorithm, or
-    // integrating a library like Clipper2 — was judged disproportionate effort for a solo dev's project with
-    // no concrete plan for a non-convex arena). All three arrays are plain level-authored data, same
-    // "designer places Transforms in the Inspector" convention EnemySpawnerPD.spawnPoints/PlayableAreaPD.
-    // outerBoundary already use — full designer control, zero geometry-robustness concerns, at the cost of
-    // needing manual re-sync if the arena shape ever changes (acceptable for a largely-static level).
-    [System.Serializable]
-    public struct SpawnArea
-    {
-        // Ordered closed-loop polygon, same authoring convention as PlayableAreaPD.outerBoundary — CAN be
-        // non-convex, unlike outerBoundary's own inset-perimeter use: PlayableAreaPD.TryRandomPointInPolygon
-        // only ever does plain rejection sampling + PointInPolygon, none of GetInsetPerimeter's corner-
-        // intersection math, so it's safe for any simple (non-self-intersecting) shape.
-        public Transform[] points;
-    }
-
-    [Header("Event Spawn Data")]
-    // Single designated spots — an event that needs just one (or a few) exact positions picks ONE of these
-    // verbatim (not edge-interpolated the way EnemySpawnerPD.spawnPoints treats its own array as a loop of
-    // chords — confirmed explicit design choice: a "designated spawn point" should always land exactly where
-    // it was placed, not somewhere randomized along an edge between two of them).
-    [SerializeField] private Transform[] eventSpawnPoints;
-    // Level-authored polygons (can be non-convex — see SpawnArea's own doc comment) for events that scatter
-    // MULTIPLE things (e.g. DestroyTheTargetsPD's dummies). Multiple named areas can exist per level; an
-    // event opts into "anywhere across any area" or "confined to one randomly-picked area" via
-    // BeginSpawnAreaSelection below — it never hand-picks a SPECIFIC area itself, only the mode.
-    [SerializeField] private SpawnArea[] spawnAreas;
-    // One shared patrol loop for the whole level, walked by PerimeterPatrolGloomPD and spaced onto by
-    // PerimeterPatrolEventPD (via PlayableAreaPD.GetLoopLength/GetPointAtArcLength, already built generically
-    // against any Vector3[] loop) — replaces the old GetInsetPerimeter(wallOffset)-derived path.
-    [SerializeField] private Transform[] patrolGraph;
-
-    // Lazily built once — spawnAreas is static level-authored data, never changes at runtime, so there's no
-    // invalidation logic needed beyond "computed yet or not." Index i's value is the CUMULATIVE polygon area
-    // (PlayableAreaPD.PolygonArea, true shoelace-formula area, not a bounding-box proxy) of every area up to
-    // and including i — PickWeightedRandomAreaIndex rolls against this table so bigger areas are
-    // proportionally more likely to be picked in "anywhere across any area" mode, per explicit design (a
-    // tiny area and a huge one should not have equal odds).
-    private float[] _cachedAreaCumulativeWeights;
+    // Hand-authored spawn geometry (2026-08-27) lives on a SEPARATE plain-MonoBehaviour component,
+    // EventSpawnDataPD, referenced here by a single serialized field — see that class's own doc comment for
+    // why: EventManagerPD is a PredictedIdentity, and PurrDiction's own PredictedIdentityEditor throws
+    // "Unsupported type Vector2f"/"Vector3f" on ANY array-of-struct field declared directly on a
+    // PredictedIdentity (confirmed live trying both types) — a single Object-reference field like this one is
+    // the kind of field that editor is confirmed to handle fine (same reason the old Transform[] arrays,
+    // themselves arrays of Object references, never had this problem).
+    [SerializeField] private EventSpawnDataPD spawnData;
 
     // Lazily built once, same "fixed author-time geometry, single-entry cache" convention
     // PlayableAreaPD.GetInsetPerimeter already uses for its own cached array.
     private Vector3[] _cachedPatrolGraph;
-
-    // Returned by BeginSpawnAreaSelection, consumed by TryGetSpawnAreaPoint — see that method's own doc
-    // comment for the confined-vs-anywhere contract.
-    public readonly struct SpawnAreaSelection
-    {
-        public readonly bool confined;
-        public readonly int lockedAreaIndex; // meaningful only when confined == true; -1 if none could be locked
-        public SpawnAreaSelection(bool confined, int lockedAreaIndex)
-        {
-            this.confined = confined;
-            this.lockedAreaIndex = lockedAreaIndex;
-        }
-    }
 
     public struct State : IPredictedData<State>, IDuplicate<State>
     {
@@ -90,19 +44,79 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
         // default-sentinel convention every other PredictedObjectID/PlayerID field in this codebase already
         // uses (e.g. KingOrbiterPD.State.lastShotTargetId).
         public PredictedObjectID activeEventId;
-        public void Dispose() { }
-        public State Duplicate() => this;
+        // Predetermined ONCE, on this identity's very first real Simulate() tick (see GenerateEventSequence's
+        // own doc comment) — indices into eventPrefabs, in the exact order StartEvent() will hand them out.
+        // Root-cause fix (2026-09-17) for a real bug: StartEvent() used to draw a LIVE GameRandom.Next() pick
+        // at the moment each event actually started, which is vulnerable to ordinary GameRandom stream-
+        // position drift — anything else earlier in the SAME tick drawing a different number of values between
+        // a non-host client's speculative pass and the eventual server-confirmed replay (e.g. EnemySpawnerPD's
+        // own spawn rolls, which run before the event trigger in its own Simulate()) shifts this draw's own
+        // stream position, landing on a DIFFERENT event index — not a bug in GameRandom itself (same call
+        // sequence always gives the same result), just unavoidable drift for any draw sitting downstream of
+        // other conditional draws in the same tick. Confirmed live: a client briefly spawned/showed an entirely
+        // wrong event (including its own spawned entities, e.g. DPSCheck's hazard) before a later resimulation
+        // corrected it to match the host. Deciding the WHOLE sequence once, at match start (when GameRandom's
+        // stream position is still trivially synced — almost nothing has run yet), means StartEvent() is later
+        // just an index lookup into already-agreed, already-replicated data — nothing left to mispredict.
+        public DisposableList<int> eventSequence;
+        // How many entries of eventSequence have been consumed so far (StartEvent() calls) — same "running
+        // cursor into a State-backed list" shape EnemySpawnerPD's own currentSetIndices/previousSetIndices
+        // already use elsewhere.
+        public int nextEventSequenceIndex;
+        public void Dispose() => eventSequence.Dispose();
+        public State Duplicate()
+        {
+            var copy = this;
+            copy.eventSequence = eventSequence.Duplicate();
+            return copy;
+        }
     }
+
+    protected override State GetInitialState() => new()
+    {
+        eventSequence = DisposableList<int>.Create(4),
+    };
 
     protected override void LateAwake() => instance = this;
 
-    // Nothing to simulate here directly — the active event's own PredictedIdentity runs its own Simulate()
-    // independently once spawned. An event that wants to resolve EARLY (before EnemySpawnerPD's own flat
-    // eventDuration timeout) just calls EventManagerPD.instance.ResolveEvent() on itself directly, the
-    // instant it succeeds (see CaptureThePointPD.Simulate() for the precedent, and ResolveEvent()'s own doc
-    // comment for why that's safe — it never destroys anything synchronously, so there's no same-tick
-    // self-deletion hazard in doing that).
-    protected override void Simulate(ref State state, float delta) { }
+    // Only job here: generate eventSequence exactly once, on the very first real tick — see its own doc
+    // comment for the full reasoning. Count == 0 is an unambiguous "not yet generated" sentinel (never
+    // legitimately empty again once populated, given a non-empty eventPrefabs), so this can never
+    // accidentally re-run later. Otherwise nothing to simulate here directly — the active event's own
+    // PredictedIdentity runs its own Simulate() independently once spawned. An event that wants to resolve
+    // EARLY (before EnemySpawnerPD's own flat eventDuration timeout) just calls
+    // EventManagerPD.instance.ResolveEvent() on itself directly, the instant it succeeds (see
+    // CaptureThePointPD.Simulate() for the precedent, and ResolveEvent()'s own doc comment for why that's
+    // safe — it never destroys anything synchronously, so there's no same-tick self-deletion hazard in doing
+    // that).
+    protected override void Simulate(ref State state, float delta)
+    {
+        if (state.eventSequence.Count == 0 && eventPrefabs != null && eventPrefabs.Length > 0)
+            GenerateEventSequence(ref state);
+    }
+
+    // Full Fisher-Yates shuffle of eventPrefabs' own indices (same shuffle shape TryGetEventSpawnPoint's own
+    // _eventSpawnPointOrderScratch already uses), keeping only the first `count` — count is however many Tier
+    // Cycles a run can ever have (EnemySpawnerPD.BossesToDefeatForWin, the real source of truth — a win fires
+    // the instant that many bosses are defeated, and a Tier Cycle always ends in one), capped to however many
+    // distinct event prefabs actually exist if there are fewer than that. Guarantees every event that fires
+    // this run is unique, up to that limit.
+    private void GenerateEventSequence(ref State state)
+    {
+        int maxEvents = EnemySpawnerPD.instance != null ? EnemySpawnerPD.instance.BossesToDefeatForWin : eventPrefabs.Length;
+        int count = Mathf.Min(maxEvents, eventPrefabs.Length);
+
+        var indices = new int[eventPrefabs.Length];
+        for (int i = 0; i < indices.Length; i++) indices[i] = i;
+        for (int i = indices.Length - 1; i > 0; i--)
+        {
+            int j = GameRandom.instance.Next(i + 1);
+            (indices[i], indices[j]) = (indices[j], indices[i]);
+        }
+
+        for (int i = 0; i < count; i++)
+            state.eventSequence.Add(indices[i]);
+    }
 
     // Called by EnemySpawnerPD once per Tier Cycle, at the halfway point of its pre-boss Quarters window —
     // see EnemySpawnerPD's own "Mid-cycle event trigger" doc comment. Picks a random event prefab and spawns
@@ -128,7 +142,19 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
 
         ResolveEvent();
 
-        var prefab = eventPrefabs[GameRandom.instance.Next(eventPrefabs.Length)];
+        // Reads the NEXT entry off the sequence GenerateEventSequence already predetermined at match start —
+        // see State.eventSequence's own doc comment for why this, not a live GameRandom draw here, is what
+        // actually fixes the misprediction. Wraps via modulo purely as a defensive fallback (never the
+        // expected case today) if this is ever called more times than eventSequence has entries — repeats
+        // rather than throwing. The GameRandom.Next fallback below only matters if eventSequence somehow
+        // never got generated at all (eventPrefabs empty at match start, then populated later — not a normal
+        // scenario).
+        int sequenceIndex = currentState.eventSequence.Count > 0
+            ? currentState.eventSequence[currentState.nextEventSequenceIndex % currentState.eventSequence.Count]
+            : GameRandom.instance.Next(eventPrefabs.Length);
+        currentState.nextEventSequenceIndex++;
+
+        var prefab = eventPrefabs[sequenceIndex];
         var id = hierarchy.Create(prefab, transform.position, Quaternion.identity);
         if (!id.HasValue) return;
 
@@ -171,73 +197,6 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
 
     // ── Hand-authored spawn data (2026-08-27) ────────────────────────────────
 
-    // Called ONCE per event activation, not per spawn point — this is what makes mode selection "decided
-    // once, not re-decided per individual point." confineToOneArea locks a single (size-weighted) random
-    // area index for the WHOLE event's spawn batch; false means every subsequent TryGetSpawnAreaPoint call
-    // independently re-rolls its own (also size-weighted) area. Falls back to "not confined" if there's
-    // nothing to lock onto (no spawnAreas authored) rather than returning a meaningless locked index.
-    public SpawnAreaSelection BeginSpawnAreaSelection(bool confineToOneArea)
-    {
-        if (!confineToOneArea || spawnAreas == null || spawnAreas.Length == 0)
-            return new SpawnAreaSelection(false, -1);
-        return new SpawnAreaSelection(true, PickWeightedRandomAreaIndex());
-    }
-
-    // avoidPlayers/playerOffset/footprintRadius: same "don't spawn on a player" contract
-    // PlayableAreaPD.RandomPoint's own avoidPlayers param already has — reuses IsFarEnoughFromEveryPlayer
-    // directly rather than a third copy of that check. Best-effort: if avoidPlayers rejects every in-polygon
-    // candidate within maxAttempts, falls back to the LAST candidate that was genuinely inside a polygon
-    // (never returns true with an undefined point, never silently fails just because a player happened to be
-    // standing on every sampled spot this exact attempt).
-    //
-    // Obstacle avoidance (2026-09-16, added) — ALWAYS on, no opt-in flag needed (unlike avoidPlayers, which
-    // some events genuinely want disabled): there's no case where a level designer would WANT an event to
-    // spawn inside a tree/rock's own collider, so this isn't a per-event choice. Gated on footprintRadius > 0
-    // rather than a separate bool — every existing/future caller that already passes a real footprintRadius
-    // (for the avoidPlayers check above) gets this for free with no call-site changes, and a caller that
-    // never sizes its own footprint (footprintRadius left at its 0 default) just skips the check instead of
-    // querying Physics.CheckSphere with a meaningless zero radius. Same best-effort/bounded-attempts fallback
-    // shape as avoidPlayers — if every candidate this call samples overlaps an obstacle, this still returns
-    // the last in-polygon candidate rather than failing outright.
-    //
-    // LayerMask.GetMask("Obstacle") called inline, NOT cached in a static readonly field (2026-09-16, tried
-    // caching first) — a static field initializer runs as part of this class's static constructor, which
-    // Unity outright throws on if LayerMask.NameToLayer/GetMask gets called from it ("NameToLayer is not
-    // allowed to be called from a MonoBehaviour constructor or instance field initializer"); WeaponBasePD's
-    // own EnemyHurtboxMask/FriendlyHurtboxMask precedent apparently never gets first-touched early enough to
-    // hit this, but this class's cctor does. Not a hot path (called only when placing an event, a handful of
-    // times at most, never per-frame) — the repeated string lookup this costs is irrelevant, same "call it
-    // inline" convention XPOrbPD.cs already uses for this exact same "Obstacle" layer.
-    public bool TryGetSpawnAreaPoint(SpawnAreaSelection selection, out Vector3 point, bool avoidPlayers = false, float playerOffset = 0f, float footprintRadius = 0f, int maxAttempts = 30)
-    {
-        point = default;
-        if (spawnAreas == null || spawnAreas.Length == 0) return false;
-
-        Vector3 fallback = default;
-        bool haveFallback = false;
-
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            int areaIndex = selection.confined ? selection.lockedAreaIndex : PickWeightedRandomAreaIndex();
-            if (areaIndex < 0 || areaIndex >= spawnAreas.Length) continue;
-            if (!PlayableAreaPD.TryRandomPointInPolygon(spawnAreas[areaIndex].points, out Vector3 candidate)) continue;
-
-            if (!haveFallback) { fallback = candidate; haveFallback = true; }
-
-            if (footprintRadius > 0f && Physics.CheckSphere(candidate, footprintRadius, LayerMask.GetMask("Obstacle")))
-                continue;
-
-            if (avoidPlayers && !PlayableAreaPD.IsFarEnoughFromEveryPlayer(new Vector2(candidate.x, candidate.z), footprintRadius + playerOffset))
-                continue;
-
-            point = candidate;
-            return true;
-        }
-
-        if (haveFallback) { point = fallback; return true; }
-        return false;
-    }
-
     // Lazily sized to eventSpawnPoints.Length, ALLOCATION reused across calls (avoids GC churn) but CONTENT
     // unconditionally reset to [0,1,2,...] at the top of every TryGetEventSpawnPoint call before shuffling —
     // see that method's own comment for why the reset can't be skipped even when the array's already the
@@ -268,6 +227,7 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
     public bool TryGetEventSpawnPoint(out Vector3 point, bool avoidPlayers = false, float playerOffset = 0f, float footprintRadius = 0f)
     {
         point = default;
+        var eventSpawnPoints = spawnData != null ? spawnData.EventSpawnPoints : null;
         if (eventSpawnPoints == null || eventSpawnPoints.Length == 0) return false;
 
         if (_eventSpawnPointOrderScratch == null || _eventSpawnPointOrderScratch.Length != eventSpawnPoints.Length)
@@ -285,9 +245,8 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
 
         for (int k = 0; k < _eventSpawnPointOrderScratch.Length; k++)
         {
-            var t = eventSpawnPoints[_eventSpawnPointOrderScratch[k]];
-            if (t == null) continue;
-            Vector3 candidate = t.position;
+            Vector3 p = eventSpawnPoints[_eventSpawnPointOrderScratch[k]];
+            Vector3 candidate = new Vector3(p.x, 0f, p.z);
 
             if (!haveFallback) { fallback = candidate; haveFallback = true; }
 
@@ -302,13 +261,14 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
         return false;
     }
 
-    // Converts patrolGraph (Transform[]) to Vector3[] once and caches it. Returns Array.Empty<Vector3>() —
-    // never null — if patrolGraph is null/empty/contains a null entry, so callers can always safely check
-    // .Length without an extra null guard.
+    // Normalizes patrolGraph's own Y to 0 (ignoring whatever was actually authored there — see field's own
+    // comment) once and caches it. Returns Array.Empty<Vector3>() — never null — if patrolGraph is null/empty,
+    // so callers can always safely check .Length without an extra null guard.
     public Vector3[] GetPatrolGraph()
     {
         if (_cachedPatrolGraph != null) return _cachedPatrolGraph;
 
+        var patrolGraph = spawnData != null ? spawnData.PatrolGraph : null;
         if (patrolGraph == null || patrolGraph.Length == 0)
         {
             _cachedPatrolGraph = System.Array.Empty<Vector3>();
@@ -317,47 +277,12 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
 
         var result = new Vector3[patrolGraph.Length];
         for (int i = 0; i < patrolGraph.Length; i++)
-        {
-            if (patrolGraph[i] == null)
-            {
-                _cachedPatrolGraph = System.Array.Empty<Vector3>();
-                return _cachedPatrolGraph;
-            }
-            result[i] = patrolGraph[i].position;
-        }
+            result[i] = new Vector3(patrolGraph[i].x, 0f, patrolGraph[i].z);
         _cachedPatrolGraph = result;
         return _cachedPatrolGraph;
     }
 
-    private void EnsureAreaWeightsCached()
-    {
-        if (_cachedAreaCumulativeWeights != null) return;
-        int count = spawnAreas != null ? spawnAreas.Length : 0;
-        _cachedAreaCumulativeWeights = new float[count];
-        float running = 0f;
-        for (int i = 0; i < count; i++)
-        {
-            running += PlayableAreaPD.PolygonArea(spawnAreas[i].points);
-            _cachedAreaCumulativeWeights[i] = running;
-        }
-    }
-
-    // Rolls against the cumulative-weight table built by EnsureAreaWeightsCached — a spawn area with double
-    // the true polygon area of another is twice as likely to be picked. Falls back to a uniform pick if every
-    // area came out zero-area (a degenerate/mis-authored SpawnArea, e.g. fewer than 3 points) rather than
-    // dividing by zero.
-    private int PickWeightedRandomAreaIndex()
-    {
-        EnsureAreaWeightsCached();
-        int count = _cachedAreaCumulativeWeights.Length;
-        if (count == 0) return -1;
-
-        float total = _cachedAreaCumulativeWeights[count - 1];
-        if (total <= 0f) return GameRandom.instance.Next(count);
-
-        float roll = GameRandom.instance.NextFloat(0f, total);
-        for (int i = 0; i < count; i++)
-            if (roll <= _cachedAreaCumulativeWeights[i]) return i;
-        return count - 1; // floating-point tail edge case
-    }
+    // Scene-view visualization (patrol graph, event spawn point radii) now lives on
+    // EventSpawnDataPD itself, alongside the data it draws — see that class's own doc comment for why this
+    // data moved off EventManagerPD entirely (PredictedIdentityEditor's own Vector2f/Vector3f limitation).
 }

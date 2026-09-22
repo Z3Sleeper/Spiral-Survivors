@@ -137,12 +137,12 @@ MonoBehaviour:
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     Become
-    <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>{moveSpeedFlat}% total
-    Move Speed</color> for <color=#FFA000>{duration} seconds</color>.'
+    <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>{moveSpeedPercent}%
+    total Move Speed</color> for <color=#FFA000>{duration} seconds</color>.'
   cooldown: 25
   cooldownStartsOnCast: 0
   slot: 1
   tags: []
   activeSurgeBlock: 0
   duration: 3
-  moveSpeedFlat: 3
+  moveSpeedPercent: 0.3

@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 009657d7a5a7e3844b9ada055b0289d0, type: 3}
   m_Name: ArcherPassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
-  classDescription: Projectiles pierce but lose 20% Total Damage/On-Hit Power each
+  classDescription: Projectiles pierce but lose 30% Total Damage/On-Hit Power each
     hit.
   bonusMoveSpeedFlat: 0
   bonusMoveSpeedPercent: 0

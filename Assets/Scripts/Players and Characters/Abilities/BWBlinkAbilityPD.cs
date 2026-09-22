@@ -3,9 +3,11 @@ using UnityEngine;
 
 // Bladeweaver's second class ability, built on the IAbilityPD architecture — gated by a cooldown. The
 // teleport itself is instant (one Activate() call), but now has a real active window after it: a fixed-
-// duration +Total Move Speed buff, same "instant effect immediately followed by a timed self-buff" shape as
-// RogueVanishAbilityPD (that file is the template the buff plumbing below mirrors — see its own comments for
-// the fuller reasoning behind each piece, only summarized here).
+// duration +Bonus-tier Move Speed buff (AddMoveSpeedPercent, 2026-09-19 — was Total-tier via
+// AddMoveSpeedTotalPercent, converted alongside the other Move-Speed-granting augments/abilities now that
+// Move Speed no longer comes off Stat augments, per explicit design), same "instant effect immediately
+// followed by a timed self-buff" shape as RogueVanishAbilityPD (that file is the template the buff plumbing
+// below mirrors — see its own comments for the fuller reasoning behind each piece, only summarized here).
 //
 // Only usable while BWBladeDanceAbilityPD is active (Outbound, Hold, OR Return — see IsReady) — teleports
 // the caster straight to wherever the dance's blades are CURRENTLY orbiting (currentState.currentOrigin,
@@ -38,7 +40,7 @@ using UnityEngine;
 // starts ticking the instant Blink is cast, running concurrently with the Move Speed buff, rather than only
 // starting once that buff ends. See the field's own doc comment for why.
 //
-// No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedTotalPercent are both plain, fixed
+// No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedPercent are both plain, fixed
 // values, snapshotted at cast time so a live Inspector change mid-buff can't leave the active timer running
 // against a duration that no longer matches what was granted.
 //
@@ -57,7 +59,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Blink";
     [SerializeField, TextArea] private string description =
-        "Instantly teleport to wherever your blades are currently orbiting, then gain +25% Total Move Speed for 2 seconds. Only usable while Blade Dance is active.";
+        "Instantly teleport to wherever your blades are currently orbiting, then gain +30% Bonus Move Speed for 2 seconds. Only usable while Blade Dance is active.";
     public float cooldown = 10f;
     // true — cooldown starts ticking immediately at cast, running concurrently with the Move Speed buff,
     // rather than only starting once that buff ends. Deliberately NOT RogueVanishAbilityPD's default here —
@@ -73,7 +75,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
 
     [Header("Effect")]
     public float duration = 2f;
-    public float moveSpeedTotalPercent = 0.25f;
+    public float moveSpeedPercent = 0.30f;
 
     // Invincibility grace granted the instant the teleport lands (see Activate()) — same GrantInvincibility
     // mechanism RogueSpinAbilityPD's own postActiveInvincibilityGrace uses, just at a different moment (right
@@ -96,9 +98,9 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     private PredictedTransform _predictedTransform;
     private PlayerControllerPD _controller;
 
-    // Flat — not scaled by anything (see class doc comment), so this is just a plain snapshot of the field
-    // at cast time, reversed with the identical value at buff-end.
-    private float _appliedMoveSpeedTotalPercent;
+    // Not scaled by anything (see class doc comment), so this is just a plain snapshot of the field at
+    // cast time, reversed with the identical value at buff-end.
+    private float _appliedMoveSpeedPercent;
     // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
     // this fixed rather than reading the raw duration field live, in case it changes mid-buff.
     private float _appliedDuration;
@@ -199,7 +201,53 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
 
         // See class doc comment for why this is currentOrigin (the blades' LIVE position), not
         // _bladeDance.currentState.targetPosition (their final resting point).
-        Vector3 blinkTarget = _bladeDance.currentState.currentOrigin;
+        Vector3 rawBlinkTarget = _bladeDance.currentState.currentOrigin;
+
+        // Clamped through TeleportSafetyPD (2026-09-19) — see that class's own doc comment for the full
+        // algorithm/design discussion. rawBlinkTarget can legitimately land inside a wall/obstacle (the
+        // blades' own live orbit position has no obstacle-awareness of its own), which would otherwise strand
+        // the player inside solid geometry. radius/stepSize both come off the player's own real physics
+        // collider (PlayerControllerPD.PhysicsColliderRadius) — stepSize is deliberately the RAW radius * 0.5.
+        // checkRadius adds a small margin ON TOP of the true radius (2026-09-21 fix, was physicsRadius - 0.05f
+        // — a MORE permissive margin that could accept a spot before the player's real collider had actually
+        // cleared the wall by a hair, causing a visible "boop" the instant the player appeared there as
+        // physics resolved that residual overlap; same root cause and same fix as the equivalent dash-landing
+        // bug, see PlayerControllerPD.ResolveSafeTravelVelocity's own doc comment for the full derivation) so
+        // the resolved blink target has genuine clearance up front instead.
+        //
+        // FindSafeTeleportPositionMultiDirectional, not the plain two-direction FindSafeTeleportPosition
+        // (2026-09-21) — a teleport, unlike a dash, is free to resolve to ANY direction around the target, not
+        // just backward-toward-start/forward-continuing, since it never physically travels through the space
+        // in between. Confirmed live this matters: blinking well past the midpoint of a long, narrow obstacle
+        // used to always resolve to whichever END of the obstacle was closer along the travel axis, even when
+        // stepping straight out the SIDE would have been a dramatically shorter, more natural-looking escape
+        // that the two-direction search had no way to even consider. Layer mask covers both wall colliders
+        // (Bounds) and decorative obstacles (Obstacle) — confirmed these are the two real layers a player can
+        // physically get stuck in, NOT BoundsCollision (that one's the player's own layer, unrelated to what
+        // blocks them). Direction is still straight from the pre-teleport position toward rawBlinkTarget (only
+        // used as the search's own "forward"/tie-break-winning reference now, not a hard axis) — total failure
+        // (null) falls back to the pre-teleport position itself, i.e. "don't move at all," same as this
+        // ability's own original design; that fallback is this call site's own choice, not something
+        // TeleportSafetyPD bakes in generically (see its own doc comment for why).
+        //
+        // isValidPosition (2026-09-20) — the blades' live origin has no awareness of the playable area's own
+        // boundary either, so without this a blink could land (or, worse, get "corrected" by the search above
+        // into landing) past the wall entirely, in the genuinely open, uncollided space beyond it — confirmed
+        // live. PlayableAreaPD.IsInsidePlayableArea is a real point-in-polygon test (correct for a concave
+        // playable area too), not a rough bounding-box approximation — see TeleportSafetyPD's own doc comment.
+        // PlayableAreaPD.instance is null-checked since not every scene necessarily has one (e.g. a menu or
+        // test scene) — no boundary constraint applies there, same as before this fix.
+        Vector3 fromPosition = _stats.transform.position;
+        Vector2 blinkDirection2D = new Vector2(rawBlinkTarget.x - fromPosition.x, rawBlinkTarget.z - fromPosition.z);
+        float physicsRadius = _controller != null ? _controller.PhysicsColliderRadius : 0.5f;
+        float blinkStepSize = physicsRadius * 0.5f;
+        Vector3 blinkTarget = TeleportSafetyPD.FindSafeTeleportPositionMultiDirectional(
+            rawBlinkTarget,
+            blinkDirection2D,
+            blinkStepSize,
+            physicsRadius + blinkStepSize,
+            LayerMask.GetMask("Bounds", "Obstacle"),
+            isValidPosition: PlayableAreaPD.instance != null ? PlayableAreaPD.instance.IsInsidePlayableArea : (System.Func<Vector3, bool>)null) ?? fromPosition;
 
         if (_rigidbody != null) _rigidbody.position = blinkTarget;
         // Redundant-looking on top of the Rigidbody write above, but not actually redundant: a
@@ -242,7 +290,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     private void ApplyBuffAndCooldown()
     {
         // No AbilityPower scaling (removed 2026-08-23) — see class doc comment.
-        _appliedMoveSpeedTotalPercent = moveSpeedTotalPercent;
+        _appliedMoveSpeedPercent = moveSpeedPercent;
         _appliedDuration              = duration;
 
         currentState.activeTimer   = _appliedDuration;
@@ -256,7 +304,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
             _stats.ForceEndSurge();
             _stats.AddSurgeBlock();
         }
-        _stats.AddMoveSpeedTotalPercent(_appliedMoveSpeedTotalPercent);
+        _stats.AddMoveSpeedPercent(_appliedMoveSpeedPercent);
 
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
         if (cooldown > 0f) _stats.NotifyAbilityStart(this);
@@ -315,7 +363,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
 
         state.isActive = false;
         if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
-        _stats?.AddMoveSpeedTotalPercent(-_appliedMoveSpeedTotalPercent);
+        _stats?.AddMoveSpeedPercent(-_appliedMoveSpeedPercent);
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
     }

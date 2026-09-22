@@ -55,17 +55,21 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
     // practice, and this gate is denominated in the same units, so this is now enforced at the type level
     // rather than left as an unenforced convention. SurgeInterruptAoEAugment's own energySpentRequirement got
     // the identical treatment, same day, same reasoning.
+    //
+    // Public, not [SerializeField] private (2026-09-17 fix) — same "public so AugmentDescriptionFormatter's
+    // reflection can resolve it directly as a {token}" reasoning every other description-referenced augment
+    // field in this codebase already follows (e.g. SurgeInterruptAoEAugment.maxEnergyPerStack's own doc
+    // comment) — only public fields/properties/methods are checked, a private field silently can't be
+    // referenced from the description text at all. Still Inspector-serializable exactly the same either way.
     [Header("Activation Gate")]
-    [SerializeField] private int energySpentRequirement = 50;
+    public int energySpentRequirement = 50;
 
     [Header("Move Speed Buff")]
-    // Flat, not percent — see CharacterStatsPD.MoveSpeed's own formula: this goes through bonusMoveSpeedFlat
-    // (the same additive term class passives/meta-progression use), so it's a clean, unscaled +3 for the
-    // common case, and proportionally scales with the caster's own bonusMoveSpeedPercent/moveSpeedPenalty
-    // only if those are already non-neutral (e.g. a class with an innate move speed penalty gets a
-    // slightly weaker flat buff too) — same as any other Bonus-tier grant.
-    [SerializeField] private float moveSpeedFlat = 3f;
-    [SerializeField] private float buffDuration    = 3f;
+    // Bonus-tier percent, via AddMoveSpeedPercent (2026-09-19, was a flat +3 via AddMoveSpeedFlat, converted
+    // project-wide alongside every other flat-Move-Speed augment now that Move Speed no longer comes off Stat
+    // augments, per explicit design).
+    public float moveSpeedPercent = 0.30f;
+    public float buffDuration  = 3f;
 
     [Header("Buff Bar")]
     // Permanent — added once in OnApply(), never removed, tracks gate progress. See class doc comment.
@@ -137,7 +141,7 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
         if (_bonusActive) return;
 
         _bonusActive = true;
-        Stats.AddMoveSpeedFlat(moveSpeedFlat);
+        Stats.AddMoveSpeedPercent(moveSpeedPercent);
 
         if (isOwner && BuffBarPD.instance != null && _moveSpeedBuffIconInstance == null)
             _moveSpeedBuffIconInstance = BuffBarPD.instance.AddBuffIcon(buffIcon);
@@ -149,7 +153,7 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
     {
         if (!_bonusActive) return;
         _bonusActive = false;
-        Stats.AddMoveSpeedFlat(-moveSpeedFlat);
+        Stats.AddMoveSpeedPercent(-moveSpeedPercent);
 
         if (_moveSpeedBuffIconInstance != null && BuffBarPD.instance != null)
         {

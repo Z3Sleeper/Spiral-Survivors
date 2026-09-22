@@ -1647,6 +1647,11 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // same "recompute fully every tick" shape plenty of other per-tick refreshes in this codebase already use.
     private void RefreshHeldDamageOverrides(ref State state)
     {
+        // See OrbiterGloomPD.RefreshHeldDamageOverrides' own identical doc comment for why both IsTrueStunned
+        // AND isStunnable are read here — for this boss specifically, isStunnable is already scoped to
+        // Moving/Orbit only (see HandleActiveState's own per-tick assignment), so this naturally never freezes
+        // held plebs during KnockbackWindup/ShootFlight even if a true stun happens to land mid-sequence.
+        bool ownerFrozen = IsTrueStunned && isStunnable;
         for (int ring = 0; ring <= 2; ring++)
         {
             var held = RingHeldList(ref state, ring);
@@ -1654,8 +1659,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             {
                 var go = hierarchy.GetGameObject(held[i]);
                 if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
-                float multiplier = enemy.IsPulling ? pullDamageMultiplier : orbitDamageMultiplier;
+                bool isPulling = enemy.IsPulling;
+                float multiplier = isPulling ? pullDamageMultiplier : orbitDamageMultiplier;
                 enemy.SetDamageOverride(true, damage * multiplier * EnrageDamageMultiplier);
+                enemy.SetOrbitFrozen(ownerFrozen && !isPulling);
             }
         }
     }

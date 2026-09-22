@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 35e7e72ad529ee04baf18131a1f23143, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnHitDamageCurrentEnergyAugment
-  onHitStrengthPercent: 0.05
-  perEnergyPercent: 0.001
+  onHitStrengthPercent: 0.15
+  perEnergyPercent: 0.0015

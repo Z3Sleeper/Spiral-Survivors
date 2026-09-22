@@ -48,8 +48,10 @@ public class TipStrikeRangeExplosionAugment : AugmentEffectPD<TipStrikeRangeExpl
     public float damagePercent = 0.2f;
     // Radius = Stats.RangeWorldUnits * radiusMultiplier * Stats.AreaEffectSize — see class doc comment. 0.75
     // (2026-09-14, was 0.5) is this augment's own authored spec; tune feel here without touching the
-    // Range/AreaEffectSize scaling itself.
-    [SerializeField] private float radiusMultiplier = 0.75f;
+    // Range/AreaEffectSize scaling itself. Public, not [SerializeField] private (2026-09-17 fix) — so
+    // AugmentDescriptionFormatter's reflection can resolve {radiusMultiplier} directly as a description
+    // token; only public fields/properties/methods are checked. Still Inspector-serializable either way.
+    public float radiusMultiplier = 0.75f;
 
     // Baseline preview at 100% onHitPower (the per-hit onHitPower factor varies hit-to-hit, so isn't baked in
     // here — same "baseline coefficient, not a live roll" convention every other Live*Ratio in this codebase

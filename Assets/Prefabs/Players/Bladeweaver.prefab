@@ -212,7 +212,7 @@ MonoBehaviour:
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     <color=#00FFFF>Blink</color>
-    to your <color=#FFA000>Blades</color> and gain <color=#FFFFFF>+{moveSpeedTotalPercent}%
+    to your <color=#FFA000>Blades</color> and gain <color=#FFFFFF>+{moveSpeedPercent}%
     Total Move Speed</color> for <color=#FFA000>{duration} seconds</color>.
 
     Only
@@ -226,5 +226,5 @@ MonoBehaviour:
   tags: []
   activeSurgeBlock: 0
   duration: 3
-  moveSpeedTotalPercent: 0.5
+  moveSpeedPercent: 0.3
   postBlinkInvincibility: 0.05

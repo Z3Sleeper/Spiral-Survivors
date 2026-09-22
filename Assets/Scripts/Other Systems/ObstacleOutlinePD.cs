@@ -1,8 +1,10 @@
 using UnityEngine;
 
 // Draws a LineRenderer outline around a static obstacle — Rectangle/Circle/Custom presets, all authored as
-// LOCAL X/Z ground-plane offsets from this object's own position (not world space, unlike
-// PlayableAreaOutlinePD, which only ever has exactly one instance and never moves).
+// LOCAL X/Z ground-plane offsets from this object's own position. PlayableAreaOutlinePD (2026-09-20) shares
+// this same Rectangle/Circle/Custom-with-bulge-curve authoring shape for the level's own playable-area
+// boundary, but WITHOUT this class's own fixed-tilt handling below — that object is never expected to carry
+// the fixed-90-degree-X-tilt convention this one requires (see that class's own doc comment for why).
 //
 // This GameObject is assumed to ALWAYS carry a fixed 90-degree X rotation (2026-09-16) — needed so its
 // LineRenderer renders lying flat on the ground instead of standing upright. On TOP of that fixed tilt, this

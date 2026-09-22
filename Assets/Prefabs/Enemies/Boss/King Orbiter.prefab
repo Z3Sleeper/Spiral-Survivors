@@ -367,12 +367,10 @@ MonoBehaviour:
   enemyName: King Orbiter
   moveSpeed: 8
   attackSpeed: 1
-  backpedalSpeedDivisor: 2.5
   maxHealth: 2500
   preferredRange: 12
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  backpedalDisabled: 1
   damage: 10
   xpValue: 500
   pointsValue: 500
@@ -1805,7 +1803,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 17, z: 0}
-  m_LocalScale: {x: 3, y: 0.1, z: 3}
+  m_LocalScale: {x: 6, y: 0.1, z: 6}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 6211899113249965993}

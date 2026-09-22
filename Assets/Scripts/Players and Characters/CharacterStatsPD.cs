@@ -2767,7 +2767,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // same "doesn't touch Max Health/Energy" reasoning as AddConvertedHealth/AddConvertedHealthRegen.
     public void AddConvertedAttackSpeed(float amount) => currentState.convertedAttackSpeedFlat += amount * baseAttackSpeed;
     public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedFlat += amount);
-    // Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment calls this anymore.
+    // Bonus tier — see AddMaxHealthPercent's own comment. Was "kept for ClassPassiveData, no augment calls
+    // this anymore" before 2026-09-19 — now the live grant path for MissingHealthMoveSpeedStackingAugment/
+    // OnDamageTakenGainMoveSpeedAugment/DeathPreventionInvisibleAugment/ConstantMovementAugment/
+    // SurgeEnergySpentMoveSpeedAugment, converted from AddMoveSpeedFlat project-wide now that Move Speed no
+    // longer comes off Stat augments, per explicit design. GremlinAugment deliberately excluded from this
+    // conversion (kept its existing shape) — it already grants via AddMoveSpeedTotalPercent below, a
+    // different (Total, not Bonus) tier.
     public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedPercent += amount);
     // NEW Total tier — what MoveSpeedAugment/GremlinAugment/ShieldBreakFrenzyAugment all call now (every
     // remaining MoveSpeed-percent-granting augment). SurgeEnergySpentMoveSpeedAugment (was
@@ -3195,6 +3201,26 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // silently no-opping the next time the hierarchy gets restructured.
     [SerializeField] private Transform[] unscaledSizeChildren;
 
+    // Cached once, in Awake() — each unscaledSizeChildren entry's own ACTUAL authored local scale, before
+    // AddSizePercent() ever runs (2026-09-18 fix). Needed because these children aren't necessarily uniform
+    // (1,1,1) to start with — e.g. the player's own Minimap Icon is a flattened (5, 0.1, 5) disc. The old
+    // counter-scale formula hardcoded Vector3.one as the "starting point," which silently discarded whatever
+    // shape a non-uniform child was actually authored with the moment any Size augment applied (e.g. at 2x
+    // Size, a (5, 0.1, 5) disc got forced to a uniform (0.5, 0.5, 0.5) instead of the correct (2.5, 0.05,
+    // 2.5)) — invisible for ReviveZone/WorldspaceUI specifically only because those happen to already be
+    // authored at uniform (1,1,1). Same "cache the true prefab-authored value before anything can touch it"
+    // convention WeaponRangedProjectilePD's own _baseScale/EnemyBasePD's own _originalColors already use.
+    private Vector3[] _unscaledSizeChildrenOriginalScales;
+
+    private void Awake()
+    {
+        if (unscaledSizeChildren == null) return;
+        _unscaledSizeChildrenOriginalScales = new Vector3[unscaledSizeChildren.Length];
+        for (int i = 0; i < unscaledSizeChildren.Length; i++)
+            if (unscaledSizeChildren[i] != null)
+                _unscaledSizeChildrenOriginalScales[i] = unscaledSizeChildren[i].localScale;
+    }
+
     // Smoothed visual anchor for world-space popups (damage/heal numbers) that need to follow this player
     // without inheriting root/rigidbody jitter — physics-driven position updates are choppy at render
     // framerate, same "track the smoothly-interpolated child, not the physics root" reasoning as
@@ -3219,9 +3245,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         currentState.bonusSizePercent += amount;
         transform.localScale = Vector3.one * currentState.bonusSizePercent;
 
-        foreach (var child in unscaledSizeChildren)
+        // Counter-scales against each child's own ORIGINAL authored scale (cached in Awake()), not a
+        // hardcoded Vector3.one — see _unscaledSizeChildrenOriginalScales' own doc comment for the bug this
+        // fixes. Defensive null check on the cache itself (not just the array) — Unity doesn't guarantee
+        // Awake() order across components on the same GameObject, so a caller on another component could
+        // theoretically reach this before this class's own Awake() has run.
+        if (unscaledSizeChildren == null || _unscaledSizeChildrenOriginalScales == null) return;
+        for (int i = 0; i < unscaledSizeChildren.Length; i++)
+        {
+            var child = unscaledSizeChildren[i];
             if (child != null)
-                child.localScale = Vector3.one / currentState.bonusSizePercent;
+                child.localScale = _unscaledSizeChildrenOriginalScales[i] / currentState.bonusSizePercent;
+        }
     }
 
     private bool _bonusesApplied;

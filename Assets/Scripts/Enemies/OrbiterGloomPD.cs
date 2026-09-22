@@ -246,12 +246,22 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     // never included that factor to begin with).
     private void RefreshHeldDamageOverrides(ref State state)
     {
+        // See IEnemyPD.SetOrbitFrozen's own doc comment for why this reads BOTH IsTrueStunned and isStunnable
+        // — a true stun can land and tick down even mid-Pulling (see Stun()'s own doc comment), but only
+        // actually FREEZES this Orbiter's own Simulate() while isStunnable is true; a held pleb should only
+        // visually freeze/stop dealing damage in lockstep with THIS Orbiter genuinely being frozen right now,
+        // not merely carrying an unexpired timer through a phase it can't be interrupted by one during.
+        bool ownerFrozen = IsTrueStunned && isStunnable;
         for (int i = 0; i < state.heldPlebs.Count; i++)
         {
             var go = hierarchy.GetGameObject(state.heldPlebs[i]);
             if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
-            float multiplier = enemy.IsPulling ? pullDamageMultiplier : orbitDamageMultiplier;
+            bool isPulling = enemy.IsPulling;
+            float multiplier = isPulling ? pullDamageMultiplier : orbitDamageMultiplier;
             enemy.SetDamageOverride(true, damage * multiplier);
+            // Pulling is left unaffected by this Orbiter's own stun — only the actively-orbiting (or
+            // arrived-and-waiting) sub-phases freeze, matching the "orbiting phase" scope this was asked for.
+            enemy.SetOrbitFrozen(ownerFrozen && !isPulling);
         }
     }
 
@@ -365,15 +375,19 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                 break;
         }
 
-        // Not stunnable while actively chasing with orbiting plebs — a stun landing here doesn't freeze the
-        // held-orbit itself either way (that logic lives entirely in each pleb's own LateSimulate(), reading
-        // this Orbiter's live position — see EnemyBasePD.LateSimulate()'s own doc comment), but Interrupt()
-        // still lands and forces it back to Moving/drops everything held (see OnInterrupted() below) — the
-        // intended counter-play. Kinematic through the whole Pulling sequence (windup+pull both, now merged
-        // into one phase — see that case's own comment), same asymmetric "re-zero velocity on the entering
-        // edge only" shape every other multi-phase enemy in this codebase uses.
+        // Stunnable in every phase, including Holding (2026-09-21 fix — matches KingOrbiterPD.HandleActiveState's
+        // own identical formula, which never excluded its own Orbit phase to begin with). A true stun freezes
+        // this Orbiter's own Simulate() (see EnemyBasePD.Simulate()'s own isStunnable-gated freeze) — HandleMovement
+        // and this phaseTimer countdown both pause with it — but does NOT touch the held-orbit itself: each held
+        // pleb's own position math lives entirely in ITS OWN LateSimulate() (reading this Orbiter's live, now-
+        // frozen, position — see EnemyBasePD.LateSimulate()'s own doc comment), so the plebs keep orbiting in
+        // place around the stunned Orbiter rather than freezing themselves. Interrupt() is still the only thing
+        // that actually ends Holding early / drops everything held (see OnInterrupted() below) — the intended
+        // counter-play, unaffected by this change. Kinematic through the whole Pulling sequence (windup+pull
+        // both, now merged into one phase — see that case's own comment), same asymmetric "re-zero velocity on
+        // the entering edge only" shape every other multi-phase enemy in this codebase uses.
         phase = GetPhase(ref state);
-        isStunnable = phase != OrbiterState.Holding;
+        isStunnable = !stunResistant;
         if (_rigidbody != null)
         {
             bool shouldBeKinematic = phase == OrbiterState.Pulling;

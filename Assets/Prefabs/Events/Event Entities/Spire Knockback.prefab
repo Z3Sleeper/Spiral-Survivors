@@ -696,8 +696,8 @@ MonoBehaviour:
   - {fileID: 4217391084382548226}
   - {fileID: 3622794697054359341}
   invulnerableShell: {fileID: 484935195704614788}
-  knockbackWindupDuration: 15
-  knockbackForce: 150
+  knockbackWindupDuration: 10
+  knockbackForce: 100
   knockbackRadius: 5
   knockbackIndicator: {fileID: 465935563722061950}
   knockbackFill: {fileID: 7356003591767775000}

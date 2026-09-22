@@ -4,12 +4,19 @@ using UnityEngine;
 // "somewhere valid in the arena" without hand-rolling wall-avoidance math itself (mid-cycle events' own zone
 // placement is the first consumer — see EventManagerPD.StartEvent()/IEventPD.OnEventStart).
 //
-// Same authoring convention as EnemySpawnerPD's own spawnPoints (2026-08-25) — a plotted array of scene
-// Transforms, not hand-typed numbers, so the shape can be freely re-plotted in the Editor to match whatever
-// the level's actual walls look like. General POLYGON shape, not just an axis-aligned rectangle, since a
-// future level's room won't necessarily be one: outerBoundary traces the walkable region's own outer edge
-// (plot one point per wall corner, in order around the room, forming a closed loop — last point implicitly
-// connects back to the first).
+// Outer boundary shape is authored via PlayableAreaOutlinePD (2026-09-20, replaced the old plotted-array-of-
+// Transforms authoring) — same Rectangle/Circle/Custom-with-bulge-curve authoring ObstacleOutlinePD already
+// gives obstacles, so a level's boundary can be entirely hand-typed rather than a pile of hand-placed empty
+// GameObjects. That component lives on a SEPARATE CHILD GameObject (tilted 90 degrees on X, same convention
+// ObstacleOutlinePD's own GameObject uses — needed for its LineRenderer to render flat; see that class's own
+// doc comment), found via GetComponentInChildren rather than [RequireComponent]/GetComponent, since it's no
+// longer on this same object. THIS class's own transform stays untilted — it has no tilt-cancellation of its
+// own (BuildWorldBoundaryPoints uses a plain transform.TransformPoint), so it must never be rotated itself.
+// BuildLocalPoints() is pure shape data with no transform involved at all, so it doesn't matter which object
+// physically holds that component; the result is cached once in Awake() (this is fixed, author-time
+// geometry — see class doc comment further down), and every method below reads from that cache instead of
+// re-deriving it. General POLYGON shape, not just an axis-aligned rectangle, since a level's room won't
+// necessarily be one.
 //
 // Interior obstructions (pillars, rocks, trees, etc.) used to be a SEPARATE hand-plotted polygon system
 // (innerObstructions) living on this class — removed entirely 2026-09-17, since the real Obstacle system
@@ -29,8 +36,11 @@ public class PlayableAreaPD : MonoBehaviour
 {
     public static PlayableAreaPD instance;
 
-    [Tooltip("Plotted points tracing the playable region's own outer edge, in order, forming a closed loop (one point per wall corner is the usual shape — last point implicitly connects back to the first). Y is ignored — this is a flat XZ region.")]
-    [SerializeField] private Transform[] outerBoundary;
+    // World-space, cached once in Awake() — see class doc comment. NOT recomputed per-call the way the old
+    // Transform-array version implicitly was (each Transform's own .position was already always live); a
+    // plain Vector3[] has nothing to go stale, since PlayableAreaOutlinePD's own shape is fixed, author-time
+    // geometry that never changes at runtime.
+    private Vector3[] _boundaryPoints;
 
     // Cached result for GetInsetPerimeter — keyed by the offset it was computed for. GetInsetPerimeter itself
     // is unreferenced as of 2026-08-27 (its one caller, PerimeterPatrolEventPD, migrated to EventManagerPD's
@@ -45,6 +55,20 @@ public class PlayableAreaPD : MonoBehaviour
     {
         if (instance != null) { Destroy(gameObject); return; }
         instance = this;
+        _boundaryPoints = BuildWorldBoundaryPoints();
+    }
+
+    // Converts PlayableAreaOutlinePD's own local, untilted authoring points into world space — Y is always 0
+    // in the local point before conversion (deliberately NOT PlayableAreaOutlinePD's own heightOffset, which
+    // exists purely to keep ITS OWN LineRenderer visual from z-fighting the floor and has no business
+    // affecting the real gameplay boundary used here).
+    private Vector3[] BuildWorldBoundaryPoints()
+    {
+        Vector2[] localPoints = GetComponentInChildren<PlayableAreaOutlinePD>().BuildLocalPoints();
+        var worldPoints = new Vector3[localPoints.Length];
+        for (int i = 0; i < localPoints.Length; i++)
+            worldPoints[i] = transform.TransformPoint(new Vector3(localPoints[i].x, 0f, localPoints[i].y));
+        return worldPoints;
     }
 
     // Uniform-ish random point for something of a given `zoneRadius` footprint (e.g. an event's own circular
@@ -87,12 +111,17 @@ public class PlayableAreaPD : MonoBehaviour
     // offset as long as its actual center clears it. Every existing caller gets this automatically (default
     // 10, not 0) since the whole point is that it's mandatory, not something each event has to remember to
     // opt into — pass 0 explicitly for a hypothetical future caller that genuinely doesn't want it.
-    public Vector3 RandomPoint(float wallMargin, float zoneRadius, int maxAttempts = 30, int outwardBiasSamples = 1, bool avoidPlayers = false, float playerOffset = 0f, float minCenterDistance = 10f)
+    //
+    // footprintRadius (2026-09-21, added when EventManagerPD's own hand-authored spawnAreas system was
+    // removed in favor of this method) — a FOURTH constraint, same "Obstacle" layer CheckSphere the old
+    // TryGetSpawnAreaPoint used, gated on footprintRadius > 0 the same way (0, the default, skips the check
+    // entirely for a caller that doesn't size its own footprint).
+    public Vector3 RandomPoint(float wallMargin, float zoneRadius, int maxAttempts = 30, int outwardBiasSamples = 1, bool avoidPlayers = false, float playerOffset = 0f, float minCenterDistance = 10f, float footprintRadius = 0f)
     {
-        Vector3 fallback = Centroid(outerBoundary);
-        if (outerBoundary == null || outerBoundary.Length < 3) return fallback;
+        Vector3 fallback = Centroid(_boundaryPoints);
+        if (_boundaryPoints == null || _boundaryPoints.Length < 3) return fallback;
 
-        GetBounds(outerBoundary, out float minX, out float maxX, out float minZ, out float maxZ);
+        GetBounds(_boundaryPoints, out float minX, out float maxX, out float minZ, out float maxZ);
         if (maxX <= minX || maxZ <= minZ) return fallback;
 
         Vector2 center = ToXZ(fallback);
@@ -111,11 +140,13 @@ public class PlayableAreaPD : MonoBehaviour
 
             float distSq = (candidate - center).sqrMagnitude;
             if (distSq < minCenterDistSq) continue;
-            if (!PointInPolygon(candidate, outerBoundary)) continue;
+            if (!PointInPolygon(candidate, _boundaryPoints)) continue;
             // Checked against wallMargin alone now (2026-08-25, was zoneRadius + wallMargin) — see this
             // method's own doc comment for why: only the candidate's CENTER needs to clear the wall, the
             // zone's own edge is free to reach it (even slightly past).
-            if (DistanceToPolygonEdges(candidate, outerBoundary) < wallMargin) continue;
+            if (DistanceToPolygonEdges(candidate, _boundaryPoints) < wallMargin) continue;
+            if (footprintRadius > 0f && Physics.CheckSphere(new Vector3(x, fallback.y, z), footprintRadius, LayerMask.GetMask("Obstacle")))
+                continue;
             if (avoidPlayers && !IsFarEnoughFromEveryPlayer(candidate, zoneRadius + playerOffset)) continue;
 
             validFound++;
@@ -147,28 +178,21 @@ public class PlayableAreaPD : MonoBehaviour
         return true;
     }
 
-    private static Vector3 Centroid(Transform[] points)
+    private static Vector3 Centroid(Vector3[] points)
     {
         if (points == null || points.Length == 0) return Vector3.zero;
         Vector3 sum = Vector3.zero;
-        int count = 0;
-        for (int i = 0; i < points.Length; i++)
-        {
-            if (points[i] == null) continue;
-            sum += points[i].position;
-            count++;
-        }
-        return count > 0 ? sum / count : Vector3.zero;
+        for (int i = 0; i < points.Length; i++) sum += points[i];
+        return sum / points.Length;
     }
 
-    private static void GetBounds(Transform[] points, out float minX, out float maxX, out float minZ, out float maxZ)
+    private static void GetBounds(Vector3[] points, out float minX, out float maxX, out float minZ, out float maxZ)
     {
         minX = float.MaxValue; maxX = float.MinValue;
         minZ = float.MaxValue; maxZ = float.MinValue;
         for (int i = 0; i < points.Length; i++)
         {
-            if (points[i] == null) continue;
-            Vector3 p = points[i].position;
+            Vector3 p = points[i];
             if (p.x < minX) minX = p.x;
             if (p.x > maxX) maxX = p.x;
             if (p.z < minZ) minZ = p.z;
@@ -178,15 +202,14 @@ public class PlayableAreaPD : MonoBehaviour
 
     // Standard ray-casting point-in-polygon test (even-odd rule) on the XZ plane — treats `polygon` as a
     // closed loop (wraps from the last point back to the first).
-    private static bool PointInPolygon(Vector2 point, Transform[] polygon)
+    private static bool PointInPolygon(Vector2 point, Vector3[] polygon)
     {
         bool inside = false;
         int n = polygon.Length;
         for (int i = 0, j = n - 1; i < n; j = i++)
         {
-            if (polygon[i] == null || polygon[j] == null) continue;
-            Vector2 pi = ToXZ(polygon[i].position);
-            Vector2 pj = ToXZ(polygon[j].position);
+            Vector2 pi = ToXZ(polygon[i]);
+            Vector2 pj = ToXZ(polygon[j]);
 
             bool crosses = (pi.y > point.y) != (pj.y > point.y);
             if (!crosses) continue;
@@ -200,14 +223,13 @@ public class PlayableAreaPD : MonoBehaviour
     // Minimum distance from `point` to any edge segment of `polygon` (closed loop) — used to keep a
     // placed point a real margin away from a wall/obstruction, not just technically on the correct side of
     // it.
-    private static float DistanceToPolygonEdges(Vector2 point, Transform[] polygon)
+    private static float DistanceToPolygonEdges(Vector2 point, Vector3[] polygon)
     {
         float minDist = float.MaxValue;
         int n = polygon.Length;
         for (int i = 0, j = n - 1; i < n; j = i++)
         {
-            if (polygon[i] == null || polygon[j] == null) continue;
-            float dist = DistanceToSegment(point, ToXZ(polygon[j].position), ToXZ(polygon[i].position));
+            float dist = DistanceToSegment(point, ToXZ(polygon[j]), ToXZ(polygon[i]));
             if (dist < minDist) minDist = dist;
         }
         return minDist;
@@ -224,30 +246,28 @@ public class PlayableAreaPD : MonoBehaviour
 
     private static Vector2 ToXZ(Vector3 v) => new Vector2(v.x, v.z);
 
+    // Public wrapper around the existing PointInPolygon ray-casting test (2026-09-20) — reused as the "must
+    // stay inside the actual playable shape" check for TeleportSafetyPD.FindSafeTeleportPosition's own
+    // isValidPosition parameter (see that method's own doc comment). Correct for a concave outline too, same
+    // as every other PointInPolygon consumer here — no separate bounding-box approximation needed.
+    public bool IsInsidePlayableArea(Vector3 worldPosition) =>
+        _boundaryPoints != null && _boundaryPoints.Length >= 3 && PointInPolygon(ToXZ(worldPosition), _boundaryPoints);
 
-    // Raw outerBoundary points, in whatever order they were actually plotted (no CCW normalization, no
-    // inset/corner math at all) — for a pure visual OUTLINE consumer (e.g. a LineRenderer tracing the exact
-    // authored boundary) that has no use for GetInsetPerimeter's convex-only corner-intersection machinery
-    // below. Returns a fresh array each call (cheap — this is small, fixed-size, author-time level geometry,
-    // same "never changes at runtime" category as everything else in this file, so no caching needed the way
-    // GetInsetPerimeter's own per-offset cache exists for).
-    public Vector3[] GetOuterBoundaryPoints()
-    {
-        if (outerBoundary == null || outerBoundary.Length == 0) return System.Array.Empty<Vector3>();
-        var points = new Vector3[outerBoundary.Length];
-        for (int i = 0; i < outerBoundary.Length; i++)
-            points[i] = outerBoundary[i] != null ? outerBoundary[i].position : Vector3.zero;
-        return points;
-    }
+    // Raw boundary points, in whatever order PlayableAreaOutlinePD's own shape produced them (no CCW
+    // normalization, no inset/corner math at all) — for a pure visual OUTLINE consumer that has no use for
+    // GetInsetPerimeter's convex-only corner-intersection machinery below. Returns a fresh COPY each call
+    // (the internal cache is shared/reused elsewhere and must never be mutated by a caller — e.g.
+    // PlayableAreaBoundsPD's own winding-normalization step reverses its own copy in place).
+    public Vector3[] GetOuterBoundaryPoints() => (Vector3[])(_boundaryPoints ?? System.Array.Empty<Vector3>()).Clone();
 
     // Outer boundary inset inward by `offset`, as an ordered, closed-loop Vector3[] — a walkable path
     // hugging the wall at a fixed distance (added for a patrol-enemy Event's own spawn/movement). ALWAYS
     // returned in a normalized counterclockwise winding (see the signed-area check below) regardless of
-    // which order outerBoundary's own points happen to be authored in, so a consumer walking this array in
+    // which order the boundary's own points happen to be authored in, so a consumer walking this array in
     // increasing index order never needs to know or care how the level was actually plotted — see
     // GetPushedEdge's own comment for why that normalization matters.
     //
-    // Convex outerBoundary ONLY. For each edge, translates both endpoints inward along the edge's own
+    // Convex outer boundary ONLY. For each edge, translates both endpoints inward along the edge's own
     // inward normal by `offset` (GetPushedEdge), then intersects each pair of adjacent translated edges
     // (LineIntersection) to find the new inset corner at that vertex. A concave boundary can make adjacent
     // translated edges cross/pinch near a reflex corner instead of intersecting where expected — not
@@ -268,25 +288,22 @@ public class PlayableAreaPD : MonoBehaviour
 
     private Vector3[] ComputeInsetPerimeter(float offset)
     {
-        if (outerBoundary == null || outerBoundary.Length < 3) return System.Array.Empty<Vector3>();
+        if (_boundaryPoints == null || _boundaryPoints.Length < 3) return System.Array.Empty<Vector3>();
 
-        int n = outerBoundary.Length;
+        int n = _boundaryPoints.Length;
         var points = new Vector2[n];
         for (int i = 0; i < n; i++)
-        {
-            if (outerBoundary[i] == null) return System.Array.Empty<Vector3>();
-            points[i] = ToXZ(outerBoundary[i].position);
-        }
+            points[i] = ToXZ(_boundaryPoints[i]);
 
         // Shoelace signed area — reverse the working point order if the raw authoring order came out
         // clockwise, so every downstream step (inward-normal direction, final array order) is correct
-        // regardless of how outerBoundary was actually plotted.
+        // regardless of how the boundary was actually plotted.
         float signedArea = 0f;
         for (int i = 0, j = n - 1; i < n; j = i++)
             signedArea += points[j].x * points[i].y - points[i].x * points[j].y;
         if (signedArea < 0f) System.Array.Reverse(points);
 
-        float baseY = outerBoundary[0].position.y;
+        float baseY = _boundaryPoints[0].y;
         var inset = new Vector3[n];
         for (int i = 0; i < n; i++)
         {
@@ -330,68 +347,6 @@ public class PlayableAreaPD : MonoBehaviour
         float t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
         result = new Vector2(p1.x + t * d1x, p1.y + t * d1y);
         return true;
-    }
-
-    // Plain bounding-box rejection sampling against PointInPolygon alone — no wall margin, no obstruction
-    // check, no centroid bias (none of that applies to a hand-authored area; a designer already put it
-    // somewhere valid). General-purpose (2026-08-27, added for EventManagerPD's own hand-authored spawn
-    // areas) — safe for NON-CONVEX polygons, unlike GetInsetPerimeter/ComputeInsetPerimeter: there's no
-    // corner-intersection math here at all, just "is this random point inside the polygon," which
-    // PointInPolygon's ray-casting test already handles correctly for any simple (non-self-intersecting)
-    // polygon regardless of convexity. Returns false only if the polygon is degenerate (null/<3 points, or a
-    // degenerate bounding box) or maxAttempts is exhausted without ever landing inside it (should be rare —
-    // the only rejection criterion is "outside the polygon," so the hit rate is roughly the polygon's own
-    // area versus its bounding box's).
-    public static bool TryRandomPointInPolygon(Transform[] polygon, out Vector3 point, int maxAttempts = 30)
-    {
-        point = default;
-        if (polygon == null || polygon.Length < 3) return false;
-
-        GetBounds(polygon, out float minX, out float maxX, out float minZ, out float maxZ);
-        if (maxX <= minX || maxZ <= minZ) return false;
-
-        // Same "first non-null point's own Y" convention ComputeInsetPerimeter's own baseY already uses —
-        // this is an XZ-plane-only system, Y is just carried through for the final Vector3.
-        float y = 0f;
-        for (int i = 0; i < polygon.Length; i++)
-        {
-            if (polygon[i] == null) continue;
-            y = polygon[i].position.y;
-            break;
-        }
-
-        for (int attempt = 0; attempt < maxAttempts; attempt++)
-        {
-            float x = GameRandom.instance.NextFloat(minX, maxX);
-            float z = GameRandom.instance.NextFloat(minZ, maxZ);
-            var candidate = new Vector2(x, z);
-            if (!PointInPolygon(candidate, polygon)) continue;
-
-            point = new Vector3(candidate.x, y, candidate.y);
-            return true;
-        }
-        return false;
-    }
-
-    // True polygon area via the shoelace formula — the SAME math ComputeInsetPerimeter already computes
-    // internally for its own CCW-winding-normalization check (see that method's own signedArea local),
-    // extracted into a small reusable method (2026-08-27). Used by EventManagerPD to weight "which spawn
-    // area gets picked" by actual footprint size rather than a rough bounding-box proxy, which would
-    // overestimate area for any non-rectangular shape. Returns 0 for a degenerate polygon (null/<3 points).
-    public static float PolygonArea(Transform[] polygon)
-    {
-        if (polygon == null || polygon.Length < 3) return 0f;
-
-        float signedArea = 0f;
-        int n = polygon.Length;
-        for (int i = 0, j = n - 1; i < n; j = i++)
-        {
-            if (polygon[i] == null || polygon[j] == null) continue;
-            Vector2 pi = ToXZ(polygon[i].position);
-            Vector2 pj = ToXZ(polygon[j].position);
-            signedArea += pj.x * pi.y - pi.x * pj.y;
-        }
-        return Mathf.Abs(signedArea) * 0.5f;
     }
 
     // Total length of a closed-loop Vector3[] (e.g. GetInsetPerimeter's own output), summing every edge
@@ -457,24 +412,6 @@ public class PlayableAreaPD : MonoBehaviour
         return loop[loop.Length - 1];
     }
 
-    // Editor-only visualization — draws the outer boundary as a closed loop, matching exactly what
-    // RandomPoint() actually reasons about, so plotting points in the Scene view shows the real resulting
-    // shape immediately.
-    private void OnDrawGizmos()
-    {
-        DrawLoop(outerBoundary, Color.cyan);
-    }
-
-    private static void DrawLoop(Transform[] points, Color color)
-    {
-        if (points == null || points.Length < 2) return;
-        Gizmos.color = color;
-        for (int i = 0; i < points.Length; i++)
-        {
-            var a = points[i];
-            var b = points[(i + 1) % points.Length];
-            if (a == null || b == null) continue;
-            Gizmos.DrawLine(a.position, b.position);
-        }
-    }
+    // Editor-only visualization — lives on PlayableAreaOutlinePD now (reads BuildLocalPoints() live, so it
+    // works in Edit mode too, before this component's own Awake() has ever run and cached anything).
 }

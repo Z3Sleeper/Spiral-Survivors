@@ -2,8 +2,9 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // On taking damage (CharacterStatsPD._onDamaged — fires from TakeDamage on any positive damage taken,
-// excluding a killing blow), grants a flat Bonus-tier Move Speed buff (AddMoveSpeedFlat) for a fixed
-// duration.
+// excluding a killing blow), grants a Bonus-tier PERCENT Move Speed buff (AddMoveSpeedPercent, 2026-09-19 —
+// was AddMoveSpeedFlat, converted project-wide alongside every other flat-Move-Speed augment now that Move
+// Speed no longer comes off Stat augments, per explicit design) for a fixed duration.
 //
 // Re-triggering while the buff is already active (e.g. two hits in quick succession) just refreshes the
 // duration back to full — it does NOT re-grant/stack a second copy of the bonus, same "start/end pairing
@@ -18,7 +19,7 @@ public class OnDamageTakenGainMoveSpeedAugment : AugmentEffectPD<OnDamageTakenGa
         public void Dispose() { }
     }
 
-    public float moveSpeedFlat = 3f;
+    public float moveSpeedPercent = 0.30f;
     public float duration = 3f;
 
     protected override void OnApply()
@@ -37,7 +38,7 @@ public class OnDamageTakenGainMoveSpeedAugment : AugmentEffectPD<OnDamageTakenGa
         if (Stats == null || Stats.IsDead) return;
         // Only grants on the rising edge (see class doc comment) — a hit landing while the buff is already
         // up just refreshes the timer below, it doesn't stack a second copy of the bonus.
-        if (currentState.timer <= 0f) Stats.AddMoveSpeedFlat(moveSpeedFlat);
+        if (currentState.timer <= 0f) Stats.AddMoveSpeedPercent(moveSpeedPercent);
         currentState.timer = duration;
     }
 
@@ -51,6 +52,6 @@ public class OnDamageTakenGainMoveSpeedAugment : AugmentEffectPD<OnDamageTakenGa
         if (state.timer > 0f) return;
 
         state.timer = 0f;
-        Stats.AddMoveSpeedFlat(-moveSpeedFlat);
+        Stats.AddMoveSpeedPercent(-moveSpeedPercent);
     }
 }

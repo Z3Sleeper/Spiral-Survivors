@@ -3,7 +3,9 @@ using UnityEngine;
 
 // Rogue's second class ability, built on the IAbilityPD architecture — drops enemy aggro by going invisible
 // (CharacterStatsPD.GrantInvisibility, a duration-max contribution, not a raw on/off — see its own doc
-// comment) and grants +50% total move speed, both for the same fixed duration. Gated by a cooldown, same
+// comment) and grants +30% Bonus-tier move speed (AddMoveSpeedPercent, 2026-09-19 — was a flat +3 via
+// AddMoveSpeedFlat, converted alongside the other flat-Move-Speed augments/abilities now that Move Speed no
+// longer comes off Stat augments, per explicit design), both for the same fixed duration. Gated by a cooldown, same
 // shape as RogueSpinAbilityPD (see that file for the template this mirrors) — the two slots are otherwise
 // functionally identical now, this one just doesn't force a special action while active. EnemyBasePD/
 // EnemySpawnerPD already react to invisibility changing immediately (the taunt/invisible enemy-targeting
@@ -23,7 +25,7 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
 
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Vanish";
-    [SerializeField, TextArea] private string description = "Become invisible and gain +50% Total Move Speed for 3 seconds.";
+    [SerializeField, TextArea] private string description = "Become invisible and gain +30% Bonus Move Speed for 3 seconds.";
     public float cooldown = 20f;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full
     // value throughout the invisibility window) — see Simulate(). true: cooldown starts ticking
@@ -38,18 +40,17 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
 
     [Header("Effect")]
     public float duration = 3f;
-    // Flat, not Total-tier percent (2026-08-31, was moveSpeedTotalPercent) — user preference, flat over
-    // percent for stat buffs (see feedback_flat_over_percent_buffs). Renaming the field resets any
-    // Inspector-tuned override back to this default — intentional here, not an accidental loss, since the
-    // whole point of this change is moving off the old percent value entirely.
-    public float moveSpeedFlat = 3f;
+    // Bonus-tier percent, via AddMoveSpeedPercent (2026-09-19, was a flat +3 via AddMoveSpeedFlat — itself a
+    // 2026-08-31 conversion from an even earlier Total-tier percent; converted back to percent, Bonus tier
+    // this time, now that Move Speed no longer comes off Stat augments, per explicit design).
+    public float moveSpeedPercent = 0.30f;
 
     private CharacterStatsPD _stats;
     // Not scaled by anything (see Activate()'s own comment), so this is just a plain snapshot of the field
     // at cast time rather than recomputed live at both Activate() and the end-of-active reversal — same
     // "fixed for the whole active window" reasoning as RogueSpinAbilityPD's own cast-time snapshots
     // (_weaponCountAtCast etc).
-    private float _appliedMoveSpeedFlat;
+    private float _appliedMoveSpeedPercent;
     // Snapshotted alongside it — see IAbilityPD.ActiveTimeDuration's own doc comment for why the UI needs
     // this fixed rather than reading the raw duration field live, in case it changes mid-buff.
     private float _appliedDuration;
@@ -128,9 +129,9 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     {
         if (!IsReady || _stats == null) return;
 
-        // No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedFlat are both plain,
+        // No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedPercent are both plain,
         // fixed values now.
-        _appliedMoveSpeedFlat = moveSpeedFlat;
+        _appliedMoveSpeedPercent = moveSpeedPercent;
         _appliedDuration      = duration;
 
         currentState.activeTimer   = _appliedDuration;
@@ -151,7 +152,7 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         // DeathPreventionInvisibleAugment) never gets cut short by this ability's own end-of-buff turning it
         // off early. See CharacterStatsPD.GrantInvisibility's own doc comment.
         _stats.GrantInvisibility(_appliedDuration);
-        _stats.AddMoveSpeedFlat(_appliedMoveSpeedFlat);
+        _stats.AddMoveSpeedPercent(_appliedMoveSpeedPercent);
 
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
         // Skipped entirely at 0 (raw, un-hasted) cooldown — an ability that can be spammed with no downtime
@@ -192,7 +193,7 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         // reverts here, since that's exclusively this ability's to give and take back. The screen tint/model
         // fade are no longer this ability's own concern either (2026-08-31) — see CharacterStatsPD.
         // UpdateView's own invisible-flag-driven block, which now handles both generically for any source.
-        _stats?.AddMoveSpeedFlat(-_appliedMoveSpeedFlat);
+        _stats?.AddMoveSpeedPercent(-_appliedMoveSpeedPercent);
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         // See the matching NotifyAbilityStart call in Activate() for why this is gated on cooldown > 0 too.
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);

@@ -5,21 +5,24 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // "Destroy the Spires" — DPSCheckPD's multi-target sibling. Spawns dummyCount DummyTargetPD instances, each
-// placed independently within EventManagerPD's own hand-authored spawnAreas (2026-08-27 — was
-// PlayableAreaPD.RandomPoint against the whole arena; see PlayableAreaPD.GetInsetPerimeter's own doc comment
-// for why that whole procedural-placement approach was abandoned project-wide), and succeeds once EVERY one
-// of them has died. See DPSCheckPD's own class-level doc comment for the shared reasoning this mirrors
-// (dummy-as-genuine-IEnemyPD, tier/difficulty/coop scaling via EventTargetScalingPD, SilentDespawn-based
-// Cleanup) — only the differences worth calling out are covered here.
+// placed independently across the whole playable area (2026-09-21 — was EventManagerPD's own hand-authored
+// spawnAreas, removed entirely once confirmed that system was solving a problem PlayableAreaPD.RandomPoint
+// already solves correctly: RandomPoint's own wallMargin uses plain rejection sampling against the boundary's
+// edges, not GetInsetPerimeter's polygon-shrinking corner math — which IS genuinely broken for a concave
+// arena — so there was never a real reason a separate hand-authored area system needed to exist), and
+// succeeds once EVERY one of them has died. See DPSCheckPD's own class-level doc comment for the shared
+// reasoning this mirrors (dummy-as-genuine-IEnemyPD, tier/difficulty/coop scaling via EventTargetScalingPD,
+// SilentDespawn-based Cleanup) — only the differences worth calling out are covered here.
 //
-// Spawn-area mode: confineToOneArea (default false — "anywhere across all areas", confirmed explicit design)
-// is decided ONCE per event activation via EventManagerPD.BeginSpawnAreaSelection, never per individual
-// dummy — see that method's own doc comment. This event never hand-picks a SPECIFIC area itself either way.
+// Placement rules, all via PlayableAreaPD.RandomPoint: wallMargin keeps every dummy's own CENTER at least
+// that far from the boundary (never spawns "on the literal edge" — explicit design), outwardBiasSamples
+// softly prefers farther-from-center spots, minCenterDistance hard-rejects anything too close to the middle,
+// and footprintRadius (reusing zoneRadius) avoids Obstacle-layer colliders.
 //
-// Placement spread: each dummy after the first samples spreadSamples independent candidates from
-// EventManagerPD.TryGetSpawnAreaPoint and keeps whichever ends up FARTHEST from every dummy THIS event has
-// already placed, subject to a hard minSeparationDistance floor layered underneath — see PickSpreadPosition's
-// own doc comment for the exact floor-plus-bias shape.
+// Placement spread: each dummy after the first samples spreadSamples independent RandomPoint candidates and
+// keeps whichever ends up FARTHEST from every dummy THIS event has already placed, subject to a hard
+// minSeparationDistance floor layered underneath — see PickSpreadPosition's own doc comment for the exact
+// floor-plus-bias shape.
 //
 // Progress: unlike DPSCheckPD (which reads one dummy's live CurrentHealth/MaxHealth directly, no State
 // mirroring needed), each dummy's own MaxHealth gets SNAPSHOTTED once, into predicted State, right after
@@ -77,16 +80,17 @@ public class DestroyTheTargetsPD : EventBasePD<DestroyTheTargetsPD.State>
     // ends up farthest from every ALREADY-PLACED dummy this same event has spawned so far — see
     // PickSpreadPosition's own doc comment.
     [SerializeField] private int spreadSamples = 5;
-    // false (confirmed default): every dummy's spawn area is independently re-rolled — a batch can scatter
-    // across several different authored spawnAreas. true: one area is picked ONCE for the whole batch, and
-    // every dummy lands somewhere inside just that single area. See EventManagerPD.BeginSpawnAreaSelection's
-    // own doc comment.
-    [SerializeField] private bool confineToOneArea = false;
     // Hard reject floor, layered UNDER the existing spreadSamples max-spread bias above (not a replacement
     // for it) — see PickSpreadPosition's own doc comment for how the two combine. "Obvious space limitation
     // we'll probably never realistically hit" per explicit design — degrades gracefully rather than erroring
     // if a tiny area/large dummyCount combination ever makes it unsatisfiable.
     [SerializeField] private float minSeparationDistance = 2f;
+
+    // PlayableAreaPD.RandomPoint's own placement knobs (2026-09-21, replaces the old hand-authored
+    // spawnAreas system) — see this class's own doc comment for what each one does.
+    [SerializeField] private float wallMargin = 3f;
+    [SerializeField] private int outwardBiasSamples = 3;
+    [SerializeField] private float minCenterDistance = 10f;
 
     // Reused across every OnEventStart call (2026-08-21) rather than a fresh List<> each time — same
     // "persistent scratch collection, cleared and reused" convention KingOrbiterPD._grabCandidates already
@@ -105,14 +109,9 @@ public class DestroyTheTargetsPD : EventBasePD<DestroyTheTargetsPD.State>
 
         if (dummyPrefab == null) return;
 
-        // Decided ONCE for the whole batch, not per dummy — see this field's own doc comment.
-        var selection = EventManagerPD.instance != null
-            ? EventManagerPD.instance.BeginSpawnAreaSelection(confineToOneArea)
-            : new EventManagerPD.SpawnAreaSelection(false, -1);
-
         for (int i = 0; i < dummyCount; i++)
         {
-            Vector3 spawnPos = EventManagerPD.instance != null ? PickSpreadPosition(selection) : transform.position;
+            Vector3 spawnPos = playableArea != null ? PickSpreadPosition(playableArea) : transform.position;
             _placedPositionsScratch.Add(spawnPos);
 
             var id = hierarchy.Create(dummyPrefab, spawnPos, Quaternion.identity);
@@ -131,21 +130,21 @@ public class DestroyTheTargetsPD : EventBasePD<DestroyTheTargetsPD.State>
         }
     }
 
-    // Samples spreadSamples independent EventManagerPD.TryGetSpawnAreaPoint candidates and returns whichever
-    // has the GREATEST MINIMUM distance to every dummy already placed this pass (_placedPositionsScratch) —
-    // same "tournament bias" shape PlayableAreaPD.RandomPoint's own outwardBiasSamples used to have for
-    // centroid avoidance, just biased toward spreading dummies apart from EACH OTHER instead. The very FIRST
-    // dummy has nothing to compare against yet — trivially takes whatever the first successful draw is, same
-    // as calling this with spreadSamples effectively 1.
+    // Samples spreadSamples independent PlayableAreaPD.RandomPoint candidates and returns whichever has the
+    // GREATEST MINIMUM distance to every dummy already placed this pass (_placedPositionsScratch) — same
+    // "tournament bias" shape RandomPoint's own outwardBiasSamples uses for centroid avoidance, just biased
+    // toward spreading dummies apart from EACH OTHER instead (RandomPoint's own outwardBiasSamples is layered
+    // in separately, underneath this — see the field's own comment). The very FIRST dummy has nothing to
+    // compare against yet — trivially takes whatever the first draw is, same as calling this with
+    // spreadSamples effectively 1.
     //
     // minSeparationDistance layers a HARD floor underneath that soft bias (2026-08-27, explicit design — "an
     // obvious space limitation we'll work around and probably never realistically hit," a floor plus a
     // preference on top, not a replacement for it): tracks TWO running bests across the sampled candidates —
     // the best candidate that clears the floor (the real answer, returned when one exists) and the best
     // candidate overall regardless of the floor (a graceful fallback for the pathological case where every
-    // single sample this pass happens to land under the floor). Falls back to transform.position only if
-    // EVERY sample this pass failed outright (e.g. no spawnAreas authored at all).
-    private Vector3 PickSpreadPosition(EventManagerPD.SpawnAreaSelection selection)
+    // single sample this pass happens to land under the floor).
+    private Vector3 PickSpreadPosition(PlayableAreaPD playableArea)
     {
         float minSepSq = minSeparationDistance * minSeparationDistance;
 
@@ -160,8 +159,14 @@ public class DestroyTheTargetsPD : EventBasePD<DestroyTheTargetsPD.State>
         int samples = _placedPositionsScratch.Count == 0 ? 1 : spreadSamples;
         for (int i = 0; i < samples; i++)
         {
-            if (!EventManagerPD.instance.TryGetSpawnAreaPoint(selection, out Vector3 candidate, avoidPlayersOnPlacement, playerOffset, zoneRadius))
-                continue;
+            Vector3 candidate = playableArea.RandomPoint(
+                wallMargin,
+                zoneRadius,
+                outwardBiasSamples: outwardBiasSamples,
+                avoidPlayers: avoidPlayersOnPlacement,
+                playerOffset: playerOffset,
+                minCenterDistance: minCenterDistance,
+                footprintRadius: zoneRadius);
 
             float candidateMinDistSq = _placedPositionsScratch.Count == 0 ? float.MaxValue : MinDistanceSqToAny(candidate, _placedPositionsScratch);
 

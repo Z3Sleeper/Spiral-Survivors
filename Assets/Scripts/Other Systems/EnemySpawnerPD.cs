@@ -339,6 +339,10 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     private int _currentDifficulty = 1;
 
     [SerializeField] private int bossesToDefeatForWin = 4;
+    // Public passthrough (2026-09-17) — EventManagerPD reads this as the real source of truth for "how many
+    // Tier Cycles (and therefore mid-cycle event triggers) a run can ever have," since a win fires the moment
+    // this many bosses are defeated and a Tier Cycle always ends in a boss spawn.
+    public int BossesToDefeatForWin => bossesToDefeatForWin;
 
     [Header("Spawn Limits")]
     [SerializeField] private int maxNormalEnemies = 100;
