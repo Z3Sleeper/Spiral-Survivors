@@ -11,7 +11,7 @@ using UnityEngine;
 // no-op-by-default field and its Activate()/EndBuff() application live on the ability itself
 // (KnightBerserkAbilityPD.moveSpeedPercent — see its own doc comment). This augment just bumps that field.
 //
-// ALSO grants +maxEnergyFlat Max Energy, permanently (2026-10-02, explicit request) — unlike the Move Speed
+// ALSO grants +bonusMaxEnergyFlat Max Energy, permanently (2026-10-02, explicit request) — unlike the Move Speed
 // half above, this one IS a genuine always-on CharacterStatsPD stat (AddMaxEnergyFlat, same generic
 // permanent-grant pattern RogueSpinChargeAugment's AddAbilityCharges call uses), tying this augment to
 // Knight's energy-spending Berserk ability thematically. The Move Speed buff alone is a short-duration,
@@ -22,10 +22,10 @@ public class KnightBerserkMoveSpeedAugment : AugmentEffectPD<KnightBerserkMoveSp
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection can resolve
-    // {moveSpeedPercent}/{maxEnergyFlat} directly as description tokens; only public fields/properties/
+    // {moveSpeedPercent}/{bonusMaxEnergyFlat} directly as description tokens; only public fields/properties/
     // methods are checked. Still Inspector-serializable either way.
     public float moveSpeedPercent = 0.5f;
-    public float maxEnergyFlat = 25f;
+    public float bonusMaxEnergyFlat = 25f;
 
     protected override void OnApply()
     {
@@ -34,6 +34,6 @@ public class KnightBerserkMoveSpeedAugment : AugmentEffectPD<KnightBerserkMoveSp
         // a player with KnightBerserkAbilityPD equipped — but guarded anyway, same defensive convention
         // every other GetComponent lookup in this codebase already follows.
         if (berserk != null) berserk.moveSpeedPercent += moveSpeedPercent;
-        Stats.AddMaxEnergyFlat(maxEnergyFlat);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 }

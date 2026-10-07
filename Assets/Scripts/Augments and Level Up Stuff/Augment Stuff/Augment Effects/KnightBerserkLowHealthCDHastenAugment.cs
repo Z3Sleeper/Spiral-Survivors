@@ -29,7 +29,7 @@ public class KnightBerserkLowHealthCDHastenAugment : AugmentEffectPD<KnightBerse
     public float extraSpeedMultiplierPercent = 1f;
     // Flat, unconditional Max Energy grant (2026-10-02) — same shape as KnightBerserkMoveSpeedAugment's own
     // +25, tying this augment to Knight's energy-spending Berserk ability thematically too.
-    public float maxEnergyFlat = 50f;
+    public float bonusMaxEnergyFlat = 50f;
 
     protected override void OnApply()
     {
@@ -42,6 +42,6 @@ public class KnightBerserkLowHealthCDHastenAugment : AugmentEffectPD<KnightBerse
             berserk.lowHealthThreshold = lowHealthThresholdPercent;
             berserk.lowHealthCooldownBonusMultiplier += extraSpeedMultiplierPercent;
         }
-        Stats.AddMaxEnergyFlat(maxEnergyFlat);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 }

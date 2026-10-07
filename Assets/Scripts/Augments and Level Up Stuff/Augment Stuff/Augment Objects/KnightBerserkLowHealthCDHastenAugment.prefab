@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::KnightBerserkLowHealthCDHastenAugment
   lowHealthThresholdPercent: 0.5
   extraSpeedMultiplierPercent: 1
-  maxEnergyFlat: 50
+  bonusMaxEnergyFlat: 20

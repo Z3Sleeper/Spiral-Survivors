@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: KnightBerserkHealAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FFFFFF>Resolve: Unwavering</color>'
-  description: '<color=#FFFF00>+{maxEnergyFlat} Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
     <color=#7DFF00>Heal</color>
     <color=#00FF00>{healPerSecondPercent}% Max Health</color> each second during

@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 1430d3a9a1184c641beffe630eb4e3dc, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnDamageTakenRefillEnergyAugment
-  energyPercent: 0.001
-  bonusMaxEnergyFlat: 25
+  energyPercent: 0.005
+  bonusMaxEnergyFlat: 10

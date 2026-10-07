@@ -45,7 +45,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnSurgeStartInterruptOnStrikeAugment
   energySpentRequirement: 50
-  maxEnergyPerStack: 0.5
+  maxEnergyPerStack: 1
   radiusMultiplier: 2.5
   pairedStunDuration: 1.5
   chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}

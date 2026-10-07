@@ -16,9 +16,13 @@ public class SurgeAttackSpeedMultiplierAugment : AugmentEffectPD<SurgeAttackSpee
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     [SerializeField] private float surgeAttackSpeedBonusPercent = 0.15f;
+    // Generic +10 Max Energy side-bonus (2026-10-07), same flat grant most other energy/Surge-themed
+    // augments in this codebase carry.
+    public float bonusMaxEnergyFlat = 10f;
 
     protected override void OnApply()
     {
         Stats.AddSurgeAttackSpeedBonusPercent(surgeAttackSpeedBonusPercent);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 }

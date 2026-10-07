@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnAbilityStartRefillEnergyAugment
   energyPerCooldownSecondPercent: 0.05
-  bonusMaxEnergyFlat: 25
+  bonusMaxEnergyFlat: 10

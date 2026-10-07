@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::KnightBerserkHealAugment
   healPerSecondPercent: 0.1
   tickInterval: 0.25
-  maxEnergyFlat: 50
+  bonusMaxEnergyFlat: 20

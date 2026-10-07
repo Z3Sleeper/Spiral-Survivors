@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::KnightBerserkMoveSpeedAugment
   moveSpeedPercent: 0.75
-  maxEnergyFlat: 50
+  bonusMaxEnergyFlat: 20

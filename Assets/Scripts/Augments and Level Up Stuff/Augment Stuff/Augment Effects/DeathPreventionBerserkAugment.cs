@@ -25,13 +25,13 @@ public class DeathPreventionBerserkAugment : AugmentEffectPD<DeathPreventionBers
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    public float maxEnergyFlat = 25f;
+    public float bonusMaxEnergyFlat = 25f;
 
     protected override void OnApply()
     {
         Stats.AddDeathPreventedListener(OnDeathPrevented);
         Stats.ActivateDeathPreventions();
-        Stats.AddMaxEnergyFlat(maxEnergyFlat);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 
     protected override void OnDestroy()

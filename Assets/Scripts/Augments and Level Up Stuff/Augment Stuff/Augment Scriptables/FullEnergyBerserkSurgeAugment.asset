@@ -13,11 +13,11 @@ MonoBehaviour:
   m_Name: FullEnergyBerserkSurgeAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>All Out</color>
-  description: '<color=#FFFF00>+25 Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
-    When you <color=#FFFF00>Surge</color>
-    with <color=#FFFF00>Full Energy</color>, <color=#FFFF00>Berserk Surge</color>
-    instead.'
+    When
+    you <color=#FFFF00>Surge</color> with <color=#FFFF00>Full Energy</color>, <color=#FFFF00>Berserk
+    Surge</color> instead.'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 8167986082628723642, guid: 1c7c1c8cd84c83544b56f59cf4ea0c57, type: 3}
   multiplayerOnly: 0
@@ -28,5 +28,6 @@ MonoBehaviour:
   requiredAugments: []
   tags: []
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeDualWeildAugment
   bonusWeaponCountMultiplier: 2
-  bonusMaxEnergyFlat: 25
+  bonusMaxEnergyFlat: 10

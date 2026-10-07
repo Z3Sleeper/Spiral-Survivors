@@ -47,4 +47,4 @@ MonoBehaviour:
   healBase: 2
   bonusHealthRegenPercent: 2
   energySpentPerHeal: 20
-  bonusMaxEnergyFlat: 25
+  bonusMaxEnergyFlat: 10

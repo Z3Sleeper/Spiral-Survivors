@@ -45,7 +45,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ShieldBreakBurstAugment
   invincibilityDuration: 0.5
-  damagePercent: 3
+  damagePercent: 5
   radiusMultiplier: 2.5
-  knockbackMultiplier: 5
+  knockbackMultiplierPercent: 5
   chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}

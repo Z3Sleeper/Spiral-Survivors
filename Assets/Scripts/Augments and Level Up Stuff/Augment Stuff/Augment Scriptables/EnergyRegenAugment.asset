@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: EnergyRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Invigorate</color>
-  description: '<color=#FFFF00>+{maxEnergyFlat} Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
     <color=#FFFF00>+{energyRegenTotalPercent}%
     Energy Regen</color>'

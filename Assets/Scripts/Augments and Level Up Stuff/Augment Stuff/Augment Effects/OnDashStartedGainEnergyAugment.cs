@@ -30,7 +30,7 @@ public class OnDashStartedGainEnergyAugment : AugmentEffectPD<OnDashStartedGainE
     // Same flat, unconditional +25 Max Energy every other Surge-family energy augment grants
     // (SurgeWeaponCountAugment/SurgeStackingAttackSpeedAugment/SurgeHealAugment/FullEnergyBerserkSurgeAugment/
     // DeathPreventionBerserkAugment) — 2026-09-17, granted once in OnApply(), same shape as those.
-    [SerializeField] private float bonusMaxEnergyFlat = 25f;
+    public float bonusMaxEnergyFlat = 25f;
 
     private PlayerControllerPD _controller;
 

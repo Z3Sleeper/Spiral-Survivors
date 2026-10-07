@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: OnStrikeEnergyRegenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energy Reaping</color>
-  description: '<color=#FFFF00>+25 Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
-    <color=#FFA000>On Strike:</color>
-    Refill <color=#FFFF00>{EnergyPerStrikePercent}% Energy</color>.'
+    <color=#FFA000>On
+    Strike:</color> Refill <color=#FFFF00>{EnergyPerStrikePercent}% Energy</color>.'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 3653572354511512405, guid: ee7c8a3b3d6237b428c279beda5f781e, type: 3}
   multiplayerOnly: 0
@@ -27,5 +27,6 @@ MonoBehaviour:
   requiredAugments: []
   tags: []
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

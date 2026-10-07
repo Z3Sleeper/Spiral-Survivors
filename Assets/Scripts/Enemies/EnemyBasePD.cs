@@ -1675,7 +1675,21 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         {
             b.bleedTimer -= delta;
             if (b.bleedDamagePerSecond > 0f)
-                TakeDamage(b.bleedDamagePerSecond * delta, isCrit: false, b.bleedAttacker);
+            {
+                float tickDamage = b.bleedDamagePerSecond * delta;
+                TakeDamage(tickDamage, isCrit: false, b.bleedAttacker);
+
+                // Damage number popup — same "resolve the PlayerID to a live CharacterStatsPD, then fire
+                // THIS enemy's own _onHitFeedback" pattern the kill-launch splash damage above already uses
+                // (see its own comment) — attribution is whichever player b.bleedAttacker currently holds,
+                // i.e. "most recent stack wins," same accepted limitation bleedAttacker's own doc comment
+                // already describes (the bucket model has no per-stack attacker tracking to attribute to
+                // instead). Not a weapon hit, so isPriority stays false. ShowDamageNumber's own
+                // per-(enemy,attacker) stacking key means every tick just climbs one running number instead
+                // of spamming a new popup per tick.
+                if (CharacterStatsPD.All.TryGetValue(b.bleedAttacker, out var bleedAttackerStats))
+                    _onHitFeedback.Invoke(new HitFeedbackData { target = ObjectId, damage = tickDamage, isCrit = false, isHighroll = false, attacker = bleedAttackerStats, isPriority = false });
+            }
             if (b.bleedTimer <= 0f) b.bleedDamagePerSecond = 0f;
         }
 

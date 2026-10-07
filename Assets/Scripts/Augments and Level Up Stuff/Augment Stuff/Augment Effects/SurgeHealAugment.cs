@@ -63,7 +63,7 @@ public class SurgeHealAugment : AugmentEffectPD<SurgeHealAugment.State>
     // Same flat, unconditional +25 Max Energy every other Surge-family augment grants (SurgeWeaponCountAugment/
     // SurgeStackingAttackSpeedAugment/FullEnergyBerserkSurgeAugment/DeathPreventionBerserkAugment) — "more
     // Surge uptime per full-to-empty cycle," granted once in OnApply(), same shape as those.
-    [SerializeField] private float bonusMaxEnergyFlat = 25f;
+    public float bonusMaxEnergyFlat = 25f;
 
     // Baseline heal-per-second at 100% HealPower (the crit/HealPower multiply itself isn't included since
     // it varies per-tick, not a stat to preview) for AugmentDescriptionFormatter's {LiveHealPerSecondRatio}

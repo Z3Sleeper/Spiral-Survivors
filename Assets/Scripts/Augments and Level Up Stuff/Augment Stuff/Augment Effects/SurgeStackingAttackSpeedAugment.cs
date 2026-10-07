@@ -43,7 +43,7 @@ public class SurgeStackingAttackSpeedAugment : AugmentEffectPD<SurgeStackingAtta
     // Permanent, unconditional grant (2026-08-31) — same +25 Max Energy shape/reasoning as
     // SurgeWeaponCountAugment's own bonusMaxEnergyFlat: more Surge uptime per full-to-empty cycle, granted
     // once in OnApply() rather than gated behind Surge start/end like the stacking Attack Speed above.
-    [SerializeField] private float bonusMaxEnergyFlat = 25f;
+    public float bonusMaxEnergyFlat = 25f;
 
     // Plain view-layer bookkeeping, not State — tracks what this effect has ACTUALLY applied to
     // CharacterStatsPD so it can be reversed exactly, same role as EnemyBasePD's _wasDeadLastFrame.

@@ -34,7 +34,7 @@ public class FullEnergyBerserkSurgeAugment : AugmentEffectPD<FullEnergyBerserkSu
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float bonusMaxEnergyFlat = 25f;
+    public float bonusMaxEnergyFlat = 25f;
 
     protected override void OnApply()
     {

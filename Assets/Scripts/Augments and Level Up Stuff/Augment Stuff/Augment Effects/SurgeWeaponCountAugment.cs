@@ -32,7 +32,7 @@ public class SurgeWeaponCountAugment : AugmentEffectPD<SurgeWeaponCountAugment.S
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     [SerializeField] private int bonusWeaponCountMultiplier = 2;
-    [SerializeField] private float bonusMaxEnergyFlat = 25f;
+    public float bonusMaxEnergyFlat = 25f;
 
     // Plain, not State — mutated only from PredictedEvent listener callbacks, same role/reasoning as
     // SurgeEnergySpentMoveSpeedAugment's own _bonusActive. Without this, picking this augment WHILE already Surging

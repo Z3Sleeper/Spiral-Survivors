@@ -21,7 +21,7 @@ using UnityEngine;
 // (enemy-finding, damage roll, knockback, VFX) is shared, not duplicated.
 //
 // Knockback reworked per explicit instruction: no longer an augment-owned flat value entirely separate from
-// the player's own stat (the old baseKnockback field) — now Stats.Knockback * knockbackMultiplier, i.e.
+// the player's own stat (the old baseKnockback field) — now Stats.Knockback * knockbackMultiplierPercent, i.e.
 // inherited from the player's actual Knockback stat and scaled by an augment-specific multiplier (default 2x,
 // exposed below) instead of being wholly disconnected from it.
 //
@@ -33,14 +33,16 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float invincibilityDuration = 0.25f;
+    public float invincibilityDuration = 0.25f;
     public float damagePercent        = 3f;
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
     // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
     // scaling itself. Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection
     // can resolve {radiusMultiplier} directly as a description token.
     public float radiusMultiplier    = 1.25f;
-    [SerializeField] private float knockbackMultiplier = 2f;
+    // Public and suffixed "Percent" (not knockbackMultiplier) — AugmentDescriptionFormatter's reflection
+    // only resolves public members, and only auto-*100s a token whose name literally ENDS in "Percent".
+    public float knockbackMultiplierPercent = 2f;
 
     // Mirrors AreaEffectCastHelper.Cast's own damage formula, minus the luck/crit roll (baseline preview, not
     // a randomly-sampled one — see OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the
@@ -77,7 +79,7 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
 
         Vector3 castPosition = Stats.transform.position;
         float radius = Stats.RangeScalingAoEBase * radiusMultiplier;
-        float knockback = Stats.Knockback * knockbackMultiplier;
+        float knockback = Stats.Knockback * knockbackMultiplierPercent;
 
         var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
         if (!chainId.HasValue) return;

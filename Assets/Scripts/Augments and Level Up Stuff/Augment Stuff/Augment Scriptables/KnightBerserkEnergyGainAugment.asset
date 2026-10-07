@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: KnightBerserkEnergyGainAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FFFFFF>Resolve: Unending</color>'
-  description: '<color=#FFFF00>+{maxEnergyFlat} Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
     <color=#FFA000>Double</color>
     <color=#FFFF00>Energy Gain</color> from all sources during <color=#FFFFFF>Resolve</color>'

@@ -19,11 +19,11 @@ public class KnightBerserkEnergyGainAugment : AugmentEffectPD<KnightBerserkEnerg
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection can resolve
-    // {energyGainPercent}/{maxEnergyFlat} directly as description tokens; only public fields/properties/
+    // {energyGainPercent}/{bonusMaxEnergyFlat} directly as description tokens; only public fields/properties/
     // methods are checked. Still Inspector-serializable either way. 1f = 100% (this codebase's percent
     // fields store the fraction), same convention EnergyGainAugment's own field uses.
     public float energyGainPercent = 1f;
-    public float maxEnergyFlat     = 50f;
+    public float bonusMaxEnergyFlat     = 50f;
 
     protected override void OnApply()
     {
@@ -32,6 +32,6 @@ public class KnightBerserkEnergyGainAugment : AugmentEffectPD<KnightBerserkEnerg
         // a player with KnightBerserkAbilityPD equipped — but guarded anyway, same defensive convention
         // every other GetComponent lookup in this codebase already follows.
         if (berserk != null) berserk.energyGainPercent += energyGainPercent;
-        Stats.AddMaxEnergyFlat(maxEnergyFlat);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 }

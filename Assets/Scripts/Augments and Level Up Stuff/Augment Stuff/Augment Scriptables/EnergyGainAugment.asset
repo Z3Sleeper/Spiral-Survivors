@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: EnergyGainAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Generator</color>
-  description: '<color=#FFFF00>+{maxEnergyFlat} Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
     <color=#FFFF00>+{energyGainPercent}%
     Energy Gain</color> from all sources'

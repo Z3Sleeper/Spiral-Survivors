@@ -28,7 +28,7 @@ public class OnDamageTakenRefillEnergyAugment : AugmentEffectPD<OnDamageTakenRef
     // (SurgeWeaponCountAugment/SurgeStackingAttackSpeedAugment/SurgeHealAugment/FullEnergyBerserkSurgeAugment/
     // DeathPreventionBerserkAugment/OnDashStartedGainEnergyAugment/OnStrikeEnergyRegenAugment/
     // OnAbilityStartRefillEnergyAugment) — 2026-09-30, granted once in OnApply(), same shape as those.
-    [SerializeField] private float bonusMaxEnergyFlat = 25f;
+    public float bonusMaxEnergyFlat = 25f;
 
     // Shows energyPercent of MaxEnergy PER 1 POINT of pre-mitigation damage taken, for
     // AugmentDescriptionFormatter's {LiveEnergyGain} token — same "per 1 point" baseline-coefficient

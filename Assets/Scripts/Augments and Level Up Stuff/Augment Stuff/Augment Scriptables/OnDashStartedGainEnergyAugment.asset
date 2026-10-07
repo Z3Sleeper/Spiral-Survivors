@@ -13,10 +13,11 @@ MonoBehaviour:
   m_Name: OnDashStartedGainEnergyAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Kinetic Energy</color>
-  description: '<color=#FFFF00>+25 Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
-    <color=#FFA000>On <color=#00FFFF>Dash
-    Start</color>:</color> Refill <color=#FFFF00>{energyPerDashPercent}% Energy</color>.'
+    <color=#FFA000>On
+    <color=#00FFFF>Dash Start</color>:</color> Refill <color=#FFFF00>{energyPerDashPercent}%
+    Energy</color>.'
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   effectPrefab: {fileID: 3255429888280185462, guid: 4b91ed5af0d8c7e4ab5646b0a5a425bd, type: 3}
   multiplayerOnly: 0
@@ -28,5 +29,6 @@ MonoBehaviour:
   tags:
   - Dash Effect
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

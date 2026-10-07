@@ -680,8 +680,9 @@ public class CharacterSelectUI : MonoBehaviour
             // value, not by reference), since this UI lives in a different scene from the player prefab.
             string threatLevel2Line = difficulty >= 2 ? "\nLevel 2: Players are 40% Slowed for 1.5 seconds when they take unshielded damage." : "";
             // Threat Level 3's own unique modifier (EnemySpawnerPD.threatLevel3EliteStatMultiplier) —
-            // reworked 2026-08-26 from "Double Elite spawns" to "Double Elite Health/Damage".
-            string threatLevel3Line = difficulty >= 3 ? "\nLevel 3: Double Elite Health and Damage." : "";
+            // reworked 2026-08-26 from "Double Elite spawns" to "Double Elite Health/Damage", nerfed
+            // 2026-10-07 from double (2f) to +50% (1.5f).
+            string threatLevel3Line = difficulty >= 3 ? "\nLevel 3: Elite Health and Damage +50%." : "";
             // Threat Level 4's own unique modifier (EnemySpawnerPD.threatLevel4PlebMoveSpeedMultiplier).
             string threatLevel4Line = difficulty >= 4 ? "\nLevel 4: Spikies are 25% faster." : "";
             // Threat Level 5's own unique modifier (EnemySpawnerPD.threatLevel5AttackCooldownMultiplier,

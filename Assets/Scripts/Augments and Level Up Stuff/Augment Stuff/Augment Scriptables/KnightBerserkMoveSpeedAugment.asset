@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: KnightBerserkMoveSpeedAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FFFFFF>Resolve: Run Them Down!</color>'
-  description: '<color=#FFFF00>+{maxEnergyFlat} Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
     <color=#FFFFFF>Resolve</color>
     now grants <color=#FFFFFF>+{moveSpeedPercent}% Move Speed</color> while active.'

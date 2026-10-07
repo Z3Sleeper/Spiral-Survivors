@@ -81,6 +81,11 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
     public float moveSpeedPercent = 0.30f;
     public float buffDuration  = 3f;
 
+    // Generic +10 Max Energy side-bonus (2026-10-07), same flat grant most other energy/Surge-themed
+    // augments in this codebase carry — permanent, granted once in OnApply(), unrelated to the temporary
+    // Move Speed buff above.
+    public float bonusMaxEnergyFlat = 10f;
+
     [Header("Buff Bar")]
     // Permanent — added once in OnApply(), never removed, tracks gate progress. See class doc comment.
     [SerializeField] private Sprite energyTrackerIcon;
@@ -93,6 +98,7 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
     protected override void OnApply()
     {
         Stats.AddEnergySpentListener(OnEnergySpent);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
 
         if (isOwner && BuffBarPD.instance != null && _energyTrackerIconInstance == null)
             _energyTrackerIconInstance = BuffBarPD.instance.AddBuffIcon(energyTrackerIcon);

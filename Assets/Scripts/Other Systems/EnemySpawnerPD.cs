@@ -178,9 +178,9 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // scaled baseEliteCount in BuildEliteSchedule) to "Elite Health/Damage are doubled" instead, applied per-
     // spawn in SpawnElite. Stacks with every HIGHER difficulty too, same cumulative-not-standalone convention
     // every other threat modifier uses, so this stays active at every difficulty from 3 up. Simple flat
-    // multiplier (2x = doubled), not a per-level growth curve like the generic stat scalars — explicit
-    // design, this is a standalone tier-3-specific bump, not a formula.
-    private float threatLevel3EliteStatMultiplier = 2f;
+    // multiplier, not a per-level growth curve like the generic stat scalars — explicit design, this is a
+    // standalone tier-3-specific bump, not a formula. Nerfed 2026-10-07 from 2f (double) to 1.5f (+50%).
+    private float threatLevel3EliteStatMultiplier = 1.5f;
     // Threat Level 4's own unique modifier ("Spikies are 25% faster", lowered 2026-08-23 from 50%) — Pleb
     // category specifically, see SpawnEnemy's own doc comment for the exact composition (multiplies on top
     // of the generic difficulty move-speed scalar, doesn't replace it). Same cumulative-from-this-level-up

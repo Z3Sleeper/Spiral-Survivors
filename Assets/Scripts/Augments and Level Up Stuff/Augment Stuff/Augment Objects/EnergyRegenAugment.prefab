@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnergyRegenAugment
   energyRegenTotalPercent: 2
-  maxEnergyFlat: 25
+  bonusMaxEnergyFlat: 10

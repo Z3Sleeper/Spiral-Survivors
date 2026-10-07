@@ -18,6 +18,10 @@ public class OnHitDamageCurrentEnergyAugment : AugmentEffectPD<OnHitDamageCurren
     public float onHitStrengthPercent = 0.05f;
     // 0.001f = 0.1% Strength per 1 point of Stats.CurrentEnergy.
     public float perEnergyPercent = 0.001f;
+    // Generic +10 Max Energy side-bonus (2026-10-07), same flat grant most other energy/Surge-themed
+    // augments in this codebase carry — doesn't touch this augment's own CurrentEnergy-scaling design at
+    // all, just a permanent stat floor on top.
+    public float bonusMaxEnergyFlat = 10f;
 
     // Baseline damage at 100% OnHitPower (the per-hit multiplier itself isn't included since it varies
     // hit-to-hit) for AugmentDescriptionFormatter's {LiveStrengthRatio} token — reads stats.CurrentEnergy
@@ -30,6 +34,7 @@ public class OnHitDamageCurrentEnergyAugment : AugmentEffectPD<OnHitDamageCurren
     protected override void OnApply()
     {
         Stats.AddHitListener(OnHit);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 
     protected override void OnDestroy()

@@ -47,4 +47,4 @@ MonoBehaviour:
   stackInterval: 1
   maxStacks: 10
   rangeFlat: 0.5
-  bonusMaxEnergyFlat: 25
+  bonusMaxEnergyFlat: 10

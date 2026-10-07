@@ -13,13 +13,14 @@ MonoBehaviour:
   m_Name: SurgeStackingRangeAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Ramping Reach</color>
-  description: '<color=#FFFF00>+25 Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
-    <color=#FFA000>While <color=#FFFF00>Surging</color>:</color>
-    Gain <color=#3278FF>+0.5 <color=#9664FF>Stacking</color> Range</color> every
-    <color=#FFA000>0.25 seconds</color>.
+    <color=#FFA000>While
+    <color=#FFFF00>Surging</color>:</color> Gain <color=#3278FF>+0.5 <color=#9664FF>Stacking</color>
+    Range</color> every <color=#FFA000>0.25 seconds</color>.
 
-    <color=#9664FF>Max 20 Stacks</color>'
+    <color=#9664FF>Max
+    20 Stacks</color>'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 1930731585256451583, guid: ac2d5216f173fbb43ac4bd791e1e9dba, type: 3}
   multiplayerOnly: 0
@@ -31,5 +32,6 @@ MonoBehaviour:
   tags:
   - Stacking
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

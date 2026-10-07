@@ -103,17 +103,18 @@ MonoBehaviour:
 
     <color=#FFBE50><i>Executes
     are 20% effective vs Bosses</i></color>'
-  cooldown: 15
+  cooldown: 10
   authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 1
   tags: []
   activeSurgeBlock: 0
-  duration: 5
+  duration: 10
   weaponRangeTotalPercent: 0.3
   executeThresholdPercent: 0.2
   critChancePercent: 0.3
   buffStrengthMultiplier: 1
+  rangeMultiplierBonus: 0
   knockbackPercent: 0
   attackSpeedPercent: 0
 --- !u!114 &-5547753293085439714

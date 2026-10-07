@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: KnightBerserkLowHealthCDHastenAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FFFFFF>Resolve: Tenacious</color>'
-  description: '<color=#FFFF00>+{maxEnergyFlat} Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
     <color=#FFFFFF>Resolve''s</color>
     <color=#FFA000>cooldown speed</color> is <color=#FFA000>{extraSpeedMultiplierPercent}%

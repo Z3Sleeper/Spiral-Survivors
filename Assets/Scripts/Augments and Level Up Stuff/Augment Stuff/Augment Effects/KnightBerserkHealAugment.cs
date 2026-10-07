@@ -52,7 +52,7 @@ public class KnightBerserkHealAugment : AugmentEffectPD<KnightBerserkHealAugment
     [SerializeField] private float tickInterval = 0.25f;
     // Flat, unconditional Max Energy grant (2026-10-02) — same shape as KnightBerserkMoveSpeedAugment's own
     // +25, tying this augment to Knight's energy-spending Berserk ability thematically too.
-    public float maxEnergyFlat = 50f;
+    public float bonusMaxEnergyFlat = 50f;
 
     private KnightBerserkAbilityPD _berserk;
     // Tracks how much has actually been granted via Stats.Heal so far — mutated only from UpdateView() off
@@ -67,7 +67,7 @@ public class KnightBerserkHealAugment : AugmentEffectPD<KnightBerserkHealAugment
 
     protected override void OnApply()
     {
-        Stats.AddMaxEnergyFlat(maxEnergyFlat);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 
     protected override void Simulate(ref State state, float delta)

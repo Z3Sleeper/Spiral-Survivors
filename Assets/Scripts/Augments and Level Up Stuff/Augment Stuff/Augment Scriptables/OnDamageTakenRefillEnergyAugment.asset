@@ -13,10 +13,10 @@ MonoBehaviour:
   m_Name: OnDamageTakenRefillEnergyAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energizing Pain</color>
-  description: '<color=#FFFF00>+25 Max Energy</color>
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
 
-    <color=#FFA000>On Damage
-    Taken:</color> Refill <color=#FFFF00>{LiveEnergyGain}</color><color=#FFA000>(<color=#FFFF00>{energyPercent}%
+    <color=#FFA000>On
+    Damage Taken:</color> Refill <color=#FFFF00>Energy</color> <color=#FFA000>(<color=#FFFF00>{energyPercent}%
     Max Energy</color> x damage taken)</color>.'
   icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   effectPrefab: {fileID: 4943293838826032550, guid: 26cf46c15599a494bb550d3b4a0025b1, type: 3}
@@ -28,5 +28,6 @@ MonoBehaviour:
   requiredAugments: []
   tags: []
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

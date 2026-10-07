@@ -7,8 +7,13 @@ public class SurgeNoMoveSpeedPenaltyAugment : AugmentEffectPD<SurgeNoMoveSpeedPe
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
+    // Generic +10 Max Energy side-bonus (2026-10-07), same flat grant most other energy/Surge-themed
+    // augments in this codebase carry.
+    public float bonusMaxEnergyFlat = 10f;
+
     protected override void OnApply()
     {
         Stats.SetSurgeMoveSpeedPenalty(1f);
+        Stats.AddMaxEnergyFlat(bonusMaxEnergyFlat);
     }
 }

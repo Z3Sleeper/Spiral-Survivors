@@ -13,7 +13,10 @@ MonoBehaviour:
   m_Name: OnHitDamageCurrentEnergyAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFFF00>Energized Strikes</color>
-  description: '<color=#FFA000>On Hit:</color> Deal <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{onHitStrengthPercent}%
+  description: '<color=#FFFF00>+{bonusMaxEnergyFlat} Max Energy</color>
+
+    <color=#FFA000>On
+    Hit:</color> Deal <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{onHitStrengthPercent}%
     Strength</color> + <color=#FF5000>{perEnergyPercent}% Strength</color> per <color=#FFFF00>1
     Current Energy</color>)</color> <color=#FFA000>damage</color>.
 
@@ -29,5 +32,6 @@ MonoBehaviour:
   tags:
   - On-Hit Effect
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 
