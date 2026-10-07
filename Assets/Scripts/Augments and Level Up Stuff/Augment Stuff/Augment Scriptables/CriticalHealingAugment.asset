@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: CriticalHealingAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Critical Healing</color>
-  description: <color=#7DFF00>Heals</color> can <color=#FF8700>Crit</color> for <color=#7DFF00>+30%
+  description: <color=#7DFF00>Heals</color> can <color=#FF8700>Crit</color> for <color=#7DFF00>+50%
     Healing</color>.
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}
   effectPrefab: {fileID: 2304256494459472739, guid: 0118d9782c00b2143bd2852a754b4d26, type: 3}
@@ -26,3 +26,4 @@ MonoBehaviour:
   tags: []
   requiredTags: []
   incompatibleTags: []
+  unlockTag: 

@@ -59,6 +59,12 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // unit vectors, unconditionally, so this class of bug is structurally impossible here.
         public Vector3 leapDirection;
         public CompressedFloat trackedDistance;
+        // Runtime-scaled — see EnemyBaseState.scaledMaxHealth's own doc comment for why these live in State
+        // rather than as a plain field mutated by OnConfigureSpawn (2026-09-22 follow-up pass).
+        public int   scaledLeapsPerAttack;
+        public float scaledAttackCooldown;
+        public float scaledRotationRateDegPerSecond;
+        public float scaledDistanceTrackingRateUnitsPerSecond;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
         public State Duplicate()
@@ -83,14 +89,30 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private static readonly int LeapSpeedHash   = Animator.StringToHash("LeapSpeed");
 
     // Baseline "clip length / baseline duration" ratios, cached instead of SetFloat'd directly — both need
-    // to be re-derived live every frame (ratio * EffectiveAttackSpeed, see UpdateView) instead of set once
-    // at spawn, same reasoning as every other attack-speed-scaled enemy in this pass. The leap's own actual
-    // traversal speed needs no separate handling here at all — it's driven directly by
-    // state.stateTimer / leapDuration (see HandleActiveState's Leaping case), and stateTimer's decrement
-    // rate is already scaled by EffectiveAttackSpeed below, so the arc lerp itself speeds up/slows down for
-    // free, same effect as scaling dash speed for every other enemy's own attack-speed-scaled dash.
+    // to be re-derived live every frame instead of set once at spawn. _windupClipRate is still scaled by
+    // EffectiveAttackSpeed (see UpdateView) — the windup telegraph scales with attack speed, same as every
+    // other enemy's own windup. _leapClipRate now scales by LeapSpeedRatio instead (2026-09-23 fix — see its
+    // own doc comment): the leap itself (the actual travel) scales with move speed, not attack speed, so its
+    // animation rate has to match whatever's actually driving the arc lerp's real-time completion rate now,
+    // or the visible leap animation would drift out of sync with where the Leaper's real body actually is.
     private float _windupClipRate;
     private float _leapClipRate;
+
+    // The Leaping state's own real-time completion rate (2026-09-23 fix — per explicit design, a dash/leap's
+    // actual travel scales with move speed, windup scales with attack speed, and neither should scale with
+    // both; this used to just reuse EffectiveAttackSpeed for its own state.stateTimer decrement, exactly
+    // like every other phase here, which meant the leap's own traversal speed — a "dash" in every sense
+    // that matters, just shaped as a fixed-duration arc lerp instead of a velocity — was scaling with attack
+    // speed instead of move speed, the same dual-scaling bug just fixed for the other 6 dash-capable
+    // enemies' own EnemyBasePD.HandleDash/HandleOffsetChase). leapDuration is this enemy's own tier-1-
+    // authored baseline — moveSpeed (EnemyBasePD's own plain field, NOT EffectiveMoveSpeed) is its matching
+    // tier-1-authored move speed, so at exactly that baseline (tier 1, no slow, no enrage) this ratio is
+    // exactly 1 and a leap takes exactly leapDuration seconds, same as before this fix. Above baseline (a
+    // higher tier's own scaledMoveSpeed growth, a move-speed buff, etc.) the leap completes proportionally
+    // faster — the same relationship every other dasher's own EffectiveMoveSpeed * dashSpeedMultiplier
+    // velocity already has to its own baseline, just expressed as a time-compression ratio instead of a
+    // velocity, since this leap is a fixed-duration arc lerp rather than a constant-velocity dash.
+    private float LeapSpeedRatio => EffectiveMoveSpeed / Mathf.Max(0.0001f, moveSpeed);
 
     [Header("Leap Settings")]
     public float landDamageMultiplier = 1f;
@@ -121,41 +143,43 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     [SerializeField] private float leapArcEdgeHeightFraction = 0.7f;
     [SerializeField] private float postLeapPause    = 0.5f;
     [SerializeField] private float landingDuration  = 0.1f;
-    // Tier1-authored baseline, scaled per tier by leapsPerAttackTierGrowth below (applied in
-    // OnConfigureSpawn()). See _authoredLeapsPerAttack's own doc comment for why this needs the
-    // snapshot-and-reset treatment instead of just incrementing this field directly.
+    // Tier1-authored, pristine read-only baseline forever (2026-09-22) — OnConfigureSpawn scales it into
+    // State.scaledLeapsPerAttack instead of mutating this in place, so no _authoredX snapshot/reset is
+    // needed anymore (see EnemyBaseState.scaledMaxHealth's own doc comment for the full reasoning).
     [SerializeField] private int   leapsPerAttack   = 1;
     // Max bearing turn rate for leapTarget's own live-tracking during Windup (2026-08-26) — copied from
     // MortarGloomPD's identical rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45 base, 0.2
-    // tier growth), same tier1-authored-baseline treatment as strikesPerAttack has there. See class doc
-    // comment and HandleActiveState's Windup case for the tracking math itself.
+    // tier growth). See class doc comment and HandleActiveState's Windup case for the tracking math itself.
+    // Same pristine-baseline treatment as leapsPerAttack above — scales into
+    // State.scaledRotationRateDegPerSecond instead.
     [SerializeField] private float rotationRateDegPerSecond = 45f;
-    private float _authoredRotationRateDegPerSecond;
     // Max rate the tracked DISTANCE (from leapStart) can close/open during Windup — same rate-cap idea as
     // rotationRateDegPerSecond above, just for the radial component instead of the angular one, copied from
-    // MortarGloomPD's identical distanceTrackingRateUnitsPerSecond.
+    // MortarGloomPD's identical distanceTrackingRateUnitsPerSecond. Scales into
+    // State.scaledDistanceTrackingRateUnitsPerSecond.
     [SerializeField] private float distanceTrackingRateUnitsPerSecond = 5f;
-    private float _authoredDistanceTrackingRateUnitsPerSecond;
 
     [Header("Attack Cooldown")]
+    // Same pristine-baseline treatment as leapsPerAttack above — scales into State.scaledAttackCooldown.
     [SerializeField] private float attackCooldown = 5f;
-    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
-    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as _authoredLeapsPerAttack below.
-    private float _authoredAttackCooldown;
 
     [Header("Tier Scaling")]
-    // Added onto leapsPerAttack per tier above 1 — see OnConfigureSpawn().
+    // Added onto leapsPerAttack per tier above 1 — see OnConfigureSpawn(). Authored to 0 (2026-09-30) —
+    // per-attack scaling was producing too much visual clutter/forced dash usage relative to other enemies;
+    // attackCooldownTierGrowth below takes over instead. Left in place (not removed) in case it's ever
+    // reinstated.
     [SerializeField] private int leapsPerAttackTierGrowth = 1;
     // Same linear-per-tier shape as every other *TierGrowth field — shared by both rotationRateDegPerSecond
     // and distanceTrackingRateUnitsPerSecond above, same reuse convention MortarGloomPD's own identical pair
     // already uses (see distanceTrackingRateUnitsPerSecond's doc comment there).
     [SerializeField] private float rotationRateDegPerSecondTierGrowth = 0.2f;
-
-    // Captured once in OnAwake(), reset back onto leapsPerAttack every pooled reuse in LateAwake() —
-    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
-    // pattern established for the identical attack-count fields on Blitz/Dagger/Mortar/Spear.
-    private int _authoredLeapsPerAttack;
+    // TRUE compounding multiplier (2026-09-30, explicit exception to the project's usual "never
+    // compounding/exponential" *TierGrowth convention) — replaces leapsPerAttackTierGrowth as this enemy's
+    // own tier-scaling lever. scaledAttackCooldown = attackCooldown * attackCooldownTierGrowth^(spawnTier-1),
+    // e.g. 0.4 default: T1 = authored, T2 = authored*0.4, T3 = authored*0.4*0.4, T4 = authored*0.4^3 — each
+    // tier multiplies the PREVIOUS tier's already-reduced cooldown again, not a flat per-tier percentage off
+    // the base. Combined multiplicatively with attackCooldownMultiplier (Threat Level 5's own halving) too.
+    [SerializeField] private float attackCooldownTierGrowth = 0.4f;
 
     // The target this attack committed to, captured once at EnterWindup — matches BlitzGloomPD.
     // _windupTrackedTarget/KingSpikePD._chargeWindupTrackedTarget/ShooterGloomPD._windupTrackedTarget
@@ -209,26 +233,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     private Quaternion _windupIndicatorLocalRot;
     private bool       _windupIndicatorLocalPoseCaptured;
 
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        _authoredLeapsPerAttack = leapsPerAttack;
-        _authoredAttackCooldown = attackCooldown;
-        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
-        _authoredDistanceTrackingRateUnitsPerSecond = distanceTrackingRateUnitsPerSecond;
-    }
-
     protected override void LateAwake()
     {
         base.LateAwake();
-
-        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
-        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredLeapsPerAttack's own
-        // doc comment.
-        leapsPerAttack = _authoredLeapsPerAttack;
-        attackCooldown = _authoredAttackCooldown;
-        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
-        distanceTrackingRateUnitsPerSecond = _authoredDistanceTrackingRateUnitsPerSecond;
 
         // Null-coalesced, not unconditional — LateAwake() re-fires on every pooled reuse, but by that point
         // the indicator could already be unparented from a previous life interrupted mid-Leaping (e.g. death
@@ -292,16 +299,18 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
-        leapsPerAttack += (spawnTier - 1) * leapsPerAttackTierGrowth;
-        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        currentState.scaledLeapsPerAttack = leapsPerAttack + (spawnTier - 1) * leapsPerAttackTierGrowth;
+        currentState.scaledRotationRateDegPerSecond = rotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
         // Reuses rotationRateDegPerSecondTierGrowth itself (not a separate *TierGrowth field) — see
         // MortarGloomPD.distanceTrackingRateUnitsPerSecond's own identical doc comment.
-        distanceTrackingRateUnitsPerSecond = _authoredDistanceTrackingRateUnitsPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        currentState.scaledDistanceTrackingRateUnitsPerSecond = distanceTrackingRateUnitsPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
 
-        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
-        // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
-        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment), combined
+        // multiplicatively with attackCooldownTierGrowth's own TRUE compounding per-tier reduction (see that
+        // field's own doc comment — Mathf.Pow, not a linear "1 - (tier-1)*growth" term). Re-set the
+        // placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
+        currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier * Mathf.Pow(attackCooldownTierGrowth, spawnTier - 1);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
     }
 
     // Sets the WindupSpeed/LeapSpeed Animator float parameters so each clip's actual playback duration
@@ -333,11 +342,12 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // attackCooldownTimer: only ticks while actually in Moving (2026-08-19 — uniform across every
         // multi-phase enemy's own attack-cadence cooldown now, see OrbiterGloomPD's own fix). stateTimer:
         // scaled live by EffectiveAttackSpeed every tick — see SpearGloomPD's own comment on the identical
-        // pattern. This is also what drives the Leaping arc lerp below, so the leap's own traversal speed
-        // scales for free too.
+        // pattern — EXCEPT while actually Leaping, which scales by LeapSpeedRatio instead (2026-09-23 fix —
+        // see that property's own doc comment). This also drives the Leaping arc lerp below, so the leap's
+        // own traversal speed follows whichever rate is active.
         if (ss == LeapState.Moving)
             state.attackCooldownTimer -= delta;
-        state.stateTimer -= delta * EffectiveAttackSpeed;
+        state.stateTimer -= delta * (ss == LeapState.Leaping ? LeapSpeedRatio : EffectiveAttackSpeed);
 
         switch (ss)
         {
@@ -381,8 +391,8 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
                         // replaces. Matches BlitzGloomPD.TrackWindupTarget exactly, including the
                         // maxMagnitudeDelta: 0f (both state.leapDirection and dir are already unit vectors, so
                         // magnitude should never change, only direction).
-                        Vector3 newDir = Vector3.RotateTowards(state.leapDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
-                        state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, distanceTrackingRateUnitsPerSecond * delta * EffectiveAttackSpeed);
+                        Vector3 newDir = Vector3.RotateTowards(state.leapDirection, dir, state.scaledRotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
+                        state.trackedDistance = Mathf.MoveTowards(state.trackedDistance, targetDistance, state.scaledDistanceTrackingRateUnitsPerSecond * delta * EffectiveAttackSpeed);
 
                         // The Leaper's own REAL body now actually turns to match leapDirection (2026-09-14 —
                         // previously this bearing was computed but never applied to any transform at all,
@@ -405,7 +415,10 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
                 break;
 
             case LeapState.Leaping:
-                state.attackElapsed += delta * EffectiveAttackSpeed;
+                // LeapSpeedRatio, not EffectiveAttackSpeed (2026-09-23 fix) — has to match stateTimer's own
+                // rate above, or the windup+leap combined fill (UpdateView, driven off attackElapsed) would
+                // drift out of sync with when the Leaper actually lands (stateTimer reaching 0).
+                state.attackElapsed += delta * LeapSpeedRatio;
                 // Kinematic arc lerp, not the shared dash primitives — a leap ignores normal ground
                 // collision along the way (matching the hurtbox/collider being disabled below), which the
                 // velocity-based dash primitives aren't built for.
@@ -505,7 +518,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // Moving's own attack-trigger and EnterMoving/OnInterrupted no longer stomp leapsRemaining
         // themselves — this single self-contained check is the only reset point now, so an interrupted
         // chain's leftover count survives into whatever attack comes next instead of being thrown away.
-        if (state.leapsRemaining <= 0) state.leapsRemaining = leapsPerAttack;
+        if (state.leapsRemaining <= 0) state.leapsRemaining = state.scaledLeapsPerAttack;
         state.leapsRemaining--;
 
         // leapStart doubles as the tracking origin for the whole Windup (this Leaper is kinematic/stationary
@@ -568,7 +581,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // check) — see SpearGloomPD.EnterStab's own doc comment for why enemy AoE attacks now match every
         // player weapon's own collider-query convention.
         // * size — matches SpearGloomPD/DaggerGloomPD's own size-scaled hit-check precedent.
-        float   dmg    = damage * landDamageMultiplier;
+        float   dmg    = B.scaledDamage * landDamageMultiplier;
         Vector3 origin = transform.position;
 
         int n = Physics.OverlapSphereNonAlloc(origin, landRadius * size, _landOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
@@ -603,7 +616,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         else
         {
             state.stateTimer          = postLeapPause;
-            state.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+            state.attackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
             SetLeapState(ref state, LeapState.PostLeap);
         }
     }
@@ -631,7 +644,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.leapsRemaining      = 0;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
@@ -775,7 +788,9 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
             if (ss == LeapState.Windup)
                 _animator.SetFloat(WindupSpeedHash, _windupClipRate * EffectiveAttackSpeed);
             else if (ss == LeapState.Leaping)
-                _animator.SetFloat(LeapSpeedHash, _leapClipRate * EffectiveAttackSpeed);
+                // LeapSpeedRatio, not EffectiveAttackSpeed (2026-09-23 fix) — matches the arc lerp's own
+                // real traversal rate now, see LeapSpeedRatio's own doc comment.
+                _animator.SetFloat(LeapSpeedHash, _leapClipRate * LeapSpeedRatio);
         }
 
         if (ss == _lastVisualState) return;
@@ -871,8 +886,8 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     {
         ApplyAnimatorClipSpeeds();
         currentState.stateId             = 0;
-        currentState.leapsRemaining      = leapsPerAttack;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.leapsRemaining      = currentState.scaledLeapsPerAttack;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
         currentState.stateTimer          = 0f;
         currentState.attackElapsed       = 0f;
         if (_yAxisMovers != null) _yAxisMovers.localPosition = _yAxisMoversRestPosition;

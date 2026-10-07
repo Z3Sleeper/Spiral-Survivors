@@ -44,4 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e7215c39224f62443ae775f1281a62f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::EnergyGainAugment
-  energyGainPercent: 1
+  energyGainPercent: 0.5
+  maxEnergyFlat: 25

@@ -538,9 +538,10 @@ MonoBehaviour:
   preferredRange: 5
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 10
   xpValue: 5
-  pointsValue: 5
+  pointsValue: 10
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -567,7 +568,8 @@ MonoBehaviour:
   dashSpeedMultiplier: 1.5
   dashOffsetDistance: 2
   attackCooldown: 5
-  attacksPerAttackTierGrowth: 1
+  attacksPerAttackTierGrowth: 0
+  attackCooldownTierGrowth: 0.6
   _windupIndicator: {fileID: 6342366828183147542}
   _windupFill: {fileID: 9126617823747302387}
 --- !u!135 &5387227330093086761

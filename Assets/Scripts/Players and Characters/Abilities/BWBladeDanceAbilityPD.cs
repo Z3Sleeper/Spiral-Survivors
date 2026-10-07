@@ -37,6 +37,11 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         // The live orbit-origin-override value, stepped every tick through all three phases.
         public Vector3 currentOrigin;
         public float   cooldownTimer;
+        // Ability charge system — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment. Does NOT gate
+        // the Hold-phase recast branch below (that's a free early-return on an already-paid-for cast, not a
+        // new one) — only the Idle-phase (fresh cast) branch of IsReady.
+        public int     charges;
+        public int     knownMaxCharges;
         public void Dispose() { }
     }
 
@@ -48,6 +53,9 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     [SerializeField, TextArea] private string description =
         "Send your blades to the target location. They stay there for a few seconds before returning.";
     public float cooldown = 10f;
+    // How many charges this ability starts with (1 = old off-cooldown behavior, unchanged) — see
+    // IAbilityPD.MaxCharges's own doc comment. CharacterStatsPD.bonusAbility1Charges adds on top live.
+    [SerializeField] private int authoredChargeCount = 1;
     // false (default): cooldown only starts ticking once the whole Outbound->Hold->Return sequence ends
     // (phase returns to Idle) — see Simulate(). true: starts ticking immediately at cast instead.
     [SerializeField] private bool cooldownStartsOnCast = false;
@@ -65,44 +73,38 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     [SerializeField] private float travelSpeed = 25f;
     public float holdDuration = 5f;
 
-    [Header("Ability Haste -> Attack Speed")]
-    // AbilityHaste normally only ever shortens THIS ability's own cooldown (EffectiveCooldown below) — barely
-    // meaningful against this ability's own low cooldown (dividing an already-small value by (1 + haste/100)
-    // still only shaves off a fraction of a second). So instead, for the whole Outbound->Hold->Return window,
-    // AbilityHaste converts directly into bonus Attack Speed instead:
-    // 1 point of EffectiveAbilityHaste = attackSpeedPercentPerHaste (1% by default) Attack Speed,
-    // ADDED via AddAttackSpeedFlat (2026-09-13, switched from AddAttackSpeedTotalPercent — genuine Total-tier
-    // multiplier was never the intent here, an oversight caught late; this is a plain additive percent, same
-    // tier every other "+X% Attack Speed" grant in this codebase uses). Granted once at cast (the fresh-cast branch only — a Hold recast
-    // doesn't re-grant, the buff already spans the whole sequence) and reversed with the identical
-    // snapshotted value in EndDance(), same cast-time-snapshot convention as RogueVanishAbilityPD/
-    // KnightBigBuffAbilityPD's own applied-percent fields (a live AbilityHaste change mid-dance must not
-    // desync the add/subtract pair). This also means blade orbit
-    // speed itself (EffectiveWeaponSpeed = AttackSpeed * 360) speeds up too, along with anything else this
-    // character's Attack Speed drives (FireRate, etc.) — not scoped to "just the blades," matching the
-    // user's own framing of "give Bladeweaver attack speed."
+    // Live duration multiplier (2026-10-06, BWBladeDanceDurationAugment) — 1f (neutral) default,
+    // [HideInInspector] since it's augment-owned, never hand-tuned here. Augments ADD to this rather than
+    // destructively multiplying holdDuration directly — same "live multiplier field, base value never
+    // mutated" shape ArcherArrowRainAbilityPD.durationMultiplier established, per Stuart's own standing
+    // preference against multiplicative stacking for this kind of "+X% to Y" augment effect. EffectiveHoldDuration
+    // (not the raw holdDuration field) is what Simulate()'s Outbound->Hold transition and
+    // ActiveTimeDuration/ActiveTimeRemaining actually read.
+    [HideInInspector] public float durationMultiplier = 1f;
+    private float EffectiveHoldDuration => holdDuration * durationMultiplier;
+
+    // Augment-owned (2026-10-06, BWBladeDanceAbilityHasteAttackSpeedAugment) — [HideInInspector]/0f (true
+    // no-op) default, same Pattern B shape as every other ability-owned augment hook in this codebase (e.g.
+    // KnightBerserkAbilityPD.moveSpeedPercent). Used to be a hardcoded always-on base-form mechanic
+    // (AbilityHaste converting directly into bonus Attack Speed, since AbilityHaste normally only ever
+    // shortens THIS ability's own cooldown — barely meaningful against its own low cooldown) — Stuart's own
+    // explicit call to pull it out into an augment instead, since Bladeweaver's abilities otherwise "don't
+    // do too much" on their own.
     //
-    // NotifyAbilityStart/NotifyAbilityEnd (see Activate()/EndDance()) are both gated on cooldown > 0f, same
-    // universal guard every ability in this codebase uses — harmless no-op at cooldown = 0 (the original
-    // spammable-recast design), and fires normally now that cooldown is a real, if small, value.
-    public float attackSpeedPercentPerHaste = 0.01f;
-
-    // attackSpeedPercentPerHaste doesn't END in "Percent" (it's in the middle), so a direct
-    // {attackSpeedPercentPerHaste} reference wouldn't get the *100 treatment — same alias-property fix as
-    // KnightAreaStunHealAbilityPD.BaseHealPercent/ArcherArrowRainAbilityPD.BaseDamagePercent.
-    public float AttackSpeedPerHastePercent => attackSpeedPercentPerHaste;
-
-    // Mirrors Activate()'s own _appliedAttackSpeedPercent formula exactly — see attackSpeedPercentPerHaste's
-    // own doc comment for the full reasoning. Outside a live match, falls back to 0 — EffectiveAbilityHaste's
-    // own neutral (no-investment) value is 0, and 0 haste genuinely means 0% bonus, so this isn't a
-    // misleading placeholder the way it would be for a stat with no true "neutral".
-    public string LiveAttackSpeedBonusRatio(CharacterStatsPD stats)
-    {
-        float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste
-            : 0f;
-        return $"{AugmentDescriptionFormatter.FormatLivePercent(value)}";
-    }
+    // 1 point of EffectiveAbilityHaste = attackSpeedPercentPerHaste Attack Speed, ADDED via AddAttackSpeedFlat
+    // (a plain additive percent, same tier every other "+X% Attack Speed" grant in this codebase uses).
+    // Granted once at cast (the fresh-cast branch only — a Hold recast doesn't re-grant, the buff already
+    // spans the whole sequence) and reversed with the identical snapshotted value in EndDance(), same
+    // cast-time-snapshot convention as RogueVanishAbilityPD/KnightBerserkAbilityPD's own applied-percent
+    // fields (a live AbilityHaste change mid-dance must not desync the add/subtract pair). This also means
+    // blade orbit speed itself (EffectiveWeaponSpeed = AttackSpeed * 360) speeds up too, along with anything
+    // else this character's Attack Speed drives (FireRate, etc.) — not scoped to "just the blades."
+    //
+    // See BWBladeDanceAbilityHasteAttackSpeedAugment for the live-value description token/{AttackSpeedPerHastePercent}
+    // alias — moved there entirely (same "ability owns the no-op field, augment owns the description-token
+    // helpers" split every other Pattern B hook in this codebase uses), since this is always 0 on the base
+    // ability now and has nothing of its own worth describing.
+    [HideInInspector] public float attackSpeedPercentPerHaste = 0f;
 
     private CharacterStatsPD   _stats;
     private WeaponManagerPD    _weaponManager;
@@ -140,11 +142,15 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         {
             if (_stats == null) return false;
             var phase = GetPhase(ref currentState);
-            if (phase == Phase.Idle) return currentState.cooldownTimer <= 0f;
+            if (phase == Phase.Idle) return currentState.charges > 0;
             return phase == Phase.Hold;
         }
     }
     public bool IsActive => GetPhase(ref currentState) != Phase.Idle;
+    // Exposes the private phase enum publicly (2026-10-06, BWBladeDanceStunAugment) — that augment needs to
+    // tell Outbound/Return apart from Hold (its stun only applies during travel, not while the blades are
+    // sitting still at the destination), which IsActive alone can't distinguish.
+    public Phase CurrentPhase => GetPhase(ref currentState);
     // Never touches player movement itself — only ever repositions where weapons orbit (see class doc
     // comment), so it never locks dash or the other ability slot out while active.
     public bool ForcesSpecialAction => false;
@@ -166,13 +172,13 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         {
             switch (GetPhase(ref currentState))
             {
-                case Phase.Outbound: return holdDuration;
+                case Phase.Outbound: return EffectiveHoldDuration;
                 case Phase.Hold:     return Mathf.Max(0f, currentState.phaseTimer);
                 default:             return 0f; // Return (and Idle, though moot there — see HasActiveWindow).
             }
         }
     }
-    public float ActiveTimeDuration => holdDuration;
+    public float ActiveTimeDuration => EffectiveHoldDuration;
     public float CooldownRemaining => Mathf.Max(0f, currentState.cooldownTimer);
     public float CooldownDuration => EffectiveCooldown;
     public float BaseCooldownDuration => cooldown;
@@ -181,6 +187,15 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     public string Description => description;
     public string[] Tags => tags;
     public AbilitySlot Slot => slot;
+    public AbilityIdentity Identity => AbilityIdentity.BWBladeDance;
+    public int CurrentCharges => currentState.charges;
+    public int MaxCharges => EffectiveMaxCharges;
+    // Live, not cached — see IAbilityPD.MaxCharges's own doc comment for why a mid-run bonus must be
+    // reflected immediately. Reads whichever bonus matches this instance's own (Inspector-configurable)
+    // Slot, not a hardcoded one.
+    private int EffectiveMaxCharges => authoredChargeCount + (_stats != null
+        ? (slot == AbilitySlot.Ability1 ? _stats.bonusAbility1Charges : _stats.bonusAbility2Charges)
+        : 0);
 
     // Same formula as CharacterStatsPD.DashCooldown (baseCooldown / (1 + haste/100)) — a haste augment
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
@@ -203,24 +218,55 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // that's merely sitting at its full pre-loaded value while the active window (cooldownStartsOnCast=false)
     // hasn't ended yet to let it start ticking. Phase-based (not a plain isActive bool) since this ability
     // tracks Idle/Outbound/Hold/Return — matches Simulate()'s own `phase == Phase.Idle` check exactly.
+    // MaxCharges > 1 (2026-10-02) — see Simulate()'s own identical addition for why a multi-charge ability
+    // always ticks its regen timer regardless of phase.
     private bool IsCooldownActivelyTicking =>
-        currentState.cooldownTimer > 0f && (cooldownStartsOnCast || GetPhase(ref currentState) == Phase.Idle);
+        currentState.cooldownTimer > 0f && (cooldownStartsOnCast || GetPhase(ref currentState) == Phase.Idle || EffectiveMaxCharges > 1);
 
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
+    // Shared by all three methods below — a reduction that would drop cooldownTimer below 0 now
+    // "overflows" into granting the next charge (looping further if the reduction is large enough to cross
+    // multiple charges at once), rather than being clamped away and wasted the instant cooldownTimer first
+    // hits 0 (2026-10-03, explicit request — multi-charge abilities should let a big cooldown-reduction
+    // effect spill into progress toward the NEXT charge, same as the ordinary passive regen tick already
+    // does over many real ticks, just resolved atomically in one call). Caps at EffectiveMaxCharges — once
+    // fully charged, any further excess is genuinely discarded, nothing left to speed up. The while loop's
+    // own `cooldownTimer > 0f` check (re-tested every iteration) also makes this safe against a degenerate
+    // EffectiveCooldown of 0 — the loop exits immediately rather than spinning.
+    private void ApplyCooldownReduction(float seconds)
+    {
+        seconds = Mathf.Max(0f, seconds);
+        int effectiveMax = EffectiveMaxCharges;
+        while (seconds > 0f && currentState.charges < effectiveMax && currentState.cooldownTimer > 0f)
+        {
+            if (seconds < currentState.cooldownTimer)
+            {
+                currentState.cooldownTimer -= seconds;
+                seconds = 0f;
+            }
+            else
+            {
+                seconds -= currentState.cooldownTimer;
+                currentState.charges++;
+                currentState.cooldownTimer = currentState.charges < effectiveMax ? EffectiveCooldown : 0f;
+            }
+        }
+    }
+
     public void ReduceCooldownFlat(float seconds)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
+        ApplyCooldownReduction(seconds);
     }
     public void ReduceCooldownPercentRemaining(float percent01)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
+        ApplyCooldownReduction(currentState.cooldownTimer * Mathf.Clamp01(percent01));
     }
     public void ReduceCooldownPercentTotal(float percent01)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+        ApplyCooldownReduction(CooldownDuration * Mathf.Clamp01(percent01));
     }
 
     public void Activate()
@@ -238,7 +284,10 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
             return;
         }
 
-        currentState.cooldownTimer = EffectiveCooldown;
+        // Charge system — spend 1, and only (re)arm the regen timer if it wasn't already running — see
+        // IAbilityPD.MaxCharges's own doc comment.
+        currentState.charges--;
+        if (currentState.cooldownTimer <= 0f) currentState.cooldownTimer = EffectiveCooldown;
 
         Vector3 origin = _stats.transform.position;
 
@@ -266,9 +315,8 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
             _stats.AddSurgeBlock();
         }
 
-        // See attackSpeedPercentPerHaste's own doc comment for the full reasoning — AbilityHaste converts
-        // straight into bonus Attack Speed for this ability's whole active window, since a 0-cooldown ability
-        // has no cooldown left for AbilityHaste to meaningfully act on.
+        // 0f (no-op) until BWBladeDanceAbilityHasteAttackSpeedAugment bumps attackSpeedPercentPerHaste — see
+        // that field's own doc comment for the full reasoning.
         _appliedAttackSpeedPercent = _stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste;
         _stats.AddAttackSpeedFlat(_appliedAttackSpeedPercent);
 
@@ -297,11 +345,34 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
 
         var phase = GetPhase(ref state);
 
-        // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole
-        // Outbound->Hold->Return window) or only once that window ends (phase back to Idle) — see the
-        // field's own doc comment. Same shape as RogueVanishAbilityPD.Simulate().
-        if (state.cooldownTimer > 0f && (cooldownStartsOnCast || phase == Phase.Idle))
-            state.cooldownTimer -= delta;
+        // Charge system (2026-10-02) — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment.
+        int effectiveMax = EffectiveMaxCharges;
+        if (effectiveMax > state.knownMaxCharges)
+        {
+            state.charges += effectiveMax - state.knownMaxCharges;
+            state.knownMaxCharges = effectiveMax;
+        }
+        else if (effectiveMax < state.knownMaxCharges)
+        {
+            state.charges = Mathf.Min(state.charges, effectiveMax);
+            state.knownMaxCharges = effectiveMax;
+        }
+
+        if (state.charges < effectiveMax)
+        {
+            // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole
+            // Outbound->Hold->Return window) or only once that window ends (phase back to Idle) — see the
+            // field's own doc comment. Same shape as RogueVanishAbilityPD.Simulate().
+            // effectiveMax > 1 (2026-10-02) — see RogueVanishAbilityPD.Simulate()'s own identical addition.
+            if (state.cooldownTimer > 0f && (cooldownStartsOnCast || phase == Phase.Idle || effectiveMax > 1))
+                state.cooldownTimer -= delta;
+
+            if (state.cooldownTimer <= 0f)
+            {
+                state.charges++;
+                state.cooldownTimer = state.charges < effectiveMax ? EffectiveCooldown : 0f;
+            }
+        }
 
         if (phase == Phase.Idle) return;
 
@@ -328,7 +399,7 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
                 if (dist <= step)
                 {
                     state.currentOrigin = state.targetPosition;
-                    state.phaseTimer    = holdDuration;
+                    state.phaseTimer    = EffectiveHoldDuration;
                     SetPhase(ref state, Phase.Hold);
                 }
                 else

@@ -216,6 +216,17 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // wait-for-flight-to-land timer before FinishPersistentVolley() releases the held plebs back to normal.
         public float persistentVolleyTimer;
 
+        // Runtime-scaled — see EnemyBaseState.scaledMaxHealth's own doc comment for why these live in State
+        // rather than as a plain field mutated by OnConfigureSpawn (2026-09-22 follow-up pass).
+        public float scaledPullSequentialDelay;
+        public float scaledShootSequentialDelay;
+        public int   scaledInnerCount;
+        public int   scaledMiddleCount;
+        public int   scaledOuterCount;
+        public float scaledRotationRateDegPerSecond;
+        public float scaledAttackCooldown;
+        public float scaledPersistentShotInterval;
+
         public void Dispose()
         {
             b.contactCooldowns.Dispose();
@@ -280,26 +291,27 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // MoveTowards mechanic this now drives.
     [SerializeField] private float pullSpeed      = 30f;
     // Gap between each held pleb's own OrbitTarget() dispatch during Pulling (2026-08-17 — used to pull a
-    // whole ring in one shot) — see BeginPull's own doc comment. Tier1-authored baseline, scaled per tier by
-    // pullSequentialDelayTierDivisor below (applied in OnConfigureSpawn()) — see that field's own doc
-    // comment for the RECIPROCAL formula shape this uses (deliberately not the linear shrink every other
-    // duration field on this boss uses).
+    // whole ring in one shot) — see BeginPull's own doc comment. Tier1-authored, pristine read-only baseline
+    // forever (2026-09-22) — scaled fresh into State.scaledPullSequentialDelay by OnConfigureSpawn() (see
+    // that method's own doc comment for the RECIPROCAL formula shape this uses, deliberately not the linear
+    // shrink every other duration field on this boss uses, and EnemyBaseState.scaledMaxHealth's own doc
+    // comment for why this needs to be in State at all).
     [SerializeField] private float pullSequentialDelay = 0.25f;
 
     [Header("Pull - Inner Ring")]
-    // Tier1-authored baseline, scaled per tier by innerCountTierGrowth below (applied in OnConfigureSpawn()).
+    // Tier1-authored, pristine read-only baseline forever — scaled fresh into State.scaledInnerCount.
     [SerializeField] private int   innerCount             = 2;
     [SerializeField] private float innerOrbitRadius        = 2f;
     [SerializeField] private float innerOrbitAngularSpeed  = 120f;
 
     [Header("Pull - Middle Ring")]
-    // Tier1-authored baseline, scaled per tier by middleCountTierGrowth below (applied in OnConfigureSpawn()).
+    // Tier1-authored, pristine read-only baseline forever — scaled fresh into State.scaledMiddleCount.
     [SerializeField] private int   middleCount             = 3;
     [SerializeField] private float middleOrbitRadius        = 5.5f;
     [SerializeField] private float middleOrbitAngularSpeed  = 60f;
 
     [Header("Pull - Outer Ring")]
-    // Tier1-authored baseline, scaled per tier by outerCountTierGrowth below (applied in OnConfigureSpawn()).
+    // Tier1-authored, pristine read-only baseline forever — scaled fresh into State.scaledOuterCount.
     [SerializeField] private int   outerCount             = 4;
     [SerializeField] private float outerOrbitRadius        = 9f;
     [SerializeField] private float outerOrbitAngularSpeed  = 30f;
@@ -333,8 +345,9 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // copied from ShielderGloomPD's own rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45
     // base, 0.2 tier growth). Caps how fast a held pleb's tracked aim can swing so circling this boss during
     // its Shoot windup is a real counterplay option — see UpdateShootBearingTracking's own doc comment.
+    // Pristine read-only baseline forever, same as pullSequentialDelay above — scales into
+    // State.scaledRotationRateDegPerSecond.
     [SerializeField] private float rotationRateDegPerSecond = 45f;
-    private float _authoredRotationRateDegPerSecond;
 
     [Header("Persistent Pleb Shots")]
     // Fires an independent volley at EVERY non-invisible alive player on a flat interval, entirely
@@ -347,10 +360,6 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // design ("inherit the exact same shooting parameters as the real deal"). See StartPersistentVolley's own
     // doc comment for the full grab/windup/fire/release flow.
     [SerializeField] private float persistentShotInterval = 3f;
-    // Captured once in OnAwake(), reset back onto persistentShotInterval every pooled reuse in LateAwake(),
-    // scaled by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as attackCooldown itself.
-    private float _authoredPersistentShotInterval;
 
     // Sized to this game's own hard player cap instead of anything tier/ring-derived — see
     // feedback_multiplayer_scale_reminder.
@@ -358,10 +367,6 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
     [Header("Attack Cadence")]
     [SerializeField] private float attackCooldown = 10f;
-    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
-    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as the 6 tier-scaled fields below.
-    private float _authoredAttackCooldown;
 
     [Header("Tier Scaling")]
     // Duration fields SHRINK per tier (base * (1 - (tier-1)*growth)) — "X% faster" means less time, not more.
@@ -398,20 +403,6 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // same "independently tunable from pullSequentialDelay" design shootSequentialDelay's own field comment
     // already establishes.
     [SerializeField] private float shootSequentialDelayTierDivisor = 1f;
-
-    // Captured once in OnAwake(), reset back onto these 4 fields every pooled reuse in LateAwake() — same
-    // "_authoredX snapshot" pattern established for every other tier-scaled field on Blitz/Dagger/Mortar/
-    // Spear/Orbiter/Shielder/Shooter. All 4 are read directly (not mirrored into predicted State) at their
-    // own use sites — see OnConfigureSpawn() for where the actual scaling happens (both pullSequentialDelay/
-    // shootSequentialDelay STILL need their own _authoredX snapshot despite the formula change above — the
-    // reciprocal formula still needs the tier-1 baseline to divide down from). knockbackChargeTime/shotSpeed
-    // no longer need one of these (2026-09-01/09-02, tier growth removed from both) — neither is ever
-    // mutated at runtime anymore, so there's nothing left to reset between pooled reuses.
-    private float _authoredPullSequentialDelay;
-    private float _authoredShootSequentialDelay;
-    private int   _authoredInnerCount;
-    private int   _authoredMiddleCount;
-    private int   _authoredOuterCount;
 
     // Pull Phase's own indicator pool — plain Instantiate()'d, persistent, SetActive-toggled (2026-08-19
     // shape, unchanged). Pull-phase indicators recompute fresh from already-smooth live transform reads every
@@ -451,33 +442,9 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // aiming at, never cancels or redirects it elsewhere.
     private Vector3 _shotTargetLastKnownPosition;
 
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        _authoredPullSequentialDelay = pullSequentialDelay;
-        _authoredShootSequentialDelay = shootSequentialDelay;
-        _authoredInnerCount          = innerCount;
-        _authoredMiddleCount         = middleCount;
-        _authoredOuterCount          = outerCount;
-        _authoredAttackCooldown      = attackCooldown;
-        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
-        _authoredPersistentShotInterval = persistentShotInterval;
-    }
-
     protected override void LateAwake()
     {
         base.LateAwake();
-        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
-        // once hierarchy.Create() returns) scales these fresh for this life — see
-        // _authoredPullSequentialDelay's own doc comment.
-        pullSequentialDelay = _authoredPullSequentialDelay;
-        shootSequentialDelay = _authoredShootSequentialDelay;
-        innerCount          = _authoredInnerCount;
-        middleCount         = _authoredMiddleCount;
-        outerCount          = _authoredOuterCount;
-        attackCooldown      = _authoredAttackCooldown;
-        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
-        persistentShotInterval = _authoredPersistentShotInterval;
         // Full cooldown on spawn, not KingSpikePD's own half-cooldown grace — per explicit design, this
         // boss's Pull Phase would otherwise fire almost immediately, before the field has had a chance to
         // spawn more than a handful of plebs to actually grab.
@@ -506,12 +473,12 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
-        pullSequentialDelay = _authoredPullSequentialDelay / (1f + (spawnTier - 1) * pullSequentialDelayTierDivisor);
-        shootSequentialDelay = _authoredShootSequentialDelay / (1f + (spawnTier - 1) * shootSequentialDelayTierDivisor);
-        innerCount          += (spawnTier - 1) * innerCountTierGrowth;
-        middleCount         += (spawnTier - 1) * middleCountTierGrowth;
-        outerCount          += (spawnTier - 1) * outerCountTierGrowth;
-        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        currentState.scaledPullSequentialDelay = pullSequentialDelay / (1f + (spawnTier - 1) * pullSequentialDelayTierDivisor);
+        currentState.scaledShootSequentialDelay = shootSequentialDelay / (1f + (spawnTier - 1) * shootSequentialDelayTierDivisor);
+        currentState.scaledInnerCount  = innerCount  + (spawnTier - 1) * innerCountTierGrowth;
+        currentState.scaledMiddleCount = middleCount + (spawnTier - 1) * middleCountTierGrowth;
+        currentState.scaledOuterCount  = outerCount  + (spawnTier - 1) * outerCountTierGrowth;
+        currentState.scaledRotationRateDegPerSecond = rotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
         // Sized to the SUM of all 3 rings (2026-09-14, was Mathf.Max) — pull indicators now stay visible
         // through each pleb's ENTIRE movement (windup through actually arriving), not just its own windup, so
         // plebs from MULTIPLE rings can genuinely be active/showing at once (dispatch deliberately runs ahead
@@ -519,21 +486,21 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // single ring would run out of indicators the moment more than one ring's worth of plebs are active
         // simultaneously.
         EnsureIndicatorPoolCapacity(pullIndicatorTemplate, ref _pullLineIndicators, ref _pullLineFills,
-            innerCount + middleCount + outerCount);
+            currentState.scaledInnerCount + currentState.scaledMiddleCount + currentState.scaledOuterCount);
         // No shoot-side capacity call anymore (2026-09-14) — state.shootTrackedPleb/etc. are now flat,
         // dynamically-grown lists (Add/RemoveAt), not a fixed-size array needing pre-sizing. See their own
         // doc comment on State.
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
-        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = attackCooldown;
+        currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
 
         // Same Threat Level 5 scaling, explicitly requested to apply to Boss Persistent Attacks too — re-set
         // the placeholder persistentCooldownTimer LateAwake() already assigned above, using the now-scaled
         // value.
-        persistentShotInterval = _authoredPersistentShotInterval * attackCooldownMultiplier;
-        currentState.persistentCooldownTimer = persistentShotInterval;
+        currentState.scaledPersistentShotInterval = persistentShotInterval * attackCooldownMultiplier;
+        currentState.persistentCooldownTimer = currentState.scaledPersistentShotInterval;
     }
 
     // Lazy + GROWABLE, not build-once (2026-08-20 — same fix OrbiterGloomPD.EnsureIndicatorPoolCapacity
@@ -581,6 +548,14 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     protected override State GetInitialState()
     {
         var s = base.GetInitialState();
+        s.scaledPullSequentialDelay = pullSequentialDelay;
+        s.scaledShootSequentialDelay = shootSequentialDelay;
+        s.scaledInnerCount = innerCount;
+        s.scaledMiddleCount = middleCount;
+        s.scaledOuterCount = outerCount;
+        s.scaledRotationRateDegPerSecond = rotationRateDegPerSecond;
+        s.scaledAttackCooldown = attackCooldown;
+        s.scaledPersistentShotInterval = persistentShotInterval;
         s.shootTrackedPleb = DisposableList<PredictedObjectID>.Create(0);
         s.shootTrackedBearing = DisposableList<Vector3>.Create(0);
         s.shootTrackedIndicator = DisposableList<PredictedObjectID>.Create(0);
@@ -602,7 +577,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // generic Move Speed + Damage enrage system as-is (see that class's own "Enrage" Inspector header),
     // same as every other boss. Held-pleb damage overrides multiply by EnrageDamageMultiplier explicitly
     // wherever they compute damage separately from GetOwnDamage().
-    private int RingCount(int ring) => ring switch { 0 => innerCount, 1 => middleCount, _ => outerCount };
+    private int RingCount(ref State state, int ring) => ring switch { 0 => state.scaledInnerCount, 1 => state.scaledMiddleCount, _ => state.scaledOuterCount };
     private float RingRadius(int ring)       => ring switch { 0 => innerOrbitRadius, 1 => middleOrbitRadius, _ => outerOrbitRadius };
     // Middle ring runs counter to inner/outer — negated here (not on the Inspector field itself, which stays
     // a plain positive "how fast" value like its siblings) so every caller automatically gets the correctly
@@ -705,7 +680,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                     int dispatchCount = RingHeldList(ref state, state.pullDispatchRingIndex).Count;
 
                     while (state.pullRingLocalIndex < dispatchCount &&
-                           state.phaseTimer >= state.pullSequenceIndex * pullSequentialDelay + windupDuration)
+                           state.phaseTimer >= state.pullSequenceIndex * state.scaledPullSequentialDelay + windupDuration)
                     {
                         BeginPull(ref state, state.pullDispatchRingIndex, state.pullRingLocalIndex);
                         state.pullRingLocalIndex++;
@@ -782,7 +757,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                     int dispatchCount = RingHeldList(ref state, physicalDispatchRing).Count;
 
                     while (state.shootRingLocalIndex < dispatchCount &&
-                           state.phaseTimer >= state.shootSequenceIndex * shootSequentialDelay + shotWindupDuration)
+                           state.phaseTimer >= state.shootSequenceIndex * state.scaledShootSequentialDelay + shotWindupDuration)
                     {
                         FireShotRing(ref state, physicalDispatchRing, state.shootRingLocalIndex);
                         state.shootRingLocalIndex++;
@@ -952,7 +927,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             return cmp != 0 ? cmp : a.ObjectId.instanceId.value.CompareTo(b.ObjectId.instanceId.value);
         });
 
-        int grabCount = Mathf.Min(RingCount(ring), _grabCandidates.Count);
+        int grabCount = Mathf.Min(RingCount(ref state, ring), _grabCandidates.Count);
         for (int i = 0; i < grabCount; i++)
         {
             var chosen = _grabCandidates[i];
@@ -1058,7 +1033,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         if (totalHeld <= 0)
         {
             state.phaseId             = (int)KingOrbiterPhase.Moving;
-            state.attackCooldownTimer = attackCooldown;
+            state.attackCooldownTimer = state.scaledAttackCooldown;
         }
         else
         {
@@ -1309,7 +1284,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
         for (int i = state.shootRingLocalIndex; i < dispatchCount; i++)
         {
-            float localElapsed = state.phaseTimer - (ringGlobalStart + i) * shootSequentialDelay;
+            float localElapsed = state.phaseTimer - (ringGlobalStart + i) * state.scaledShootSequentialDelay;
             if (localElapsed < 0f || localElapsed >= shotWindupDuration) continue; // not this pleb's window yet, or already past it (about to dispatch this same tick)
 
             var pebId = held[i];
@@ -1352,7 +1327,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                 // consistency for the tracking (a Slow now correctly stiffens re-aim here too, same as
                 // everywhere else) rather than "keeping pace with an already-compressed windup" the way it
                 // does for the other bosses.
-                : Vector3.RotateTowards(current, targetDir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
+                : Vector3.RotateTowards(current, targetDir, state.scaledRotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
 
             // Spawns (first tick this entry exists) or resolves this pleb's own LineIndicatorPD and writes its
             // aim directly here, in Simulate — once per tick, off the same tick-fresh bearing FireShotRing
@@ -1393,7 +1368,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // order) has been released (or skipped/aborted) — full attack cycle complete.
     private void FinishShootPhase(ref State state)
     {
-        state.attackCooldownTimer = attackCooldown;
+        state.attackCooldownTimer = state.scaledAttackCooldown;
         FindRandomTarget();
         state.phaseId = (int)KingOrbiterPhase.Moving;
 
@@ -1678,7 +1653,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             // (KingSpikePD's own persistent bursts use the identical shape): a volley that finds zero
             // grabbable plebs this cycle (e.g. nothing currently near any player) still consumes its own
             // interval rather than retrying every tick until one appears.
-            state.persistentCooldownTimer = persistentShotInterval;
+            state.persistentCooldownTimer = state.scaledPersistentShotInterval;
             StartPersistentVolley(ref state);
             return;
         }
@@ -1830,7 +1805,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             // Rate scaled by EffectiveAttackSpeed (2026-08-31, was plain delta) — see
             // UpdateShootBearingTracking's own identical 2026-08-31 doc comment for why (Slow-consistency;
             // this boss's own phaseTimer still isn't attack-speed-scaled at all).
-            state.persistentBearingDir[i] = Vector3.RotateTowards(state.persistentBearingDir[i], targetDir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
+            state.persistentBearingDir[i] = Vector3.RotateTowards(state.persistentBearingDir[i], targetDir, state.scaledRotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
 
             // Same spawn-or-resolve + Simulate-side aim write as UpdateShootBearingTracking's own — see its
             // doc comment and ResolveOrSpawnLineIndicator's own. Persistent-volley plebs never orbit at all
@@ -2065,7 +2040,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
                 for (int j = 0; j < heldCount; j++)
                 {
-                    float localElapsed = viewState.phaseTimer - (ringGlobalStart + j) * pullSequentialDelay;
+                    float localElapsed = viewState.phaseTimer - (ringGlobalStart + j) * viewState.scaledPullSequentialDelay;
                     if (localElapsed < 0f) continue; // not this pleb's own turn yet
 
                     var go = hierarchy.GetGameObject(held[j]);
@@ -2245,7 +2220,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // Full cooldown, matching LateAwake()'s own reasoning — same "field needs time to repopulate" logic
         // applies to a respawn (e.g. a difficulty-pacing wipe right before this boss spawns) as to a fresh
         // spawn.
-        currentState.attackCooldownTimer = attackCooldown;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         currentState.pullRingIndex          = 0;
         currentState.pullDispatchRingIndex  = 0;
         currentState.pullRingLocalIndex     = 0;
@@ -2274,7 +2249,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // persistentTargetId/persistentBearingDir/persistentIndicatorId cleared directly (not via
         // ReleasePersistentHeld) — same reasoning as innerHeld/middleHeld/outerHeld above: Die() already
         // released anything actually held before this pooled reuse could happen.
-        currentState.persistentCooldownTimer = persistentShotInterval;
+        currentState.persistentCooldownTimer = currentState.scaledPersistentShotInterval;
         currentState.persistentVolleyActive  = false;
         currentState.persistentShotFired     = false;
         currentState.persistentVolleyTimer   = 0f;

@@ -31,7 +31,6 @@ public class PhantomBladeOnHighrollAugment : AugmentEffectPD<PhantomBladeOnHighr
     }
 
     [SerializeField] private GameObject phantomBladePrefab;
-    [SerializeField] private Color bladeColor = Color.white;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
     // Now a real cooldown duration (5s, set on the prefab) rather than a rapid re-roll interval (1s) — kept
     // this exact field name rather than renaming to baseCooldown, since the prefab's own serialized value
@@ -103,7 +102,7 @@ public class PhantomBladeOnHighrollAugment : AugmentEffectPD<PhantomBladeOnHighr
     {
         if (phantomBladePrefab == null) return;
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, strengthMultiplierPercent, bladeColor);
+            Stats.transform.position, bladeCount, strengthMultiplierPercent);
     }
 
     protected override void Simulate(ref State state, float delta)

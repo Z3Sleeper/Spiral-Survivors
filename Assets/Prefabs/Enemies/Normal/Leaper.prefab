@@ -503,9 +503,10 @@ MonoBehaviour:
   preferredRange: 5
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 10
   xpValue: 5
-  pointsValue: 5
+  pointsValue: 10
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -519,7 +520,7 @@ MonoBehaviour:
   - {fileID: 7943450121013660069}
   invulnerableShell: {fileID: 7331312534044633561}
   landDamageMultiplier: 1
-  landRadius: 4
+  landRadius: 3.5
   windupDuration: 1
   leapDuration: 1
   leapArcHeight: 3
@@ -531,8 +532,9 @@ MonoBehaviour:
   rotationRateDegPerSecond: 30
   distanceTrackingRateUnitsPerSecond: 2
   attackCooldown: 5
-  leapsPerAttackTierGrowth: 1
+  leapsPerAttackTierGrowth: 0
   rotationRateDegPerSecondTierGrowth: 0.05
+  attackCooldownTierGrowth: 0.6
   _yAxisMovers: {fileID: 2271060463906041925}
   _windupIndicator: {fileID: 5598621953610581262}
   _windupFill: {fileID: 8982848245911395817}

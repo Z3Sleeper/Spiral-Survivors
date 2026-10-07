@@ -44,6 +44,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4bb0acd66fcf02d4e8967895cc44ccaf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DeathPreventionInvisibleAugment
-  attackSpeedFlatWhileInvisible: 0.6
-  onSaveMoveSpeedFlat: 3
-  onSaveDuration: 3
+  baseAttackSpeedFlat: 0.2
+  attackSpeedFlatWhileInvisible: 0.8
+  onSaveMoveSpeedPercent: 0.5
+  onSaveDuration: 5

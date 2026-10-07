@@ -15,12 +15,12 @@ MonoBehaviour:
   displayName: <color=#FFFF00>Surge Parry</color>
   description: '<color=#FFA000>(AoE) On <color=#FFFF00>Surge End</color> after spending
     <color=#FFFF00>50 Energy</color>:</color> <color=#FFA000>Interrupt</color> and
-    <color=#FFA000>Stun</color> enemies in a <color=#3278FF>1.25x Range</color> radius
-    for <color=#FFA000>1 second</color>.
+    <color=#FFA000>Stun</color> enemies in a <color=#3278FF>x{radiusMultiplier} Range</color>
+    radius for <color=#FFA000>{pairedStunDuration} seconds</color>.
 
-    <color=#FFA000>On Interrupt:</color>
-    Gain <color=#FFFF00>+{maxEnergyPerStack} <color=#9664FF>Stacking</color> Max
-    Energy</color>.
+    <color=#FFA000>On
+    Interrupt:</color> Gain <color=#FFFF00>+{maxEnergyPerStack} <color=#9664FF>Stacking</color>
+    Max Energy</color>.
 
     <color=#FFBE50>Current Bonus: <color=#FFFF00>+{LiveStackedMaxEnergy}
     Max Energy</color></color>'

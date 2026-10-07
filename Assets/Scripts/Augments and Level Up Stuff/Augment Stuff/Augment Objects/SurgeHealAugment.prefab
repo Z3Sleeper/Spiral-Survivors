@@ -44,6 +44,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 47939e8476929d346aae565c1da58408, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeHealAugment
-  healBase: 0.5
-  healthRegenPercent: 2
-  tickInterval: 0.25
+  healBase: 2
+  bonusHealthRegenPercent: 2
+  energySpentPerHeal: 20
+  bonusMaxEnergyFlat: 25

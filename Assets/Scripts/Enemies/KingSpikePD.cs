@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using PurrNet.Packing;
 using PurrNet.Prediction;
 using UnityEngine;
@@ -50,6 +51,14 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // a flat interval, entirely independent of stateId/the remote-sequence-above's own attack cycle — see
         // Simulate()'s own UpdatePersistentRemoteBursts tail.
         public float   persistentBurstCooldownTimer;
+        // Runtime-scaled — see EnemyBaseState.scaledMaxHealth's own doc comment for why these live in State
+        // rather than as a plain field mutated by OnConfigureSpawn (2026-09-22 follow-up pass).
+        public int   scaledChargesPerAttack;
+        public int   scaledRemoteBurstCount;
+        public float scaledRemoteBurstInterval;
+        public float scaledRotationRateDegPerSecond;
+        public float scaledAttackCooldown;
+        public float scaledPersistentBurstInterval;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
         public State Duplicate()
@@ -80,7 +89,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // — this override REPLACES the base GetOwnDamage() entirely rather than calling base(), so it doesn't
     // inherit that composition for free the way a non-overriding enemy does.
     protected override float GetOwnDamage() =>
-        (KingSpikeState)currentState.stateId == KingSpikeState.Charging ? damage * chargeDamageMultiplier * EnrageDamageMultiplier : damage * EnrageDamageMultiplier;
+        (KingSpikeState)currentState.stateId == KingSpikeState.Charging ? B.scaledDamage * chargeDamageMultiplier * EnrageDamageMultiplier : B.scaledDamage * EnrageDamageMultiplier;
 
     [Header("Damage")]
     [SerializeField] private float chargeDamageMultiplier      = 2.5f;
@@ -95,8 +104,9 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // Charge (King Spike's actual threat) never got any faster no matter how long the fight dragged on.
     private float ChargeSpeed => EffectiveMoveSpeed * chargeSpeedMultiplier;
     [SerializeField] private float chargeDistance       = 20f;
-    // Tier1-authored baseline, scaled per tier by chargesPerAttackTierGrowth below (applied in
-    // OnConfigureSpawn()).
+    // Tier1-authored, pristine read-only baseline forever (2026-09-22) — scaled fresh into
+    // State.scaledChargesPerAttack by OnConfigureSpawn() (see EnemyBaseState.scaledMaxHealth's own doc
+    // comment for the full reasoning).
     [SerializeField] private int   chargesPerAttack     = 4;
     [SerializeField] private float betweenChargePause   = 0.1f;
     [SerializeField] private GameObject   chargeWindupIndicator;
@@ -112,11 +122,10 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     private bool       _windupIndicatorLocalPoseCaptured;
     // Max turn rate while tracking a target during ChargeWindup (2026-08-21) — copied from
     // ShielderGloomPD's own rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45 base, 0.2 tier
-    // growth), same tier1-authored-baseline treatment as chargesPerAttack above. Caps how fast this boss can
+    // growth), same pristine-baseline treatment as chargesPerAttack above. Caps how fast this boss can
     // re-aim mid-windup so circling it (or timing a dash to arrive late in the windup) is a real counterplay
     // option — see TrackChargeWindupTarget's own doc comment.
     [SerializeField] private float rotationRateDegPerSecond = 45f;
-    private float _authoredRotationRateDegPerSecond;
 
     [Header("Post-Charge Reposition")]
     // Closes distance on the closest player right before Spike Burst — see EnterPostChargeDash's own doc
@@ -143,11 +152,10 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     [SerializeField] private GameObject remoteBurstPrefab;
     [SerializeField] private float      remoteBurstOffsetRadius = 3f;
     [SerializeField] private float      remoteBurstRadius       = 6f;
-    // Tier1-authored baseline, scaled per tier by remoteBurstCountTierGrowth below (applied in
-    // OnConfigureSpawn()).
+    // Tier1-authored, pristine read-only baseline forever — scaled fresh into State.scaledRemoteBurstCount.
     [SerializeField] private int        remoteBurstCount        = 8;
-    // Tier1-authored baseline, scaled per tier by remoteBurstIntervalTierGrowth below (applied in
-    // OnConfigureSpawn()) — SHRINKS per tier ("20% shorter").
+    // Tier1-authored, pristine read-only baseline forever — scaled fresh into
+    // State.scaledRemoteBurstInterval — SHRINKS per tier ("20% shorter").
     [SerializeField] private float      remoteBurstInterval     = 1f;
     [SerializeField] private float      remoteChargeTime        = 1.5f;
 
@@ -161,19 +169,11 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // was found the normal way; this persistent version fires blind on a timer, so it needs its own explicit
     // check, same shape as EnemyBasePD.FaceTargetSmooth's own IsInvisible/IsTaunting guard).
     [SerializeField] private float persistentBurstInterval = 3f;
-    // Captured once in OnAwake(), reset back onto persistentBurstInterval every pooled reuse in LateAwake(),
-    // scaled by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as attackCooldown itself.
-    private float _authoredPersistentBurstInterval;
 
     [Header("Attack Cooldown")]
     // Only actually starts counting down once the whole remote burst sequence finishes (all waves spawned
     // AND the final wave's own remoteChargeTime elapsed) — see Simulate()'s own remote-sequence tail.
     [SerializeField] private float attackCooldown = 10f;
-    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
-    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as the 4 tier-scaled fields below.
-    private float _authoredAttackCooldown;
 
     [Header("Tier Scaling")]
     // Duration fields SHRINK per tier (base * (1 - (tier-1)*growth)) — "X% shorter/faster" means less time,
@@ -187,37 +187,11 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // field for the precedent this was copied from.
     [SerializeField] private float rotationRateDegPerSecondTierGrowth = 0.2f;
 
-    // Captured once in OnAwake(), reset back onto these fields every pooled reuse in LateAwake() — same
-    // "_authoredX snapshot" pattern established for every other tier-scaled field this pass.
-    private int   _authoredChargesPerAttack;
-    private int   _authoredRemoteBurstCount;
-    private float _authoredRemoteBurstInterval;
-
     // ── Lifecycle ─────────────────────────────────────────────────────────────
-
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        _authoredChargesPerAttack    = chargesPerAttack;
-        _authoredRemoteBurstCount    = remoteBurstCount;
-        _authoredRemoteBurstInterval = remoteBurstInterval;
-        _authoredAttackCooldown      = attackCooldown;
-        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
-        _authoredPersistentBurstInterval = persistentBurstInterval;
-    }
 
     protected override void LateAwake()
     {
         base.LateAwake();
-        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
-        // once hierarchy.Create() returns) scales these fresh for this life — see _authoredChargesPerAttack's
-        // own doc comment.
-        chargesPerAttack    = _authoredChargesPerAttack;
-        remoteBurstCount    = _authoredRemoteBurstCount;
-        remoteBurstInterval = _authoredRemoteBurstInterval;
-        attackCooldown      = _authoredAttackCooldown;
-        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
-        persistentBurstInterval = _authoredPersistentBurstInterval;
 
         // Guarded to a single real capture per instance — see LeaperGloomPD/BlitzGloomPD's own identical
         // _windupIndicatorParent/_windupIndicatorLocalPos capture for the full reasoning (a pooled reuse
@@ -246,28 +220,28 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     // Tier1-authored chargesPerAttack/remoteBurstCount/remoteBurstInterval, scaled by each field's own
     // *TierGrowth (see the "Tier Scaling" header's own doc comment for the duration-shrinks/size-grows
     // formula shapes). spawnTier is already final by the time this runs (set earlier in the same
-    // ConfigureSpawn() call). All 3 are read live during gameplay (chargesPerAttack/remoteBurstCount via
-    // refill-if-exhausted checks, remoteBurstInterval read directly), not mirrored into predicted State at
-    // spawn time, so no extra currentState reset is needed anywhere else. spikeBurstRadius is flat now, no
-    // tier scaling — see its own field comment.
+    // ConfigureSpawn() call). All 3 are read live during gameplay off State.scaledX now (chargesPerAttack/
+    // remoteBurstCount via refill-if-exhausted checks, remoteBurstInterval read directly) — see
+    // EnemyBaseState.scaledMaxHealth's own doc comment for why. spikeBurstRadius is flat now, no tier
+    // scaling — see its own field comment.
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
-        chargesPerAttack    += (spawnTier - 1) * chargesPerAttackTierGrowth;
-        remoteBurstCount    += (spawnTier - 1) * remoteBurstCountTierGrowth;
-        remoteBurstInterval *= 1f - (spawnTier - 1) * remoteBurstIntervalTierGrowth;
-        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        currentState.scaledChargesPerAttack    = chargesPerAttack    + (spawnTier - 1) * chargesPerAttackTierGrowth;
+        currentState.scaledRemoteBurstCount    = remoteBurstCount    + (spawnTier - 1) * remoteBurstCountTierGrowth;
+        currentState.scaledRemoteBurstInterval = remoteBurstInterval * (1f - (spawnTier - 1) * remoteBurstIntervalTierGrowth);
+        currentState.scaledRotationRateDegPerSecond = rotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
-        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = attackCooldown;
+        currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
 
         // Same Threat Level 5 scaling, explicitly requested to apply to Boss Persistent Attacks too — re-set
         // the placeholder persistentBurstCooldownTimer LateAwake() already assigned above, using the
         // now-scaled value.
-        persistentBurstInterval = _authoredPersistentBurstInterval * attackCooldownMultiplier;
-        currentState.persistentBurstCooldownTimer = persistentBurstInterval;
+        currentState.scaledPersistentBurstInterval = persistentBurstInterval * attackCooldownMultiplier;
+        currentState.persistentBurstCooldownTimer = currentState.scaledPersistentBurstInterval;
     }
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -320,17 +294,17 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         state.remoteSequenceTimer -= delta;
         if (state.remoteSequenceTimer > 0f) return;
 
-        if (state.remoteBurstsSpawned < remoteBurstCount)
+        if (state.remoteBurstsSpawned < state.scaledRemoteBurstCount)
         {
             SpawnRemoteBurstWave();
             state.remoteBurstsSpawned++;
-            state.remoteSequenceTimer = state.remoteBurstsSpawned < remoteBurstCount
-                ? remoteBurstInterval
+            state.remoteSequenceTimer = state.remoteBurstsSpawned < state.scaledRemoteBurstCount
+                ? state.scaledRemoteBurstInterval
                 : remoteChargeTime;
         }
         else
         {
-            state.attackCooldownTimer = attackCooldown;
+            state.attackCooldownTimer = state.scaledAttackCooldown;
             state.remoteSequenceActive = false;
         }
     }
@@ -403,7 +377,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
                 {
                     if (IsCrowdControlled)
                     {
-                        moveSpeed = baseMoveSpeed;
+                        B.scaledMoveSpeed = baseMoveSpeed;
                         if (_target != null) HandleMovement(ref state, delta);
                     }
                     else if (state.spikeBurstPending)
@@ -426,7 +400,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
                 // previous attack's remote bursts are still resolving. Per point 6, the next attack can't
                 // begin until that sequence is fully done.
                 bool cooldownReady = state.attackCooldownTimer <= 0f && !state.remoteSequenceActive;
-                moveSpeed = cooldownReady ? baseMoveSpeed * 5f : baseMoveSpeed;
+                B.scaledMoveSpeed = cooldownReady ? baseMoveSpeed * 5f : baseMoveSpeed;
                 if (_target != null) HandleMovement(ref state, delta);
                 if (cooldownReady && _target != null &&
                     Vector3.Distance(transform.position, _target.position) <= chargeDistance)
@@ -515,7 +489,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // launching at up to 5x its intended speed on top of chargeSpeedMultiplier — confirmed live, this was
         // NOT a pooling issue (LateAwake() already correctly resets moveSpeed on every reuse); it happened on
         // every single charge attempt, every time.
-        moveSpeed = baseMoveSpeed;
+        B.scaledMoveSpeed = baseMoveSpeed;
 
         // Decrement lives HERE — the actual START of one charge attempt (dashtotarget/windup) — not at the
         // charge's own completion (dashJustEnded, above). A charge cancelled mid-windup or mid-dash via
@@ -529,7 +503,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // stomp chargesRemaining themselves — this single self-contained check is now the only reset point,
         // so an interrupted sequence's leftover count survives into whatever attack comes next instead of
         // being silently thrown away.
-        if (state.chargesRemaining <= 0) state.chargesRemaining = chargesPerAttack;
+        if (state.chargesRemaining <= 0) state.chargesRemaining = state.scaledChargesPerAttack;
         state.chargesRemaining--;
 
         // Captured here — the commit moment for this charge — not read live off _targetStats later; same
@@ -588,7 +562,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         if (dir == Vector3.zero) return;
         dir.Normalize();
 
-        Vector3 newDir = Vector3.RotateTowards(state.chargeDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
+        Vector3 newDir = Vector3.RotateTowards(state.chargeDirection, dir, state.scaledRotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
         _rigidbody.MoveRotation(Quaternion.LookRotation(newDir));
         state.chargeDirection = newDir;
     }
@@ -693,10 +667,9 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     private void FireSpikeBurst(ref State state)
     {
         Vector3 origin = transform.position;
-        // EnrageDamageMultiplier multiplied in explicitly (2026-08-19) — this reads the raw `damage` field
-        // directly rather than going through GetOwnDamage()/GetDamage(), so it doesn't pick the bonus up
-        // for free.
-        float   dmg    = damage * spikeBurstDamageMultiplier * EnrageDamageMultiplier;
+        // EnrageDamageMultiplier multiplied in explicitly (2026-08-19) — this reads B.scaledDamage directly
+        // rather than going through GetOwnDamage()/GetDamage(), so it doesn't pick the bonus up for free.
+        float   dmg    = B.scaledDamage * spikeBurstDamageMultiplier * EnrageDamageMultiplier;
         // Physics.OverlapSphereNonAlloc against CombatLayerMasks.FriendlyHurtboxMask (2026-08-30, was a
         // manual FriendlyTargetRegistryPD distance check) — see SpearGloomPD.EnterStab's own doc comment for
         // why enemy AoE attacks now match every player weapon's own collider-query convention.
@@ -718,7 +691,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // happens (see Simulate()'s own comment).
         state.remoteSequenceActive = true;
         state.remoteBurstsSpawned  = 0;
-        state.remoteSequenceTimer  = remoteBurstInterval;
+        state.remoteSequenceTimer  = state.scaledRemoteBurstInterval;
         // Reprioritize now that the attack sequence is over — random, not closest, per this boss's own
         // design (see EnemyBasePD.FindRandomTarget's own doc comment for why).
         FindRandomTarget();
@@ -793,21 +766,34 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
     // ── Remote bursts ────────────────────────────────────────────────────────
 
+    // Scratch buffer for SpawnRemoteBurstWave below — cleared and reused every call, never left holding
+    // references between calls, same zero-alloc convention as EnemyBasePD._randomTargetScratch.
+    private static readonly List<CharacterStatsPD> _remoteBurstWaveScratch = new();
+
     // Players only (2026-08-30, explicit design exception to the rest of this boss's IFriendlyPD migration)
     // — Remote Spike Burst specifically stays CharacterStatsPD/CharacterStatsPD.All, never
     // FriendlyTargetRegistryPD, per explicit user direction: it's a "boss persistent attack" class mechanic
     // (spawns and hits at a target's position with no live tracking once launched — a friendly could easily
     // walk away before it detonates), unlike every other attack on this boss (FireSpikeBurst, charge, etc.),
     // which are free to hit friendlies.
+    //
+    // One random player per wave, not every player (2026-09-26) — was a foreach hitting everyone; explicit
+    // design change, only for this attack-cycle version, NOT SpawnPersistentRemoteBurst below (that one
+    // deliberately stays hitting everyone). No invisibility filter, same as before this change — this only
+    // ever fires mid-attack-sequence, after a real target was already found the normal way (see this
+    // method's own original doc comment, preserved above).
     private void SpawnRemoteBurstWave()
     {
         if (remoteBurstPrefab == null) return;
 
+        _remoteBurstWaveScratch.Clear();
         foreach (var stats in CharacterStatsPD.All.Values)
-        {
-            if (stats.IsDead) continue;
-            SpawnRemoteBurstFor(stats);
-        }
+            if (!stats.IsDead) _remoteBurstWaveScratch.Add(stats);
+
+        if (_remoteBurstWaveScratch.Count == 0) return;
+
+        var chosen = _remoteBurstWaveScratch[GameRandom.instance.Next(_remoteBurstWaveScratch.Count)];
+        SpawnRemoteBurstFor(chosen);
     }
 
     // Extracted (2026-08-19) so UpdatePersistentRemoteBursts' own targeting loop can spawn the exact same
@@ -827,12 +813,12 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out RemoteSpikeBurstPD burst))
-            // EnrageDamageMultiplier multiplied in explicitly — same "reads raw damage directly" reasoning
-            // as FireSpikeBurst's own dmg local above. EffectiveAttackSpeed passed as a one-time snapshot
-            // (2026-09-14) so this hazard's own charge-then-detonate timer speeds up/slows down in step with
-            // King Spike's own attack speed (including an active Slow) — see RemoteSpikeBurstPD's own
-            // _chargeAttackSpeed doc comment for why it's snapshotted rather than read live.
-            burst.Launch(remoteChargeTime, remoteBurstRadius, damage * remoteBurstDamageMultiplier * EnrageDamageMultiplier, EffectiveAttackSpeed);
+            // EnrageDamageMultiplier multiplied in explicitly — same "reads B.scaledDamage directly"
+            // reasoning as FireSpikeBurst's own dmg local above. EffectiveAttackSpeed passed as a one-time
+            // snapshot (2026-09-14) so this hazard's own charge-then-detonate timer speeds up/slows down in
+            // step with King Spike's own attack speed (including an active Slow) — see RemoteSpikeBurstPD's
+            // own _chargeAttackSpeed doc comment for why it's snapshotted rather than read live.
+            burst.Launch(remoteChargeTime, remoteBurstRadius, B.scaledDamage * remoteBurstDamageMultiplier * EnrageDamageMultiplier, EffectiveAttackSpeed);
     }
 
     // ── Persistent Remote Spike Bursts ──────────────────────────────────────────
@@ -842,7 +828,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         state.persistentBurstCooldownTimer -= delta;
         if (state.persistentBurstCooldownTimer > 0f) return;
 
-        state.persistentBurstCooldownTimer = persistentBurstInterval;
+        state.persistentBurstCooldownTimer = state.scaledPersistentBurstInterval;
         SpawnPersistentRemoteBurst();
     }
 
@@ -1003,7 +989,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     {
         currentState.stateId              = 0;
         currentState.stateTimer           = 0f;
-        currentState.attackCooldownTimer  = attackCooldown; // full grace, matching LateAwake()'s own fix
+        currentState.attackCooldownTimer  = currentState.scaledAttackCooldown; // full grace, matching LateAwake()'s own fix
         currentState.chargesRemaining     = 0;
         currentState.spikeBurstPending    = false;
         currentState.postChargeDashPending = false;
@@ -1011,7 +997,7 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         currentState.remoteBurstsSpawned  = 0;
         currentState.remoteSequenceTimer  = 0f;
         // Full grace, matching LateAwake()'s own reasoning for persistentBurstCooldownTimer.
-        currentState.persistentBurstCooldownTimer = persistentBurstInterval;
+        currentState.persistentBurstCooldownTimer = currentState.scaledPersistentBurstInterval;
         if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
         if (chargeWindupFill != null)      chargeWindupFill.Hide();
         // In case death happened mid-Charging, while the indicator was unparented — a fresh reuse should

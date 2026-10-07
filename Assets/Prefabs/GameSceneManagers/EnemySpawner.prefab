@@ -157,8 +157,6 @@ MonoBehaviour:
   tier3NamePrefix: Despair
   tier4NamePrefix: Dread
   spawnPoints: []
-  spawnMinDistance: 25
-  spawnMaxDistance: 30
   spawnIntervalQ1: 4
   spawnIntervalQ2: 3
   spawnIntervalQ3: 2
@@ -175,7 +173,7 @@ MonoBehaviour:
   healthTierGrowth: 5
   healthExponentialTierBase: 3
   xpTierGrowth: 3
-  pointsTierGrowth: 1
+  pointsTierGrowth: 0.5
   difficultyDamageGrowthPerLevel: 0.2
   difficultyHealthGrowthPerLevel: 1
   difficultyMoveSpeedGrowthPerLevel: 0.1
@@ -185,7 +183,7 @@ MonoBehaviour:
   maxEliteEnemies: 100
   maxPlebEnemies: 500
   plebSpawnAmount: 5
-  plebSpawnIntervalQ1: 1.75
-  plebSpawnIntervalQ2: 1.5
-  plebSpawnIntervalQ3: 1.25
+  plebSpawnIntervalQ1: 2.5
+  plebSpawnIntervalQ2: 2
+  plebSpawnIntervalQ3: 1.5
   plebSpawnIntervalQ4: 1

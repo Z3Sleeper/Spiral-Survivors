@@ -87,7 +87,6 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
     }
 
     private bool _cameraSet;
-    private bool _bonusesApplied;
     private bool _registeredInAll;
     private bool _classPassivesApplied;
     private bool _difficultyModifiersApplied;
@@ -116,11 +115,17 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
 
         if (character.TryGetComponent(out CharacterStatsPD stats))
         {
-            if (!_bonusesApplied && isOwner)
-            {
+            // Gated on stats.ProgressionBonusesApplied, NOT a separate flag owned by this class (2026-09-22
+            // fix) — a flag living HERE, on PlayerDataPD, never resets if `character`/`stats` itself ever
+            // gets destroyed and recreated by a PredictedHierarchy reconciliation of the hierarchy.Create()
+            // spawn call (state.spawned rolling back to false and this whole spawn sequence resimulating) —
+            // PlayerDataPD itself is stable across that, so its own flag would stay latched true forever,
+            // silently skipping re-application on the replacement character and permanently losing every
+            // shop-purchased base stat on exactly this (the owner's) machine. Reading the TARGET object's own
+            // guard instead means a fresh replacement object (fresh field, defaults to false) is correctly
+            // re-gated on its own — same self-healing shape as every other reconciliation fix this session.
+            if (isOwner && !stats.ProgressionBonusesApplied)
                 stats.ApplyProgressionBonuses(CharacterStatsPD.ComputeProgressionBonuses());
-                _bonusesApplied = true;
-            }
 
             // Color is no longer anything PlayerDataPD tracks at all — CharacterStatsPD now resolves and
             // applies its own color entirely server-side (see CharacterStatsPD.Simulate's color-resolution
@@ -138,7 +143,7 @@ public class PlayerDataPD : PredictedIdentity<PlayerShellInput, PlayerShellState
             // (that was only ever a coincidental proxy from when this method also resolved color itself,
             // not a real dependency — nothing downstream of All[owner]=stats cares whether color has been
             // painted onto the model yet).
-            if (!_registeredInAll && owner.HasValue && (!isOwner || _bonusesApplied))
+            if (!_registeredInAll && owner.HasValue && (!isOwner || stats.ProgressionBonusesApplied))
             {
                 CharacterStatsPD.All[owner.Value] = stats;
                 CharacterStatsPD.RefreshAnyValidTargetExists();

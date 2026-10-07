@@ -10,7 +10,7 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -5675275276217337517, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
       propertyPath: maxHealth
-      value: 1000
+      value: 750
       objectReference: {fileID: 0}
     - target: {fileID: 1597157536724350220, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
       propertyPath: m_Name
@@ -34,15 +34,15 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2195335558513612733, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
       propertyPath: m_LocalScale.x
-      value: 16
+      value: 2.56
       objectReference: {fileID: 0}
     - target: {fileID: 2195335558513612733, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
       propertyPath: m_LocalScale.y
-      value: 16
+      value: 2.56
       objectReference: {fileID: 0}
     - target: {fileID: 2195335558513612733, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
       propertyPath: m_LocalScale.z
-      value: 12.800001
+      value: 2.048
       objectReference: {fileID: 0}
     - target: {fileID: 3528644101431230945, guid: e6b04082addbfca4cbc1e1da7c854b73, type: 3}
       propertyPath: m_Radius

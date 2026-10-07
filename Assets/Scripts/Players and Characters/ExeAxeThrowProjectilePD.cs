@@ -118,6 +118,27 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     // Arrival radius for the return trip — see class doc comment/Launch()'s own doc comment for why this is
     // the same value as the original spawnOffset, not a fixed constant.
     private float _returnRadius;
+    // ExeAxeThrowKnockbackAugment's own knockbackMultiplier (2026-10-06), passed through from
+    // ExeAxeThrowAbilityPD.Activate() — 1f (neutral, every throw without the augment) default. Captured
+    // once at Launch() same as every other per-throw snapshot here (_strengthPercent etc.), since knockback
+    // is otherwise read live off _stats.Knockback in ProcessHit() with nothing else to carry the
+    // ability-specific multiplier.
+    private float _knockbackMultiplier;
+    // ExeAxeThrowMiniAxesAugment's own per-throw scale-downs (2026-10-06) — both 1f (neutral, every normal
+    // throw) default. sizeMultiplier further scales the root's own rangeScale-derived transform.localScale
+    // (see Launch() below), which automatically shrinks BOTH the hit-detection sphere (sphereRadius *
+    // transform.lossyScale.x, read live in LateSimulate()) and the visible model together, same lockstep
+    // relationship rangeScale itself already has. onHitPowerPercent scales _stats.OnHitPower in ProcessHit()
+    // — OnHitPower otherwise has nothing else here to carry a per-throw multiplier through.
+    private float _sizeMultiplier;
+    private float _onHitPowerPercent;
+    // ExeAxeThrowHealAugment's own per-hit heal (2026-10-06) — both 0f (true no-op, every throw without the
+    // augment) default. Pre-scaled by the CALLER (ExeAxeThrowAbilityPD.Activate(), both the main throw and
+    // the mini-axe spawn block) rather than this projectile knowing "am I a mini axe" itself — the mini-axe
+    // block already passes half of these same two values, same "compute once in Activate(), pass pre-scaled
+    // into Launch()" shape every other mini-axe-specific scaling here already uses.
+    private float _healFlat;
+    private float _healRegenPercent;
     // Plain view-layer bookkeeping, not predicted state — same instant-predicted-hide pattern as
     // WeaponRangedProjectilePD/EnemyProjectilePD.
     private bool _hiddenOnExpire;
@@ -156,13 +177,18 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
     // distance this projectile was thrown from in front of the caster) — reused here as the return trip's
     // arrival radius, so the axe settles back at roughly the same distance from the caster it left from
     // rather than needing to touch their exact center (see class doc comment).
-    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, float maxRange, float strengthPercent, float returnRadius)
+    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, float maxRange, float strengthPercent, float returnRadius, float knockbackMultiplier = 1f, float sizeMultiplier = 1f, float onHitPowerPercent = 1f, float healFlat = 0f, float healRegenPercent = 0f)
     {
         _stats = stats;
         _speed = speed;
         _maxRange = maxRange;
         _strengthPercent = strengthPercent;
         _returnRadius = returnRadius;
+        _knockbackMultiplier = knockbackMultiplier;
+        _sizeMultiplier = sizeMultiplier;
+        _onHitPowerPercent = onHitPowerPercent;
+        _healFlat = healFlat;
+        _healRegenPercent = healRegenPercent;
 
         currentState.direction = direction;
         currentState.distanceTravelled = 0f;
@@ -183,7 +209,13 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // emission-rate calc below (Launch's own particle scaling), which was already deliberately matched to
         // WeaponBasePD.ScaleModel's own identical EffectiveWeaponRange-based formula.
         float rangeScale = stats.EffectiveWeaponRange * rangeScaleMultiplier;
-        transform.localScale = _baseScale * rangeScale;
+        // _sizeMultiplier (ExeAxeThrowMiniAxesAugment, 1f/no-op for every normal throw) — composes for free
+        // with both yScaleFollowers' own rangeScale counter-scale AND the visualHeightTarget height-lift
+        // counter-scale below via ordinary parent-child local-scale/position math: each of those divides
+        // ONLY by rangeScale (unchanged), so the extra * _sizeMultiplier on THIS root's own scale still
+        // ends up uniformly shrinking their real WORLD size/position by that same factor, without needing
+        // its own separate counter-scale anywhere else.
+        transform.localScale = _baseScale * rangeScale * _sizeMultiplier;
 
         // Counter-scale — see yScaleFollowers' own doc comment. Divides back OUT the same rangeScale the
         // root just grew by, on Y only, so these specific pieces render at their originally-authored length
@@ -382,7 +414,9 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage * critDamageMultiplier);
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, _stats.OnHitPower);
 
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = damage, onHitPower = _stats.OnHitPower, isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position) };
+        // _onHitPowerPercent — ExeAxeThrowMiniAxesAugment's own bonus, 1f (no-op) for every throw without
+        // it — see that field's own doc comment.
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = damage, onHitPower = _stats.OnHitPower * _onHitPowerPercent, isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position) };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
@@ -402,10 +436,28 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
 
         // Unpenalized — CharacterStatsPD.Knockback alone, no OnHitPower multiply (unlike
         // WeaponRangedProjectilePD's own `_knockback * onHitPower`), per the user's own call.
+        // _knockbackMultiplier — ExeAxeThrowKnockbackAugment's own bonus, 1f (no-op) for every throw
+        // without it — see that field's own doc comment.
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
-        enemy.AddKnockbackVelocity(knockDir * _stats.Knockback);
+        enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * _knockbackMultiplier);
 
         _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
+
+        // ExeAxeThrowHealAugment's own per-hit heal (2026-10-06) — 0f/0f (true no-op) for every throw
+        // without it. Doubled on crit, per Stuart's own spec. Direct one-shot Stats.Heal() call here is
+        // safe — this whole method is already a discrete, exactly-once-per-real-hit call (same safety class
+        // as the TakeDamage/NotifyHit/AddKnockbackVelocity calls right above it), not a per-tick continuous
+        // accumulator, so no deferred-delta/UpdateView dance is needed the way an ongoing heal-over-time
+        // effect would require.
+        if (_healFlat != 0f || _healRegenPercent != 0f)
+        {
+            float healAmount = _healFlat + _stats.BonusHealthRegen * _healRegenPercent;
+            if (isCrit) healAmount *= 2f;
+            _stats.Heal(healAmount);
+            // Heal VFX — safe to call directly here, same as RogueSpinHealShieldAugment/RogueVanishHealAugment's
+            // own identical calls: PlayHealVfx has its own per-target cooldown dedup built in.
+            VFXManager.instance?.PlayHealVfx(_stats.transform);
+        }
     }
 
     private void SetRenderersEnabled(bool value)

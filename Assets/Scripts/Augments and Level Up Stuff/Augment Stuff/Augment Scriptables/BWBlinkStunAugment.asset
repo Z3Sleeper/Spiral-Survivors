@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: BWBlinkStunAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: '<color=#00FFFF>Blade Blink: Grand Arrival</color>'
+  description: <color=#00FFFF>Blade Blink</color> now <color=#FFA000>{knockbackMultiplierPercent}%
+    Knockbacks</color>, <color=#FFA000>Interrupts</color> and <color=#FFA000>Stuns</color>
+    enemies for {stunDuration} second in <color=#3278FF>x{radiusMultiplier} Range</color>
+    on arrival.
+  icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
+  effectPrefab: {fileID: 1889933058124648941, guid: 847194d493a24494492686cf0e9db690, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags:
+  - AoE Effect
+  requiredTags: []
+  requiredAbilities: 09000000
+  incompatibleTags: []
+  unlockTag: Ability

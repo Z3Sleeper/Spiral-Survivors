@@ -12,10 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 009657d7a5a7e3844b9ada055b0289d0, type: 3}
   m_Name: BladeweaverPassive
   m_EditorClassIdentifier: Assembly-CSharp::ClassPassiveData
-  classDescription: 
+  classDescription: Melee
   bonusMoveSpeedFlat: 0
-  bonusMoveSpeedPercent: 0
-  moveSpeedPenalty: 0
   totalMoveSpeedPercent: 0
   totalMoveSpeedPenalty: 0
   bonusStrengthFlat: 0
@@ -80,7 +78,7 @@ MonoBehaviour:
   totalEnergyRegenPenalty: 0
   bonusSurgeCostFlat: 0
   surgeCostReductionPercent: 0
-  surgeAttackSpeedPenalty: 0
+  surgeAttackSpeedBonusPercent: 0
   dashHaste: 0
   bonusDashHastePercent: 0
   totalDashHastePercent: 0

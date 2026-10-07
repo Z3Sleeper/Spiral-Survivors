@@ -35,6 +35,11 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         // drives the windup indicator's own "collapse in behind the body" shrink in UpdateView. Reset to 0 at
         // EnterBlitz (fresh dash, fresh progress); meaningless outside Blitzing.
         public float   blitzTravelProgress;
+        // Runtime-scaled — see EnemyBaseState.scaledMaxHealth's own doc comment for why these live in State
+        // rather than as a plain field mutated by OnConfigureSpawn (2026-09-22 follow-up pass).
+        public int   scaledBlitzesPerAttack;
+        public float scaledAttackCooldown;
+        public float scaledRotationRateDegPerSecond;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
         public State Duplicate()
@@ -65,33 +70,22 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     [SerializeField] private float postBlitzPause       = 0.5f;
     [SerializeField] private float blitzDistance        = 12f;
     [SerializeField] private float blitzSpeedMultiplier = 3.5f;
-    // Tier1-authored baseline, scaled per tier by blitzesPerAttackTierGrowth below (applied in
-    // OnConfigureSpawn()). See _authoredBlitzesPerAttack's own doc comment for why this needs the
-    // snapshot-and-reset treatment instead of just incrementing this field directly.
+    // Tier1-authored, pristine read-only baseline forever (2026-09-22) — OnConfigureSpawn scales it into
+    // State.scaledBlitzesPerAttack instead of mutating this in place, so no _authoredX snapshot/reset is
+    // needed anymore (see EnemyBaseState.scaledMaxHealth's own doc comment for the full reasoning).
     [SerializeField] private int   blitzesPerAttack     = 1;
-    // Captured once in OnAwake(), reset back onto blitzesPerAttack every pooled reuse in LateAwake() —
-    // otherwise OnConfigureSpawn's += would keep compounding across reuses (e.g. tier3 life leaves this at
-    // 3, then a LATER tier1 reuse of the same pooled slot would add 0 to that stale 3 instead of starting
-    // fresh from 1) — same "_authoredX snapshot" pattern EnemyBasePD's own maxHealth/damage/moveSpeed/
-    // xpValue/enemyName already use.
-    private int _authoredBlitzesPerAttack;
 
     // Max turn rate while tracking a target during Windup (2026-08-21) — copied from ShielderGloomPD's own
-    // rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45 base, 0.2 tier growth), same tier1-
-    // authored-baseline treatment as blitzesPerAttack above. Caps how fast this enemy can re-aim mid-windup
-    // so circling it (or timing a dash to arrive late in the windup) is a real counterplay option — an
-    // unbounded instant snap (the old behavior) meant no amount of player movement could ever throw off the
-    // eventual dash direction.
+    // rotationRateDegPerSecond/rotationRateDegPerSecondTierGrowth (45 base, 0.2 tier growth). Caps how fast
+    // this enemy can re-aim mid-windup so circling it (or timing a dash to arrive late in the windup) is a
+    // real counterplay option — an unbounded instant snap (the old behavior) meant no amount of player
+    // movement could ever throw off the eventual dash direction. Same pristine-baseline treatment as
+    // blitzesPerAttack above — scales into State.scaledRotationRateDegPerSecond instead.
     [SerializeField] private float rotationRateDegPerSecond = 45f;
-    private float _authoredRotationRateDegPerSecond;
 
     [Header("Attack Cooldown")]
+    // Same pristine-baseline treatment as blitzesPerAttack above — scales into State.scaledAttackCooldown.
     [SerializeField] private float attackCooldown = 5f;
-    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
-    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as _authoredBlitzesPerAttack above, needed for the same reason (avoid compounding across
-    // pooled reuses).
-    private float _authoredAttackCooldown;
 
     [Header("Tier Scaling")]
     // Added onto blitzesPerAttack per tier above 1 — see OnConfigureSpawn().
@@ -122,23 +116,9 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        _authoredBlitzesPerAttack = blitzesPerAttack;
-        _authoredAttackCooldown = attackCooldown;
-        _authoredRotationRateDegPerSecond = rotationRateDegPerSecond;
-    }
-
     protected override void LateAwake()
     {
         base.LateAwake();
-        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
-        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredBlitzesPerAttack's
-        // own doc comment.
-        blitzesPerAttack = _authoredBlitzesPerAttack;
-        attackCooldown = _authoredAttackCooldown;
-        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond;
 
         // Guarded to a single real capture per instance — see LeaperGloomPD's own identical
         // _windupIndicatorParent/_windupIndicatorLocalPos capture for the full reasoning (a pooled reuse could
@@ -178,16 +158,16 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
-        blitzesPerAttack += (spawnTier - 1) * blitzesPerAttackTierGrowth;
-        currentState.blitzesRemaining = blitzesPerAttack;
-        rotationRateDegPerSecond = _authoredRotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
+        currentState.scaledBlitzesPerAttack = blitzesPerAttack + (spawnTier - 1) * blitzesPerAttackTierGrowth;
+        currentState.blitzesRemaining = currentState.scaledBlitzesPerAttack;
+        currentState.scaledRotationRateDegPerSecond = rotationRateDegPerSecond * (1f + (spawnTier - 1) * rotationRateDegPerSecondTierGrowth);
 
         // Threat Level 5 — halves attackCooldown (attackCooldownMultiplier is 0.5f once difficulty >= 5,
         // else 1f — see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set the placeholder
         // attackCooldownTimer LateAwake() already assigned above, using the now-scaled value, same
         // "set again once the real scaling lands" reasoning as blitzesRemaining above.
-        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
     }
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -331,7 +311,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         // the only reset point now, so an interrupted sequence's leftover count survives into whatever
         // attack comes next instead of being thrown away. See KingSpikePD.EnterChargeWindup for the same
         // pattern.
-        if (state.blitzesRemaining <= 0) state.blitzesRemaining = blitzesPerAttack;
+        if (state.blitzesRemaining <= 0) state.blitzesRemaining = state.scaledBlitzesPerAttack;
         state.blitzesRemaining--;
 
         // Captured here — the commit moment for this strike — not read live off _targetStats later; see
@@ -381,7 +361,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         if (dir == Vector3.zero) return;
         dir.Normalize();
 
-        Vector3 newDir = Vector3.RotateTowards(state.blitzDirection, dir, rotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
+        Vector3 newDir = Vector3.RotateTowards(state.blitzDirection, dir, state.scaledRotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
         _rigidbody.MoveRotation(Quaternion.LookRotation(newDir));
         state.blitzDirection = newDir;
     }
@@ -402,7 +382,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         state.stateTimer = postBlitzPause;
         // Flat, not randomized — only the initial spawn-time cooldown gets randomized (to desync multiple
         // simultaneously-spawned Blitzers), not every recurring attack cooldown afterward.
-        state.attackCooldownTimer = attackCooldown;
+        state.attackCooldownTimer = state.scaledAttackCooldown;
         SetBlitzState(ref state, BlitzState.PostBlitz);
     }
 
@@ -443,7 +423,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.blitzesRemaining    = 0;
-        currentState.attackCooldownTimer = attackCooldown;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
@@ -578,8 +558,8 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     {
         currentState.stateId             = 0;
         currentState.stateTimer          = 0f;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
-        currentState.blitzesRemaining    = blitzesPerAttack;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.blitzesRemaining    = currentState.scaledBlitzesPerAttack;
         if (windupIndicator != null) windupIndicator.SetActive(false);
         if (windupFill != null)      windupFill.Hide();
         // In case death happened mid-Blitzing, while the indicator was unparented — a fresh reuse should

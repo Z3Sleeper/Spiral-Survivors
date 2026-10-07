@@ -53,6 +53,15 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // duplicated) for its own contact damage, just tracked separately here since this class isn't an
         // EnemyBasePD subclass and can't inherit its copy.
         public DisposableList<ContactCooldown> contactCooldowns;
+        // Runtime-scaled, pushed in by the owning ShielderGloomPD (Configure() for the baseline,
+        // SetRotationRateAndAttackRange/SetAttackCooldown for the tier-scaled correction moments later) —
+        // see EnemyBaseState.scaledMaxHealth's own doc comment for why these need to live in State rather
+        // than a plain field (2026-09-22 follow-up pass): a machine that never itself ran the Shielder's own
+        // OnConfigureSpawn for this pair (a PredictedHierarchy-reconciled Shield) would otherwise keep this
+        // Shield's rate/range/cooldown stuck at the tier-1 baseline forever.
+        public float scaledRotationRateDegPerSecond;
+        public float scaledAttackRange;
+        public float scaledAttackCooldown;
 
         public void Dispose() => contactCooldowns.Dispose();
 
@@ -115,22 +124,19 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // Every tunable is pushed in once via Configure() — the Shielder owns all of these (see its own class
     // doc comment), this class just holds the copy it was configured with.
     private float _orbitRadius;
-    private float _rotationRateDegPerSecond;
     // Applied ONLY during the Windup phase's own MoveTowardsAngle call below — see
     // ShielderGloomPD.windupRotationRateMultiplier's own doc comment for the full reasoning. Not tier-scaled
-    // (unlike _rotationRateDegPerSecond itself) — set once here via Configure() and never touched again.
+    // (unlike rotation rate itself) — set once here via Configure() and never touched again.
     private float _windupRotationRateMultiplier;
-    private float _attackRange;
     // Full width, not a half-width — see InAttackRectangle's own comment for the halving done at the
     // actual check.
     private float _attackWidth;
     private float _windupDuration;
     private float _releaseDuration;
-    private float _attackCooldown;
     // Inherited from the Shielder's own EnemyBasePD.size — see Configure()'s own comment.
     private float _size = 1f;
-    // Multipliers, not flat amounts — actual damage is _owner.damage * these, read LIVE at the moment each
-    // hit resolves (not cached here at Configure()-time), same reasoning ExeAxeThrowProjectilePD's own
+    // Multipliers, not flat amounts — actual damage is _owner.GetDamage() * these, read LIVE at the moment
+    // each hit resolves (not cached here at Configure()-time), same reasoning ExeAxeThrowProjectilePD's own
     // ProcessHit() already uses for Strength: reflects whatever the Shielder's own damage stat currently
     // is (including EnemySpawnerPD.ConfigureSpawn's own damageMultiplier scaling, which runs AFTER this
     // Shield's own Configure() call, so caching a value here would miss it).
@@ -207,13 +213,17 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     {
         _owner = owner;
         _orbitRadius = orbitRadius;
-        _rotationRateDegPerSecond = rotationRateDegPerSecond;
+        // Baseline only — ShielderGloomPD.OnConfigureSpawn() (runs moments later, same tick, on whichever
+        // machine actually made the spawn decision) pushes the real tier-scaled values via
+        // SetRotationRateAndAttackRange()/SetAttackCooldown() below, into State rather than a plain field
+        // here — see State.scaledRotationRateDegPerSecond's own doc comment for why.
+        currentState.scaledRotationRateDegPerSecond = rotationRateDegPerSecond;
+        currentState.scaledAttackRange = attackRange;
+        currentState.scaledAttackCooldown = attackCooldown;
         _windupRotationRateMultiplier = windupRotationRateMultiplier;
-        _attackRange = attackRange;
         _attackWidth = attackWidth;
         _windupDuration = windupDuration;
         _releaseDuration = releaseDuration;
-        _attackCooldown = attackCooldown;
         _shieldburstDamageMultiplier = shieldburstDamageMultiplier;
         _shieldContactDamageMultiplier = shieldContactDamageMultiplier;
         _contactCooldownSeconds = contactCooldownSeconds;
@@ -228,7 +238,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // differently-sized Shielder across lives.
         _size = owner.size;
         transform.localScale = Vector3.one * _size;
-        // Same 1:1 treatment as _attackRange/_attackWidth (see InAttackRectangle's own comment) — a bigger
+        // Same 1:1 treatment as attackRange/_attackWidth (see InAttackRectangle's own comment) — a bigger
         // Shield model orbiting at an unchanged radius would clip closer into the body as it scales up, so
         // baking size into the radius here avoids needing to hand-retune orbitRadius per Elite variant too.
         _orbitRadius *= _size;
@@ -357,14 +367,14 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
                         if (toTarget != Vector3.zero)
                         {
                             float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
-                            state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * _owner.EffectiveAttackSpeed * delta));
+                            state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, state.scaledRotationRateDegPerSecond * _owner.EffectiveAttackSpeed * delta));
                         }
                     }
 
                     if (state.attackCooldownTimer <= 0f && IsTargetValid(_owner.TargetStats))
                     {
                         Vector3 forward = AngleToDir(state.facingAngle);
-                        if (InAttackRectangle(origin, forward, _owner.TargetStats.transform.position))
+                        if (InAttackRectangle(origin, forward, _owner.TargetStats.transform.position, state.scaledAttackRange))
                         {
                             // Commits to this SPECIFIC target for the whole Windup — see
                             // _windupTrackedTarget's own doc comment for why this is a frozen reference, not
@@ -411,7 +421,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
                         // Rate halved (windupRotationRateMultiplier) only for this Windup-phase tracking —
                         // see ShielderGloomPD.windupRotationRateMultiplier's own doc comment. FreeRotating
                         // above and Releasing below both use the full, unscaled rate.
-                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * _windupRotationRateMultiplier * _owner.EffectiveAttackSpeed * delta));
+                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, state.scaledRotationRateDegPerSecond * _windupRotationRateMultiplier * _owner.EffectiveAttackSpeed * delta));
                     }
                 }
 
@@ -429,8 +439,8 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
                     if (_windupTrackedTarget != null)
                     {
                         Vector3 forward = AngleToDir(state.lockedAngle);
-                        if (InAttackRectangle(origin, forward, _windupTrackedLastKnownPosition))
-                            _windupTrackedTarget.TakeDamage(_owner.damage * _shieldburstDamageMultiplier, false, _owner.ObjectId);
+                        if (InAttackRectangle(origin, forward, _windupTrackedLastKnownPosition, state.scaledAttackRange))
+                            _windupTrackedTarget.TakeDamage(_owner.GetDamage() * _shieldburstDamageMultiplier, false, _owner.ObjectId);
                     }
                     state.phaseId = (int)ShieldPhase.Releasing;
                     state.phaseTimer = _releaseDuration;
@@ -457,14 +467,14 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
                     if (toTarget != Vector3.zero)
                     {
                         float targetAngle = Mathf.Atan2(toTarget.z, toTarget.x) * Mathf.Rad2Deg;
-                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, _rotationRateDegPerSecond * _owner.EffectiveAttackSpeed * delta));
+                        state.facingAngle = WrapAngle(Mathf.MoveTowardsAngle(state.facingAngle, targetAngle, state.scaledRotationRateDegPerSecond * _owner.EffectiveAttackSpeed * delta));
                     }
                 }
 
                 if (state.phaseTimer <= 0f)
                 {
                     state.phaseId = (int)ShieldPhase.FreeRotating;
-                    state.attackCooldownTimer = _attackCooldown;
+                    state.attackCooldownTimer = state.scaledAttackCooldown;
                 }
                 effectiveAngle = state.facingAngle;
                 break;
@@ -488,7 +498,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         if ((ShieldPhase)currentState.phaseId != ShieldPhase.Windup) return;
 
         currentState.phaseId = (int)ShieldPhase.FreeRotating;
-        currentState.attackCooldownTimer = _attackCooldown;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         _windupTrackedTarget = null;
         _windupTrackedLastKnownPosition = default;
 
@@ -514,7 +524,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // Same forward-rectangle math SpearGloomPD.EnterStab() uses, scoped to exactly one candidate instead of
     // sweeping CharacterStatsPD.All — the user was explicit that this should only ever consider the
     // Shielder's own current target, never any nearby player.
-    private bool InAttackRectangle(Vector3 origin, Vector3 forward, Vector3 targetPosition)
+    private bool InAttackRectangle(Vector3 origin, Vector3 forward, Vector3 targetPosition, float attackRange)
     {
         // Both terms scaled 1:1 by _size (the Shielder's own inherited size, see Configure()'s own
         // comment) — per explicit design, the real hitbox itself grows with an Elite Shielder, not just the
@@ -523,7 +533,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         Vector3 offset = targetPosition - origin;
         offset.y = 0f;
         float forwardDist = Vector3.Dot(offset, forward);
-        if (forwardDist < 0f || forwardDist > _attackRange * _size) return false;
+        if (forwardDist < 0f || forwardDist > attackRange * _size) return false;
 
         // _attackWidth is a full width (see its own doc comment) — lateralDist is a one-sided distance from
         // the centerline, so the actual check needs half of it, same as SpearGloomPD's own
@@ -558,12 +568,12 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             if (!cooldowns[i].target.Equals(target)) continue;
             if (cooldowns[i].remaining > 0) return;
             cooldowns[i] = new ContactCooldown { target = target, remaining = ticks };
-            friendly.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, false, _owner.ObjectId, _owner.SpawnCategory == EnemySpawnCategory.Pleb, true);
+            friendly.TakeDamage(_owner.GetDamage() * _shieldContactDamageMultiplier, false, _owner.ObjectId, _owner.SpawnCategory == EnemySpawnCategory.Pleb, true);
             return;
         }
 
         cooldowns.Add(new ContactCooldown { target = target, remaining = ticks });
-        friendly.TakeDamage(_owner.damage * _shieldContactDamageMultiplier, false, _owner.ObjectId, _owner.SpawnCategory == EnemySpawnCategory.Pleb, true);
+        friendly.TakeDamage(_owner.GetDamage() * _shieldContactDamageMultiplier, false, _owner.ObjectId, _owner.SpawnCategory == EnemySpawnCategory.Pleb, true);
     }
 
     protected override void UpdateView(State viewState, State? verified)
@@ -583,7 +593,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
             // center half the distance forward from there, computed PURELY in WindupFillPD's own local space
             // (see ShowRectangle's own doc comment) rather than a caller-computed world point.
             if (_windupFill != null)
-                _windupFill.ShowRectangle(_attackRange, _attackWidth, _attackRange * 0.5f);
+                _windupFill.ShowRectangle(viewState.scaledAttackRange, _attackWidth, viewState.scaledAttackRange * 0.5f);
 
             if (_windupIndicator.gameObject.activeSelf != showIndicator)
                 _windupIndicator.gameObject.SetActive(showIndicator);
@@ -641,8 +651,8 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // (see its own comment), so baking size in here would double-apply it.
     public void SetRotationRateAndAttackRange(float rotationRateDegPerSecond, float attackRange)
     {
-        _rotationRateDegPerSecond = rotationRateDegPerSecond;
-        _attackRange = attackRange;
+        currentState.scaledRotationRateDegPerSecond = rotationRateDegPerSecond;
+        currentState.scaledAttackRange = attackRange;
     }
 
     // Called by ShielderGloomPD.OnConfigureSpawn() (Threat Level 5), same reasoning/timing as
@@ -652,7 +662,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     // used, same "set again once the real scaling lands" reasoning as every other enemy's OnConfigureSpawn.
     public void SetAttackCooldown(float attackCooldown)
     {
-        _attackCooldown = attackCooldown;
+        currentState.scaledAttackCooldown = attackCooldown;
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
     }
 

@@ -364,7 +364,7 @@ MonoBehaviour:
   rangeToleranceClose: 0.3
   damage: 10
   xpValue: 500
-  pointsValue: 500
+  pointsValue: 1000
   size: 3
   contactColliderEnabled: 1
   stunResistant: 0
@@ -381,9 +381,9 @@ MonoBehaviour:
   - {fileID: 5427267374445519469}
   - {fileID: 1191430190877834793}
   invulnerableShell: {fileID: 6798967740665866865}
-  chargeDamageMultiplier: 2
-  spikeBurstDamageMultiplier: 4
-  remoteBurstDamageMultiplier: 2
+  chargeDamageMultiplier: 1.5
+  spikeBurstDamageMultiplier: 3
+  remoteBurstDamageMultiplier: 1.5
   chargeWindupDuration: 1
   chargeSpeedMultiplier: 2.25
   chargeDistance: 20
@@ -407,9 +407,9 @@ MonoBehaviour:
   persistentBurstInterval: 3
   attackCooldown: 5
   chargesPerAttackTierGrowth: 0
-  remoteBurstCountTierGrowth: 4
-  remoteBurstIntervalTierGrowth: 0.2
-  rotationRateDegPerSecondTierGrowth: 0.2
+  remoteBurstCountTierGrowth: 2
+  remoteBurstIntervalTierGrowth: 0.05
+  rotationRateDegPerSecondTierGrowth: 0.05
 --- !u!54 &-6973549993052189348
 Rigidbody:
   m_ObjectHideFlags: 0

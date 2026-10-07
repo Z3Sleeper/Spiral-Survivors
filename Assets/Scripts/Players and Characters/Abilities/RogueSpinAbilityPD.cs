@@ -16,6 +16,13 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         // How many of the _effectiveHitCount scheduled hits have fired so far — see HitTime()'s own doc
         // comment for how their timing is derived from this and duration.
         public int   hitsFired;
+        // Ability charge system — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment.
+        public int   charges;
+        public int   knownMaxCharges;
+        // Guards FirstSuccessfulInterrupt (FSI) — reset once per fresh cast (Activate()), so a whole spin
+        // fires FSI at most once, the first time any enemy is actually interrupted. Only ever touched while
+        // canInterrupt is on — see that field's own doc comment.
+        public bool  interruptedThisCast;
         public void Dispose() { }
     }
 
@@ -23,6 +30,9 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     [SerializeField] private string abilityName = "Spin Slash";
     [SerializeField, TextArea] private string description = "Leap forward, dealing damage in a burst around you as your weapons spin.";
     public float cooldown = 10f;
+    // How many charges this ability starts with (1 = old off-cooldown behavior, unchanged) — see
+    // IAbilityPD.MaxCharges's own doc comment. CharacterStatsPD.bonusAbility1Charges adds on top live.
+    [SerializeField] private int authoredChargeCount = 1;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full
     // value throughout the leap) — the cooldown reflects "time since the ability ended". true: cooldown
     // starts ticking immediately at cast, running concurrently with the active window — see Simulate().
@@ -36,6 +46,11 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // in-progress one from being force-ended AND immediately re-blocked at the counter level — see
     // IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract this now goes through instead).
     [SerializeField] private bool activeSurgeBlock = true;
+
+    // false (default) until RogueSpinInterruptAugment sets it — see HitEnemy()'s own use for the full
+    // contract. [HideInInspector] — the augment owns this switch, nothing on this ability's own prefab
+    // should need hand-authoring it (same reasoning as KnightBerserkAbilityPD's own augment-owned fields).
+    [HideInInspector] public bool canInterrupt = false;
 
     [Header("Movement")]
     // Overall active window for the whole ability — movement, invincibility, weapons-disabled, damage
@@ -163,7 +178,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         _subscribedToSpecialMovementInterrupted = true;
     }
 
-    public bool IsReady => !currentState.isActive && currentState.cooldownTimer <= 0f;
+    public bool IsReady => !currentState.isActive && currentState.charges > 0;
     public bool IsActive => currentState.isActive;
     // Moves the player (StartSpecialMovement), disables weapons, flips the orbit — this locks dash and the
     // other ability slot out for its whole active window (see IAbilityPD.ForcesSpecialAction's own doc comment).
@@ -185,6 +200,15 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     public string Description => description;
     public string[] Tags => tags;
     public AbilitySlot Slot => slot;
+    public AbilityIdentity Identity => AbilityIdentity.RogueSpin;
+    public int CurrentCharges => currentState.charges;
+    public int MaxCharges => EffectiveMaxCharges;
+    // Live, not cached — see IAbilityPD.MaxCharges's own doc comment for why a mid-run bonus must be
+    // reflected immediately. Reads whichever bonus matches this instance's own (Inspector-configurable)
+    // Slot, not a hardcoded one.
+    private int EffectiveMaxCharges => authoredChargeCount + (_stats != null
+        ? (slot == AbilitySlot.Ability1 ? _stats.bonusAbility1Charges : _stats.bonusAbility2Charges)
+        : 0);
 
     // Same sine-arc formula as LeaperGloomPD's own leap.
     private float ComputeArcY(float activeTimer) =>
@@ -216,24 +240,55 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // effect should only ever eat into time that's ACTUALLY counting down right now, not a cooldownTimer
     // that's merely sitting at its full pre-loaded value while the active window (cooldownStartsOnCast=false)
     // hasn't ended yet to let it start ticking.
+    // MaxCharges > 1 (2026-10-02) — see Simulate()'s own identical addition for why a multi-charge ability
+    // always ticks its regen timer regardless of isActive.
     private bool IsCooldownActivelyTicking =>
-        currentState.cooldownTimer > 0f && (cooldownStartsOnCast || !currentState.isActive);
+        currentState.cooldownTimer > 0f && (cooldownStartsOnCast || !currentState.isActive || EffectiveMaxCharges > 1);
 
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
+    // Shared by all three methods below — a reduction that would drop cooldownTimer below 0 now
+    // "overflows" into granting the next charge (looping further if the reduction is large enough to cross
+    // multiple charges at once), rather than being clamped away and wasted the instant cooldownTimer first
+    // hits 0 (2026-10-03, explicit request — multi-charge abilities should let a big cooldown-reduction
+    // effect spill into progress toward the NEXT charge, same as the ordinary passive regen tick already
+    // does over many real ticks, just resolved atomically in one call). Caps at EffectiveMaxCharges — once
+    // fully charged, any further excess is genuinely discarded, nothing left to speed up. The while loop's
+    // own `cooldownTimer > 0f` check (re-tested every iteration) also makes this safe against a degenerate
+    // EffectiveCooldown of 0 — the loop exits immediately rather than spinning.
+    private void ApplyCooldownReduction(float seconds)
+    {
+        seconds = Mathf.Max(0f, seconds);
+        int effectiveMax = EffectiveMaxCharges;
+        while (seconds > 0f && currentState.charges < effectiveMax && currentState.cooldownTimer > 0f)
+        {
+            if (seconds < currentState.cooldownTimer)
+            {
+                currentState.cooldownTimer -= seconds;
+                seconds = 0f;
+            }
+            else
+            {
+                seconds -= currentState.cooldownTimer;
+                currentState.charges++;
+                currentState.cooldownTimer = currentState.charges < effectiveMax ? EffectiveCooldown : 0f;
+            }
+        }
+    }
+
     public void ReduceCooldownFlat(float seconds)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
+        ApplyCooldownReduction(seconds);
     }
     public void ReduceCooldownPercentRemaining(float percent01)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
+        ApplyCooldownReduction(currentState.cooldownTimer * Mathf.Clamp01(percent01));
     }
     public void ReduceCooldownPercentTotal(float percent01)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+        ApplyCooldownReduction(CooldownDuration * Mathf.Clamp01(percent01));
     }
 
     public void Activate()
@@ -244,8 +299,13 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
 
         currentState.isActive      = true;
         currentState.activeTimer   = duration;
-        currentState.cooldownTimer = EffectiveCooldown;
+        // Charge system — spend 1, and only (re)arm the regen timer if it wasn't already running — see
+        // IAbilityPD.MaxCharges's own doc comment.
+        currentState.charges--;
+        if (currentState.cooldownTimer <= 0f) currentState.cooldownTimer = EffectiveCooldown;
         currentState.hitsFired     = 0;
+        // Reset every fresh cast — see State.interruptedThisCast's own doc comment.
+        currentState.interruptedThisCast = false;
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
         // Skipped entirely at 0 (raw, un-hasted) cooldown — an ability that can be spammed with no downtime
         // shouldn't be firing "a real ability cast" notifications on every cycle (PhantomBladeOnAbilityStartAugment
@@ -332,11 +392,36 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     {
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
-        // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole active
-        // window below) or only once that window ends (state.isActive false) — see the field's own doc
-        // comment. Either way Activate() already set cooldownTimer to its full value at cast time.
-        if (state.cooldownTimer > 0f && (cooldownStartsOnCast || !state.isActive))
-            state.cooldownTimer -= delta;
+        // Charge system (2026-10-02) — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment.
+        int effectiveMax = EffectiveMaxCharges;
+        if (effectiveMax > state.knownMaxCharges)
+        {
+            state.charges += effectiveMax - state.knownMaxCharges;
+            state.knownMaxCharges = effectiveMax;
+        }
+        else if (effectiveMax < state.knownMaxCharges)
+        {
+            state.charges = Mathf.Min(state.charges, effectiveMax);
+            state.knownMaxCharges = effectiveMax;
+        }
+
+        if (state.charges < effectiveMax)
+        {
+            // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole
+            // active window below) or only once that window ends (state.isActive false) — see the field's
+            // own doc comment. effectiveMax > 1 (2026-10-02) — a multi-charge ability always regens
+            // concurrently with its own active window regardless of cooldownStartsOnCast, since the whole
+            // point of charges is to keep stacking up for later, not stall behind whatever's currently
+            // active — see IAbilityPD.MaxCharges's own doc comment.
+            if (state.cooldownTimer > 0f && (cooldownStartsOnCast || !state.isActive || effectiveMax > 1))
+                state.cooldownTimer -= delta;
+
+            if (state.cooldownTimer <= 0f)
+            {
+                state.charges++;
+                state.cooldownTimer = state.charges < effectiveMax ? EffectiveCooldown : 0f;
+            }
+        }
 
         if (!state.isActive) return;
 
@@ -508,6 +593,19 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     private void HitEnemy(IEnemyPD enemy)
     {
         if (enemy._isDead) return;
+
+        // RogueSpinInterruptAugment's switch (2026-10-04) — called FIRST, before anything else below
+        // (damage/knockback), same ordering AreaEffectCastHelper.Cast's own interrupt param uses: a caller
+        // pairing this with knockback needs the enemy already un-kinematic'd by Interrupt() before
+        // AddKnockbackVelocity's own velocity assignment runs, or it gets silently eaten by that method's
+        // own "not supported on a kinematic body" guard — see EnemyBasePD.Interrupt()'s own doc comment.
+        // Feeds the generic SI/FSI event pair — RogueSpinInterruptAugment's OWN passive half (reduce this
+        // ability's cooldown on ANY successful interrupt, not just this one) listens to SI directly on
+        // CharacterStatsPD, so it doesn't need anything from this call site specifically; FSI is unused by
+        // anything right now but kept for consistency with every other Interrupt() caller in this codebase.
+        if (canInterrupt && enemy.Interrupt())
+            _stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast);
+
         float baseDamage = BaseDamage();
         float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
         bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;

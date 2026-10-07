@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ac5e8a8f397bfcf4ca9118df25193220, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnFirstDodgeHealHealthRegenAugment
-  baseHeal: 30
-  healthRegenPercent: 7.5
+  baseHeal: 15
+  bonusHealthRegenPercent: 15

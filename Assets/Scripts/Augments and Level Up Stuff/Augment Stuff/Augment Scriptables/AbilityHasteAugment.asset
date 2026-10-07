@@ -24,4 +24,6 @@ MonoBehaviour:
   requiredAugments: []
   tags: []
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
+  unlockTag: 

@@ -15,12 +15,17 @@ MonoBehaviour:
   tags:
   - Phantom Blade
   - Dodge
+  - Ability
   unlockConditions:
   - tag: Phantom Blade
     conditionType: 0
-    requiredThreatLevel: 2
+    requiredThreatLevel: 3
     unlockMessage: Phantom Blade Augments
+  - tag: Ability
+    conditionType: 0
+    requiredThreatLevel: 4
+    unlockMessage: Ability Augments
   - tag: Dodge
     conditionType: 0
-    requiredThreatLevel: 3
+    requiredThreatLevel: 5
     unlockMessage: Dodge Augments

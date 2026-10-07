@@ -45,4 +45,3 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AreaEffectSizeAugment
   bonusAreaEffectSizePercent: 0.5
-  bonusAreaEffectPowerPercent: 0.3

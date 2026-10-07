@@ -12,13 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: BladeweaverStartingAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FFA000>Bladeweaver</color>
+  displayName: <color=#FFA000>Gyromancer</color>
   description: '<color=#FFA000>+2 Weapons</color>
 
     <color=#FFA000>Weapons orbit
     at a distance</color>
 
-    <color=#3278FF>-50% Weapon Range Scaling</color>'
+    <color=#3278FF>-35% Weapon Range</color>'
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 5287227028414036435, guid: 357bffb3a42bc354ca5158c1faff441b, type: 3}
   multiplayerOnly: 0
@@ -27,7 +27,10 @@ MonoBehaviour:
   incompatibleAugments: []
   requiredCount: 2147483647
   requiredAugments: []
-  tags: []
+  tags:
+  - Starting
   requiredTags: []
-  incompatibleTags: []
+  requiredAbilities: 
+  incompatibleTags:
+  - Starting
   unlockTag: 

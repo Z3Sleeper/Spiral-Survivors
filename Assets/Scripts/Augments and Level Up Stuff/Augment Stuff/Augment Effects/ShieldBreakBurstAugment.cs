@@ -13,7 +13,7 @@ using UnityEngine;
 // DashExplosionAugment/DashHealAugment/ShieldBreakBurstAugment: Stats.RangeScalingAoEBase * radiusMultiplier —
 // extracted onto CharacterStatsPD itself on 2026-08-12 (single source of truth after the 0.5 -> 1
 // WeaponRange-coefficient retune needed touching every family member by hand), same shape
-// KnightAreaStunHealAbilityPD already uses. Every cast (a flat single cast now) goes through a
+// KnightBuffStunAbilityPD already uses. Every cast (a flat single cast now) goes through a
 // spawned AreaEffectPD (pooled, so this costs a reactivate, not a real spawn; the exact same prefab
 // DashExplosionAugment uses, since the class isn't tied to any one augment), rather than a separate
 // direct-cast path kept in sync by hand. Only the invincibility grant (not per-enemy, so just granted
@@ -37,8 +37,9 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
     public float damagePercent        = 3f;
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
     // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
-    // scaling itself.
-    [SerializeField] private float radiusMultiplier    = 1.25f;
+    // scaling itself. Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection
+    // can resolve {radiusMultiplier} directly as a description token.
+    public float radiusMultiplier    = 1.25f;
     [SerializeField] private float knockbackMultiplier = 2f;
 
     // Mirrors AreaEffectCastHelper.Cast's own damage formula, minus the luck/crit roll (baseline preview, not
@@ -48,10 +49,6 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
             ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * damagePercent)} "
             : "";
-
-    [Header("VFX")]
-    // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
-    [SerializeField] private GameObject radiusVFXPrefab;
 
     // Spawned on every shield break (see OnShieldBreak) — pooled, so this is cheap even when
     // AreaEffectCount is just 1. Must be registered in PredictedPrefabs.asset like any other spawned effect.
@@ -87,7 +84,13 @@ public class ShieldBreakBurstAugment : AugmentEffectPD<ShieldBreakBurstAugment.S
 
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-            chain.Launch(Stats, castPosition, radius, radiusVFXPrefab,
+            chain.Launch(Stats, castPosition, radius, null,
                 damagePercent: damagePercent, notifyOnHit: false, hasKnockback: true, knockback: knockback, vfxPerCast: true);
+
+        // Shockwave VFX opt-in (2026-09-26, user-curated, replaces the old flat-cylinder radiusVFXPrefab
+        // stand-in) — safe unconditionally: this callback only ever runs once per real shield break, off
+        // CharacterStatsPD._onShieldBreak, a genuine PredictedEvent (see class doc comment). Player color
+        // for both start/end (no override requested for this one).
+        VFXManager.instance?.PlayShockwaveVfx(castPosition, Stats.Size, Stats.PlayerColor, Stats.PlayerColor, radius);
     }
 }

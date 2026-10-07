@@ -19,7 +19,7 @@ using UnityEngine;
 // plain baseline. Radius formula standardized (2026-08-10) across DashExplosionAugment/DashHealAugment/
 // ShieldBreakBurstAugment: Stats.RangeScalingAoEBase * radiusMultiplier — extracted onto CharacterStatsPD
 // itself on 2026-08-12 (single source of truth after the 0.5 -> 1 WeaponRange-coefficient retune needed
-// touching every family member by hand), same shape KnightAreaStunHealAbilityPD already uses — WeaponRange
+// touching every family member by hand), same shape KnightBuffStunAbilityPD already uses — WeaponRange
 // is the actual stat, not the caster's true weapon extent. Every cast goes through a spawned AreaEffectPD,
 // one dedicated, fully self-contained instance PER dash, rather than tracking chain data inside this
 // augment's own State (so back-to-back dashes each get their own independent chain instead of sharing one
@@ -58,10 +58,6 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
             ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.OnHitPower * onHitPowerPercent)} "
             : "";
 
-    [Header("VFX")]
-    // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
-    [SerializeField] private GameObject radiusVFXPrefab;
-
     // Spawned on every dash (see OnDashEnded) — pooled, so this is cheap even when AreaEffectCount is just
     // 1. Must be registered in PredictedPrefabs.asset like any other spawned effect.
     [Header("Chain (spawned on every dash)")]
@@ -97,7 +93,13 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
         // hasKnockback: true, knockback explicitly passed (Stats.Knockback * knockbackMultiplier) — same
         // "unpenalized" convention ShieldBreakBurstAugment's own knockback uses.
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-            chain.Launch(Stats, castPosition, radius, radiusVFXPrefab,
+            chain.Launch(Stats, castPosition, radius, null,
                 damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, knockback: knockback, vfxPerCast: true);
+
+        // Shockwave VFX opt-in (2026-09-26, user-curated, replaces the old flat-cylinder radiusVFXPrefab
+        // stand-in) — safe unconditionally: this callback only ever runs once per real dash end, off
+        // PlayerControllerPD._onDashEnded, a genuine PredictedEvent. Player color for both start/end (no
+        // override requested for this one).
+        VFXManager.instance?.PlayShockwaveVfx(castPosition, Stats.Size, Stats.PlayerColor, Stats.PlayerColor, radius);
     }
 }

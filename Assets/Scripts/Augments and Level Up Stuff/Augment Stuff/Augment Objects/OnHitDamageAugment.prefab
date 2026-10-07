@@ -45,4 +45,3 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnHitDamageAugment
   onHitDamagePercent: 0.25
-  baseDamage: 5

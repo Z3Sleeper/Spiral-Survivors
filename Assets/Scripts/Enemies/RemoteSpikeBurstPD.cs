@@ -19,6 +19,14 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
         // verified state, same pattern as WeaponRangedProjectilePD — deleting directly from LateSimulate()
         // would be acting on a not-yet-confirmed tick.
         public bool  expired;
+        // Detonation radius/damage — live in State, not a plain field (2026-09-22), for the same reason
+        // EnemyBaseState.scaledMaxHealth does: this burst can be created on a client via PredictedHierarchy
+        // reconciling a misprediction rather than that machine's own local Launch() call, and a plain field
+        // would then silently stay at its C# default (0) — a zero-radius, zero-damage detonation — until
+        // (or unless) replication corrects it. Being in State means it's replicated as part of the same
+        // bundle as chargeTimer, which already needs this protection.
+        public float radius;
+        public float damage;
         public void Dispose() { }
     }
 
@@ -27,8 +35,6 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
     // See SpearGloomPD._stabOverlapResults's own doc comment for the buffer-size reasoning.
     private static readonly Collider[] _detonationOverlapResults = new Collider[8];
 
-    private float _radius;
-    private float _damage;
     // This life's own total charge duration, captured once at Launch() — the denominator for UpdateView's
     // own live SetProgress() ratio (see its own doc comment for why this replaced a self-timed StartFill()).
     private float _chargeDuration;
@@ -42,8 +48,8 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
     // XPOrbPD.SetValue()/WeaponRangedProjectilePD.Launch().
     public void Launch(float chargeTime, float radius, float damage, float chargeAttackSpeed = 1f)
     {
-        _radius = radius;
-        _damage = damage;
+        currentState.radius = radius;
+        currentState.damage = damage;
         _chargeDuration = chargeTime;
         _chargeAttackSpeed = Mathf.Max(0.0001f, chargeAttackSpeed);
         currentState.chargeTimer = chargeTime;
@@ -77,7 +83,7 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
         // explicit user direction, Remote Spike Burst only ever TARGETS (aims/spawns at) a player, but once
         // it's actually landed and detonating, it damages any friendly caught in the blast radius, same as
         // every other AoE on this boss.
-        int n = Physics.OverlapSphereNonAlloc(transform.position, _radius, _detonationOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
+        int n = Physics.OverlapSphereNonAlloc(transform.position, state.radius, _detonationOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
         for (int i = 0; i < n; i++)
         {
             var stats = _detonationOverlapResults[i].GetComponent<IFriendlyPD>();
@@ -89,7 +95,7 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
             // No firer-identity field on this spawned burst — attacker passed default, matches this
             // interface param's "reserved for later, not wired to anything yet" status (see
             // IFriendlyPD.TakeDamage's own doc comment).
-            stats.TakeDamage(_damage, false, default);
+            stats.TakeDamage(state.damage, false, default);
         }
 
         state.expired = true;
@@ -97,11 +103,11 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
 
     protected override void UpdateView(State viewState, State? verified)
     {
-        // Re-applied every frame, not just once at Launch() — if _radius is ever changed mid-life, the
+        // Re-applied every frame, not just once at Launch() — if radius is ever changed mid-life, the
         // visible footprint (both the outline and the fill mesh) should never silently drift out of sync
         // with the actual AoE damage radius. centerForwardOffset left at its 0 default — this object's own
         // position already IS the center, fixed for its whole life once landed, never moves.
-        if (_windupFill != null) _windupFill.ShowCircle(_radius);
+        if (_windupFill != null) _windupFill.ShowCircle(viewState.radius);
 
         // Live, every frame — see feedback_windupfill_self_timed_drift: a self-timed StartFill() runs on its
         // own Time.deltaTime clock, independent of the tick-based chargeTimer that actually gates the real

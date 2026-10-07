@@ -533,15 +533,14 @@ MonoBehaviour:
   enemyName: Spike
   moveSpeed: 5
   attackSpeed: 1
-  backpedalSpeedDivisor: 2.5
   maxHealth: 25
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
-  backpedalDisabled: 0
+  canStrafe: 1
   damage: 5
   xpValue: 1
-  pointsValue: 1
+  pointsValue: 2
   size: 1
   contactColliderEnabled: 1
   stunResistant: 0

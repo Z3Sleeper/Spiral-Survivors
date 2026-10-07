@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 064d0a1e197ff354fbec7e171499f794, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnHitHealHealthRegenAugment
-  onHitHealPercent: 0.1
-  baseHeal: 0.4
+  bonusHealthRegenPercent: 0.1
+  baseHeal: 0.1

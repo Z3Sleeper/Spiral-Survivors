@@ -3,9 +3,9 @@ using UnityEngine;
 
 // Persistent, LIVE-tracked relationship — not a one-way accumulator like OnEnemyDeathHealthStackingAugment/
 // SurgeStackingAttackSpeedAugment (whose stacks only ever grow over a run). Grants perStackMoveSpeedPercent
-// (8%, Bonus-tier via AddMoveSpeedPercent, 2026-09-19 — was moveSpeedPerStack(1) flat via AddMoveSpeedFlat,
-// converted project-wide alongside every other flat-Move-Speed augment now that Move Speed no longer comes
-// off Stat augments, per explicit design) Move Speed for every perStackMissingHealthPercent(15%) of CURRENT
+// (8%, Total-tier via AddMoveSpeedTotalPercent, 2026-09-30 — was Bonus-tier via AddMoveSpeedPercent, migrated
+// project-wide the same day that whole Bonus-tier percent pair was removed from CharacterStatsPD, see
+// bonusMoveSpeedFlat's own doc comment there) Move Speed for every perStackMissingHealthPercent(15%) of CURRENT
 // missing health (1 - CurrentHealth/MaxHealth), in discrete whole-stack THRESHOLD steps, not a smooth
 // gradient — e.g. exactly 20% missing health grants only 1 stack (20% cleared the first 15% threshold, not
 // yet the second 30% one), not a fractional 1.33 stacks. Both perStackMoveSpeedPercent and
@@ -16,7 +16,7 @@ using UnityEngine;
 // back below a threshold — same "recomputed every tick, not earned-and-kept" shape HealthToAttackSpeedAugment
 // already uses for its own live Health-derived bonus (see that class's own doc comment for the full
 // architecture reasoning: Simulate() recomputes state.desiredAmount deterministically every tick off
-// already-predicted Stats reads, but the actual Stats.AddMoveSpeedPercent delta only ever fires off a
+// already-predicted Stats reads, but the actual Stats.AddMoveSpeedTotalPercent delta only ever fires off a
 // CONFIRMED transition in verified state via UpdateView, so a mid-resimulation pass can never double-apply).
 //
 // Stack count itself is capped at maxStacks(5) — 5 stacks * 15%/stack = 75% missing health (25% Health
@@ -62,7 +62,7 @@ public class MissingHealthMoveSpeedStackingAugment : AugmentEffectPD<MissingHeal
             ? $"{AugmentDescriptionFormatter.FormatLiveNumber(perStackMoveSpeedPercent * LiveStackCountOf(stats) * stats.StackPower * 100f)}"
             : "0";
 
-    // Tracks how much has actually been granted via Stats.AddMoveSpeedPercent so far — mutated only from
+    // Tracks how much has actually been granted via Stats.AddMoveSpeedTotalPercent so far — mutated only from
     // UpdateView() off verified state, so the delta applied each time is always correct regardless of how
     // many times a given tick gets resimulated. Can go negative-delta (stacks lost) just as easily as
     // positive (stacks gained) — see class doc comment.
@@ -88,7 +88,7 @@ public class MissingHealthMoveSpeedStackingAugment : AugmentEffectPD<MissingHeal
         if (Mathf.Approximately(desired, _appliedAmount)) return;
 
         float delta = desired - _appliedAmount;
-        Stats.AddMoveSpeedPercent(delta);
+        Stats.AddMoveSpeedTotalPercent(delta);
         _appliedAmount = desired;
     }
 }

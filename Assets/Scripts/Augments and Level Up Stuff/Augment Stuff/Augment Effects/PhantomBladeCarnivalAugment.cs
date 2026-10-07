@@ -18,7 +18,6 @@ public class PhantomBladeCarnivalAugment : AugmentEffectPD<PhantomBladeCarnivalA
     [SerializeField] private float phantomBladeDamagePenalty = 0.35f;
     // Deliberately its OWN color, never the original summon's — see PhantomBladeSummonHelper's own class
     // doc comment for why PhantomBladeSummonData carries no color field at all.
-    [SerializeField] private Color bladeColor = Color.white;
 
     protected override void OnApply()
     {
@@ -37,6 +36,6 @@ public class PhantomBladeCarnivalAugment : AugmentEffectPD<PhantomBladeCarnivalA
         if (phantomBladePrefab == null) return;
         if (!data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy) || enemy._isDead) return;
 
-        PhantomBladeSummonHelper.SummonCopyAtTarget(hierarchy, phantomBladePrefab, Stats, enemy, data.damage, data.size, data.isCrit, data.isHighroll, data.baseDamageMultiplier, bladeColor);
+        PhantomBladeSummonHelper.SummonCopyAtTarget(hierarchy, phantomBladePrefab, Stats, enemy, data.damage, data.size, data.isCrit, data.isHighroll, data.baseDamageMultiplier);
     }
 }

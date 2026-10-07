@@ -38,6 +38,14 @@ public class XPOrbManagerPD : MonoBehaviour
         instance = this;
     }
 
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby).
+    private void OnDestroy()
+    {
+        if (instance == this) instance = null;
+    }
+
     // tier is the enemy's own EnemyBasePD.spawnTier (1-based) — mirrors EnemySpawnerPD.GetCurrentTier's own
     // bossesDefeated->tier mapping (tier1=1, tier2=2, tier3=3, tier4=4+), clamping anything beyond 4 down
     // to tier4 the same way.

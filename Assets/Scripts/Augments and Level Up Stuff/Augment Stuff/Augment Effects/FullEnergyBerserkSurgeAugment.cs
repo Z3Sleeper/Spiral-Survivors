@@ -19,7 +19,7 @@ using UnityEngine;
 // this augment's own trigger condition, "full energy + a surge just started." Two things make this provably
 // safe, not just probably safe:
 // 1. !Stats.IsForcedSurging guards out reacting to a Surge start that's ALREADY a Berserk Surge (including
-//    one this same augment just triggered, or one from any other source like DeathPreventedBerserkAugment)
+//    one this same augment just triggered, or one from any other source like DeathPreventionBerserkAugment)
 //    — there's nothing left to "upgrade" once forcedSurge is already true.
 // 2. Even without that guard, StartBerserkSurge() only ever invokes _onSurgeStarted when nothing was
 //    surging yet (see its own "alreadySurging" check) — by the time THIS listener's own StartBerserkSurge()
@@ -28,7 +28,7 @@ using UnityEngine;
 //    one hop, never recursive.
 //
 // Flat Max Energy on pick (2026-08-31) — same "give a permanent, immediate incentive" treatment as
-// DeathPreventedBerserkAugment's own identical grant, for the same reason: this augment's entire payoff used
+// DeathPreventionBerserkAugment's own identical grant, for the same reason: this augment's entire payoff used
 // to be entirely conditional (activating Surge at exactly full energy), giving nothing on pick itself.
 public class FullEnergyBerserkSurgeAugment : AugmentEffectPD<FullEnergyBerserkSurgeAugment.State>
 {

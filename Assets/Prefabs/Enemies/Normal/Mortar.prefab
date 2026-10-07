@@ -446,9 +446,10 @@ MonoBehaviour:
   preferredRange: 8
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 10
   xpValue: 5
-  pointsValue: 5
+  pointsValue: 10
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -481,8 +482,9 @@ MonoBehaviour:
   projectileSpawnHeightOffset: 1
   projectileSpawnForwardOffset: 0
   attackCooldown: 5
-  strikesPerAttackTierGrowth: 1
+  strikesPerAttackTierGrowth: 0
   rotationRateDegPerSecondTierGrowth: 0.05
+  attackCooldownTierGrowth: 0.6
 --- !u!135 &3908022877477359117
 SphereCollider:
   m_ObjectHideFlags: 0

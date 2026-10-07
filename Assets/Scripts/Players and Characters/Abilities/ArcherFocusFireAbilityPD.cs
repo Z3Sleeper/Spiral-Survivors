@@ -26,7 +26,7 @@ using UnityEngine;
 // kept in case free aim is ever wanted again (e.g. as a togglable variant) without needing to rebuild it.
 //
 // Never touches player movement — only weapon orbit/firing — so ForcesSpecialAction is false, same as
-// RogueVanishAbilityPD/KnightBigBuffAbilityPD.
+// RogueVanishAbilityPD/KnightBerserkAbilityPD.
 //
 // Also multiplies CharacterStatsPD.FireRate by (1 - fireRatePenaltyPercent) for the whole window (the
 // tradeoff for never-miss continuous fire) via SetFocusFireRateMultiplier — a genuine percent-of-TOTAL
@@ -42,7 +42,7 @@ using UnityEngine;
 // both this and the natural/death end in Simulate() call, so the two paths can never drift apart.
 //
 // Death force-ends the buff early, same convention as every other buff this session (ExeBigAxeAbilityPD/
-// KnightBigBuffAbilityPD/RogueVanishAbilityPD/BWBlinkAbilityPD) — see Simulate()'s own comment.
+// KnightBerserkAbilityPD/RogueVanishAbilityPD/BWBlinkAbilityPD) — see Simulate()'s own comment.
 public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbilityPD.State>, IAbilityPD
 {
     public struct State : IPredictedData<State>
@@ -50,6 +50,11 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
         public float activeTimer;
         public bool  isActive;
         public float cooldownTimer;
+        // Ability charge system — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment. Does NOT gate
+        // the recast-to-cancel branch below (that's a free early-end on an already-paid-for cast, not a new
+        // one) — only the fresh-cast branch of IsReady.
+        public int charges;
+        public int knownMaxCharges;
         public void Dispose() { }
     }
 
@@ -58,6 +63,9 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     [SerializeField, TextArea] private string description =
         "Stop orbiting and fire continuously at the closest enemy for 3 seconds, ignoring the need for a target in your weapons' path, at -50% Fire Rate. Recast to end early.";
     public float cooldown = 10f;
+    // How many charges this ability starts with (1 = old off-cooldown behavior, unchanged) — see
+    // IAbilityPD.MaxCharges's own doc comment. CharacterStatsPD.bonusAbility2Charges adds on top live.
+    [SerializeField] private int authoredChargeCount = 1;
     // false (default): cooldown only starts ticking once AbilityIsActive goes false (held at its full value
     // throughout the active window) — see Simulate(). true: cooldown starts ticking immediately at cast,
     // running concurrently with the window. Same convention/default as RogueVanishAbilityPD's own.
@@ -77,6 +85,49 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     // activeTimer (activeTimer counts DOWN from _appliedDuration), not a separate timer field — one less
     // thing in State.
     [SerializeField] private float recastBlockDuration = 0.25f;
+
+    // Augment-owned (2026-10-06, ArcherFocusFireRicochetAugment) — same [HideInInspector]/Add-at-Activate/
+    // Remove-at-end pairing KnightBerserkAbilityPD.moveSpeedPercent established, 0f (no-op) default. Granted
+    // via CharacterStatsPD.AddRicochetFlat only while this ability's own window is active, snapshotted into
+    // _appliedRicochetFlat at Activate() time (same reasoning as _appliedDuration below — protects against a
+    // live Inspector change mid-window leaving EndFocusFire() reversing a different amount than was granted).
+    [HideInInspector] public float ricochetFlat = 0f;
+    private float _appliedRicochetFlat;
+
+    // Augment-owned (2026-10-06, ArcherFocusFireMultishotHomingAugment) — same Add-at-Activate/Remove-at-end
+    // pairing as ricochetFlat above, just for CharacterStatsPD.AddMultishotFlat instead.
+    [HideInInspector] public float multishotFlat = 0f;
+    private float _appliedMultishotFlat;
+
+    // Augment-owned (2026-10-06, ArcherFocusFireMultishotHomingAugment) — Pattern B switches/tunables, NOT
+    // Add-at-Activate/Remove-at-end like ricochetFlat/multishotFlat above, since there's no permanent
+    // CharacterStatsPD stat being granted here — these just steer what UpdateAutoAimAngle() writes to
+    // CharacterStatsPD.FocusFireHomingTargetId/FocusFireHomingDelay every active tick (see that field's own
+    // doc comment), which is already fully scoped to "only while this ability is active" by virtue of only
+    // ever being called from Activate()/Simulate()'s own isActive-gated branch. homingProjectiles false
+    // (default) means UpdateAutoAimAngle always writes `default` (no homing) regardless of what the
+    // auto-aim search itself finds, same "augment absent == true no-op" shape every other Pattern B switch
+    // in this codebase uses.
+    [HideInInspector] public bool  homingProjectiles = false;
+    [HideInInspector] public float homingDelay = 0.1f;
+
+    // Augment-owned (2026-10-06, ArcherFocusFireMoveSpeedKnockbackAugment) — same Add-at-Activate/Remove-at-
+    // end pairing as ricochetFlat/multishotFlat above, just for CharacterStatsPD.AddMoveSpeedTotalPercent/
+    // AddKnockbackPercent instead.
+    [HideInInspector] public float moveSpeedPercent = 0f;
+    private float _appliedMoveSpeedPercent;
+    [HideInInspector] public float knockbackPercent = 0f;
+    private float _appliedKnockbackPercent;
+
+    // Augment-owned (2026-10-06, ArcherFocusFireInvisibleAugment) — Pattern B switch, no-op default false.
+    // Deliberately NOT an Add-at-Activate/Remove-at-end pairing like moveSpeedPercent/knockbackPercent above
+    // — CharacterStatsPD.GrantInvisibility is its own "longest contribution wins" floor-timer, same contract
+    // RogueVanishAbilityPD's own invisibility grant already relies on (see that class's doc comment): called
+    // ONCE at Activate() time with this window's own _appliedDuration, and deliberately never explicitly
+    // turned back off in EndFocusFire() — it just expires naturally on CharacterStatsPD's own shared timer,
+    // so a DIFFERENT overlapping invisibility source (e.g. DeathPreventionInvisibleAugment) can never get
+    // cut short by this ability's own window ending (early via recast-to-cancel, or on death).
+    [HideInInspector] public bool grantInvisibility = false;
 
     private CharacterStatsPD   _stats;
     private PlayerControllerPD _controller;
@@ -109,7 +160,7 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     // a press genuinely does something again (i.e. only after the grace window, not the instant of cast).
     public bool IsReady => _stats != null && (
         (currentState.isActive && _appliedDuration - currentState.activeTimer >= recastBlockDuration)
-        || (!currentState.isActive && currentState.cooldownTimer <= 0f));
+        || (!currentState.isActive && currentState.charges > 0));
     public bool IsActive => currentState.isActive;
     // Only ever flips weapon orbit/firing behavior — never touches player movement, so it never locks dash
     // or the other ability slot out while active (see IAbilityPD.ForcesSpecialAction's own doc comment).
@@ -130,6 +181,15 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     public string Description => description;
     public string[] Tags => tags;
     public AbilitySlot Slot => slot;
+    public AbilityIdentity Identity => AbilityIdentity.ArcherFocusFire;
+    public int CurrentCharges => currentState.charges;
+    public int MaxCharges => EffectiveMaxCharges;
+    // Live, not cached — see IAbilityPD.MaxCharges's own doc comment for why a mid-run bonus must be
+    // reflected immediately. Reads whichever bonus matches this instance's own (Inspector-configurable)
+    // Slot, not a hardcoded one.
+    private int EffectiveMaxCharges => authoredChargeCount + (_stats != null
+        ? (slot == AbilitySlot.Ability1 ? _stats.bonusAbility1Charges : _stats.bonusAbility2Charges)
+        : 0);
 
     // Same formula as CharacterStatsPD.DashCooldown (baseCooldown / (1 + haste/100)) — a haste augment
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
@@ -151,24 +211,55 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     // effect should only ever eat into time that's ACTUALLY counting down right now, not a cooldownTimer
     // that's merely sitting at its full pre-loaded value while the active window (cooldownStartsOnCast=false)
     // hasn't ended yet to let it start ticking.
+    // MaxCharges > 1 (2026-10-02) — see Simulate()'s own identical addition for why a multi-charge ability
+    // always ticks its regen timer regardless of isActive.
     private bool IsCooldownActivelyTicking =>
-        currentState.cooldownTimer > 0f && (cooldownStartsOnCast || !currentState.isActive);
+        currentState.cooldownTimer > 0f && (cooldownStartsOnCast || !currentState.isActive || EffectiveMaxCharges > 1);
 
     // See IAbilityPD's own doc comments for the exact contract of each of these three.
+    // Shared by all three methods below — a reduction that would drop cooldownTimer below 0 now
+    // "overflows" into granting the next charge (looping further if the reduction is large enough to cross
+    // multiple charges at once), rather than being clamped away and wasted the instant cooldownTimer first
+    // hits 0 (2026-10-03, explicit request — multi-charge abilities should let a big cooldown-reduction
+    // effect spill into progress toward the NEXT charge, same as the ordinary passive regen tick already
+    // does over many real ticks, just resolved atomically in one call). Caps at EffectiveMaxCharges — once
+    // fully charged, any further excess is genuinely discarded, nothing left to speed up. The while loop's
+    // own `cooldownTimer > 0f` check (re-tested every iteration) also makes this safe against a degenerate
+    // EffectiveCooldown of 0 — the loop exits immediately rather than spinning.
+    private void ApplyCooldownReduction(float seconds)
+    {
+        seconds = Mathf.Max(0f, seconds);
+        int effectiveMax = EffectiveMaxCharges;
+        while (seconds > 0f && currentState.charges < effectiveMax && currentState.cooldownTimer > 0f)
+        {
+            if (seconds < currentState.cooldownTimer)
+            {
+                currentState.cooldownTimer -= seconds;
+                seconds = 0f;
+            }
+            else
+            {
+                seconds -= currentState.cooldownTimer;
+                currentState.charges++;
+                currentState.cooldownTimer = currentState.charges < effectiveMax ? EffectiveCooldown : 0f;
+            }
+        }
+    }
+
     public void ReduceCooldownFlat(float seconds)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - seconds);
+        ApplyCooldownReduction(seconds);
     }
     public void ReduceCooldownPercentRemaining(float percent01)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer * (1f - Mathf.Clamp01(percent01)));
+        ApplyCooldownReduction(currentState.cooldownTimer * Mathf.Clamp01(percent01));
     }
     public void ReduceCooldownPercentTotal(float percent01)
     {
         if (!IsCooldownActivelyTicking) return;
-        currentState.cooldownTimer = Mathf.Max(0f, currentState.cooldownTimer - CooldownDuration * Mathf.Clamp01(percent01));
+        ApplyCooldownReduction(CooldownDuration * Mathf.Clamp01(percent01));
     }
 
     public void Activate()
@@ -188,7 +279,10 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
 
         currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;
-        currentState.cooldownTimer = EffectiveCooldown;
+        // Charge system — spend 1, and only (re)arm the regen timer if it wasn't already running — see
+        // IAbilityPD.MaxCharges's own doc comment.
+        currentState.charges--;
+        if (currentState.cooldownTimer <= 0f) currentState.cooldownTimer = EffectiveCooldown;
 
         // See IAbilityPD.ActiveSurgeBlock's own doc comment for the generic contract — RemoveSurgeBlock's
         // matching call sits in EndFocusFire() below.
@@ -208,6 +302,25 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
         _stats.SetFocusFireRateMultiplier(1f - fireRatePenaltyPercent);
         UpdateAutoAimAngle();
 
+        // 0f (no-op) until an augment bumps ricochetFlat — see that field's own doc comment.
+        _appliedRicochetFlat = ricochetFlat;
+        if (_appliedRicochetFlat != 0f) _stats.AddRicochetFlat(_appliedRicochetFlat);
+
+        // 0f (no-op) until an augment bumps multishotFlat — see that field's own doc comment.
+        _appliedMultishotFlat = multishotFlat;
+        if (_appliedMultishotFlat != 0f) _stats.AddMultishotFlat(_appliedMultishotFlat);
+
+        // 0f (no-op) until an augment bumps moveSpeedPercent/knockbackPercent — see those fields' own doc
+        // comments.
+        _appliedMoveSpeedPercent = moveSpeedPercent;
+        if (_appliedMoveSpeedPercent != 0f) _stats.AddMoveSpeedTotalPercent(_appliedMoveSpeedPercent);
+        _appliedKnockbackPercent = knockbackPercent;
+        if (_appliedKnockbackPercent != 0f) _stats.AddKnockbackPercent(_appliedKnockbackPercent);
+
+        // See grantInvisibility's own doc comment — no-op false until ArcherFocusFireInvisibleAugment sets
+        // it; no revert needed in EndFocusFire(), same as RogueVanishAbilityPD's own identical grant.
+        if (grantInvisibility) _stats.GrantInvisibility(_appliedDuration);
+
         // Fired the instant AbilityIsActive flips true — see IAbilityPD.AbilityIsActive's own doc comment.
         if (cooldown > 0f) _stats.NotifyAbilityStart(this);
     }
@@ -222,6 +335,15 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
         // focusFireRateMultiplier while ContinuousFire is true, so clearing that flag here already fully
         // restores normal fire rate on its own (see focusFireRateMultiplier's own doc comment).
         _stats?.SetContinuousFire(false);
+        if (_appliedRicochetFlat != 0f) _stats?.AddRicochetFlat(-_appliedRicochetFlat);
+        if (_appliedMultishotFlat != 0f) _stats?.AddMultishotFlat(-_appliedMultishotFlat);
+        if (_appliedMoveSpeedPercent != 0f) _stats?.AddMoveSpeedTotalPercent(-_appliedMoveSpeedPercent);
+        if (_appliedKnockbackPercent != 0f) _stats?.AddKnockbackPercent(-_appliedKnockbackPercent);
+        // Hygiene only — WeaponRangedPD.Fire()'s ContinuousFire branch is already gated behind
+        // _stats.ContinuousFire (cleared right above), so a stale target id here could never actually be
+        // read, but clearing it keeps no ability-owned temp CharacterStatsPD state lingering past this
+        // window's end, same spirit as every other reversal in this method.
+        _stats?.SetFocusFireHomingTargetId(default);
         // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc comment.
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
     }
@@ -243,7 +365,8 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
     }
 
     // Auto-aim version — what's actually called now (see class doc comment). Sources the direction from
-    // WeaponRangedPD.TryFindAutoAimDirection (closest living enemy within the caster's own true weapon reach —
+    // WeaponRangedPD.TryFindAutoAimDirection (closest living enemy within the caster's own true
+    // weapon reach —
     // WeaponManagerPD.TryGetFarthestWeaponReach, same "inherit from the actual weapon" pattern
     // RogueSpinAbilityPD/ExeAxeThrowAbilityPD/ArcherArrowRainAbilityPD/BWBladeDanceAbilityPD already use,
     // falling back to the plain WeaponRange stat if no weapon is registered) instead of cursor input, then
@@ -262,23 +385,52 @@ public class ArcherFocusFireAbilityPD : PredictedIdentity<ArcherFocusFireAbility
         float searchRange = _weaponManager != null && _weaponManager.TryGetFarthestWeaponReach(out float trueReach)
             ? trueReach
             : _stats.EffectiveWeaponRange;
-        bool found = WeaponRangedPD.TryFindAutoAimDirection(_stats.transform.position, searchRange, out Vector3 aimDir);
+        bool found = WeaponRangedPD.TryFindAutoAimDirection(_stats.transform.position, searchRange, out Vector3 aimDir, out PredictedObjectID targetId);
         Vector3 dir = found ? aimDir : transform.forward;
         _stats.SetFocusFireAimAngle(Mathf.Atan2(dir.z, dir.x) * Mathf.Rad2Deg);
-        // See CharacterStatsPD.ContinuousFireHasTarget's own doc comment — WeaponRangedPD.LateSimulate()
-        // reads this to decide whether ContinuousFire should actually fire this tick, not just where to aim.
+        // See CharacterStatsPD.ContinuousFireHasTarget's own doc comment — the actual firing weapon's own
+        // LateSimulate() reads this to decide whether ContinuousFire should actually fire this tick, not just
+        // where to aim (WeaponRangedPD or WeaponRangedPD, whichever is currently wired).
         _stats.SetContinuousFireHasTarget(found);
+        // See CharacterStatsPD.FocusFireHomingTargetId's own doc comment — written every tick regardless
+        // (never left stale from a previous tick), only ever non-default when homingProjectiles is actually
+        // true (ArcherFocusFireMultishotHomingAugment) AND the same search above found a live enemy.
+        _stats.SetFocusFireHomingTargetId(homingProjectiles && found ? targetId : default);
+        _stats.SetFocusFireHomingDelay(homingDelay);
     }
 
     protected override void Simulate(ref State state, float delta)
     {
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
-        // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole active
-        // window below) or only once that window ends (state.isActive false) — see the field's own doc
-        // comment. Either way Activate() already set cooldownTimer to its full value at cast time.
-        if (state.cooldownTimer > 0f && (cooldownStartsOnCast || !state.isActive))
-            state.cooldownTimer -= delta;
+        // Charge system (2026-10-02) — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment.
+        int effectiveMax = EffectiveMaxCharges;
+        if (effectiveMax > state.knownMaxCharges)
+        {
+            state.charges += effectiveMax - state.knownMaxCharges;
+            state.knownMaxCharges = effectiveMax;
+        }
+        else if (effectiveMax < state.knownMaxCharges)
+        {
+            state.charges = Mathf.Min(state.charges, effectiveMax);
+            state.knownMaxCharges = effectiveMax;
+        }
+
+        if (state.charges < effectiveMax)
+        {
+            // cooldownStartsOnCast picks whether this ticks down immediately (concurrent with the whole
+            // active window below) or only once that window ends (state.isActive false) — see the field's
+            // own doc comment.
+            // effectiveMax > 1 (2026-10-02) — see RogueVanishAbilityPD.Simulate()'s own identical addition.
+            if (state.cooldownTimer > 0f && (cooldownStartsOnCast || !state.isActive || effectiveMax > 1))
+                state.cooldownTimer -= delta;
+
+            if (state.cooldownTimer <= 0f)
+            {
+                state.charges++;
+                state.cooldownTimer = state.charges < effectiveMax ? EffectiveCooldown : 0f;
+            }
+        }
 
         if (!state.isActive) return;
 

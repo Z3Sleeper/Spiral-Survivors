@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0a6c8cfa582463448bf6181ad0510a16, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OuterTrackAugment
-  totalWeaponRangePercent: 0.4
+  weaponRangeScalingPenaltyPercent: 0.4

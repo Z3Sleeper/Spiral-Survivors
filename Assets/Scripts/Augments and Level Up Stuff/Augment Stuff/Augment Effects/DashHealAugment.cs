@@ -15,7 +15,7 @@ using UnityEngine;
 // baseline. Radius formula standardized (2026-08-10) across DashExplosionAugment/DashHealAugment/
 // ShieldBreakBurstAugment: Stats.RangeScalingAoEBase * radiusMultiplier — extracted onto CharacterStatsPD
 // itself on 2026-08-12 (single source of truth after the 0.5 -> 1 WeaponRange-coefficient retune needed
-// touching every family member by hand), same shape KnightAreaStunHealAbilityPD already uses. See
+// touching every family member by hand), same shape KnightBuffStunAbilityPD already uses. See
 // DashExplosionAugment's own doc comment for the full reasoning — identical shape here (every cast goes
 // through a spawned AreaEffectPD — pooled, so this costs a reactivate, not a real spawn — rather than a
 // separate direct-cast path kept in sync by hand). AreaEffectPD itself isn't Dash-specific — the same
@@ -37,18 +37,15 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
     [SerializeField] private float baseHeal = 10f;
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
     // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
-    // scaling itself.
-    [SerializeField] private float radiusMultiplier = 1.25f;
+    // scaling itself. Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection
+    // can resolve {radiusMultiplier} directly as a description token.
+    public float radiusMultiplier = 1.25f;
 
     // For AugmentDescriptionFormatter's {LiveHealthRegenRatio} token.
     public string LiveHealthRegenRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
             ? $"{AugmentDescriptionFormatter.FormatLiveNumber(baseHeal + stats.BonusHealthRegen * bonusHealthRegenPercent)} "
             : "";
-    [Header("VFX")]
-    // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
-    [SerializeField] private GameObject radiusVFXPrefab;
-
     // Spawned on every dash (see OnDashEnded) — pooled, so this is cheap even when AreaEffectCount is just
     // 1. Must be registered in PredictedPrefabs.asset like any other spawned effect.
     [Header("Chain (spawned on every dash)")]
@@ -81,8 +78,17 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
 
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-            chain.Launch(Stats, castPosition, radius, radiusVFXPrefab,
+            chain.Launch(Stats, castPosition, radius, null,
                 targetAllies: true, onAllyHit: RollAndHeal, vfxPerCast: true);
+
+        // Shockwave VFX opt-in (2026-09-26, user-curated, replaces the old flat-cylinder radiusVFXPrefab
+        // stand-in) — safe unconditionally: this callback only ever runs once per real dash end, off
+        // PlayerControllerPD._onDashEnded, a genuine PredictedEvent. Fired ONCE here per cast (not inside
+        // RollAndHeal, which runs once per healed target — that's correct for the heal VFX below, but would
+        // fire this burst once per ally hit instead of once per cast if placed there). Fixed project-wide
+        // "heal" green (#7DFF00), not Stats.PlayerColor — explicit user override for this one augment only.
+        var healShockwaveColor = new Color(0x7D / 255f, 1f, 0f);
+        VFXManager.instance?.PlayShockwaveVfx(castPosition, Stats.Size, healShockwaveColor, healShockwaveColor, radius);
     }
 
     // Moved out of the old dedicated AreaEffectHealPD (now merged away) — onAllyHit is just "roll this
@@ -104,5 +110,11 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
         // IFriendlyPD overloads — a future non-player ally just doesn't get healed by this augment yet.
         if (ReferenceEquals(ally, Stats)) Stats.Heal(totalHeal);
         else if (ally is CharacterStatsPD player) player.HealFromAlly(totalHeal, Stats);
+
+        // Heal VFX opt-in (2026-09-26, user-curated per-augment, non-persistent heals only) — safe to fire
+        // here unconditionally: this whole callback only ever runs once per real dash end, protected by BOTH
+        // PlayerControllerPD._onDashEnded and AreaEffectPD's own _onRecast, each a genuine PredictedEvent
+        // (see VFXManager.PlayHealVfx's own per-target cooldown for the anti-spam side of this).
+        VFXManager.instance?.PlayHealVfx(ally.transform);
     }
 }

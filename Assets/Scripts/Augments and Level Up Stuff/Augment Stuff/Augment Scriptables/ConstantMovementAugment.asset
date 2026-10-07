@@ -12,8 +12,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: ConstantMovementAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FFFFFF>Can't Stop, Won't Stop</color>
-  description: '<color=#FFFFFF>+{moveSpeedPercent} Move Speed</color>
+  displayName: <color=#FFFFFF>Can't Stop, Won't Stop!</color>
+  description: '<color=#FFFFFF>+{moveSpeedPercent}% Move Speed</color>
 
     You can
     no longer stop.'
@@ -27,5 +27,6 @@ MonoBehaviour:
   requiredAugments: []
   tags: []
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

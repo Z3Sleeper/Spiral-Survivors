@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: KnightStartingAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: <color=#FFFF00>Spiral Knight</color>
+  description: Gain <color=#FFFF00>Max Energy</color> equal to <color=#00FF00>{bonusHealthToMaxEnergyPercent}%
+    Bonus Health</color>.
+  icon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
+  effectPrefab: {fileID: 3819235279768267535, guid: 68201f171e42ab24d8fdc97606cf6b1f, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 00000000
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags: []
+  requiredTags: []
+  requiredAbilities: 
+  incompatibleTags: []
+  unlockTag: 

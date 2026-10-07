@@ -4,7 +4,7 @@ using UnityEngine;
 // Passive: +20% (flat, not Total) Attack Speed permanently on pick, extended to a total +60% for the whole
 // time the user is invisible, from ANY source (2026-08-31 — was +60% ONLY while invisible, no baseline at
 // all; that left this augment's entire payoff locked behind actually going invisible, same "no immediate
-// incentive" gap DeathPreventedBerserkAugment's own Max Energy grant fixes). The two numbers are meant to
+// incentive" gap DeathPreventionBerserkAugment's own Max Energy grant fixes). The two numbers are meant to
 // read as ONE bonus, not stacked — +20% baseline, growing to +60% (not +80%) while invisible; see
 // ExtraAttackSpeedWhileInvisible's own doc comment for how that's computed. Stats.IsInvisible/
 // _onInvisibleChanged is a single shared flag (CharacterStatsPD.GrantInvisibility), so the extra portion
@@ -15,14 +15,14 @@ using UnityEngine;
 //
 // Also activates CharacterStatsPD's Death Prevention mechanic (Stats.ActivateDeathPreventions() — see its
 // own doc comment for the "already active elsewhere, shrink the grant timer instead" stacking rule). On a
-// save landing (_onDeathPrevented), grants invisibility + a Bonus-tier PERCENT Move Speed buff
-// (AddMoveSpeedPercent, 2026-09-19 — was AddMoveSpeedFlat, converted project-wide alongside every other
-// flat-Move-Speed augment now that Move Speed no longer comes off Stat augments, per explicit design) for 3
-// seconds.
+// save landing (_onDeathPrevented), grants invisibility + a Total-tier PERCENT Move Speed buff
+// (AddMoveSpeedTotalPercent, 2026-09-30 — was Bonus-tier via AddMoveSpeedPercent, migrated project-wide the
+// same day that whole Bonus-tier percent pair was removed from CharacterStatsPD, see bonusMoveSpeedFlat's
+// own doc comment there) for 3 seconds.
 //
 // The buff timer is armed directly inside the PredictedEvent listener (OnDeathPrevented) — safe, since
 // PredictedEvent guarantees a listener fires exactly once per real occurrence regardless of resimulation,
-// same convention DeathPreventedBerserkAugment's own OnDeathPrevented reacts off. The actual grant/revert of
+// same convention DeathPreventionBerserkAugment's own OnDeathPrevented reacts off. The actual grant/revert of
 // the move speed bonus only happens off a CONFIRMED transition in verified state (UpdateView), not directly
 // off the timer ticking in Simulate() — a raw Simulate()-detected transition isn't safe to act on directly
 // (double-fire risk during a client's own in-place resimulation pass, see AugmentEffectPD's own doc
@@ -123,13 +123,13 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
             // GrantInvisibility fires _onInvisibleChanged itself (rising edge) — OnInvisibleChanged above
             // reacts to it, so the Attack Speed passive composes automatically with no extra call here.
             Stats.GrantInvisibility(onSaveDuration);
-            Stats.AddMoveSpeedPercent(onSaveMoveSpeedPercent);
+            Stats.AddMoveSpeedTotalPercent(onSaveMoveSpeedPercent);
         }
         else
         {
             // Only reverts the Move Speed half — invisibility itself is left to the shared timer (see class
             // doc comment), not explicitly turned off here.
-            Stats.AddMoveSpeedPercent(-onSaveMoveSpeedPercent);
+            Stats.AddMoveSpeedTotalPercent(-onSaveMoveSpeedPercent);
         }
     }
 }

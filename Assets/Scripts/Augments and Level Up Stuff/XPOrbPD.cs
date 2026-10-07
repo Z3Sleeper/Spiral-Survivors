@@ -153,10 +153,19 @@ public class XPOrbPD : PredictedIdentity<XPOrbPD.State>
             return;
         }
 
+        // MovePosition, not a raw transform.position write (2026-09-22 fix — same bug class as
+        // OnBoundsOrObstacleTrigger's own already-fixed identical mistake, see its own doc comment for the
+        // full "non-host clients jitter, host looks fine" reasoning). This is the MUCH more commonly hit
+        // path (every single XP collection, not just the rare bounds/obstacle case), so likely the bigger
+        // real-world contributor to the same jitter symptom. MovePosition doesn't update transform.position
+        // immediately (applied at the next physics step) — the arrival check below reads newPos, the
+        // INTENDED position, not transform.position, which would otherwise still read last tick's stale
+        // value here.
         Vector3 targetPos = stats.transform.position;
-        transform.position = Vector3.MoveTowards(transform.position, targetPos, attractSpeed * delta);
+        Vector3 newPos = Vector3.MoveTowards(transform.position, targetPos, attractSpeed * delta);
+        _rigidbody.MovePosition(newPos);
 
-        if (Vector3.Distance(transform.position, targetPos) < collectRadius)
+        if (Vector3.Distance(newPos, targetPos) < collectRadius)
             state.collected = true;
     }
 

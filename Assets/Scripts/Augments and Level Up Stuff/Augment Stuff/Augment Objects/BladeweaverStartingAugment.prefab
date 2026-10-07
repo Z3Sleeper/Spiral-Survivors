@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::BladeweaverStartingAugment
   bonusWeaponCountFlat: 2
   bonusWeaponRadiusFlat: 3
-  totalWeaponRangePercent: -0.5
+  weaponRangeScalingPenaltyPercent: 0.35

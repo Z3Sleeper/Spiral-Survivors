@@ -258,7 +258,12 @@ public abstract class EventBasePD<TState> : PredictedIdentity<TState>, IEventPD
         if (_panelShown)
         {
             LocalUIManagerPD.instance?.SetEventDescription(BuildFullDescription(viewState));
-            LocalUIManagerPD.instance?.SetEventDescriptionColor(GetDescriptionColor(viewState));
+            // Border flashes in exact lockstep with the text (2026-09-30) — same single color value fed to
+            // both, computed once here rather than calling GetDescriptionColor twice, so there's no chance of
+            // the two ever landing on a different Color.Lerp sample of the same wave.
+            Color descriptionColor = GetDescriptionColor(viewState);
+            LocalUIManagerPD.instance?.SetEventDescriptionColor(descriptionColor);
+            LocalUIManagerPD.instance?.SetEventBorderColor(descriptionColor);
         }
 
         if (!verified.HasValue) return;

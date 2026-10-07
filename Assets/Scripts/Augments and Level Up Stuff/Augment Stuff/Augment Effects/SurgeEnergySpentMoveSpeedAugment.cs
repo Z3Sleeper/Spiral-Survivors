@@ -41,6 +41,15 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
         // full gate mechanic. Seeded to float.MaxValue by GetInitialState() below, not 0, so the very first
         // qualifying spend after picking this augment always triggers.
         public float energySpentSinceLastTrigger;
+        // State-backed (2026-09-26 fix), not a plain field — EndBonus() is called from Simulate() itself,
+        // which genuinely gets resimulated multiple times per tick under ordinary client-side prediction
+        // (not a rare edge case). A plain field here got stuck on its FIRST speculative pass's value forever
+        // — every later replay of that same tick saw the field already false and silently skipped
+        // Stats.AddMoveSpeedTotalPercent(-moveSpeedPercent) via EndBonus()'s own guard, even though
+        // CharacterStatsPD's own State correctly rolled the bonus back in before that replay. Net effect
+        // without this fix: the Move Speed buff, once granted, never actually gets removed again — a
+        // permanent, silent buff instead of a 3-second one.
+        public bool bonusActive;
         public void Dispose() { }
     }
 
@@ -65,9 +74,10 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
     public int energySpentRequirement = 50;
 
     [Header("Move Speed Buff")]
-    // Bonus-tier percent, via AddMoveSpeedPercent (2026-09-19, was a flat +3 via AddMoveSpeedFlat, converted
-    // project-wide alongside every other flat-Move-Speed augment now that Move Speed no longer comes off Stat
-    // augments, per explicit design).
+    // Total-tier percent, via AddMoveSpeedTotalPercent (2026-09-30 — was Bonus-tier via AddMoveSpeedPercent;
+    // that tier only ever scaled bonusMoveSpeedFlat, which every class passive authored to 0, so this augment
+    // was granting a near-permanent no-op. Migrated to Total the same day that whole Bonus-tier percent pair
+    // was removed from CharacterStatsPD, see bonusMoveSpeedFlat's own doc comment there).
     public float moveSpeedPercent = 0.30f;
     public float buffDuration  = 3f;
 
@@ -76,10 +86,6 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
     [SerializeField] private Sprite energyTrackerIcon;
     // Transient — added/removed with the Move Speed buff's own active window. See class doc comment.
     [SerializeField] private Sprite buffIcon;
-
-    // Plain, not State — mutated only from the OnEnergySpent listener callback or Simulate() itself, same
-    // toggle-tracking shape as DeathPreventionShieldDRAugment's own _reductionActive.
-    private bool _bonusActive;
 
     private BuffIconPD _energyTrackerIconInstance;
     private BuffIconPD _moveSpeedBuffIconInstance;
@@ -138,22 +144,22 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
         currentState.energySpentSinceLastTrigger = 0f;
         currentState.buffTimer = buffDuration;
 
-        if (_bonusActive) return;
+        if (currentState.bonusActive) return;
 
-        _bonusActive = true;
-        Stats.AddMoveSpeedPercent(moveSpeedPercent);
+        currentState.bonusActive = true;
+        Stats.AddMoveSpeedTotalPercent(moveSpeedPercent);
 
         if (isOwner && BuffBarPD.instance != null && _moveSpeedBuffIconInstance == null)
             _moveSpeedBuffIconInstance = BuffBarPD.instance.AddBuffIcon(buffIcon);
     }
 
     // Only reverts the stat/icon — Simulate()'s natural-expiry path has already clamped buffTimer to 0 by
-    // the time this runs.
-    private void EndBonus()
+    // the time this runs. Takes ref State (2026-09-26 fix) — see State.bonusActive's own doc comment.
+    private void EndBonus(ref State state)
     {
-        if (!_bonusActive) return;
-        _bonusActive = false;
-        Stats.AddMoveSpeedPercent(-moveSpeedPercent);
+        if (!state.bonusActive) return;
+        state.bonusActive = false;
+        Stats.AddMoveSpeedTotalPercent(-moveSpeedPercent);
 
         if (_moveSpeedBuffIconInstance != null && BuffBarPD.instance != null)
         {
@@ -169,6 +175,6 @@ public class SurgeEnergySpentMoveSpeedAugment : AugmentEffectPD<SurgeEnergySpent
 
         state.buffTimer = Mathf.Max(0f, state.buffTimer - delta);
         if (state.buffTimer <= 0f)
-            EndBonus();
+            EndBonus(ref state);
     }
 }

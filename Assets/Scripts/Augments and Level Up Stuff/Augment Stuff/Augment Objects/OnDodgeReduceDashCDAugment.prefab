@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8dec2454b97c1844d803f43a043cca9c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnFirstDodgeReduceDashCDAugment
-  flatCooldownReduction: 7.5
+  flatCooldownReduction: 15

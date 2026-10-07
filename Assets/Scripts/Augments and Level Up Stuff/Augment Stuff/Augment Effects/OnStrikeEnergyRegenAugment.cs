@@ -34,7 +34,7 @@ public class OnStrikeEnergyRegenAugment : AugmentEffectPD<OnStrikeEnergyRegenAug
 
     // Same flat, unconditional +25 Max Energy every other Surge-family energy augment grants
     // (SurgeWeaponCountAugment/SurgeStackingAttackSpeedAugment/SurgeHealAugment/FullEnergyBerserkSurgeAugment/
-    // DeathPreventedBerserkAugment) — 2026-09-17, granted once in OnApply(), same shape as those.
+    // DeathPreventionBerserkAugment) — 2026-09-17, granted once in OnApply(), same shape as those.
     [SerializeField] private float bonusMaxEnergyFlat = 25f;
 
     protected override void OnApply()

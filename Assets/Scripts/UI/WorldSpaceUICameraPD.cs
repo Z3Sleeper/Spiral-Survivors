@@ -10,8 +10,20 @@ public class WorldSpaceUICameraPD : MonoBehaviour
 {
     public static Camera instance;
 
+    private Camera _camera;
+
     private void Awake()
     {
-        instance = GetComponent<Camera>();
+        _camera = GetComponent<Camera>();
+        instance = _camera;
+    }
+
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby). Compares against the cached _camera, not `this`,
+    // since `instance` holds the Camera component, not this script.
+    private void OnDestroy()
+    {
+        if (instance == _camera) instance = null;
     }
 }

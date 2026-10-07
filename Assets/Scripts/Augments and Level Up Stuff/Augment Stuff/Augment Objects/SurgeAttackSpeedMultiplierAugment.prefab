@@ -44,5 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cae900c446b9f474e9bf905c4029230c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeCostIncreaseAugment
-  surgeCostIncreasePercent: 1
-  surgeAttackSpeedMultiplier: 1.3
+  surgeAttackSpeedBonusPercent: 0.15

@@ -14,7 +14,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#7DFF00>Rejuvinating Bonk</color>
   description: <color=#FFA000>On Ally Strike:</color> <color=#7DFF00>Heal</color>
-    yourself and allies you hit for <color=#7DFF00>{LiveHealthRegenRatio}</color><color=#FFA000>(2
+    yourself and allies you hit for <color=#7DFF00>{LiveHealthRegenRatio}</color><color=#FFA000>({baseHeal}
     + <color=#7DFF00>{bonusHealthRegenPercent}% Bonus Health Regen</color>)</color>
     <color=#7DFF00>Health</color>.
   icon: {fileID: 21300000, guid: 00ec6cf2b2a0bac4ab6020490e1281ba, type: 3}

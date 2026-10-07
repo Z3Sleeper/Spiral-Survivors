@@ -26,11 +26,34 @@ public class RadiusIndicatorVFXPD : PredictedIdentity<RadiusIndicatorVFXPD.State
 
     private float _radius;
 
+    // Exposed (2026-09-27) so sibling/child components can react to the real gameplay radius directly instead
+    // of re-deriving it from transform.lossyScale — needed by anything that can't just ride the root's own
+    // ApplyRadialTransform scaling for free, e.g. a ParticleSystem Shape module, which has its own Scaling
+    // Mode setting that can deliberately ignore hierarchy scale (so growing the AoE doesn't also grow/speedup
+    // individual particles).
+    public float Radius => _radius;
+
+    // Growth-only mutator (2026-10-05, ArrowRainParticleRadiusPD's own per-frame growth push) — stays a
+    // dumb passthrough, same as everything else on this class: no growth concept of its own, just lets a
+    // sibling that DOES own one (ArrowRainParticleRadiusPD) drive this root's radius directly. UpdateView
+    // already re-applies ApplyRadialTransform(transform, _radius) every frame (see its own comment), so
+    // this alone is enough to make the root/outline visually grow — no further wiring needed here.
+    public void SetRadius(float newRadius) => _radius = newRadius;
+
+    // Optional per-cast tint (2026-09-27, ArrowRainVFXPD's own outline/particle color-matching-caster need)
+    // — null (default, every pre-existing caller) means "leave whatever color the prefab was authored with
+    // alone," same opt-in shape TintColor's own consumers (CircleOutlinePD/ArrowRainParticleRadiusPD) already
+    // check for before touching anything. Not State-backed — purely cosmetic, same category _radius already
+    // is (a plain field, mutated once at Launch() and never again).
+    private Color? _tintColor;
+    public Color? TintColor => _tintColor;
+
     // Called immediately after hierarchy.Create() returns — same "mutate currentState right after Create()"
     // pattern as every other spawned effect in this codebase (RemoteSpikeBurstPD.Launch(), XPOrbPD.SetValue()).
-    public void Launch(float radius)
+    public void Launch(float radius, Color? tintColor = null)
     {
         _radius = radius;
+        _tintColor = tintColor;
         currentState.timer = duration;
         currentState.expired = false;
     }

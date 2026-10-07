@@ -44,4 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d80171e4ab7b3584191abf2f11f9c0b2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnDashStartedRollLuckForReducedCDAugment
-  reductionPercent: 0.3
+  cooldownReduction: 5
+  highrollChancePercent: 0.025

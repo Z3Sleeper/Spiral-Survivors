@@ -256,17 +256,41 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     }
 
     // ── Serialized base values ─────────────────────────────────────────────
+    // The 8 base<Stat> fields below (baseMoveSpeed/baseStrength/baseAttackSpeed/baseCritChance/
+    // baseWeaponRange/baseMaxHealth/baseHealthRegen/baseLuck) each moved from a plain public field to a
+    // private [SerializeField] backing field (_authoredX) + a State-backed public property of the original
+    // name (2026-09-22 — see ApplyProgressionBonuses' own doc comment for why). No [FormerlySerializedAs]:
+    // confirmed instead, by directly checking every player prefab's own serialized YAML, that only
+    // 0BaseCharacter.prefab ever authors any of these 8 fields at all — every class variant prefab
+    // (Archer/Executioner/PhantomBlade/Knight/Bladeweaver/Rogue) inherits them rather than overriding — and
+    // that prefab's 8 serialized values already matched these exact C# defaults before the rename, so the
+    // plain rename (no serialized data left to migrate) is safe with no compatibility attribute needed.
 
     [Header("Movement")]
-    public float baseMoveSpeed = 10f;
+    // Backing Inspector field for baseMoveSpeed below — see this section's own header comment above.
+    // Shop/meta-progression upgrades write directly into "base" tier now (2026-09-14 design, see
+    // ApplyProgressionBonuses' own doc comment), which made every one of these 8 base<Stat> fields genuinely
+    // runtime-mutable for the first time. A plain field doesn't roll back on resimulation, so a value only
+    // ApplyProgressionBonuses ever wrote could silently stay at its raw Inspector default forever on any
+    // machine where that one-shot call never actually ran locally (e.g. a PredictedHierarchy-reconciled
+    // respawn of this same character) — same bug class as every other migration in this file's "Augment/bonus
+    // modifiers" section, just never applied to these 8 specifically until shop upgrades started mutating them.
+    [SerializeField] private float _authoredMoveSpeed = 10f;
+    // State-backed now (see _authoredMoveSpeed's own doc comment above for the full reasoning) — falls back
+    // to the authored value during the brief pre-Setup() zero-filled currentState window (see
+    // bonusMoveSpeedFlat's own doc comment for that window) or before ApplyProgressionBonuses has run yet.
+    public float baseMoveSpeed => currentState.progressionMoveSpeed != 0f ? currentState.progressionMoveSpeed : _authoredMoveSpeed;
 
     [Header("Weapon")]
     // Moved above strengthPerLevel (2026-08-19) — [Header] attaches to the next member Unity's Inspector
     // actually draws, and strengthPerLevel is a computed property with no SerializedProperty backing, so a
     // header placed above it silently drops (same bug/fix as baseDashCooldown's own field comment describes
     // in full — see it for the complete mechanism). Confirmed live: "Weapon" was rendering as if still part
-    // of "Movement".
-    public float baseStrength = 10f;
+    // of "Movement". Now sits above _authoredStrength instead (2026-09-22) — baseStrength itself is a
+    // computed property too now, same reasoning.
+    [SerializeField] private float _authoredStrength = 10f;
+    // Same State-backed shape as baseMoveSpeed above — see _authoredMoveSpeed's own doc comment.
+    public float baseStrength => currentState.progressionStrength != 0f ? currentState.progressionStrength : _authoredStrength;
     // In State, not a plain field — mutated at runtime via ApplyProgressionBonuses (see that method's own
     // ApplyStatChange lambda), same as the other 3 progression-only fields (dashCharges/levelUpOptions/
     // shieldRechargeTime, declared further down) that used to be considered safe purely because their only
@@ -280,7 +304,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // other progression bonus in this class (see ComputeProgressionBonuses/ApplyProgressionBonuses).
     public long UnlockedAugmentTagMask => currentState.unlockedAugmentTagMask;
     public float baseWeaponRadius = 0f;
-    public float baseAttackSpeed = 0.5f;
+    // Same State-backed shape as baseMoveSpeed above — see _authoredMoveSpeed's own doc comment. Externally
+    // read by PhantomBladePassiveAugment (Stats.AttackSpeed / Stats.baseAttackSpeed) — kept as the exact same
+    // public property name/shape so that call site needed no change.
+    [SerializeField] private float _authoredAttackSpeed = 0.5f;
+    public float baseAttackSpeed => currentState.progressionAttackSpeed != 0f ? currentState.progressionAttackSpeed : _authoredAttackSpeed;
     public int baseWeaponCount = 1;
     // Extra weapon "tracks" (e.g. the planned OuterWeaponTrackAugment), feeding into Strength's own
     // auto-divide below. Deliberately a single plain int, not a base/flat/multiplier scaffold like
@@ -289,10 +317,25 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // runtime mutator (AddWeaponTracks) unlike baseWeaponCount, so same reasoning as every other mutable
     // field in this class.
     public int weaponTracks => currentState.weaponTracks != 0 ? currentState.weaponTracks : 1;
-    public float baseWeaponRange = 10f;
+    // Reroll tokens for the augment-pick reroll system — see State.rerollTokens's own doc comment for why
+    // this reads directly, no "0 means unset" fallback. Player-facing name is "Reroll Tokens" — real-augment
+    // rounds only (AugmentManagerPD checks the round's own isAugmentLevel before allowing a spend).
+    public int RerollTokens => currentState.rerollTokens;
+    // Ability charge system — see State.bonusAbility1Charges's own doc comment. Each IAbilityPD implementer
+    // reads whichever of these two matches its own Slot to compute its live MaxCharges.
+    public int bonusAbility1Charges => currentState.bonusAbility1Charges;
+    public int bonusAbility2Charges => currentState.bonusAbility2Charges;
+    // Same State-backed shape as baseMoveSpeed above — see _authoredMoveSpeed's own doc comment.
+    [SerializeField] private float _authoredWeaponRange = 10f;
+    public float baseWeaponRange => currentState.progressionWeaponRange != 0f ? currentState.progressionWeaponRange : _authoredWeaponRange;
 
     [Header("Crit")]
-    public float baseCritChance = 0f;
+    // Same State-backed shape as baseMoveSpeed above — see _authoredMoveSpeed's own doc comment. 0f authored
+    // default, same as the field's old value — the "!= 0f ? state : authored" fallback still resolves
+    // correctly here since both the pre-Setup() zero window AND a genuinely-unpurchased 0% base crit chance
+    // read the same (0f), so there's no ambiguity to worry about despite the shared-zero coincidence.
+    [SerializeField] private float _authoredCritChance = 0f;
+    public float baseCritChance => currentState.progressionCritChance != 0f ? currentState.progressionCritChance : _authoredCritChance;
     // 2f -> 3f (2026-08-19 highroll/crit rework) — see baseHighrollBonus's own doc comment for the full
     // reasoning; a crit alone now does 300% damage, matching Highroll's own new value, and the two
     // additively stack (see WeaponDamageMath.ApplyCritAndHighroll) instead of multiplying together.
@@ -311,8 +354,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public float baseProjectileSpeed = 1f;
 
     [Header("Health")]
-    public float baseMaxHealth = 50f;
-    public float baseHealthRegen = 0f;
+    // Same State-backed shape as baseMoveSpeed above — see _authoredMoveSpeed's own doc comment. Read
+    // directly inside GetInitialState()'s own object initializer (health = _authoredMaxHealth, NOT the
+    // baseMaxHealth property) since currentState isn't assigned to the value being built yet at that point —
+    // see GetInitialState()'s own comment there.
+    [SerializeField] private float _authoredMaxHealth = 50f;
+    public float baseMaxHealth => currentState.progressionMaxHealth != 0f ? currentState.progressionMaxHealth : _authoredMaxHealth;
+    // Same State-backed shape as baseMoveSpeed above — see _authoredMoveSpeed's own doc comment. 0f authored
+    // default — see baseCritChance's own doc comment for why the "!= 0f" fallback still resolves correctly
+    // despite the shared-zero coincidence.
+    [SerializeField] private float _authoredHealthRegen = 0f;
+    public float baseHealthRegen => currentState.progressionHealthRegen != 0f ? currentState.progressionHealthRegen : _authoredHealthRegen;
 
     [Header("Shield")]
     public float baseMaxShieldPercent = 0.05f;
@@ -363,7 +415,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     [Header("Surge")]
     public float baseSurgeCost = 2f;
-    public float surgeMoveSpeedMulti = 1f;
     public float surgeAttackSpeedMulti = 2f;
     // Berserk (forced) Surge drains at this multiple of a normal Surge's own per-tick SurgeCost (2026-09-06,
     // explicit nerf — Berserk Surge was proving far too strong a tool whenever available; started at 5x,
@@ -393,7 +444,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public int levelUpOptions => currentState.levelUpOptions != 0 ? currentState.levelUpOptions : 3;
 
     [Header("Luck")]
-    public float baseLuck = 0f;
+    // Same State-backed shape as baseMoveSpeed above — see _authoredMoveSpeed's own doc comment. 0f authored
+    // default — see baseCritChance's own doc comment for why the "!= 0f" fallback still resolves correctly
+    // despite the shared-zero coincidence.
+    [SerializeField] private float _authoredLuck = 0f;
+    public float baseLuck => currentState.progressionLuck != 0f ? currentState.progressionLuck : _authoredLuck;
     // Worst/best-case roll multipliers for anything that wants a "luck-influenced random roll" (weapon
     // damage, future augments, etc.) — roll against these shared stats instead of hardcoding a variance
     // constant, so a single augment can move the floor or ceiling and affect every roller at once. Split
@@ -469,12 +524,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     // ── Augment/bonus modifiers ────────────────────────────────────────────
 
-    // bonusMoveSpeedFlat/Percent/moveSpeedPenalty are the "Bonus" tier — class passives
-    // (ClassPassiveData/ApplyClassPassives) and meta-progression are the only writers, so bonusMoveSpeedPercent
-    // only ever scales bonusMoveSpeedFlat (see MoveSpeed below), never base directly. totalMoveSpeedPercent is
-    // the NEW "Total" tier — the one in-run stat augments (MoveSpeedAugment and friends) grant, scaling the
-    // whole (base + bonus) sum uniformly regardless of how big base itself is. See
-    // project_bonus_total_stat_tiers memory for the full reasoning/formula.
+    // bonusMoveSpeedFlat is the "Bonus" tier — class passives (ClassPassiveData/ApplyClassPassives) and
+    // meta-progression are its only writers. totalMoveSpeedPercent is the "Total" tier — what in-run stat
+    // augments (MoveSpeedAugment and friends) grant, scaling the whole (base + bonus) sum uniformly
+    // regardless of how big base itself is. See project_bonus_total_stat_tiers memory for the full
+    // reasoning/formula. (bonusMoveSpeedPercent/moveSpeedPenalty — a second, percent-flavored Bonus-tier
+    // pair that only ever scaled bonusMoveSpeedFlat — removed 2026-09-30: every class passive authored both
+    // to 0, so they were permanently neutral 1f multipliers in every real game except through a handful of
+    // augments that were mistakenly granting through this dead tier — see SurgeEnergySpentMoveSpeedAugment's
+    // own fix, same day. The one shop stat that also fed this tier, StatType.MoveSpeedPercent, was scrapped
+    // entirely the same day rather than rewired — see project_movespeed_bonus_percent_tier_removed memory.)
     // ── All fields in this "Augment/bonus modifiers" section (down to damageReductionPenalty below) live in
     // State, not as plain fields — see State struct's own doc comment. This used to be a mix (only 10 fields
     // that a temporary ability buff happened to already touch were migrated), but that meant any field NOT
@@ -492,17 +551,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // bonusSizePercent's own note for the concrete bug this caused). 0f-neutral fields need no such guard —
     // 0 already IS their correct neutral value, so the zero-filled window reads correctly by coincidence.
     public float bonusMoveSpeedFlat => currentState.bonusMoveSpeedFlat;
-    public float bonusMoveSpeedPercent => currentState.bonusMoveSpeedPercent != 0f ? currentState.bonusMoveSpeedPercent : 1f;
-    public float moveSpeedPenalty => currentState.moveSpeedPenalty != 0f ? currentState.moveSpeedPenalty : 1f;
     public float totalMoveSpeedPercent => currentState.totalMoveSpeedPercent != 0f ? currentState.totalMoveSpeedPercent : 1f;
     public float totalMoveSpeedPenalty => currentState.totalMoveSpeedPenalty != 0f ? currentState.totalMoveSpeedPenalty : 1f;
 
     // bonusStrengthPercent/bonusStrengthPenalty are Bonus tier (class passives only).
     // totalStrengthPercent/totalStrengthPenalty are the Total tier — what the weapon-count/multishot/track
     // "compensate with a damage bonus" augments (BladeweaviestBladeweaverAugment, MultiShotAugment,
-    // OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) grant, AND what the meta-progression
-    // "Total Strength %" shop stat (StatType.TotalStrengthPercent) feeds via ApplyProgressionBonuses — it's
-    // a flat multiplier meant to apply after those same weapon-count/Multishot penalties, not before.
+    // OuterTrackAugment, SurgeWeaponCountAugment, WeaponCountAugment) grant — it's a flat multiplier meant to
+    // apply after those same weapon-count/Multishot penalties, not before. (The meta-progression "Total
+    // Strength %" shop stat, StatType.TotalStrengthPercent, used to also feed this tier via
+    // ApplyProgressionBonuses — scrapped entirely 2026-09-30, see project_movespeed_bonus_percent_tier_removed
+    // memory.)
     public float bonusStrengthFlat => currentState.bonusStrengthFlat;
     public float bonusStrengthPercent => currentState.bonusStrengthPercent != 0f ? currentState.bonusStrengthPercent : 1f;
     public float bonusStrengthPenalty => currentState.bonusStrengthPenalty != 0f ? currentState.bonusStrengthPenalty : 1f;
@@ -562,7 +621,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // root localScale reads this directly too (see WeaponManagerPD's own RegisterWeapon/LateUpdate), so
     // the weapon grows with the character without a separate per-augment multiply call. WeaponRadius
     // (orbit distance) deliberately does not — see its own comment for why.
-    // In State, not a plain field — see State struct's own doc comment (KnightBigBuffAbilityPD's Size buff
+    // In State, not a plain field — see State struct's own doc comment (KnightBerserkAbilityPD's Size buff
     // needs this to roll back correctly). Falls back to 1f (neutral) on an exact 0 — see
     // totalMoveSpeedPercent's own doc comment for why (this specific field is the one that surfaced the
     // issue live: WeaponManagerPD.Init(), called from CharacterStatsPD.LateAwake() itself, read this before
@@ -662,6 +721,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     public float bonusMaxEnergyFlat => currentState.bonusMaxEnergyFlat;
     public float bonusMaxEnergyPercent => currentState.bonusMaxEnergyPercent != 0f ? currentState.bonusMaxEnergyPercent : 1f;
+    // Same tier as bonusMaxEnergyFlat — see ConvertedMaxEnergy's own doc comment.
+    public float convertedMaxEnergyFlat => currentState.convertedMaxEnergyFlat;
 
     public float bonusEnergyRegenFlat => currentState.bonusEnergyRegenFlat;
     public float bonusEnergyRegenPercent => currentState.bonusEnergyRegenPercent != 0f ? currentState.bonusEnergyRegenPercent : 1f;
@@ -689,7 +750,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // at +200% (3x total) combined, not +300% (4x total) from multiplying two independent
     // x2 factors together — see AddSurgeCostIncreasePercent's own doc comment.
     public float surgeCostIncreasePercent => currentState.surgeCostIncreasePercent;
-    public float surgeAttackSpeedPenalty => currentState.surgeAttackSpeedPenalty != 0f ? currentState.surgeAttackSpeedPenalty : 1f;
+    // Renamed from surgeAttackSpeedPenalty (2026-10-02) — this is a BUFF layer (SurgeAttackSpeedMultiplierAugment,
+    // class passives), never a debuff, and "no surgeAttackSpeedPenalty planned, ever" per explicit design —
+    // see AddSurgeAttackSpeedBonusPercent's own doc comment for the matching mutator rename.
+    public float surgeAttackSpeedBonusPercent => currentState.surgeAttackSpeedBonusPercent != 0f ? currentState.surgeAttackSpeedBonusPercent : 1f;
 
     public float dashHaste => currentState.dashHaste;
     // Multiplicative on top of dashHaste (see DashCooldown) — same "additive against a 1f baseline"
@@ -727,6 +791,20 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public float bonusLuckCeilingPercent => currentState.bonusLuckCeilingPercent != 0f ? currentState.bonusLuckCeilingPercent : 1f;
     public float luckCeilingPenalty => currentState.luckCeilingPenalty != 0f ? currentState.luckCeilingPenalty : 1f;
     public float bonusHighrollPercent => currentState.bonusHighrollPercent != 0f ? currentState.bonusHighrollPercent : 1f;
+    // "Total Highroll CHANCE" tier (2026-10-04) — 1f baseline, additive stacking, same convention as every
+    // other Total-tier percent field. Deliberately NOT folded in as a plain multiply against the raw
+    // Highroll threshold the way bonusHighrollPercent/highrollPenalty are — Highroll is an INVERTED
+    // threshold (lower = more likely to highroll; HighrollChance = (1-Highroll)/(1-LuckChance) is the
+    // actual probability), so a plain "Highroll *= percent" would move the odds the WRONG way for any
+    // percent > 1 and the wrong MAGNITUDE even in the direction that happens to help. This tier instead
+    // scales the CHANCE directly (1 - Highroll) * totalHighrollChancePercent, converted back into a
+    // threshold inside the Highroll property itself — see that property's own doc comment for the folded-
+    // in formula and HighrollChance's own doc comment for why doubling THIS value genuinely doubles the
+    // real probability, algebra-confirmed independent of LuckChance. Floored at 0f (not just relying on
+    // Highroll/HighrollChance's own downstream Clamp01 calls) — a future debuff driving this negative must
+    // never flip the sign of (1 - Highroll) and invert the chance math; worst case here is 0% highroll
+    // chance, never a negative multiplier doing something undefined upstream of the later clamps.
+    public float totalHighrollChancePercent => Mathf.Max(0f, currentState.totalHighrollChancePercent != 0f ? currentState.totalHighrollChancePercent : 1f);
     public float highrollPenalty => currentState.highrollPenalty != 0f ? currentState.highrollPenalty : 1f;
     public float bonusHighrollBonusPercent => currentState.bonusHighrollBonusPercent != 0f ? currentState.bonusHighrollBonusPercent : 1f;
     public float highrollBonusPenalty => currentState.highrollBonusPenalty != 0f ? currentState.highrollBonusPenalty : 1f;
@@ -747,7 +825,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public float stackPowerPenalty => currentState.stackPowerPenalty != 0f ? currentState.stackPowerPenalty : 1f;
 
     // Same Percent*Penalty shape — HealPower scales every heal this character receives (see Heal()'s own
-    // formula), regardless of source (regen, DashHealAugment, KnightAreaStunHealAbilityPD, etc. — anything
+    // formula), regardless of source (regen, DashHealAugment, KnightBuffStunAbilityPD, etc. — anything
     // that funnels through the shared Heal() choke point gets this for free). CritHealPower ONLY applies on
     // top of it when a given heal happens to roll a "crit heal" (against CritChance — RollHealMultiplier
     // gates the roll itself behind CritHealPower being off its neutral baseline at all, 2026-08-30 fix, see
@@ -774,18 +852,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     public float AreaEffectSize  => areaEffectSizePercent * areaEffectSizePenalty;
 
-    // Character-level multiplier on top of whatever a weapon's own outer-zone extent is authored at
-    // (currently only WeaponAxePD.outerXZExtent — the outer/blade capsule's reach in the X/Z plane, i.e.
-    // everything except the up/down axis; see its own ComputeZones/UpdateOuterBladeVisual for where this
-    // actually gets read). Named XZ, not X — it scales the capsule's side-to-side spread AND its
-    // forward/back+sideways radius together (a proportionally bigger axehead), deliberately excluding
-    // height/thickness (Y). Single-tier, not a Percent+Penalty pair — no known debuff source for this exists
-    // yet, so no Penalty term to multiply against; add one later if something concretely needs it. Generic
-    // here on CharacterStatsPD (not baked into WeaponAxePD itself) so any future weapon type that grows its
-    // own "outer zone" concept can read the same stat for free, same reasoning AreaEffectSize follows.
-    public float outerXZMultiplierPercent => currentState.outerXZMultiplierPercent != 0f ? currentState.outerXZMultiplierPercent : 1f;
-    public float OuterXZMultiplier => outerXZMultiplierPercent;
-
     public float xpMultiplier => currentState.xpMultiplier != 0f ? currentState.xpMultiplier : 1f;
     public float xpPenalty => currentState.xpPenalty != 0f ? currentState.xpPenalty : 1f;
 
@@ -801,15 +867,16 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     // ── Computed properties ────────────────────────────────────────────────
 
-    // Bonus/Total split: bonusMoveSpeedPercent only scales bonusMoveSpeedFlat (the "Bonus" sub-term, still
-    // written only by ClassPassiveData/meta-progression), then totalMoveSpeedPercent scales the WHOLE
-    // (base + bonus) sum — so an in-run "+X% total move speed" augment is worth the same relative bump
-    // regardless of how big base/bonus already are, instead of being multiplied only against whatever tiny
-    // bonus pool happens to exist. See project_bonus_total_stat_tiers memory for the full formula.
+    // Bonus/Total split: bonusMoveSpeedFlat is the "Bonus" sub-term (class passives/meta-progression only),
+    // then totalMoveSpeedPercent scales the WHOLE (base + bonus) sum — so an in-run "+X% total move speed"
+    // augment is worth the same relative bump regardless of how big base/bonus already are. See
+    // project_bonus_total_stat_tiers memory for the full formula. (A second, percent-flavored Bonus-tier
+    // pair — bonusMoveSpeedPercent/moveSpeedPenalty — used to also scale bonusMoveSpeedFlat here; removed
+    // 2026-09-30, see bonusMoveSpeedFlat's own doc comment above for why.)
     // Slow (see Slow()'s own doc comment) is the one exception to the Bonus/Total shape — a straight
     // multiplier on top, same "just cuts the final result" role EnemyBasePD.EffectiveMoveSpeed's own
     // slowMultiplier plays, but move-speed-only here (AttackSpeed deliberately does NOT read this).
-    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat * bonusMoveSpeedPercent * moveSpeedPenalty) * totalMoveSpeedPercent * totalMoveSpeedPenalty * (currentState.isSurging ? SurgeMoveSpeedMulti : 1f) * (currentState.slowTimer > 0 ? currentState.slowMultiplier : 1f);
+    public float MoveSpeed => (baseMoveSpeed + bonusMoveSpeedFlat) * totalMoveSpeedPercent * totalMoveSpeedPenalty * (currentState.isSurging ? surgeMoveSpeedPenalty : 1f) * (currentState.slowTimer > 0 ? currentState.slowMultiplier : 1f);
 
     // Same Bonus/Total split as MoveSpeed — bonusStrengthPenalty is folded into the Bonus sub-term
     // (only ever written by ClassPassiveData/meta-progression, same as every other stat's bonus penalty),
@@ -928,6 +995,26 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public bool continuousFireHasTarget { get => currentState.continuousFireHasTarget; private set => currentState.continuousFireHasTarget = value; }
     public bool ContinuousFireHasTarget => continuousFireHasTarget;
     public void SetContinuousFireHasTarget(bool value) => continuousFireHasTarget = value;
+    // Set alongside focusFireAimAngle by ArcherFocusFireAbilityPD.UpdateAutoAimAngle (2026-10-06,
+    // ArcherFocusFireMultishotHomingAugment) — the SAME closest-enemy TryFindAutoAimDirection already found
+    // for aiming purposes, carried as a stable ID rather than a one-shot direction so WeaponRangedPD.Fire()
+    // can hand it to a spawned projectile for it to keep re-resolving every tick (an aim direction alone
+    // goes stale the instant the target moves). default (instanceId 0 — PredictedHierarchy's own instance
+    // counter starts at 2, so 0 is never a real assigned ID, same sentinel-free "unset" convention
+    // MortarGloomPD.pendingHazardId relies on) means "no homing this tick" — set unconditionally every tick
+    // UpdateAutoAimAngle runs (never left stale from a previous tick), and ONLY ever non-default when the
+    // ability's own homingProjectiles flag is true AND a target was actually found, so a FocusFire user
+    // without this augment never has it set regardless of what TryFindAutoAimDirection itself finds.
+    public PredictedObjectID focusFireHomingTargetId { get => currentState.focusFireHomingTargetId; private set => currentState.focusFireHomingTargetId = value; }
+    public PredictedObjectID FocusFireHomingTargetId => focusFireHomingTargetId;
+    public void SetFocusFireHomingTargetId(PredictedObjectID value) => focusFireHomingTargetId = value;
+    // Companion to focusFireHomingTargetId — how long a newly-spawned homing projectile should keep flying
+    // straight on its initial (fanned-out) heading before actually starting to re-aim toward the target.
+    // Meaningless whenever focusFireHomingTargetId is default (no homing this tick) but always set
+    // alongside it regardless, same "harmless when unused" shape as every other ability-owned temp field.
+    public float focusFireHomingDelay { get => currentState.focusFireHomingDelay; private set => currentState.focusFireHomingDelay = value; }
+    public float FocusFireHomingDelay => focusFireHomingDelay;
+    public void SetFocusFireHomingDelay(float seconds) => focusFireHomingDelay = seconds;
     // What fraction of normal fire rate remains while ContinuousFire is active (e.g. 0.2 for an 80%
     // reduction) — 2026-08-21 fix, see FireRate's own read site. Deliberately a STANDALONE multiplicative
     // term, not folded into fireRateTotalPercent/fireRateTotalPenalty (both additive-around-1 accumulators
@@ -983,7 +1070,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // comment) for its own -X% tradeoff, discounting the whole total AFTER every bonus has already summed,
     // rather than just being one more addend a big enough bonus could swamp. weaponRangePenalty (singular,
     // no "total") is a DIFFERENT field, folded into the Bonus sub-term (ClassPassiveData is its only writer,
-    // same as moveSpeedPenalty/energyRegenPenalty) — not to be confused with totalWeaponRangePenalty here.
+    // same as energyRegenPenalty) — not to be confused with totalWeaponRangePenalty here. (MoveSpeed's own
+    // analogous Bonus-tier penalty, moveSpeedPenalty, was removed 2026-09-30 — see bonusMoveSpeedFlat's own
+    // doc comment.)
     // The player-facing "Range" number, exactly as shown on the stats panel/shop — base+bonus/total-tier
     // chain, same "stat point" scale every other base stat uses (baseWeaponRange is 10, same order of
     // magnitude as e.g. baseMoveSpeed's own 10). Historical note (2026-09-14 -> 2026-09-16): this USED to
@@ -1046,7 +1135,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // WeaponRange/BonusWeaponRange instead — those are correct, uncompressed, exactly what the player sees.
     public float RangeWorldUnits => WeaponRange * 0.2f;
 
-    // Shared base radius for the "AoE Effects" family (KnightAreaStunHealAbilityPD, DashExplosionAugment,
+    // Shared base radius for the "AoE Effects" family (KnightBuffStunAbilityPD, DashExplosionAugment,
     // DashHealAugment, ShieldBreakBurstAugment, SurgeInterruptAoEAugment — see project_area_effect_system) —
     // single source of truth for the part of the radius formula that's supposed to be identical across every
     // family member. Each caller still multiplies this by its own per-augment rangeMultiplier/radiusMultiplier
@@ -1056,7 +1145,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     //
     // The flat 0.5 offset is meant to represent the same "near-body reach" a weapon's own hitbox has even at
     // zero WeaponRange — 2026-08-23 fix: now scaled by bonusSizePercent (the player's actual physical Size
-    // stat, e.g. from KnightBigBuffAbilityPD's own buff), same as a weapon's own root transform already
+    // stat, e.g. from KnightBerserkAbilityPD's own buff), same as a weapon's own root transform already
     // scales with Size (see bonusSizePercent's own doc comment: "Every weapon's own root localScale reads
     // this directly too"). Before this fix the offset only scaled with AreaEffectSize, so a caster who got
     // physically bigger/smaller (Size, not AreaEffectSize) saw their weapon hitboxes resize but not this
@@ -1122,6 +1211,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public float MaxShield => (baseMaxShieldPercent + bonusMaxShieldAdditive) * totalMaxShieldPercent * totalMaxShieldPenalty * MaxHealth;
 
     public float MaxEnergy => (baseMaxEnergy + bonusMaxEnergyFlat) * bonusMaxEnergyPercent;
+    // MaxEnergy's own equivalent of ConvertedHealth above (2026-10-07, KnightStartingAugment — see its own
+    // doc comment for the full reasoning). No base term (base is never conversion-derived), otherwise the
+    // exact same bonusMaxEnergyPercent chain MaxEnergy itself uses, so a future conversion sourcing OFF
+    // MaxEnergy can read (MaxEnergy - ConvertedMaxEnergy) and never loop back through this one.
+    public float ConvertedMaxEnergy => convertedMaxEnergyFlat * bonusMaxEnergyPercent;
     // Returns an actual per-second AMOUNT (same as before this rework — Simulate()'s own regen tick still
     // just does energy += EnergyRegen * delta, no change needed there), but baseEnergyRegen/bonusEnergyRegenFlat
     // are now both FRACTIONS of MaxEnergy rather than flat units (2026-08-23 rework — see baseEnergyRegen's
@@ -1150,13 +1244,26 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // SurgeCost-derived) — only the tick-by-tick drain that follows.
     public float EffectiveSurgeTickCost => SurgeCost * (currentState.forcedSurge ? berserkSurgeCostMultiplier : 1f);
     public float SurgeActivationThreshhold => SurgeCost * 5f;
-    // In State, not a plain field — the only one of the three Surge-header fields with an actual runtime
-    // setter (SetSurgeMoveSpeedPenalty, called by SurgeNoMoveSpeedPenaltyAugment/
-    // SurgeHalfMoveSpeedPenaltyAugment); surgeMoveSpeedMulti/surgeAttackSpeedMulti have no mutator anywhere
-    // and stay plain Inspector-authored constants, same category as baseMoveSpeed/baseStrength.
-    public float surgeMoveSpeedPenalty => currentState.surgeMoveSpeedPenalty != 0f ? currentState.surgeMoveSpeedPenalty : 0.5f;
-    public float SurgeMoveSpeedMulti => surgeMoveSpeedMulti * surgeMoveSpeedPenalty;
-    public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedPenalty;
+    // In State, not a plain field — has an actual runtime setter (SetSurgeMoveSpeedPenalty, called by
+    // SurgeNoMoveSpeedPenaltyAugment/SurgeHalfMoveSpeedPenaltyAugment), unlike surgeAttackSpeedMulti, which
+    // has no mutator anywhere and stays a plain Inspector-authored constant, same category as baseMoveSpeed/
+    // baseStrength. This IS the whole Surge move-speed nerf now (2026-09-30 — surgeMoveSpeedMulti removed
+    // entirely, confirmed dead: authored to 1 on every character prefab, no mutator, pure no-op multiply).
+    //
+    // bonusSurgeMoveSpeedPenaltyFlat (2026-09-30, shop-item scaffolding; the shop item itself,
+    // StatType.SurgeMoveSpeedPenaltyReduction, went in the same day — single placeholder tier, gated at the
+    // 77 sentinel until a real Threat Level/cost is decided, +5% per tier) is a DELIBERATELY SEPARATE additive
+    // layer from the override above, not folded into the same field — SetSurgeMoveSpeedPenalty is an
+    // absolute "set to X" (see its own doc comment for why: two mutually-exclusive in-run augments, whichever
+    // applies last simply wins), which would silently erase a permanent shop bonus if the shop wrote into
+    // that same field. Keeping the shop's own contribution in this separate flat layer means it always
+    // stacks on top of whatever the augment-driven baseline currently is, regardless of pick order, and can
+    // never be clobbered by picking either augment. Clamped to 1f (no penalty at all is the ceiling — surging
+    // should never make you MOVE FASTER than normal from this term alone). Fed by ApplyProgressionBonuses'
+    // own surgeMoveSpeedPenaltyReductionBonus, same pattern every other simple flat shop stat already uses
+    // there (e.g. bonusMaxShieldAdditive += b.maxShieldFlat).
+    public float surgeMoveSpeedPenalty => Mathf.Min(1f, (currentState.surgeMoveSpeedPenalty != 0f ? currentState.surgeMoveSpeedPenalty : 0.5f) + currentState.bonusSurgeMoveSpeedPenaltyFlat);
+    public float SurgeAttackSpeedMultiplier => surgeAttackSpeedMulti * surgeAttackSpeedBonusPercent;
 
     // The actual effective dash haste value DashCooldown's formula uses — exposed separately so UI (or
     // anything else) can display the real number instead of the pre-multiplier raw dashHaste field.
@@ -1198,7 +1305,23 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // Clamped to [0,1] here — it's a Mathf.Lerp t-value downstream (WeaponDamageMath.RollDamage), which
     // would clamp it internally anyway, but keeping the source itself sane means anything else that reads
     // Highroll directly later doesn't have to know that.
-    public float Highroll => Mathf.Clamp01(baseHighroll * bonusHighrollPercent * highrollPenalty);
+    //
+    // totalHighrollChancePercent (2026-10-04) folds in AFTER the usual Bonus/Penalty tiers resolve the raw
+    // threshold, via the chance-space transform 1 - (1 - rawHighroll) * percent — e.g. percent=2 exactly
+    // doubles the real HighrollChance below (algebra: HighrollChance_new = (1-Highroll_new)/(1-LuckChance)
+    // = (1-(1-2*(1-rawHighroll)))/(1-LuckChance) = 2*(1-rawHighroll)/(1-LuckChance) = 2*HighrollChance_old),
+    // not a plain multiply on the threshold itself — see totalHighrollChancePercent's own doc comment for
+    // why a plain multiply would be wrong here. Every real consumer (WeaponDamageMath.RollDamage,
+    // HighrollChance, RollLuckMultiplier) reads THIS property, so folding the tier in here once means none
+    // of them need their own separate awareness of it.
+    public float Highroll
+    {
+        get
+        {
+            float rawHighroll = Mathf.Clamp01(baseHighroll * bonusHighrollPercent * highrollPenalty);
+            return Mathf.Clamp01(1f - (1f - rawHighroll) * totalHighrollChancePercent);
+        }
+    }
     // Derived from WeaponDamageMath.RollDamage's own uniform-roll math: a roll is uniform across
     // [min, max] where min = Lerp(rawMin, max, LuckChance) and the highroll threshold =
     // Lerp(rawMin, max, Highroll) — both lerps share the same [rawMin, max] window, so the "chance the
@@ -1382,7 +1505,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public CompressedFloat weaponOrbitAngle;
         // EVERY stat modifier field in the whole "Augment/bonus modifiers" section of this class lives here,
         // not as a plain field. Started as just 10 fields — the ones RogueVanishAbilityPD/BWBlinkAbilityPD/
-        // BWBladeDanceAbilityPD/ExeBigAxeAbilityPD/KnightBigBuffAbilityPD/ArcherFocusFireAbilityPD happened to
+        // BWBladeDanceAbilityPD/ExeBigAxeAbilityPD/KnightBerserkAbilityPD/ArcherFocusFireAbilityPD happened to
         // already add a temporary amount to on Activate() and subtract back off later inside Simulate() — a
         // plain field doesn't roll back on resimulation (only STATE does), so a mispredicted tick that gets
         // replayed across either half of an add/subtract pair would double-apply it, permanently drifting the
@@ -1407,8 +1530,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public float damageReductionPercent;
         public float fireRateTotalPercent;
         public float bonusMoveSpeedFlat;
-        public float bonusMoveSpeedPercent;
-        public float moveSpeedPenalty;
         public float totalMoveSpeedPenalty;
         public float bonusStrengthFlat;
         public float bonusStrengthPercent;
@@ -1469,6 +1590,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public float deathPreventionTimeMultiplier;
         public float bonusMaxEnergyFlat;
         public float bonusMaxEnergyPercent;
+        // Conversion-source bookkeeping (2026-10-07, KnightStartingAugment) — see ConvertedMaxEnergy's own
+        // doc comment.
+        public float convertedMaxEnergyFlat;
         public float bonusEnergyRegenFlat;
         public float bonusEnergyRegenPercent;
         public float energyRegenPenalty;
@@ -1478,7 +1602,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public float bonusSurgeCostFlat;
         public float surgeCostReductionPercent;
         public float surgeCostIncreasePercent;
-        public float surgeAttackSpeedPenalty;
+        public float surgeAttackSpeedBonusPercent;
         public float dashHaste;
         public float bonusDashHastePercent;
         public float totalDashHastePercent;
@@ -1501,6 +1625,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public float luckCeilingPenalty;
         public float bonusHighrollPercent;
         public float highrollPenalty;
+        // "Total Highroll CHANCE" tier (2026-10-04, RogueVanishHighrollAugment) — see the public
+        // totalHighrollChancePercent property's own doc comment for why this can't just multiply the raw
+        // Highroll threshold the way every other Total tier multiplies its own stat.
+        public float totalHighrollChancePercent;
         public float bonusHighrollBonusPercent;
         public float highrollBonusPenalty;
         public float knockbackMultiplier;
@@ -1517,7 +1645,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public float critHealPowerPenalty;
         public float areaEffectSizePercent;
         public float areaEffectSizePenalty;
-        public float outerXZMultiplierPercent;
         public float xpMultiplier;
         public float xpPenalty;
         public float bonusXPRadiusFlat;
@@ -1549,6 +1676,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public bool    continuousFire;
         public float   focusFireAimAngle;
         public bool    continuousFireHasTarget;
+        public PredictedObjectID focusFireHomingTargetId;
+        public float   focusFireHomingDelay;
         public float   focusFireRateMultiplier;
         public bool    weaponOrbitOriginOverridden;
         public Vector3 weaponOrbitOriginOverride;
@@ -1556,11 +1685,56 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         // Neutral default 0.5f, not 1f or 0f — see this field's own doc comment further down for why it's
         // the one Surge-header field that needed migrating.
         public float   surgeMoveSpeedPenalty;
+        // Separate flat shop-bonus layer, stacks on top of surgeMoveSpeedPenalty above regardless of
+        // pick order — see the public surgeMoveSpeedPenalty property's own doc comment for the full
+        // reasoning. 0f is the correct genuine default (no shop item exists yet).
+        public float   bonusSurgeMoveSpeedPenaltyFlat;
         // Progression-only fields, mutated once by ApplyProgressionBonuses — see strengthPerLevel's own doc
         // comment for why these are here despite that.
         public float strengthPerLevel;
         public int   weaponTracks;
+        // Reroll tokens for the augment-pick reroll system (2026-09-30) — a plain direct counter, base 0 (no
+        // "0 means unset, fall back to a neutral default" trick the way weaponTracks/dashCharges use, since a
+        // player genuinely starting with 0 rerolls IS the correct default here). += directly whenever tokens
+        // are granted or spent (see AddRerollTokens), same "intentionally-unused-elsewhere bookkeeping"
+        // reasoning weaponTracks' own doc comment gives. Also gains ApplyProgressionBonuses' own
+        // rerollTokensBonus once at match start now — StatType.RerollTokens is a real shop item (5 tiers,
+        // +1 each, gated one tier per Threat Level 2-6), player-facing name "Reroll Tokens".
+        public int rerollTokens;
+        // "Reroll Tokens every X Levels" shop stat. 0 is the natural "not purchased/disabled" default, same
+        // as every other 0-neutral field in this section — no separate enabled bool needed, the shop just
+        // never writes a nonzero value here until bought. Nonzero = levels needed between each automatic
+        // grant — a single-tier unlock (2026-10-06, simplified from an earlier 5-tier 5/4/3/2/1 override
+        // table): the shop's one tier sets this straight to the fixed constant 3, not derived from tier at
+        // all (there's only ever tier 0 or tier 1 now).
+        public int rerollTokenLevelsPerGrant;
+        // Counts UP (levels elapsed since the last automatic grant), not down — deliberately NOT a countdown
+        // seeded from rerollTokenLevelsPerGrant, specifically so it never needs its own separate
+        // initialization step when the shop bonus is first granted at match start: State's own natural 0
+        // default is already the correct starting value regardless of what rerollTokenLevelsPerGrant ends up
+        // being. OnLevelUp() grants a token and resets this to 0 the instant it reaches
+        // rerollTokenLevelsPerGrant.
+        public int rerollTokenLevelsElapsed;
+        // Ability charge system (2026-10-02) — flat, augment-granted bonus to an ability's own MaxCharges,
+        // keyed by SLOT (Ability1/Ability2), not by concrete ability identity, since the charge system lives
+        // generically on IAbilityPD and any class's Ability1/Ability2 should be able to receive it regardless
+        // of which specific ability occupies that slot. 0 is the correct default — see AddAbility1Charges'
+        // own doc comment for the live-increase behavior each ability implements against this.
+        public int bonusAbility1Charges;
+        public int bonusAbility2Charges;
         public float shieldRechargeTime;
+        // The 8 base<Stat> fields (2026-09-22 fix) — see baseMoveSpeed/_authoredMoveSpeed's own doc comment
+        // for the full reasoning. Seeded from the per-character authored Inspector value in GetInitialState(),
+        // then ApplyProgressionBonuses adds the shop/meta-progression bonus on top exactly once, same
+        // "progression-only, mutated once" shape as strengthPerLevel above.
+        public float progressionMoveSpeed;
+        public float progressionStrength;
+        public float progressionAttackSpeed;
+        public float progressionCritChance;
+        public float progressionWeaponRange;
+        public float progressionMaxHealth;
+        public float progressionHealthRegen;
+        public float progressionLuck;
         // Which AugmentUnlockTagDatabase tags this player currently has unlocked, as a bitmask (bit N = tag
         // at database index N — see that class's own doc comment). Same "progression-only, mutated once by
         // ApplyProgressionBonuses" shape as strengthPerLevel above — see UnlockedAugmentTagMask's own doc
@@ -1594,7 +1768,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     protected override State GetInitialState() => new()
     {
-        health = baseMaxHealth,
+        // _authoredMaxHealth, NOT the baseMaxHealth property — currentState isn't assigned to the State
+        // object being built here yet (this whole method just constructs and returns one), so reading the
+        // property here would read the OLD currentState (still default(State) from before this call), not
+        // the progressionMaxHealth value this same initializer is in the middle of seeding below.
+        health = _authoredMaxHealth,
         energy = baseMaxEnergy,
         shield = 0f,
         // Sentinel meaning "not yet converted from seconds to ticks" — GetInitialState() has no delta
@@ -1605,6 +1783,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         healthRegenTimer = -1,
         shieldRechargeTimer = 0,
         currentReviveTime = reviveTime,
+        // The 8 base<Stat> fields (2026-09-22 fix) — seeded from each one's own authored Inspector backing
+        // field (never the base<Stat> property itself, same "currentState isn't assigned yet" reasoning as
+        // health above), so ApplyProgressionBonuses' own += calls land on top of the real per-character
+        // baseline instead of State's raw zero-init default.
+        progressionMoveSpeed = _authoredMoveSpeed,
+        progressionStrength = _authoredStrength,
+        progressionAttackSpeed = _authoredAttackSpeed,
+        progressionCritChance = _authoredCritChance,
+        progressionWeaponRange = _authoredWeaponRange,
+        progressionMaxHealth = _authoredMaxHealth,
+        progressionHealthRegen = _authoredHealthRegen,
+        progressionLuck = _authoredLuck,
         // 1f (neutral multiplier) baseline — see the State struct's own doc comment on this whole block of
         // fields. Every "Flat"-suffixed field (and a handful of others whose neutral is genuinely 0, like
         // dashHaste/abilityHaste/executeThreshold/critExecuteThreshold/phantomBladeDamageBonus) is
@@ -1617,8 +1807,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         totalStrengthPercent = 1f,
         damageReductionPercent = 1f,
         fireRateTotalPercent = 1f,
-        bonusMoveSpeedPercent = 1f,
-        moveSpeedPenalty = 1f,
         totalMoveSpeedPenalty = 1f,
         bonusStrengthPercent = 1f,
         bonusStrengthPenalty = 1f,
@@ -1663,7 +1851,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         totalEnergyRegenPenalty = 1f,
         bonusEnergyGainPercent = 1f,
         surgeCostReductionPercent = 1f,
-        surgeAttackSpeedPenalty = 1f,
+        surgeAttackSpeedBonusPercent = 1f,
         bonusDashHastePercent = 1f,
         totalDashHastePercent = 1f,
         totalDashHastePenalty = 1f,
@@ -1682,6 +1870,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         luckCeilingPenalty = 1f,
         bonusHighrollPercent = 1f,
         highrollPenalty = 1f,
+        totalHighrollChancePercent = 1f,
         bonusHighrollBonusPercent = 1f,
         highrollBonusPenalty = 1f,
         knockbackMultiplier = 1f,
@@ -1698,7 +1887,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         critHealPowerPenalty = 1f,
         areaEffectSizePercent = 1f,
         areaEffectSizePenalty = 1f,
-        outerXZMultiplierPercent = 1f,
         xpMultiplier = 1f,
         xpPenalty = 1f,
         bonusXPRadiusPercent = 1f,
@@ -1959,7 +2147,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // interrupt (SI), not just FSI, per explicit design: every enemy an interrupt-capable effect lands on
     // this activation gets the bonus true-stun, not just the first. pairedStunDuration is 0 (default) for an
     // interrupt with no paired stun (DashThroughInterruptAugment, ExeAxeThrowProjectilePD) — a caller that
-    // ALSO explicitly stuns whatever it interrupts on the same hit (KnightAreaStunHealAbilityPD) passes that
+    // ALSO explicitly stuns whatever it interrupts on the same hit (KnightBuffStunAbilityPD) passes that
     // same raw duration here instead of relying on its own separate Stun() call to cover it — see
     // InterruptTrueStun's own doc comment for how the two portions combine.
     public void NotifyInterrupted(IEnemyPD enemy, ref bool alreadyFiredThisActivation, float pairedStunDuration = 0f)
@@ -2547,6 +2735,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
                 Color c = PlayerColor;
                 c.a = viewState.invisible ? invisibleModelAlpha : 1f;
                 _modelMaterialInstance.SetColor(BaseColorId, c);
+
+                // Shadow toggled off entirely while invisible (2026-09-26, paired with re-enabling the
+                // material's own SHADOWCASTER pass so players cast shadows normally again) — URP's shadow
+                // caster pass ignores blend alpha (only respects Alpha Clipping, which this material doesn't
+                // use), so without this an invisible player would keep casting a full, undimmed shadow and
+                // give their position away.
+                _modelRenderer.shadowCastingMode = viewState.invisible ? UnityEngine.Rendering.ShadowCastingMode.Off : UnityEngine.Rendering.ShadowCastingMode.On;
             }
 
             // Local-only screen tint (2026-08-31, moved here from RogueVanishAbilityPD's own ability-window-
@@ -2597,12 +2792,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public float dashHaste, critChanceFlat, xpRadiusFlat, weaponRangeFlat, maxEnergyFlat;
         public float abilityHaste;
         public int   dashChargesBonus, levelUpOptionsBonus;
+        // StatType.RerollTokens shop stat — see CharacterStatsPD.RerollTokens's own doc comment.
+        public int   rerollTokensBonus;
+        // StatType.SurgeMoveSpeedPenaltyReduction shop stat — see bonusSurgeMoveSpeedPenaltyFlat's own doc
+        // comment (surgeMoveSpeedPenalty property, just above it in this file).
+        public float surgeMoveSpeedPenaltyReductionBonus;
+        // StatType.RerollTokenLevelsPerGrant shop stat — a fixed constant (3) once the single tier is
+        // bought, not an additive delta, so this is the direct VALUE to assign, not a delta to add. 0 = not
+        // purchased. See rerollTokenLevelsPerGrant's own doc comment (State struct) for the full reasoning.
+        public int   rerollTokenLevelsPerGrant;
         public float revivePower, reviveTimePenaltyMult, xpMultiplier;
-        public float maxHealthFlat, healthRegenFlat, strengthTotalPercent;
+        public float maxHealthFlat, healthRegenFlat;
         public float luckFlat, strengthPerLevel, maxShieldFlat, shieldRechargeTime;
-        // StatType.MoveSpeedPercent shop stat — Bonus tier (see bonusMoveSpeedPercent's own doc comment for
-        // why meta-progression writes Bonus here, same as every other flat progression stat, not Total).
-        public float moveSpeedBonusPercent;
         // Not an amount to add — a one-time unlock flag (StatType.DeathPrevention is a single-tier shop
         // item, GetBaseStatBonus reads > 0 once bought). See ApplyProgressionBonuses' own handling below.
         public bool  deathPreventionUnlocked;
@@ -2614,7 +2815,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     {
         strengthFlat            = ProgressionManager.GetBaseStatBonus(StatType.Strength),
         moveSpeedFlat           = ProgressionManager.GetBaseStatBonus(StatType.MoveSpeed),
-        moveSpeedBonusPercent   = ProgressionManager.GetBaseStatBonus(StatType.MoveSpeedPercent),
         attackSpeedPct          = ProgressionManager.GetBaseStatBonus(StatType.AttackSpeed) * 0.01f,
         energyRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.EnergyRegen),
         dashHaste               = ProgressionManager.GetBaseStatBonus(StatType.DashHaste),
@@ -2625,17 +2825,23 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         maxEnergyFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxEnergy),
         dashChargesBonus        = (int)ProgressionManager.GetBaseStatBonus(StatType.DashCharges),
         levelUpOptionsBonus     = (int)ProgressionManager.GetBaseStatBonus(StatType.LevelUpOptions),
+        rerollTokensBonus       = (int)ProgressionManager.GetBaseStatBonus(StatType.RerollTokens),
+        surgeMoveSpeedPenaltyReductionBonus = ProgressionManager.GetBaseStatBonus(StatType.SurgeMoveSpeedPenaltyReduction),
         revivePower             = ProgressionManager.GetBaseStatBonus(StatType.RevivePower),
         reviveTimePenaltyMult   = Mathf.Pow(0.75f, ProgressionManager.GetBaseStatTier(StatType.ReviveTimePenalty)),
         xpMultiplier            = ProgressionManager.GetBaseStatBonus(StatType.XPMultiplier) * 0.01f,
         maxHealthFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxHealth),
         healthRegenFlat         = ProgressionManager.GetBaseStatBonus(StatType.HealthRegen),
-        strengthTotalPercent    = ProgressionManager.GetBaseStatBonus(StatType.TotalStrengthPercent),
         luckFlat                = ProgressionManager.GetBaseStatBonus(StatType.Luck),
         strengthPerLevel        = ProgressionManager.GetBaseStatBonus(StatType.StrengthPerLevel),
         maxShieldFlat           = ProgressionManager.GetBaseStatBonus(StatType.MaxShield),
         shieldRechargeTime      = ProgressionManager.GetBaseStatBonus(StatType.ShieldRechargeTime),
         deathPreventionUnlocked = ProgressionManager.GetBaseStatBonus(StatType.DeathPrevention) > 0f,
+        // Fixed constant (3), not GetBaseStatBonus's usual tier*perTier — single-tier unlock, see
+        // rerollTokenLevelsPerGrant's own doc comment (State struct) for why.
+        rerollTokenLevelsPerGrant = ProgressionManager.GetBaseStatTier(StatType.RerollTokenLevelsPerGrant) > 0
+            ? 3
+            : 0,
         unlockedAugmentTagMask  = ComputeUnlockedAugmentTagMask(),
     };
 
@@ -2686,7 +2892,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         // max). A ceiling DECREASE never reduces current on its own — it only pulls current down if it's
         // now sitting ABOVE the new (lower) ceiling (Mathf.Min just leaves it untouched otherwise), clamping
         // to exactly that ceiling rather than subtracting the raw delta — a temporary Max Health buff ending
-        // (e.g. KnightBigBuffAbilityPD) must never punish a player who took damage mid-buff and was already
+        // (e.g. KnightBerserkAbilityPD) must never punish a player who took damage mid-buff and was already
         // below the new max before the ceiling dropped back down.
         // Floored rather than left to go negative — health floors at 1 so a max decrease alone can never be
         // a kill; energy can bottom out at 0.
@@ -2720,6 +2926,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // separate tracker other conversion augments read, so the before/after clamp recompute would be pure
     // overhead (same reasoning as AddPhantomBladeDamageBonusPercent).
     public void AddConvertedHealth(float amount) => currentState.convertedHealth += amount;
+    // Conversion-source bookkeeping for MaxEnergy (2026-10-07, KnightStartingAugment) — same shape/
+    // reasoning as AddConvertedHealth directly above, just for ConvertedMaxEnergy instead. A conversion
+    // augment that grants Max Energy should call this alongside AddMaxEnergyFlat, with the identical delta
+    // both times.
+    public void AddConvertedMaxEnergy(float amount) => currentState.convertedMaxEnergyFlat += amount;
 
     // Same pattern as AddMaxHealthFlat, for augments that grant a percentage bonus instead (additive
     // against the 1f baseline, e.g. +0.2 = +20% total). Bonus tier — now only scales bonusMaxHealthFlat
@@ -2767,26 +2978,26 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // same "doesn't touch Max Health/Energy" reasoning as AddConvertedHealth/AddConvertedHealthRegen.
     public void AddConvertedAttackSpeed(float amount) => currentState.convertedAttackSpeedFlat += amount * baseAttackSpeed;
     public void AddMoveSpeedFlat(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedFlat += amount);
-    // Bonus tier — see AddMaxHealthPercent's own comment. Was "kept for ClassPassiveData, no augment calls
-    // this anymore" before 2026-09-19 — now the live grant path for MissingHealthMoveSpeedStackingAugment/
+    // The only Move-Speed-percent grant path now (2026-09-30) — what every MoveSpeed-percent-granting augment
+    // calls (MoveSpeedAugment/GremlinAugment/ShieldBreakFrenzyAugment, and MissingHealthMoveSpeedStackingAugment/
     // OnDamageTakenGainMoveSpeedAugment/DeathPreventionInvisibleAugment/ConstantMovementAugment/
-    // SurgeEnergySpentMoveSpeedAugment, converted from AddMoveSpeedFlat project-wide now that Move Speed no
-    // longer comes off Stat augments, per explicit design. GremlinAugment deliberately excluded from this
-    // conversion (kept its existing shape) — it already grants via AddMoveSpeedTotalPercent below, a
-    // different (Total, not Bonus) tier.
-    public void AddMoveSpeedPercent(float amount) => ApplyStatChange(() => currentState.bonusMoveSpeedPercent += amount);
-    // NEW Total tier — what MoveSpeedAugment/GremlinAugment/ShieldBreakFrenzyAugment all call now (every
-    // remaining MoveSpeed-percent-granting augment). SurgeEnergySpentMoveSpeedAugment (was
-    // SurgeEndMoveSpeedAugment) used to as well, before it switched to a flat AddMoveSpeedFlat grant instead
-    // (see its own doc comment).
+    // SurgeEnergySpentMoveSpeedAugment, migrated off the old AddMoveSpeedPercent/bonusMoveSpeedPercent Bonus-
+    // tier path the same day — that tier only ever scaled bonusMoveSpeedFlat, which every class passive
+    // authored to 0, so those five augments were granting a near-permanent no-op). Scales the whole
+    // (base + bonus) sum uniformly, same Total-tier shape as AddMaxHealthPercent and friends.
     public void AddMoveSpeedTotalPercent(float amount) => ApplyStatChange(() => currentState.totalMoveSpeedPercent += amount);
-    // Direct override, not additive — surgeMoveSpeedPenalty (default 0.5f) is the actual reduction
-    // multiplier itself (SurgeMoveSpeedMulti = surgeMoveSpeedMulti * surgeMoveSpeedPenalty * ...), not a
-    // bonus-stacking pool, so "half the penalty"/"no penalty" augments each set it to their own fixed
+    // Direct override, not additive — surgeMoveSpeedPenalty (default 0.5f) IS the actual reduction
+    // multiplier itself (read directly by MoveSpeed's own formula), not a bonus-stacking pool, so "half the
+    // penalty"/"no penalty" augments each set it to their own fixed
     // absolute target (0.75f/1f) rather than accumulating a delta off the current value. This also makes
     // picking both of a mutually-exclusive pair harmless (whichever applies last simply wins) rather than
     // compounding into a nonsensical value.
     public void SetSurgeMoveSpeedPenalty(float value) => ApplyStatChange(() => currentState.surgeMoveSpeedPenalty = value);
+    // Shop-item scaffolding (2026-09-30, no shop item exists yet) — plain +=, not ApplyStatChange (doesn't
+    // affect Max Health/Energy). Separate additive layer from SetSurgeMoveSpeedPenalty above specifically so
+    // a future permanent shop bonus can never be clobbered by either in-run augment overriding the baseline
+    // — see the public surgeMoveSpeedPenalty property's own doc comment for the full reasoning.
+    public void AddSurgeMoveSpeedPenaltyFlat(float amount) => currentState.bonusSurgeMoveSpeedPenaltyFlat += amount;
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — stackPowerPercent starts at
     // 1f (StackPower = stackPowerPercent * stackPowerPenalty), just had no augment-facing wrapper until now.
     // Also fires _onStackPowerChanged (2026-09-02) on a genuine nonzero change, unconditionally — every real
@@ -2814,9 +3025,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // Penalty field (none have an established combination rule yet — this is consistent with that, not a
     // confirmed pattern).
     public void AddAreaEffectSizePenalty(float amount) => currentState.areaEffectSizePenalty += amount;
-    // Plain +=, not ApplyStatChange — same reasoning as AddAreaEffectSizePercent: doesn't affect Max
-    // Health/Energy, so the before/after clamp recompute ApplyStatChange does would be pure overhead.
-    public void AddOuterXZMultiplierPercent(float amount) => currentState.outerXZMultiplierPercent += amount;
     public void AddHealthRegenFlat(float amount) => ApplyStatChange(() => currentState.bonusHealthRegenFlat += amount);
     // Conversion-source bookkeeping, not a real stat grant — see ConvertedHealthRegen's own doc comment. A
     // conversion augment that grants HealthRegen should call this alongside AddHealthRegenFlat, with the
@@ -2869,6 +3077,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // separate bonusHighrollPercent field instead, so a plain buff and a genuine Penalty-tier tradeoff can
     // never collide on the same tier.
     public void AddBonusHighrollPercent(float amount) => ApplyStatChange(() => currentState.bonusHighrollPercent -= amount);
+    // "Total Highroll CHANCE" tier — see the public totalHighrollChancePercent property's own doc comment
+    // for why this is a genuine += (unlike AddBonusHighrollPercent's -= above): this field scales the
+    // CHANCE directly, not the inverted raw threshold, so a plain additive buff here already moves the
+    // odds the RIGHT direction with no sign-flip needed.
+    public void AddTotalHighrollChancePercent(float amount) => ApplyStatChange(() => currentState.totalHighrollChancePercent += amount);
     public void AddCritChanceFlat(float amount) => ApplyStatChange(() => currentState.bonusCritChanceFlat += amount);
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent, for CritChance's own percent
     // multiplier. Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment
@@ -2950,10 +3163,15 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // total from 2x*2x) — the whole reason this stopped being a straight multiplier once a second caller
     // showed up. No paired Remove — nothing currently needs to revert a permanent pick's own grant.
     public void AddSurgeCostIncreasePercent(float amount) => ApplyStatChange(() => currentState.surgeCostIncreasePercent += amount);
-    // No augment touches this yet (2026-08-19, first writer is SurgeCostIncreaseAugment) — same
-    // multiplicative-compounding shape as MultiplyStrengthPenalty/MultiplyOnHitPowerPenalty, plain +=
-    // reasoning doesn't apply since this is a *Penalty-style field, not a bonusXPercent one.
-    public void MultiplySurgeAttackSpeedPenalty(float factor) => currentState.surgeAttackSpeedPenalty *= factor;
+    // Renamed from MultiplySurgeAttackSpeedPenalty, switched from *= to += (2026-10-02, explicit request) —
+    // this was the ONE inconsistent writer of this field: ApplyClassPassives' own p.surgeAttackSpeedBonusPercent
+    // grant already used += (see its own doc comment, "stays additive, matching every other *Penalty field's
+    // own convention in this sweep" — written back when this field still had the stale Penalty name), so the
+    // augment-side Multiply call was the actual outlier, not the other way around. Convention going forward:
+    // buffs on this field stack additively (two +15% picks = +30%, landing at 1.3), debuffs would stack
+    // multiplicatively if one is ever added — but none is planned, see surgeAttackSpeedBonusPercent's own
+    // doc comment for why this field is named as a pure buff now.
+    public void AddSurgeAttackSpeedBonusPercent(float amount) => ApplyStatChange(() => currentState.surgeAttackSpeedBonusPercent += amount);
     public void AddWeaponCountFlat(int amount) => ApplyStatChange(() => currentState.bonusWeaponCountFlat += amount);
     // Multiplicative compounding, same convention as MultiplyStrengthPenalty/MultiplyOnHitPowerMultiplier
     // — bonusWeaponCountMultiplier already sits in the WeaponCount formula (previously only ever touched by
@@ -2968,6 +3186,34 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // Unused for now — the planned OuterWeaponTrackAugment will call this. amount can be negative to
     // remove tracks (nothing currently does, but the direct += supports it symmetrically for free).
     public void AddWeaponTracks(int amount) => ApplyStatChange(() => currentState.weaponTracks += amount);
+    // Plain +=, not ApplyStatChange — same reasoning as AddAreaEffectSizePenalty: doesn't affect Max
+    // Health/Energy, so the before/after clamp recompute ApplyStatChange does would be pure overhead. Negative
+    // amount spends tokens (AugmentManagerPD.RequestReroll) — no clamping to 0 here, since every spend site is
+    // expected to have already checked RerollTokens > 0 first; a future caller that doesn't would just drive
+    // this negative, same "trust the call site" convention every other Add___ method in this class already
+    // uses (e.g. AddWeaponRangeScalingPenaltyPercent's own unclamped multiply).
+    public void AddRerollTokens(int amount) => currentState.rerollTokens += amount;
+    // Ability charge system — grants extra MaxCharges to whichever IAbilityPD implementer occupies this
+    // Slot. ApplyStatChange-wrapped (unlike the plain += above) since this is expected to be called from a
+    // real augment's OnApply(), the standard "one-shot grant at pick time" context every other simple flat
+    // Add method in this class already uses (e.g. AddMoveSpeedFlat) — not a Simulate()-adjacent edge-triggered
+    // call like AddRerollTokens is. Each ability's own Simulate() grants the newly-unlocked charge(s)
+    // immediately once it notices MaxCharges increased — nothing further needed here.
+    public void AddAbility1Charges(int amount) => ApplyStatChange(() => currentState.bonusAbility1Charges += amount);
+    public void AddAbility2Charges(int amount) => ApplyStatChange(() => currentState.bonusAbility2Charges += amount);
+    // Convenience dispatcher for an ability-SPECIFIC charge augment (e.g. RogueSpinChargeAugment) — resolves
+    // which of the two methods above actually matters by reading the target ability's own LIVE Slot, rather
+    // than the caller hardcoding an assumed slot number. That distinction matters: a hardcoded
+    // AddAbility1Charges() call in an augment meant for one specific ability would silently buff whichever
+    // OTHER ability actually occupies Ability1 the moment that specific ability gets reslotted onto
+    // Ability2 — self-correcting against that requires reading .Slot off the real component every time,
+    // which is exactly what this method exists to make a one-line call instead of a duplicated ternary in
+    // every such augment.
+    public void AddAbilityCharges(AbilitySlot slot, int amount)
+    {
+        if (slot == AbilitySlot.Ability1) AddAbility1Charges(amount);
+        else AddAbility2Charges(amount);
+    }
     // Multiplicative, not additive — bonusStrengthPenalty/bonusOnHitPowerPenalty both start at 1f and
     // apply as straight multipliers (Strength/OnHitPower), so stacking two -40% penalties correctly
     // compounds to 0.6 * 0.6 = 0.36 rather than clamping at 1 - 0.8 = 0.2. factor is what the penalty gets
@@ -2979,7 +3225,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // already sits in the Strength formula. Bonus tier — now only scales bonusStrengthFlat (see
     // Strength), not the whole stat; kept for ClassPassiveData/meta-progression.
     public void AddStrengthPercent(float amount) => ApplyStatChange(() => currentState.bonusStrengthPercent += amount);
-    // Total tier — e.g. KnightBigBuffAbilityPD's own temporary self-buff. Was ALSO used by
+    // Total tier — e.g. KnightBerserkAbilityPD's own temporary self-buff. Was ALSO used by
     // BladeweaviestBladeweaverAugment/MultiShotAugment/OuterTrackAugment/SurgeWeaponCountAugment/
     // WeaponCountAugment/BladeweaverStartingAugment as a "extra weapon copies, compensate with a damage
     // bonus" grant — removed from all of them (2026-08-19, see CharacterStatsPD.WeaponStrength's own doc
@@ -3024,7 +3270,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // WeaponCountAugment) — removed from all of them (2026-08-19, see AddStrengthTotalPercent's own doc
     // comment and CharacterStatsPD.WeaponStrength's for the full reasoning). No current caller; kept
     // available for a future genuine "+X% OnHitPower" effect, same role AddStrengthTotalPercent plays for
-    // KnightBigBuffAbilityPD.
+    // KnightBerserkAbilityPD.
     public void AddOnHitPowerTotalPercent(float amount) => ApplyStatChange(() => currentState.totalOnHitPowerPercent += amount);
     // Same MultiplyStrengthPenalty-style compounding convention — multiple spread-reducing sources
     // multiply together rather than summing (two -80% reductions compound to 0.2 * 0.2 = 0.04, not clamp
@@ -3155,8 +3401,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // Checked by EnemyBasePD.TakeDamage — see that method's own doc comment for the full condition. Two
     // independent tracks, each gated purely on its own threshold being above 0 — no separate enable bool:
     // a plain "any hit" execute (executeThreshold — ExeBigAxeAbilityPD's own temporary buff is the current
-    // consumer) and a crit-gated one (critExecuteThreshold, what CritExecuteAugment actually turns on by
-    // adding to it). Execute is just a cheap "does this attacker have EITHER threshold above 0 at all" gate,
+    // consumer) and a crit-gated one (critExecuteThreshold, what ExecutionerStartingAugment, renamed from
+    // CritExecuteAugment, actually turns on by adding to it). Execute is just a cheap "does this attacker
+    // have EITHER threshold above 0 at all" gate,
     // checked before either specific comparison runs.
     // In State, not plain fields — see the "Augment/bonus modifiers" section's own doc comment. No
     // zero-guard needed on either — 0f already IS both fields' correct neutral/"off" value.
@@ -3260,6 +3507,14 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     }
 
     private bool _bonusesApplied;
+    // Read by PlayerDataPD.UpdateView() (2026-09-22 fix) instead of that class keeping its own separate
+    // latch — see PlayerDataPD._bonusesApplied's own (removed) doc comment for the bug this closes: a
+    // separate flag on a DIFFERENT, stable identity doesn't reset if THIS object (the one actually being
+    // gated) ever gets destroyed/recreated by a PredictedHierarchy reconciliation, permanently skipping
+    // re-application for the replacement object. Reading this instance's own flag instead means a fresh
+    // object (fresh field, defaults to false) is correctly re-gated on its own, no separate bookkeeping
+    // needed.
+    public bool ProgressionBonusesApplied => _bonusesApplied;
     public void ApplyProgressionBonuses(ProgressionBonuses b)
     {
         if (_bonusesApplied) return;
@@ -3272,49 +3527,57 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         // reads as "how much bonus have I gained" — a large shop total (e.g. MaxHealth's own 50 across every
         // tier) was disproportionately inflating that readout relative to a stat with a much smaller shop
         // total (e.g. DashHaste's own 20), worth a wildly different number of "equivalent stat-augment levels"
-        // for two stats that should both just read as roughly comparable investments. Writing directly into
-        // the plain (non-State) base<Stat> field is safe here specifically because this whole method is
-        // already idempotency-guarded by _bonusesApplied above (itself a plain field) and only ever runs from
-        // Simulate() (non-owner, PlayerDataPD.Simulate) or UpdateView() (owner) at the exact moment this
-        // character first spawns — deterministic, identical on every machine (bonuses are computed from this
-        // player's own local save data and carried through synced Input, never recomputed remotely — see
-        // ComputeProgressionBonuses' own call sites), and never touched again afterward, so there's nothing
-        // for PurrDiction's own per-tick rollback/replay to need to restore a plain field for. DashHaste/
-        // AbilityHaste (currentState.dashHaste/abilityHaste) are DELIBERATELY left writing their existing
-        // State fields, not moved to a "base" field — neither stat has a separate percent-scaled bonus-flat
-        // layer sitting below it in the first place (dashHaste/abilityHaste themselves already ARE the
-        // pre-percent-multiplier additive value regular stat-augment picks ALSO write into — see
+        // for two stats that should both just read as roughly comparable investments. Those 8 base<Stat>
+        // fields write into their own State-backed progression<Stat> field now (2026-09-22 fix), NOT the
+        // plain Inspector field directly — this method used to argue writing the plain field was safe purely
+        // because it's idempotency-guarded and only ever runs once, at spawn, with the same deterministic
+        // result on every machine; that reasoning missed that a PLAIN field still doesn't survive a
+        // PredictedHierarchy reconciliation of this same character (e.g. a mispredicted hierarchy.Create() on
+        // some client getting rolled back and recreated) — the recreated object's plain fields reset to raw
+        // Inspector defaults, and PlayerDataPD's own owner-side apply path (UpdateView(), gated by ITS OWN
+        // separate one-shot _bonusesApplied flag) would never rerun to fix them back up, permanently losing
+        // every shop-purchased base stat on exactly the machine it matters most for. Same bug class as every
+        // other State migration in this file's "Augment/bonus modifiers" section. DashHaste/AbilityHaste
+        // (currentState.dashHaste/abilityHaste) are DELIBERATELY left writing their existing State fields,
+        // not moved to a "base" field — neither stat has a separate percent-scaled bonus-flat layer sitting
+        // below it in the first place (dashHaste/abilityHaste themselves already ARE the pre-percent-
+        // multiplier additive value regular stat-augment picks ALSO write into — see
         // EffectiveDashHaste/EffectiveAbilityHaste's own formulas), so there's no disproportionate-bonus-
         // readout risk to fix for either of them; they already behave exactly like every other stat below now
         // does. The remaining fields (EnergyRegen, XPRadius, MaxEnergy, DashCharges, LevelUpOptions,
-        // RevivePower, ReviveTimePenalty, XPMultiplier, TotalStrengthPercent, StrengthPerLevel, MaxShield,
-        // ShieldRechargeTime, MoveSpeedPercent) are the "more unique" upgrades explicitly left untouched —
-        // still writing their existing Bonus/Total tier exactly as before.
+        // RevivePower, ReviveTimePenalty, XPMultiplier, StrengthPerLevel, MaxShield, ShieldRechargeTime) are
+        // the "more unique" upgrades explicitly left untouched — still writing their existing Bonus/Total
+        // tier exactly as before. (TotalStrengthPercent/MoveSpeedPercent, also originally in this list, were
+        // scrapped entirely 2026-09-30 — see project_movespeed_bonus_percent_tier_removed memory.)
         ApplyStatChange(() =>
         {
-            baseStrength                            += b.strengthFlat;
-            baseMoveSpeed                            += b.moveSpeedFlat;
-            baseAttackSpeed                          += b.attackSpeedPct * baseAttackSpeed;
+            currentState.progressionStrength        += b.strengthFlat;
+            currentState.progressionMoveSpeed       += b.moveSpeedFlat;
+            currentState.progressionAttackSpeed     += b.attackSpeedPct * currentState.progressionAttackSpeed;
             currentState.bonusEnergyRegenFlat       += b.energyRegenFlat;
             currentState.dashHaste                  += b.dashHaste;
             currentState.abilityHaste                += b.abilityHaste;
-            baseCritChance                           += b.critChanceFlat;
+            currentState.progressionCritChance      += b.critChanceFlat;
             currentState.bonusXPRadiusFlat          += b.xpRadiusFlat;
-            baseWeaponRange                          += b.weaponRangeFlat;
+            currentState.progressionWeaponRange     += b.weaponRangeFlat;
             currentState.bonusMaxEnergyFlat         += b.maxEnergyFlat;
             currentState.dashCharges                += b.dashChargesBonus;
             currentState.levelUpOptions             += b.levelUpOptionsBonus;
             currentState.revivePower                += b.revivePower;
             currentState.reviveTimePenaltyReduction *= b.reviveTimePenaltyMult;
             currentState.xpMultiplier               += b.xpMultiplier;
-            baseMaxHealth                            += b.maxHealthFlat;
-            baseHealthRegen                          += b.healthRegenFlat;
-            currentState.totalStrengthPercent       += b.strengthTotalPercent;
-            baseLuck                                 += b.luckFlat;
+            currentState.progressionMaxHealth       += b.maxHealthFlat;
+            currentState.progressionHealthRegen     += b.healthRegenFlat;
+            currentState.progressionLuck            += b.luckFlat;
             currentState.strengthPerLevel           += b.strengthPerLevel;
             currentState.bonusMaxShieldAdditive     += b.maxShieldFlat;
             currentState.shieldRechargeTime         += b.shieldRechargeTime;
-            currentState.bonusMoveSpeedPercent      += b.moveSpeedBonusPercent;
+            currentState.rerollTokens                += b.rerollTokensBonus;
+            currentState.bonusSurgeMoveSpeedPenaltyFlat += b.surgeMoveSpeedPenaltyReductionBonus;
+            // Direct assignment, not += — an override value (6 - tier), not an additive delta. Safe as a
+            // flat overwrite since this whole block only ever runs once per character (ApplyProgressionBonuses'
+            // own _bonusesApplied one-shot guard).
+            currentState.rerollTokenLevelsPerGrant   = b.rerollTokenLevelsPerGrant;
         });
 
         // Not a stat add — activates the Death Prevention mechanic itself, same centralized entry point any
@@ -3333,7 +3596,22 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     // Called from GameManagerPD.UpdateView() once per level gained, off verified state only — never
     // from Simulate(), since bonus fields aren't part of predicted State and can't roll back on replay.
-    public void OnLevelUp() => ApplyStatChange(() => currentState.bonusStrengthFlat += strengthPerLevel);
+    public void OnLevelUp() => ApplyStatChange(() =>
+    {
+        currentState.bonusStrengthFlat += strengthPerLevel;
+
+        // "Reroll Tokens every X Levels" — see rerollTokenLevelsPerGrant's own doc comment. Guarded on > 0
+        // so this is a complete no-op for anyone who hasn't bought the (not-yet-existing) shop item.
+        if (currentState.rerollTokenLevelsPerGrant > 0)
+        {
+            currentState.rerollTokenLevelsElapsed++;
+            if (currentState.rerollTokenLevelsElapsed >= currentState.rerollTokenLevelsPerGrant)
+            {
+                currentState.rerollTokenLevelsElapsed = 0;
+                AddRerollTokens(1);
+            }
+        }
+    });
 
     // Whole-run bookkeeping only, one field per StatType ApplySingleStatEntry below actually handles — the
     // literal amount ever added to that field via a stat-augment pick, nothing more (not the individual
@@ -3410,8 +3688,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         ApplyStatChange(() =>
         {
             currentState.bonusMoveSpeedFlat              += p.bonusMoveSpeedFlat;
-            currentState.bonusMoveSpeedPercent           += p.bonusMoveSpeedPercent;
-            currentState.moveSpeedPenalty                += p.moveSpeedPenalty;
             currentState.totalMoveSpeedPercent += p.totalMoveSpeedPercent;
             currentState.totalMoveSpeedPenalty           += p.totalMoveSpeedPenalty;
 
@@ -3496,10 +3772,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
             currentState.bonusSurgeCostFlat              += p.bonusSurgeCostFlat;
             // Multiplicative, not additive — same reasoning as damageReductionPercent's own treatment just
             // below (each contributing class-passive tier compounds against the REMAINING cost fraction, so
-            // 0 cost can never be reached purely from stacking many small per-level grants). surgeAttackSpeedPenalty
-            // stays additive, matching every other *Penalty field's own convention in this sweep.
+            // 0 cost can never be reached purely from stacking many small per-level grants).
+            // surgeAttackSpeedBonusPercent stays additive (renamed 2026-10-02, was surgeAttackSpeedPenalty —
+            // see its own doc comment) — this line was always correct; the augment-side mutator was the one
+            // that used to disagree with it.
             currentState.surgeCostReductionPercent       *= (1f - p.surgeCostReductionPercent);
-            currentState.surgeAttackSpeedPenalty         += p.surgeAttackSpeedPenalty;
+            currentState.surgeAttackSpeedBonusPercent    += p.surgeAttackSpeedBonusPercent;
 
             currentState.dashHaste                       += p.dashHaste;
             currentState.bonusDashHastePercent           += p.bonusDashHastePercent;
@@ -3956,20 +4234,25 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
         // DodgeOnHighrollAugment's own mechanic — rolls HighrollChance (2026-09-13 fix — was plain LuckChance,
         // which doesn't depend on the Highroll threshold at all and would have made AddHighrollPenalty-based
-        // augments, LuckHighRollAugment/this augment's own +3% included, silently do nothing to this check's
+        // augments, LuckHighRollAugment/this augment's own +2.5% included, silently do nothing to this check's
         // odds; HighrollChance = (1-Highroll)/(1-LuckChance) is the exact probability
         // WeaponDamageMath.RollDamage's own roll >= highrollThreshold check resolves to, derived directly from
-        // its math — see that method's own doc comment). A successful roll negates this hit entirely — no
-        // shield/health touched, no _onDamaged/_onLethalDamageTaken, nothing below this block ever runs — and
-        // fires the SAME _onDodge event the dash-invincibility dodge path uses, so the status popup and every
-        // OnDodge* augment (GainCritChance/GainAttackSpeed/HealHealthRegen/ReduceAbilityCD/ReduceDashCD)
-        // benefit from this too. Invoked directly, NOT through NotifyDodge() itself — that method's own
-        // dodgedThisMovement guard is specifically an artifact of "once per DASH activation" (see its own doc
-        // comment) and would incorrectly suppress a highroll-dodge landing outside any dash window, or a
-        // second one before a fresh dash ever resets that guard. Deliberately NOT gated on isPleb/
-        // isPassiveContact (explicit user request) unlike the dash-dodge path above — this should trigger on
-        // ANY damage-taken instance, Pleb/passive-contact included.
-        if (currentState.dodgeOnHighrollEnabled && GameRandom.instance.NextFloat() < HighrollChance)
+        // its math — see that method's own doc comment). DOUBLED here (2026-09-26, explicit user request —
+        // "roll luck with doubled highroll chance") — HighrollChance already has Luck baked into its own
+        // formula above, so this is genuinely "roll luck," just at 2x odds specifically for this dodge check,
+        // clamped to 1 the same way every other Luck-scaled proc chance in this codebase clamps its own
+        // multiplied result (same "Min(base*multiplier,1f)" shape Luck-scaled proc chances use elsewhere in
+        // this codebase). A successful roll negates this hit
+        // entirely — no shield/health touched, no _onDamaged/_onLethalDamageTaken, nothing below this block
+        // ever runs — and fires the SAME _onDodge event the dash-invincibility dodge path uses, so the status
+        // popup and every OnDodge* augment (GainCritChance/GainAttackSpeed/HealHealthRegen/ReduceAbilityCD/
+        // ReduceDashCD) benefit from this too. Invoked directly, NOT through NotifyDodge() itself — that
+        // method's own dodgedThisMovement guard is specifically an artifact of "once per DASH activation"
+        // (see its own doc comment) and would incorrectly suppress a highroll-dodge landing outside any dash
+        // window, or a second one before a fresh dash ever resets that guard. Deliberately NOT gated on
+        // isPleb/isPassiveContact (explicit user request) unlike the dash-dodge path above — this should
+        // trigger on ANY damage-taken instance, Pleb/passive-contact included.
+        if (currentState.dodgeOnHighrollEnabled && GameRandom.instance.NextFloat() < Mathf.Min(HighrollChance * 2f, 1f))
         {
             _onDodge.Invoke();
             return;
@@ -4191,7 +4474,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // Direct, unmodified energy WRITE (sets the absolute value, not a delta) — deliberately bypasses
     // EVERYTHING GainEnergy() applies: bonusEnergyGainPercent (every energy-gain modifier funnels through
     // that one multiplier) AND the forcedSurge gate that blocks GainEnergy() outright during a Berserk Surge.
-    // Added 2026-09-17 for KnightBigBuffAbilityPD's own energy-snapshot-and-refund redesign — the ability
+    // Added 2026-09-17 for KnightBerserkAbilityPD's own energy-snapshot-and-refund redesign — the ability
     // snapshots CurrentEnergy at cast, then calls this with that same snapshotted value when the buff ends
     // (any end path), so the player gets back EXACTLY what they had before, immune to any energy-gain
     // modifier gained/lost in between (per explicit design — this is a refund of energy already spent, not a

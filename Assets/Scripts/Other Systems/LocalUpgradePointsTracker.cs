@@ -58,10 +58,22 @@ public class LocalUpgradePointsTracker : MonoBehaviour
 
     // Safe to call directly from anywhere, anytime (including a plain NetworkIdentity's RPC handler) —
     // this is plain, synchronous, non-networked code with no tick/rollback timing to worry about.
+    //
+    // Carries the rounding remainder forward instead of discarding it (2026-09-26) — was
+    // `ProgressionManager.CommitPoints((long)Mathf.Round(_pendingPoints)); _pendingPoints = 0f;`, which
+    // rounded-then-ZEROED every flush, silently dropping whatever fraction didn't round up. Harmless while
+    // every enemy's points value happened to net out to whole numbers per flush, but becomes a real,
+    // repeated (every flushInterval, for the whole run) point loss/gain once fractional totals are common
+    // (e.g. a lower pointsTierGrowth). Subtracting only the committed whole-number amount back out of
+    // _pendingPoints means any leftover fraction rolls into the next flush's total instead of vanishing —
+    // same "recompute fully, only apply/consume the resolved delta" shape AugmentEffectPD's own
+    // UpdateView()-deferred Heal() pattern already uses for float precision safety.
     public void Flush()
     {
         if (_pendingPoints <= 0f) return;
-        ProgressionManager.CommitPoints((long)Mathf.Round(_pendingPoints));
-        _pendingPoints = 0f;
+        long toCommit = (long)Mathf.Round(_pendingPoints);
+        if (toCommit <= 0) return;
+        ProgressionManager.CommitPoints(toCommit);
+        _pendingPoints -= toCommit;
     }
 }

@@ -171,6 +171,10 @@ public interface IEnemyPD
     // multiplier is how much of normal move speed remains while active (e.g. 0.5 = half speed), not a
     // separate "50% slower" subtraction — see EnemyBasePD.Slow()/EffectiveMoveSpeed's own doc comments.
     void Slow(float multiplier, float duration);
+    // Bleed status (2026-10-06, ExeBigAxeBleedAugment) — bucket model, adds damagePerSecond into a running
+    // total and refreshes the shared duration — see EnemyBasePD.ApplyBleed's own doc comment for the full
+    // mechanism.
+    void ApplyBleed(float damagePerSecond, float duration, PlayerID attacker);
     // Cancels this enemy's current active-attack-sequence (if any) outright and returns it to Moving/idle —
     // see EnemyBasePD.Interrupt()'s own doc comment. Call this BEFORE a paired Stun()/AddKnockbackVelocity
     // on the same hit (e.g. AreaEffectCastHelper's own interrupt param), never after — see Interrupt()'s
@@ -465,7 +469,31 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // application).
     public float slowTimer;
     public float slowMultiplier;
+    // Bleed status (2026-10-06, ExeBigAxeBleedAugment) — the first ticking damage-over-time status in this
+    // codebase. Bucket model, same "single shared timer, not independent per-stack decay" shape Slow above
+    // already established for "can this enemy carry multiple sources of one effect at once": every new
+    // stack ADDS its own already-fully-resolved per-second rate into bleedDamagePerSecond (never replacing
+    // it, so stacks compound without limit) and REFRESHES bleedTimer to the fixed duration via Mathf.Max
+    // (never extends/stacks the duration itself, same as slowTimer's own "never shortens what's already
+    // active" semantics) — see EnemyBasePD.ApplyBleed's own doc comment for the full mechanism and why a
+    // genuinely unbounded number of INDEPENDENTLY-expiring stacks isn't representable in fixed
+    // PredictedIdentity State at all. The whole accumulator resets to 0 together once bleedTimer actually
+    // expires — no per-stack independent decay, an accepted simplification (same class of tradeoff as
+    // RogueSpinAttackSpeedAugment's own hard-capped stacking, just solved the opposite way: uncapped count,
+    // simplified decay, instead of capped count with true independent decay).
+    public float bleedDamagePerSecond;
+    public float bleedTimer;
+    // Kill-credit/attacker attribution for bleed tick damage — "most recent stack wins," same accepted
+    // "last contributor" limitation as MortarGloomPD.pendingHazardId/ArcherArrowRainAbilityPD.activeChainId
+    // — the bucket model merges potentially-different-players' stacks (4-player co-op) into one shared
+    // rate with no per-stack attacker tracking, so there's no way to attribute each tick's damage to
+    // "whichever player's stack happens to be ticking right now" even in principle.
+    public PlayerID bleedAttacker;
     public bool atPreferredRange;
+    // Rolled once per spawn (LateAwake, alongside separationCheckTimer/personalPushAngle above) via
+    // GameRandom, not re-rolled per strafe — same "decide once, use for the whole lifetime" reasoning those
+    // two already use. See HandleMovement's own radial-strafe doc comment for how this is consumed.
+    public bool strafeClockwise;
     // Hard gate on HandleMovement — see IEnemyPD.SetMovementDisabled's own doc comment for the full
     // reasoning (why this exists, who's expected to call it, and what it does/doesn't affect).
     public bool movementDisabled;
@@ -629,6 +657,41 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // same class of bug found elsewhere in the v0.3 audit this was raised alongside.
     public Vector3 separationPush;
 
+    // Runtime-scaled combat stats — written by ConfigureSpawn (and, for scaledMoveSpeed, also
+    // KingSpikePD's own Moving/ChargeWindup speed-boost logic) from the plain authored maxHealth/moveSpeed/
+    // attackSpeed/damage fields below, which stay untouched read-only design-time baselines forever now
+    // (never multiplied in place). These 4 live in State specifically because a plain field mutated outside
+    // Simulate()/State only ever takes effect on whichever single machine actually ran that mutation — any
+    // enemy instance created on another machine via PredictedHierarchy reconciling a misprediction (rather
+    // than that machine's own local spawner call) would silently keep the prefab's unscaled defaults
+    // forever otherwise. Being in State means normal PurrDiction State replication/rollback-correction
+    // keeps every machine's copy correct regardless of which machine actually computed it — see
+    // project_spikeshield_instance_id_collision_bug memory for a confirmed real-world case of exactly this
+    // kind of reconciliation happening. MaxHealth/EffectiveMoveSpeed/EffectiveAttackSpeed/GetOwnDamage all
+    // read these instead of the plain fields now (2026-09-22).
+    public float scaledMaxHealth;
+    public float scaledMoveSpeed;
+    public float scaledAttackSpeed;
+    public float scaledDamage;
+    // Same reasoning as the 4 above (2026-09-22 follow-up pass) — xpValue/pointsValue are read directly at
+    // the moment of death (Die()/the verified-death block), a plain field would silently stay unscaled on
+    // any machine that never itself ran ConfigureSpawn for this instance.
+    public float scaledXpValue;
+    public float scaledPointsValue;
+    // Which category/tier this enemy was spawned as — live in State, not a plain field (2026-09-22 follow-
+    // up), for the same reconciliation reason as the fields above: ConfigureSpawn() only ever runs on
+    // whichever machine actually made the spawn decision, so on a machine where this enemy was instead
+    // created by PredictedHierarchy reconciling a misprediction, a plain field would silently stay at its
+    // default (Normal/tier 1) forever. This one has a wider, more serious blast radius than the stat fields
+    // above: EnrageMoveSpeedMultiplier/EnrageDamageMultiplier and the enrage-timer tick in Simulate() are
+    // ALL gated on spawnCategory == Boss, so a reconciled boss would silently never enrage at all on that
+    // machine — confirmed while investigating a user report that tier coloring wasn't replicating either
+    // (ApplyTierMaterials/ApplyTierNamePrefix have the identical gap, see UpdateView's own re-apply fix).
+    // Stored as int, cast at each read site — same convention orbitPhase/stateId-style fields already use
+    // for enums in this struct.
+    public int spawnCategoryRaw;
+    public int spawnTier;
+
     // Lets the packer duplicate this struct via a direct field-copy during snapshot/history/rollback
     // operations instead of falling back to a full serialize/deserialize round-trip — see
     // purrnet.dev/docs/client-side-prediction/disposable-collections. With potentially 50-100+ enemies
@@ -693,6 +756,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public float preferredRange = 0f;
     public float rangeToleranceFar = 0.3f;
     public float rangeToleranceClose = 0.3f;
+    // true (default): an enemy settled at preferred range radially strafes instead of standing fully still —
+    // see HandleMovement's own doc comment. false: reverts to the pre-2026-09-30 "stand still" behavior,
+    // per-prefab opt-out for enemies that should still hold position (e.g. a turret-like enemy where strafing
+    // would look wrong).
+    public bool canStrafe = true;
     public float damage = 10f;
     [NonSerialized] public float baseDamage;
     public float xpValue = 1f;
@@ -825,8 +893,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // stun" — even a heavily CC-resistant enemy still eats the full flat duration), only stunResistant/death
     // still block it entirely, same as every other stun channel.
     // Identical across every enemy prefab — never tuned per-enemy, so it's a constant rather than an
-    // Inspector field.
-    private const float InterruptTrueStunDuration = 2f;
+    // Inspector field. 2 -> 5 (2026-09-30).
+    private const float InterruptTrueStunDuration = 5f;
     public bool showDamageNumbers = true;
     // sizeYOffset/sizeZOffset (per-enemy manual damage-number spawn nudge) removed (2026-08-19) —
     // DamageNumberManager.Spawn now scales its own spawn height automatically off IEnemyPD.Size instead
@@ -963,7 +1031,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // base.EffectiveMoveSpeed * ..., without duplicating HandleMovement's own force/rotation code or
     // mutating the plain moveSpeed field directly every phase transition. Any such subclass override
     // automatically picks up EnrageMoveSpeedMultiplier below for free, since it's baked into the base call.
-    public virtual float EffectiveMoveSpeed => moveSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f) * EnrageMoveSpeedMultiplier;
+    public virtual float EffectiveMoveSpeed => B.scaledMoveSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f) * EnrageMoveSpeedMultiplier;
     // 1f (no bonus) for every non-Boss enemy — B.enrageMoveSpeedStacks only ever increments under the
     // spawnCategory == EnemySpawnCategory.Boss gate in Simulate(). The b.enraged term is the one-time
     // "Initial" burst (EnrageInitialMoveSpeedPercent) that lands the instant enrage triggers, on top of
@@ -983,7 +1051,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // (e.g. KingSpikePD's SpikeBurstWindup) achieves that simply by never reading this property for that
     // phase's own timer, same as every other CC exception in this codebase (isStunnable toggling,
     // CanBeInterrupted overrides) is a concrete, situated decision rather than a cross-cutting bool.
-    public float EffectiveAttackSpeed => attackSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f);
+    public float EffectiveAttackSpeed => B.scaledAttackSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f);
     public bool _isDead => B.isDead;
     public bool WasKilledByCrit => B.killedByCrit;
     public bool WasKilledByHighroll => B.killedByHighroll;
@@ -996,13 +1064,24 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Which spawn-cap bucket this instance counts against — set by whichever spawner created it via
     // ConfigureSpawn(), not authored per-prefab (a single prefab can be spawned as different categories
     // by different spawn calls, e.g. the same enemy used as both a tier's normal and elite variant).
-    [NonSerialized] public EnemySpawnCategory spawnCategory = EnemySpawnCategory.Normal;
+    // Backed by State (2026-09-22, was [NonSerialized] plain field) — see EnemyBaseState.spawnCategoryRaw's
+    // own doc comment for why (boss enrage silently never activating on a reconciled client).
+    public EnemySpawnCategory spawnCategory
+    {
+        get => (EnemySpawnCategory)B.spawnCategoryRaw;
+        private set => B.spawnCategoryRaw = (int)value;
+    }
     // The tier NUMBER this enemy was spawned at (1, 2, 3, ...), set alongside spawnCategory by
     // ConfigureSpawn() — read by Die()'s own XP orb spawn (XPOrbManagerPD.SpawnOrbs) to pick the right
     // tier's orb prefab. Deliberately captured at spawn time rather than re-derived from the spawner's
     // CURRENT tier at death time — this specific enemy could still be alive well after the spawner has
-    // advanced past the tier it actually spawned in.
-    [NonSerialized] public int spawnTier = 1;
+    // advanced past the tier it actually spawned in. Backed by State (2026-09-22, was [NonSerialized] plain
+    // field) — same reasoning as spawnCategory above.
+    public int spawnTier
+    {
+        get => B.spawnTier;
+        private set => B.spawnTier = value;
+    }
 
     // Threat Level 5 ("enemies attack 50% more often", nerfed 2026-09-01 from "twice as often") — set by
     // ConfigureSpawn() from EnemySpawnerPD's own threatLevel5AttackCooldownMultiplier (0.75f once difficulty
@@ -1042,7 +1121,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // else) composes automatically into this base implementation, but a subclass override REPLACES this
     // entirely rather than calling base — see KingSpikePD's own override for why it multiplies by
     // EnrageDamageMultiplier itself instead of inheriting it for free.
-    protected virtual float GetOwnDamage() => damage * EnrageDamageMultiplier;
+    protected virtual float GetOwnDamage() => B.scaledDamage * EnrageDamageMultiplier;
 
     // See IEnemyPD.SetDamageOverride's own doc comment. false ignores `damage` entirely (and zeroes the
     // stored value — nothing reads it while damageOverridden is false, but zeroing avoids a stale non-zero
@@ -1073,18 +1152,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Simulate() -> DoPhysicsPass() -> LateSimulate() for a given tick regardless of exactly when read.
     private float _currentDelta;
 
-    // Captured EXACTLY once, in Awake() — see that method's own comment for why this exists and the bug it
-    // fixes (ConfigureSpawn's multipliers compounding across pooled reuse). baseHealth/baseDamage/
-    // baseMoveSpeed/baseXpValue are NOT a safe substitute for this despite the similar name: those get
-    // multiplied by ConfigureSpawn too, so they're just as contaminated by a previous pooled life as
-    // maxHealth/damage/moveSpeed/xpValue themselves are.
-    private float _authoredMaxHealth;
-    private float _authoredDamage;
-    private float _authoredMoveSpeed;
-    private float _authoredAttackSpeed;
-    private float _authoredXpValue;
-    private float _authoredPointsValue;
-    // Same reasoning, for the plain (un-prefixed) name — ApplyTierNamePrefix would otherwise stack another
+    // No _authoredMaxHealth/_authoredDamage/_authoredMoveSpeed/_authoredAttackSpeed/_authoredXpValue/
+    // _authoredPointsValue snapshots anymore (2026-09-22) — maxHealth/damage/moveSpeed/attackSpeed/xpValue/
+    // pointsValue themselves are all pristine read-only authored baselines now (ConfigureSpawn writes each
+    // scaled result into State instead, see scaledMaxHealth's own doc comment), so there's nothing left for
+    // a snapshot-and-reset to protect for any of them — baseHealth/baseDamage/baseMoveSpeed/baseXpValue/
+    // basePointsValue reset straight off the now-pristine plain fields every pooled reuse instead (see
+    // LateAwake()).
+    //
+    // enemyName is a different case — ApplyTierNamePrefix would otherwise stack another
     // tier prefix onto whatever the PREVIOUS life's prefixed name already was (e.g. "Doom Gloom Blitz") on a
     // pooled reuse, or attach the wrong tier's prefix if a slot's tier changed between lives.
     private string _authoredEnemyName;
@@ -1109,6 +1185,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // each tier's shellMaterial here.
     private Renderer _invulnerableShellRenderer;
     private Color[] _originalColors;
+    // Edge-detects viewB.spawnTier in UpdateView() so ApplyTierMaterials/ApplyTierNamePrefix (both otherwise
+    // only ever called once, from ConfigureSpawn(), which doesn't run on every machine — see
+    // EnemyBaseState.spawnCategoryRaw's own doc comment) get re-applied on any machine where spawnTier's own
+    // State-replicated correction lands after this GameObject already exists. int.MinValue sentinel (not 0
+    // or 1) so even a genuinely-tier-1 spawn's first UpdateView call re-applies once, matching what
+    // ConfigureSpawn already did there — harmless, just confirms the materials/name are already right.
+    private int _lastAppliedTier = int.MinValue;
     private bool  _wasDeadLastFrame;
     // Same edge-detect role as _wasDeadLastFrame, for SilentDespawn's own ActiveCount/category decrement —
     // kept fully separate since isDead/wiped are mutually exclusive outcomes for a given life, never both.
@@ -1174,7 +1257,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // LocalUIManagerPD.UpdateBossHealthBars) only ever reads this for actual bosses anyway.
     public float EnrageProgress => spawnCategory != EnemySpawnCategory.Boss ? 0f : Mathf.Clamp01(_verifiedEnrageCountdown / EnrageTimer);
 
-    public float MaxHealth => maxHealth;
+    public float MaxHealth => B.scaledMaxHealth;
 
     public float XpValue => xpValue;
     public float PointsValue => pointsValue;
@@ -1189,6 +1272,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         var s = default(TState);
         ref var b = ref GetBase(ref s);
         b.health = maxHealth;
+        // Tier-1/no-scaling baseline — ConfigureSpawn overwrites these with the real scaled values right
+        // after Create() returns, on whichever machine actually spawns this. See scaledMaxHealth's own doc
+        // comment for why these 4 need to be here at all.
+        b.scaledMaxHealth   = maxHealth;
+        b.scaledMoveSpeed   = moveSpeed;
+        b.scaledAttackSpeed = attackSpeed;
+        b.scaledDamage      = damage;
+        b.scaledXpValue     = xpValue;
+        b.scaledPointsValue = pointsValue;
+        b.spawnCategoryRaw  = (int)EnemySpawnCategory.Normal;
+        b.spawnTier         = 1;
         b.contactCooldowns = DisposableList<ContactCooldown>.Create(4);
         b.killLaunchHitIds = DisposableList<PredictedObjectID>.Create(4);
         b.enrageCountdown = EnrageTimer;
@@ -1219,16 +1313,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
 
         // Guaranteed pristine — Awake() runs exactly once per real GameObject, before hierarchy.Create() has
-        // ever returned to a spawner, so nothing has called ConfigureSpawn yet. See these 5 fields' own doc
-        // comment for why LateAwake() (which DOES re-fire on every pooled reuse) resets maxHealth/damage/
-        // moveSpeed/xpValue/enemyName back to these every life, instead of just trusting whatever they
-        // currently hold.
-        _authoredMaxHealth   = maxHealth;
-        _authoredDamage      = damage;
-        _authoredMoveSpeed   = moveSpeed;
-        _authoredAttackSpeed = attackSpeed;
-        _authoredXpValue     = xpValue;
-        _authoredPointsValue = pointsValue;
+        // ever returned to a spawner, so nothing has scaled anything (or reassigned enemyName) yet.
         _authoredEnemyName = enemyName;
         isStunnable = !stunResistant;
 
@@ -1274,31 +1359,37 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     protected override void LateAwake()
     {
-        // Reset to the true prefab-authored baseline BEFORE anything below reads maxHealth/damage/
-        // moveSpeed/xpValue/pointsValue, and BEFORE the spawner's own ConfigureSpawn() call (which always
-        // runs after LateAwake(), once hierarchy.Create() returns) gets a chance to multiply them again —
-        // LateAwake() re-fires on every pooled reuse (unlike Awake(), which only captured
-        // _authoredMaxHealth/etc. once), so without this, a pooled slot's stats compounded further every
-        // time it got reused (e.g. a Tier 2 enemy reading 750, then 3750, health across successive lives
-        // instead of a stable 150 — see _authoredMaxHealth's own doc comment for the full bug).
-        // baseHealth/baseDamage/baseMoveSpeed/baseXpValue/basePointsValue reset here too, for the same
-        // reason — they're just as multiplied/contaminated by a previous life's ConfigureSpawn call as the
-        // main fields are.
-        maxHealth     = _authoredMaxHealth;
-        damage        = _authoredDamage;
-        moveSpeed     = _authoredMoveSpeed;
-        attackSpeed   = _authoredAttackSpeed;
-        xpValue       = _authoredXpValue;
-        pointsValue   = _authoredPointsValue;
-        baseHealth    = _authoredMaxHealth;
-        baseDamage    = _authoredDamage;
-        baseMoveSpeed = _authoredMoveSpeed;
-        baseXpValue   = _authoredXpValue;
-        basePointsValue = _authoredPointsValue;
+        // baseHealth/baseDamage/baseMoveSpeed/baseXpValue/basePointsValue reset straight off maxHealth/
+        // damage/moveSpeed/xpValue/pointsValue themselves every pooled reuse (2026-09-22) — those 6 plain
+        // fields are pristine read-only authored baselines forever now (see scaledMaxHealth's own doc
+        // comment), so they're already exactly what a fresh reset needs, no _authoredX snapshot required.
+        // enemyName is the one field here that genuinely still needs its own _authoredEnemyName snapshot —
+        // it's not numeric scaling, ApplyTierNamePrefix reassigns it outright.
+        baseHealth    = maxHealth;
+        baseDamage    = damage;
+        baseMoveSpeed = moveSpeed;
+        baseXpValue   = xpValue;
+        basePointsValue = pointsValue;
         enemyName     = _authoredEnemyName;
 
         ActiveCount++;
-        AdjustCategoryCount(spawnCategory, +1);
+        // Hardcoded Normal, NOT the spawnCategory property (2026-09-23 fix — the actual cause of Pleb/all-
+        // category spawn-cap counters silently leaking since the spawnCategory State migration). Framework
+        // ordering, confirmed via PurrDiction source (PredictedIdentityStatefull.Setup() -> base.Setup(),
+        // which is what fires LateAwake() -> THEN fullPredictedState.state = GetInitialState()): LateAwake()
+        // runs BEFORE GetInitialState() resets currentState for this life. On a pooled reuse, spawnCategory
+        // (now State-backed) still reads whatever this instance's PREVIOUS life left it at — for Spike,
+        // always Pleb — so this used to bump ActivePlebCount directly using stale data. GetInitialState()
+        // then resets spawnCategoryRaw back to Normal moments later, and ConfigureSpawn() (called by the
+        // spawner right after) sees category != spawnCategory (Pleb != freshly-reset Normal) and does ITS
+        // OWN correction on top — net +2 for the real category, only ever -1 on death: a permanent +1 leak
+        // per pooled reuse, on every category (fastest/most visible on Pleb since it's spawned far more
+        // often than anything else). Before the migration this was harmless — spawnCategory was a plain
+        // field, equally stale at both read sites, so they always matched and ConfigureSpawn's own check
+        // correctly no-op'd. Hardcoding Normal here restores that symmetry: this bump now always matches
+        // what GetInitialState() is guaranteed to reset spawnCategoryRaw to right after, so ConfigureSpawn's
+        // own "category != spawnCategory" check is correct again regardless of pooling history.
+        AdjustCategoryCount(EnemySpawnCategory.Normal, +1);
         _verifiedHealth = maxHealth;
 
         if (_contactDamageCollider != null && _contactDamageCollider.TryGetComponent(out PredictedPhysicsCallbacks callbacks))
@@ -1326,6 +1417,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ref var declumpState = ref GetBase(ref currentState);
         declumpState.separationCheckTimer = GameRandom.instance.Next(0, SeparationCheckInterval);
         declumpState.personalPushAngle    = GameRandom.instance.NextFloat(0f, 360f);
+        // Radial strafe direction — rolled once here too, same "decide once, use for the whole lifetime"
+        // reasoning, so every enemy doesn't orbit the same way (looked unnatural when it was fixed). See
+        // HandleMovement's own doc comment.
+        declumpState.strafeClockwise = GameRandom.instance.NextFloat() < 0.5f;
 
         EnemySpawnerPD.instance?.RegisterEnemy(this);
     }
@@ -1348,8 +1443,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     private void OnStatusPopup(StatusPopupData data) =>
         DamageNumberManager.instance?.SpawnStatusOnEnemy(data.kind, this, data.customMessage, data.colorOverride);
 
-    private void NotifyStatusPopup(DamageNumberManager.StatusPopupKind kind) =>
+    // Plebs never show status popups (Executed/Stun/Slowed/Interrupted) — explicit user request, damage
+    // numbers for them stay untouched (a completely separate path, TriggerHitFeedback/ShowDamageNumber, never
+    // routes through this method at all). Gated here, not at each of the 4 call sites, so this stays correct
+    // regardless of which status ever gets added later. Skips firing _onStatusPopup entirely rather than
+    // gating inside OnStatusPopup's own listener — no point paying for a PredictedEvent invoke nothing will
+    // ever visually react to.
+    private void NotifyStatusPopup(DamageNumberManager.StatusPopupKind kind)
+    {
+        if (spawnCategory == EnemySpawnCategory.Pleb) return;
         _onStatusPopup.Invoke(new StatusPopupData { kind = kind, customMessage = null, colorOverride = null });
+    }
 
     private void OnContactTrigger(GameObject other)
     {
@@ -1447,6 +1551,12 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             hasLastKnownTargetPosition = false;
             _offsetChaseTrackedTarget = null;
             _offsetChaseTrackedLastKnownPosition = default;
+            // Forces the very first UpdateView() this life to re-apply tier materials/name regardless of
+            // what _lastAppliedTier happened to be left at by whatever PREVIOUS life last used this exact
+            // pooled GameObject — without this, a fresh life that coincidentally shares its predecessor's
+            // tier number would silently skip re-application, which matters specifically for a machine where
+            // ConfigureSpawn() itself never runs this life (see _lastAppliedTier's own doc comment).
+            _lastAppliedTier = int.MinValue;
             _wasDeadLastFrame = false;
             b.wiped = false;
             _wasWipedLastFrame = false;
@@ -1552,6 +1662,22 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // Independent of stunTimer below — a slow still counts down while stunned (see the field's own doc
         // comment), unlike trueStunTimer which only ticks inside the stun branch itself.
         if (b.slowTimer > 0f) b.slowTimer -= delta;
+
+        // Bleed tick (2026-10-06, ExeBigAxeBleedAugment) — see State.bleedDamagePerSecond's own doc
+        // comment for the bucket mechanism. Continuous, delta-scaled damage every tick rather than
+        // discrete periodic pulses — mathematically the same total damage over the bleed's lifetime,
+        // simpler (no second tick-interval timer needed), and safe to call TakeDamage directly here since
+        // this is a same-identity mutation (the enemy damaging itself from its own Simulate()), not a
+        // cross-identity call — none of the deferred-delta/UpdateView dance a cross-identity DoT-style
+        // accumulator would need. Independent of stunTimer/slowTimer — bleed is pure damage, not a CC
+        // effect, so it ticks through a stun exactly like it would through anything else.
+        if (b.bleedTimer > 0f)
+        {
+            b.bleedTimer -= delta;
+            if (b.bleedDamagePerSecond > 0f)
+                TakeDamage(b.bleedDamagePerSecond * delta, isCrit: false, b.bleedAttacker);
+            if (b.bleedTimer <= 0f) b.bleedDamagePerSecond = 0f;
+        }
 
         if (b.stunTimer > 0f)
         {
@@ -1847,6 +1973,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // visibility instead of leaving a ghost.
         ref var viewB = ref GetBase(ref viewState);
 
+        // Self-healing tier material/name-prefix application — see _lastAppliedTier's own doc comment for
+        // why this can't just be the one ConfigureSpawn()-time call it used to be alone.
+        if (viewB.spawnTier != _lastAppliedTier)
+        {
+            _lastAppliedTier = viewB.spawnTier;
+            ApplyTierMaterials(viewB.spawnTier);
+            ApplyTierNamePrefix(viewB.spawnTier);
+        }
+
         // Unconditional, no edge-detect — SetActive on an already-matching value is a cheap no-op, same
         // precedent as CharacterStatsPD._invincibilityShell's own identical toggle.
         if (invulnerableShell != null) invulnerableShell.SetActive(viewB.invulnerable);
@@ -2023,7 +2158,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
                 CharacterStatsPD.All.TryGetValue(vb.killerOwner, out var killer);
                 CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
-                if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(pointsValue);
+                if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(vb.scaledPointsValue);
             }
 
             // Deletion re-checked every tick once verified-dead (not just on the edge above) so it
@@ -2220,6 +2355,18 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         FindClosestTarget();
     }
 
+    // Radial strafe (2026-09-30) — an enemy at OR CLOSER than preferred range orbits its target (direction
+    // rolled once per spawn — see EnemyBaseState.strafeClockwise's own doc comment; a fixed direction for
+    // every enemy looked unnatural) instead of standing fully still — replaces the old backpedal/retreat
+    // logic entirely (see the "too close" comment above HandleMovement's own preferredRange block), most
+    // visible on long-lived enemies like King Orbiter. Per-prefab opt-out via canStrafe, for enemies that
+    // should still hold position. A flat, LOCAL multiplier applied only to this force's own magnitude below —
+    // deliberately NOT written back into scaledMoveSpeed/EffectiveMoveSpeed itself, so nothing else that
+    // reads EffectiveMoveSpeed (dash speed multipliers, etc.) is affected by the strafe being slow. Not
+    // exposed for per-prefab tuning — same "hidden movement infrastructure constant" convention
+    // SeparationForceBaselineMoveSpeed already uses.
+    private const float StrafeSpeedPercent = 0.25f;
+
     protected virtual void HandleMovement(ref TState state, float delta)
     {
         if (_target == null) return;
@@ -2274,25 +2421,41 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         if (preferredRange > 0)
         {
-            if (b.atPreferredRange)
+            // Strafe now covers the WHOLE "at or closer than preferred range" zone (2026-09-30 correction —
+            // originally only the narrow settled band, per a miscommunication; this is what actually replaces
+            // the old backpedal/retreat logic the class doc comment above describes) — rangeToleranceClose no
+            // longer creates a distinct "too close" behavior zone (left declared, just unused here, same
+            // "leave it authored, drop the read" precedent other retired-but-not-deleted tier fields this
+            // session already use). atPreferredRange is now PURELY a far-boundary hysteresis flag: tight
+            // entry threshold (exactly preferredRange) while still closing in, wider exit threshold
+            // (+rangeToleranceFar) once settled, so approach<->strafe doesn't flicker right at the edge — not
+            // a gate on whether strafing happens at all.
+            float approachThreshold = b.atPreferredRange ? preferredRange + rangeToleranceFar : preferredRange;
+
+            if (distToTarget > approachThreshold)
             {
-                if (distToTarget > preferredRange + rangeToleranceFar)
-                {
-                    b.atPreferredRange = false;
-                    _rigidbody.AddForce(approachDir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
-                }
-                else if (distToTarget < preferredRange - rangeToleranceClose)
-                {
-                    b.atPreferredRange = false;
-                }
+                b.atPreferredRange = false;
+                _rigidbody.AddForce(approachDir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
             }
             else
             {
-                if (distToTarget > preferredRange)
-                    _rigidbody.AddForce(approachDir * (EffectiveMoveSpeed * delta * 5f), ForceMode.VelocityChange);
-
-                if (Mathf.Abs(distToTarget - preferredRange) <= 0.1f)
+                if (!b.atPreferredRange && Mathf.Abs(distToTarget - preferredRange) <= 0.1f)
                     b.atPreferredRange = true;
+
+                if (canStrafe)
+                {
+                    // Tangent: radiusDir (target -> enemy) crossed with Vector3.up gives the counterclockwise
+                    // direction; the clockwise case just negates it. b.strafeClockwise is rolled once per
+                    // spawn (LateAwake) via GameRandom, not per-tick — a fixed direction for every enemy
+                    // looked unnatural (everyone orbiting the same way), and re-rolling live would need to be
+                    // simulation-safe anyway. Pure function of the current radius vector otherwise —
+                    // deterministic, no per-machine state, safe inside Simulate (see
+                    // feedback_no_race_conditions_or_outside_simulation_state memory).
+                    Vector3 radiusDir = -dir;
+                    Vector3 strafeDir = Vector3.Cross(radiusDir, Vector3.up).normalized;
+                    if (b.strafeClockwise) strafeDir = -strafeDir;
+                    _rigidbody.AddForce(strafeDir * (EffectiveMoveSpeed * StrafeSpeedPercent * delta * 5f), ForceMode.VelocityChange);
+                }
             }
         }
         else
@@ -2435,14 +2598,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     }
 
     // ── Dash helpers (for subclasses) ──────────────────────────────────────
-    // speed here is expected to already exclude attack-speed scaling (e.g. EffectiveMoveSpeed * a
-    // subclass's own dashSpeedMultiplier — see EffectiveMoveSpeed's own doc comment for why this reads
-    // EffectiveMoveSpeed and not baseMoveSpeed as of 2026-08-13) — HandleDash below applies
-    // EffectiveAttackSpeed live, every tick, on top of whatever gets stored here, so every dasher gets
-    // live-reactive dash speed for free without needing to pre-multiply it in themselves or re-issue a new
-    // StartDash call when attack speed changes mid-dash. Baked in once at dash-start, though — a slow or a
-    // new enrage stack landing MID-dash doesn't retroactively change an already-launched dash's speed, only
-    // the next one.
+    // speed here is EffectiveMoveSpeed * a subclass's own dashSpeedMultiplier (see EffectiveMoveSpeed's own
+    // doc comment for why this reads EffectiveMoveSpeed and not baseMoveSpeed as of 2026-08-13) — dash speed
+    // scales with move speed ONLY now (2026-09-23 fix — HandleDash/HandleOffsetChase used to ALSO multiply
+    // this live by EffectiveAttackSpeed every tick, dual-scaling dash speed against both stats at once; per
+    // explicit design, windup duration is the one that scales with attack speed, dash speed scales with
+    // move speed, and neither should scale with both). Baked in once at dash-start — a slow or a new enrage
+    // stack landing MID-dash doesn't retroactively change an already-launched dash's speed, only the next
+    // one (this was already true for the move-speed portion before this fix; now it's true for the whole
+    // speed value, since there's no live-reactive attack-speed term left to be the exception).
     //
     // StartDashToTarget (dash to a point snapshotted from the target's position ONCE at dash-start) was
     // removed here 2026-08-26 — its one caller, SpearGloomPD, migrated to StartOffsetChase below, which
@@ -2479,8 +2643,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             return;
         }
 
-        // Live, not baked in at dash-start — see StartDashToPoint's own doc comment.
-        _rigidbody.velocity = b.dashDirection * b.dashSpeed * EffectiveAttackSpeed;
+        // Baked in at dash-start, move-speed-only — see StartDashToPoint's own doc comment.
+        _rigidbody.velocity = b.dashDirection * b.dashSpeed;
         _rigidbody.MoveRotation(Quaternion.LookRotation(b.dashDirection));
     }
 
@@ -2490,8 +2654,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // decoupled from the shared _target/_targetStats pair (which the old dash-to-a-fixed-point shape's own
     // problem — see EnemyBaseState.isOffsetChasing's own doc comment — was ALSO about, just for the position
     // rather than the reference: a fast player could simply outrun a snapshotted destination). speed follows
-    // the same "already excludes attack-speed scaling" convention as StartDashToPoint's own speed param
-    // above — HandleOffsetChase applies EffectiveAttackSpeed live, every tick, same as HandleDash does.
+    // the same move-speed-only convention as StartDashToPoint's own speed param above (2026-09-23 — see its
+    // own doc comment for why this no longer also applies EffectiveAttackSpeed).
     //
     // offsetDirectionDegrees is measured relative to the dasher→target bearing AT THIS EXACT MOMENT, rotated
     // around the world-up axis, and LOCKED into b.chaseLockedOffsetDir from here on (2026-08-26 fix — see
@@ -2605,8 +2769,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         }
 
         Vector3 moveDir = toDestination / dist;
-        // Live, same "not baked in at start" treatment HandleDash's own EffectiveAttackSpeed multiply uses.
-        float speed = b.dashSpeed * EffectiveAttackSpeed;
+        // Move-speed-only, baked in at chase-start — see StartOffsetChase's own doc comment (2026-09-23 fix).
+        // Still a local `speed` variable, not read straight off b.dashSpeed below, since the overshoot clamp
+        // right after needs to modify THIS tick's value without touching the stored one for next tick.
+        float speed = b.dashSpeed;
         // Capped so this tick's step never overshoots liveDestination (2026-08-31 fix — the "Spear/Dagger
         // vibrate in place after their target goes invisible mid-dash" bug). Unlike HandleDash (fixed
         // direction, stops via a Dot()-sign "already passed it" check — structurally overshoot-proof), this
@@ -2781,7 +2947,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 executeThresh = 1f - (1f - executeThresh) * (1f - critBonus);
             }
 
-            if (executeThresh > 0f && b.health <= maxHealth * executeThresh)
+            if (executeThresh > 0f && b.health <= b.scaledMaxHealth * executeThresh)
             {
                 b.health = 0f;
                 NotifyStatusPopup(DamageNumberManager.StatusPopupKind.Executed);
@@ -2876,7 +3042,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         B.deathHoldCount += holds;
 
         if (XPOrbManagerPD.instance != null)
-            XPOrbManagerPD.instance.SpawnOrbs(hierarchy, transform.position, xpValue, spawnCategory, spawnTier);
+            XPOrbManagerPD.instance.SpawnOrbs(hierarchy, transform.position, B.scaledXpValue, spawnCategory, spawnTier);
     }
 
     // Difficulty-pacing wipe (EnemySpawnerPD, right before a boss spawns) — deliberately NOT a real death:
@@ -2993,7 +3159,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     //
     // A caller that actually wants to CANCEL whatever attack is in progress (rather than merely stun once
     // it's over) pairs this with a preceding Interrupt() call instead of relying on Stun() alone — see
-    // Interrupt()'s own doc comment for why the ordering matters. KnightAreaStunHealAbilityPD/
+    // Interrupt()'s own doc comment for why the ordering matters. KnightBuffStunAbilityPD/
     // ShieldBreakBurstAugment do this today (via AreaEffectCastHelper's own interrupt param); not every
     // future true stun needs to.
     public void Stun(float duration)
@@ -3016,7 +3182,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // stunResistant/death still block it entirely, same as Stun() above).
     //
     // additionalResistibleDuration is for a caller that ALSO explicitly stuns whatever it interrupts on the
-    // same hit (e.g. KnightAreaStunHealAbilityPD's own onEnemyHit Stun() call) — that duration gets tacked
+    // same hit (e.g. KnightBuffStunAbilityPD's own onEnemyHit Stun() call) — that duration gets tacked
     // onto the TAIL end of the flat portion instead of applied as a fully separate Stun() call, scaled by
     // crowdControlResist normally (unlike the flat portion). Passing 0 (default) — an interrupt with no
     // paired stun (DashThroughInterruptAugment, ExeAxeThrowProjectilePD) — just grants the flat portion alone.
@@ -3085,6 +3251,24 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (B.slowTimer <= 0f || multiplier <= B.slowMultiplier)
             B.slowMultiplier = multiplier;
         B.slowTimer = Mathf.Max(B.slowTimer, duration);
+    }
+
+    // Public bleed entry point (2026-10-06, ExeBigAxeBleedAugment) — see State.bleedDamagePerSecond's own
+    // doc comment for the full bucket mechanism. damagePerSecond is the CALLER's already-fully-resolved
+    // rate for just this one stack (Strength * ratePercent * onHitPower, luck-rolled — see the augment's
+    // own doc comment for the exact formula) — ADDED into the running total, never replacing it, so
+    // successive stacks compound without limit. duration REFRESHES the shared timer (Mathf.Max, same
+    // "never shortens what's already active" semantics Slow's own duration uses) rather than extending it
+    // additively — a bleed always lasts exactly as long as its longest-remaining contribution, not the sum
+    // of every application. No crowdControlResist/stunResistant gating — unlike Slow/Stun, bleed is pure
+    // damage-over-time, not a crowd-control effect, so nothing in this codebase's existing CC-resist
+    // taxonomy applies to it.
+    public void ApplyBleed(float damagePerSecond, float duration, PlayerID attacker)
+    {
+        if (_isDead || damagePerSecond <= 0f || duration <= 0f) return;
+        B.bleedDamagePerSecond += damagePerSecond;
+        B.bleedTimer = Mathf.Max(B.bleedTimer, duration);
+        B.bleedAttacker = attacker;
     }
 
     // Cancels this enemy's current active-attack-sequence outright (as opposed to a true Stun(), which now
@@ -3286,35 +3470,36 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ApplyTierMaterials(tier);
         ApplyTierNamePrefix(tier);
 
-        xpValue *= xpMultiplier;
+        // xpValue/pointsValue themselves stay pristine read-only authored baselines now too (2026-09-22,
+        // same shape as maxHealth/damage/moveSpeed/attackSpeed below) — baseXpValue/basePointsValue carry
+        // the scaled result, written into State so Die()/the verified-death block stay correct on a machine
+        // that never itself ran this ConfigureSpawn call.
         baseXpValue *= xpMultiplier;
-        pointsValue *= pointsMultiplier;
+        B.scaledXpValue = baseXpValue;
         basePointsValue *= pointsMultiplier;
+        B.scaledPointsValue = basePointsValue;
 
-        if (healthMultiplier != 1f)
-        {
-            maxHealth *= healthMultiplier;
-            baseHealth *= healthMultiplier;
-            B.health = maxHealth;
-        }
+        // Unconditional now (2026-09-22, was each guarded behind `if (xMultiplier != 1f)`) — maxHealth/
+        // damage/moveSpeed/attackSpeed themselves are pristine read-only authored baselines now (see
+        // scaledMaxHealth's own doc comment), never mutated in place, so recomputing baseX/scaledX fresh
+        // here every time is always cheap and correct, multiplier == 1f included. Writes go into State
+        // (B.scaledX), not a plain field, specifically so this takes effect on every machine via normal
+        // PurrDiction replication even when THIS machine isn't the one that actually called ConfigureSpawn
+        // (see scaledMaxHealth's own doc comment for the reconciliation scenario this fixes).
+        baseHealth *= healthMultiplier;
+        B.scaledMaxHealth = baseHealth;
+        B.health = B.scaledMaxHealth;
 
-        if (damageMultiplier != 1f)
-        {
-            damage *= damageMultiplier;
-            baseDamage *= damageMultiplier;
-        }
+        baseDamage *= damageMultiplier;
+        B.scaledDamage = baseDamage;
 
-        if (moveSpeedMultiplier != 1f)
-        {
-            moveSpeed *= moveSpeedMultiplier;
-            baseMoveSpeed *= moveSpeedMultiplier;
-        }
+        baseMoveSpeed *= moveSpeedMultiplier;
+        B.scaledMoveSpeed = baseMoveSpeed;
 
         // attackSpeed (2026-08-31) — see IEnemyPD.ConfigureSpawn's own attackSpeedMultiplier doc comment. No
         // base* counterpart needed (unlike moveSpeed) — attackSpeed has no further per-enemy derivation
         // beyond EffectiveAttackSpeed itself.
-        if (attackSpeedMultiplier != 1f)
-            attackSpeed *= attackSpeedMultiplier;
+        B.scaledAttackSpeed = attackSpeed * attackSpeedMultiplier;
 
         OnConfigureSpawn();
     }

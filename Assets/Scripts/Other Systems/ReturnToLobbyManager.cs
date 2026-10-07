@@ -23,6 +23,19 @@ public class ReturnToLobbyManager : NetworkIdentity
         instance = this;
     }
 
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby). override + base.OnDestroy() (2026-09-30 fix) — this
+    // is a NetworkIdentity, which already declares its own virtual OnDestroy() doing real network cleanup; a
+    // plain (non-override) OnDestroy() here would HIDE that base implementation entirely (confirmed via a
+    // real CS0114 compiler warning), silently skipping PurrNet's own identity teardown instead of just adding
+    // to it. Same override+base pattern PlayerControllerPD's own OnDestroy() already uses.
+    protected override void OnDestroy()
+    {
+        base.OnDestroy();
+        if (instance == this) instance = null;
+    }
+
     // Does NOT call LoadSceneAsync directly. Scene load only happens once every connected client has
     // explicitly confirmed it flushed its own upgrade points — an RPC firing is not proof it was
     // received and processed before the scene (and the objects that flush depends on) starts tearing

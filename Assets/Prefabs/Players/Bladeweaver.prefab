@@ -19,7 +19,7 @@ PrefabInstance:
     - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: weaponPrefab
       value: 
-      objectReference: {fileID: 2942187867930129664, guid: 56a521b14c2adcc4fa610a1ef89f0310, type: 3}
+      objectReference: {fileID: 2942187867930129664, guid: d9fe78a8a4a384c469912264e5486aa0, type: 3}
     - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_AnchorMax.y
       value: 0
@@ -173,20 +173,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BWBladeDanceAbilityPD
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
-  abilityName: <color=#FFA000>Blade Dance</color>
+  abilityName: <color=#FF5000>Blade Dance</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     Send
     your <color=#FFA000>Blades</color> to target location within <color=#3278FF>2x
     Range</color> for up to <color=#FFA000>{holdDuration} seconds</color>. <color=#FFA000>Recast</color>
-    to recall them early.
-
-    Gain <color=#FF0050>+{LiveAttackSpeedBonusRatio}%</color>
-    <color=#FF0050>Attack Speed</color> for the duration.
-
-    <color=#FFBE50><i>Attack
-    Speed bonus scales with 100% Ability Haste</i></color>'
-  cooldown: 5
+    to recall them early.'
+  cooldown: 8
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
@@ -194,6 +189,7 @@ MonoBehaviour:
   castRangeMultiplier: 2
   travelSpeed: 50
   holdDuration: 3
+  durationMultiplier: 1
   attackSpeedPercentPerHaste: 0.01
 --- !u!114 &1727344734638112781
 MonoBehaviour:
@@ -213,18 +209,19 @@ MonoBehaviour:
 
     <color=#00FFFF>Blink</color>
     to your <color=#FFA000>Blades</color> and gain <color=#FFFFFF>+{moveSpeedPercent}%
-    Total Move Speed</color> for <color=#FFA000>{duration} seconds</color>.
+    Move Speed</color> for <color=#FFA000>{duration} seconds</color>.
 
-    Only
-    usable while <color=#FFA000>Blade Dance</color> is active.
+    Only usable
+    while <color=#FF5000>Blade Dance</color> is active.
 
     <color=#FFBE50><i>Autocasts
     when Blade Dance ends</i></color>'
-  cooldown: 5
+  cooldown: 8
+  authoredChargeCount: 1
   cooldownStartsOnCast: 1
   slot: 1
   tags: []
   activeSurgeBlock: 0
-  duration: 3
+  duration: 2
   moveSpeedPercent: 0.3
   postBlinkInvincibility: 0.05

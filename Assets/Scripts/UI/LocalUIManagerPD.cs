@@ -83,6 +83,18 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private GameObject ability1DurationUI;
     [SerializeField] private Image ability1DurationBar;
     private bool _ability1DurationUIShown;
+    // Ability charge system (2026-10-02) — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment.
+    // ChargeUI is the parent container (count text + fill) — visible only while MaxCharges > 1; for a
+    // 1-charge ability (the default) this stays hidden and unused, same old off-cooldown look as before.
+    // ChargeCount is the live integer readout. ChargeFill shows the SAME CooldownRemaining/CooldownDuration
+    // fill ratio ability1CDFill already uses, just under a different visibility condition (castable right
+    // now AND not fully topped off) — see UpdateAbility1's own comment for the exact conditions.
+    [SerializeField] private GameObject ability1ChargeUI;
+    [SerializeField] private TextMeshProUGUI ability1ChargeCount;
+    [SerializeField] private Image ability1ChargeFill;
+    private bool _ability1ChargeUIShown;
+    private int  _lastAbility1ChargeCount = -1;
+    private bool _ability1ChargeFillShown;
     // Hover tooltip — AbilityTooltipTriggerPD (on this icon's own hover-catcher Image) relays
     // OnPointerEnter/Exit into SetAbilityTooltipVisible below, which owns showing/hiding the panel and
     // formatting the description text; the trigger itself holds no tooltip state.
@@ -101,6 +113,13 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private GameObject ability2DurationUI;
     [SerializeField] private Image ability2DurationBar;
     private bool _ability2DurationUIShown;
+    // See ability1ChargeUI's own doc comment — identical shape for slot 2.
+    [SerializeField] private GameObject ability2ChargeUI;
+    [SerializeField] private TextMeshProUGUI ability2ChargeCount;
+    [SerializeField] private Image ability2ChargeFill;
+    private bool _ability2ChargeUIShown;
+    private int  _lastAbility2ChargeCount = -1;
+    private bool _ability2ChargeFillShown;
     // See ability1TooltipPanel/ability1DescriptionText's own doc comment — identical shape for slot 2.
     [SerializeField] private GameObject ability2TooltipPanel;
     [SerializeField] private TextMeshProUGUI ability2DescriptionText;
@@ -143,6 +162,26 @@ public class LocalUIManagerPD : MonoBehaviour
     [SerializeField] private AugmentCardUI cardPrefab;
     [SerializeField] private Transform cardContainer;
     private List<AugmentCardUI> _cardPool = new();
+    // Reroll button (2026-09-30) — shown only while a real-augment round is presenting, the local player
+    // hasn't picked yet, and they have at least one CharacterStatsPD.RerollTokens. Optional: leave
+    // unassigned on any scene that doesn't have it wired yet, no error.
+    [SerializeField] private GameObject rerollButton;
+    // The button's own text component — shows the player's current CharacterStatsPD.RerollTokens count,
+    // refreshed alongside the button's own visibility. Optional, same as rerollButton itself.
+    [SerializeField] private TextMeshProUGUI rerollCountText;
+    // Played once per successful click, at the camera/listener position — same "local UI cue, no positional/
+    // multiplayer concern" reasoning as AugmentManagerPD's own levelUpSfx.
+    [SerializeField] private AudioClip rerollSfx;
+    // Very short anti-double-click guard (2026-09-30), not a real gameplay cooldown — RequestReroll()'s own
+    // token-count/round checks already prevent anything unsafe; this purely stops a single fast double-click
+    // from firing the request (and the SFX) twice. Real time, not scaled, same WaitForSecondsRealtime
+    // reasoning pickLockoutDuration's own coroutine uses (the level-up screen has Time.timeScale at 0).
+    [SerializeField] private float rerollClickLockoutDuration = 0.1f;
+    private float _rerollClickLockoutUntil;
+    private bool _rerollButtonShown;
+    // -1 sentinel (never a real token count) so the very first refresh always writes, same convention
+    // _lastDeathPreventionSecondsForText already uses.
+    private int _lastRerollCount = -1;
 
     [Header("Augment List")]
     [SerializeField] private AugmentListUIPD augmentListUI;
@@ -158,6 +197,18 @@ public class LocalUIManagerPD : MonoBehaviour
     [Header("Event")]
     [SerializeField] private GameObject eventPanel;
     [SerializeField] private TextMeshProUGUI eventDescriptionText;
+    // Outline border around the whole event panel (2026-09-30) — same white/[yellow or red] flash as
+    // eventDescriptionText, driven off the exact same color EventBasePD.GetDescriptionColor computes, so an
+    // ongoing event reads as more apparent even when a player isn't looking directly at the description text
+    // itself. Optional: leave unassigned on any prefab that doesn't have the border image wired yet, no error.
+    [SerializeField] private Image eventBorderImage;
+    // Captured once in Awake() — GetDescriptionColor's own flash (Color.Lerp between Color.white/yellow/red,
+    // all alpha=1 by default) would otherwise clobber whatever partial alpha the border Image was authored
+    // with (confirmed live: an authored alpha of 20/255 was silently overridden back to full opacity). Every
+    // color SetEventBorderColor receives has this alpha re-forced onto it before being applied, same
+    // "preserve the authored alpha, only drive RGB" reasoning PlayerColorApplicator's own alpha field exists
+    // for on a completely different component.
+    private float _eventBorderOriginalAlpha = 1f;
     // Change-detection cache for SetEventDescription — same "only rebuild the TMP text when the value
     // actually changed" convention UpdateRunClock/OnPresentingTimerChanged etc. already use elsewhere in
     // this file. Reset to null on HideEventPanel so the NEXT event's first SetEventDescription call always
@@ -168,6 +219,9 @@ public class LocalUIManagerPD : MonoBehaviour
     // Color has no natural "not set yet" sentinel the way a string has null).
     private Color _lastEventDescriptionColor;
     private bool  _hasLastEventDescriptionColor;
+    // Same change-detection shape as _lastEventDescriptionColor above, for eventBorderImage.
+    private Color _lastEventBorderColor;
+    private bool  _hasLastEventBorderColor;
 
     [Header("Pause System")]
     [SerializeField] private GameObject pauseScreen;
@@ -200,6 +254,7 @@ public class LocalUIManagerPD : MonoBehaviour
     {
         instance = this;
         if (healthBarFillImage != null) _healthBarDefaultColor = healthBarFillImage.color;
+        if (eventBorderImage != null) _eventBorderOriginalAlpha = eventBorderImage.color.a;
         levelUpScreen.SetActive(false);
         if (tintScreenOverlay != null) tintScreenOverlay.SetActive(false);
         statsUI.SetActive(false);
@@ -209,6 +264,16 @@ public class LocalUIManagerPD : MonoBehaviour
         if (settingsPanel != null) settingsPanel.SetActive(false);
         if (eventPanel != null) eventPanel.SetActive(false);
         if (endScreenPanel != null) endScreenPanel.SetActive(false);
+        if (rerollButton != null) rerollButton.SetActive(false);
+        // Ability charge system (2026-10-02) — forced hidden here regardless of whatever the Editor-authored
+        // default happens to be, same "the change-detection guard below only fires on an actual change"
+        // reasoning rerollButton's own fix above already established — without this, an Editor-default-active
+        // ChargeUI would never get its initial SetActive(false) call, since _ability1ChargeUIShown/
+        // _ability2ChargeUIShown both default to false in code and "false != false" never trips the guard.
+        if (ability1ChargeUI != null) ability1ChargeUI.SetActive(false);
+        if (ability1ChargeFill != null) ability1ChargeFill.gameObject.SetActive(false);
+        if (ability2ChargeUI != null) ability2ChargeUI.SetActive(false);
+        if (ability2ChargeFill != null) ability2ChargeFill.gameObject.SetActive(false);
         PausePD.OnPauseChanged += OnPauseStateChanged;
         PausePD.OnCountdownChanged += OnCountdownChanged;
         PausePD.OnReadyCountChanged += OnReadyCountChanged;
@@ -220,6 +285,18 @@ public class LocalUIManagerPD : MonoBehaviour
 
     private void OnDestroy()
     {
+        // Guarded, not unconditional (2026-09-30) — this object is NOT DontDestroyOnLoad, so a fresh instance
+        // is created every time the Game scene loads and the old one is destroyed on the way back to the
+        // lobby. If a newer instance's own Awake() already ran and reassigned `instance` before this OLDER
+        // one's OnDestroy() fires (teardown/setup ordering isn't guaranteed to be strictly sequential), an
+        // unconditional `instance = null` here would null out the NEW, still-live instance instead of just
+        // cleaning up this dead one. Without this guard at all, `instance` was previously left dangling on a
+        // destroyed object — `?.` on a destroyed UnityEngine.Object doesn't behave like a real null check (the
+        // C# reference itself isn't null, just Unity's own "fake null"), so a caller like Settings.
+        // OnControlsVisibilityChanged could silently misbehave against a dead reference instead of cleanly
+        // no-oping.
+        if (instance == this) instance = null;
+
         PausePD.OnPauseChanged -= OnPauseStateChanged;
         PausePD.OnCountdownChanged -= OnCountdownChanged;
         PausePD.OnReadyCountChanged -= OnReadyCountChanged;
@@ -448,6 +525,22 @@ public class LocalUIManagerPD : MonoBehaviour
         _controller.RequestPick(cardIndex, luckMultiplierA, luckMultiplierB);
     }
 
+    // Same forwarding shape as RequestPick above — the reroll button's own OnClick should call this.
+    public void RequestReroll()
+    {
+        if (_controller == null) return;
+        if (Time.unscaledTime < _rerollClickLockoutUntil) return;
+        _rerollClickLockoutUntil = Time.unscaledTime + rerollClickLockoutDuration;
+
+        if (rerollSfx != null && SFXManager.instance != null)
+        {
+            var listenerPos = Camera.main != null ? Camera.main.transform.position : Vector3.zero;
+            SFXManager.instance.Play(rerollSfx, listenerPos);
+        }
+
+        _controller.RequestReroll();
+    }
+
     private bool _levelUpScreenShown;
     private bool _levelUpBackgroundShown;
     private bool _cardsShown;
@@ -509,6 +602,34 @@ public class LocalUIManagerPD : MonoBehaviour
         {
             cardContainer.gameObject.SetActive(false);
             _cardsShown = false;
+        }
+
+        // Reroll button — same base condition as the cards above (presenting, hasn't picked yet — a reroll
+        // is meaningless once already committed), further gated to a real-augment round and at least one
+        // token. Re-evaluated every frame off live RerollTokens, so spending the last one (1 -> 0) hides it
+        // on the very next refresh without needing its own separate edge trigger.
+        if (rerollButton != null)
+        {
+            bool shouldShowReroll = shouldShowCards && AugmentManagerPD.instance.VerifiedIsAugmentRound && _stats.RerollTokens > 0;
+            if (shouldShowReroll != _rerollButtonShown)
+            {
+                _rerollButtonShown = shouldShowReroll;
+                rerollButton.SetActive(shouldShowReroll);
+            }
+        }
+
+        // Reroll refresh (2026-09-30 fix) — AugmentManagerPD.RequestReroll() spends a token and regenerates
+        // this player's option set in-place (_currentOptions), but SetUpLevelUpScreen only ever ran on the
+        // cards' initial rising edge above, so the visible cards never actually repopulated after a reroll.
+        // RerollTokens can only decrease mid-run via a reroll (shop spending only happens outside a run), so
+        // a drop while cards are still shown is an unambiguous "regenerate the cards" signal.
+        if (_cardsShown && _lastRerollCount >= 0 && _stats.RerollTokens < _lastRerollCount)
+            SetUpLevelUpScreen(AugmentManagerPD.instance.GetOptionsForPlayer(_controller.owner.Value));
+
+        if (rerollCountText != null && _stats.RerollTokens != _lastRerollCount)
+        {
+            _lastRerollCount = _stats.RerollTokens;
+            rerollCountText.text = _lastRerollCount.ToString();
         }
     }
 
@@ -606,6 +727,20 @@ public class LocalUIManagerPD : MonoBehaviour
         eventDescriptionText.color = color;
     }
 
+    // Same shape/call site as SetEventDescriptionColor above — called with the exact same color
+    // (EventBasePD.GetDescriptionColor's own white/[yellow or red] flash), so the border and the text always
+    // flash in lockstep, never independently. eventBorderImage is optional (see its own field comment), so
+    // this is a harmless no-op on any prefab that hasn't wired it up yet.
+    public void SetEventBorderColor(Color color)
+    {
+        if (eventBorderImage == null) return;
+        color.a = _eventBorderOriginalAlpha;
+        if (_hasLastEventBorderColor && color == _lastEventBorderColor) return;
+        _hasLastEventBorderColor = true;
+        _lastEventBorderColor = color;
+        eventBorderImage.color = color;
+    }
+
     // Called once from EventBasePD's own Cleanup() base implementation, for EITHER outcome (success or
     // failure) — see IEventPD.Cleanup()'s own doc comment.
     public void HideEventPanel()
@@ -615,9 +750,11 @@ public class LocalUIManagerPD : MonoBehaviour
             eventDescriptionText.text = string.Empty;
             eventDescriptionText.color = Color.white;
         }
+        if (eventBorderImage != null) eventBorderImage.color = new Color(1f, 1f, 1f, _eventBorderOriginalAlpha);
         if (eventPanel != null) eventPanel.SetActive(false);
         _lastEventDescription = null;
         _hasLastEventDescriptionColor = false;
+        _hasLastEventBorderColor = false;
     }
 
     public void OnResumeClicked()
@@ -879,18 +1016,21 @@ public class LocalUIManagerPD : MonoBehaviour
             ? _ability1.CooldownRemaining / _ability1.CooldownDuration
             : 0f);
 
-        // Tied to CooldownRemaining directly, NOT "!IsReady" — an ability can be unready for a reason that
-        // isn't a running cooldown at all (e.g. BWBlinkAbilityPD, only castable while Blade Dance is active
-        // — IsReady reads false the rest of the time with CooldownRemaining already sitting at 0). Using
-        // !IsReady here made the countdown text show a permanent, misleading "0.0s" in exactly that case.
-        // Also excludes AbilityIsActive — a buff ability (ExeBigAxeAbilityPD, RogueVanishAbilityPD,
-        // BWBlinkAbilityPD, etc.) already sets cooldownTimer to its full value the INSTANT it's cast, then
-        // (with the default cooldownStartsOnCast = false) holds it there unticked for the whole active
-        // window — so CooldownRemaining reads > 0 throughout the buff too, not just once the real cooldown
-        // actually starts counting down. Without this exclusion the text/fill would show a misleading
-        // stuck-at-full countdown for the buff's own duration instead of staying hidden until the buff ends
-        // and the cooldown genuinely begins ticking.
-        bool onCooldown = _ability1.CooldownRemaining > 0f && !_ability1.AbilityIsActive;
+        // Tied to CurrentCharges, NOT "!IsReady" — an ability can be unready for a reason that isn't a zero
+        // charge count at all (e.g. BWBlinkAbilityPD, only castable while Blade Dance is active — IsReady
+        // reads false the rest of the time even with a charge sitting banked). Using !IsReady here made the
+        // countdown text show a permanent, misleading "0.0s" in exactly that case. Also excludes
+        // AbilityIsActive — a buff ability (ExeBigAxeAbilityPD, RogueVanishAbilityPD, BWBlinkAbilityPD, etc.)
+        // already sets cooldownTimer to its full value the INSTANT it's cast, then (with the default
+        // cooldownStartsOnCast = false) holds it there unticked for the whole active window — so
+        // CooldownRemaining reads > 0 throughout the buff too, not just once the real cooldown actually
+        // starts counting down. Without this exclusion the text/fill would show a misleading stuck-at-full
+        // countdown for the buff's own duration instead of staying hidden until the buff ends and the
+        // cooldown genuinely begins ticking. Charge system (2026-10-02): CurrentCharges <= 0, not
+        // CooldownRemaining > 0 — a multi-charge ability can have CooldownRemaining > 0 (regenerating toward
+        // an EXTRA charge) while still fully castable off a banked charge, which must NOT show this
+        // "unready" sweep — see ability1ChargeFill below for that in-between case instead.
+        bool onCooldown = _ability1.CurrentCharges <= 0 && !_ability1.AbilityIsActive;
         // BG is shown more broadly — real cooldown, any OTHER not-ready reason, a hard lockout (a locking
         // ability elsewhere is active, or isSpecialMoving/stunned — see PlayerControllerPD.IsLockedOut's own
         // doc comment), or blocked by a Berserk-Surge-style forced Surge while this ability's own
@@ -939,6 +1079,37 @@ public class LocalUIManagerPD : MonoBehaviour
             SetFill(ability1DurationBar, _ability1.ActiveTimeDuration > 0f
                 ? _ability1.ActiveTimeRemaining / _ability1.ActiveTimeDuration
                 : 0f);
+
+        // Ability charge system (2026-10-02) — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment.
+        // ChargeUI container: visible only while MaxCharges > 1 — a 1-charge ability (the default) never
+        // shows this at all, same old look as before. Live, not a one-time check, so a mid-run bonus-charge
+        // augment flips this on immediately.
+        int maxCharges1 = _ability1.MaxCharges;
+        bool showChargeUI1 = maxCharges1 > 1;
+        if (showChargeUI1 != _ability1ChargeUIShown)
+        {
+            _ability1ChargeUIShown = showChargeUI1;
+            if (ability1ChargeUI != null) ability1ChargeUI.SetActive(showChargeUI1);
+        }
+        if (showChargeUI1 && _ability1.CurrentCharges != _lastAbility1ChargeCount)
+        {
+            _lastAbility1ChargeCount = _ability1.CurrentCharges;
+            SetText(ability1ChargeCount, $"{_lastAbility1ChargeCount}");
+        }
+        // ChargeFill: castable right now (>=1 charge) AND not fully topped off (< max) — the "regenerating
+        // an EXTRA charge in the background while still ready" case the main CDFill/onCooldown sweep above
+        // deliberately excludes. Same fill-ratio formula/source (CooldownRemaining/CooldownDuration) as the
+        // main CDFill, just a different element shown under a different condition.
+        bool showChargeFill1 = _ability1.CurrentCharges >= 1 && _ability1.CurrentCharges < maxCharges1;
+        if (showChargeFill1 != _ability1ChargeFillShown)
+        {
+            _ability1ChargeFillShown = showChargeFill1;
+            if (ability1ChargeFill != null) ability1ChargeFill.gameObject.SetActive(showChargeFill1);
+        }
+        if (showChargeFill1)
+            SetFill(ability1ChargeFill, _ability1.CooldownDuration > 0f
+                ? _ability1.CooldownRemaining / _ability1.CooldownDuration
+                : 0f);
     }
 
     // Identical shape to UpdateAbility1 above — both slots are functionally the same now (cooldown-gated
@@ -951,9 +1122,9 @@ public class LocalUIManagerPD : MonoBehaviour
             ? _ability2.CooldownRemaining / _ability2.CooldownDuration
             : 0f);
 
-        // See UpdateAbility1's own identical comments for why this is CooldownRemaining (not !IsReady) AND
-        // excludes AbilityIsActive (not just "> 0f").
-        bool onCooldown = _ability2.CooldownRemaining > 0f && !_ability2.AbilityIsActive;
+        // See UpdateAbility1's own identical comments for why this is CurrentCharges (not CooldownRemaining/
+        // !IsReady) AND excludes AbilityIsActive.
+        bool onCooldown = _ability2.CurrentCharges <= 0 && !_ability2.AbilityIsActive;
         // See UpdateAbility1's own identical comment for the full BG-visibility reasoning.
         bool showBG = !_ability2.IsReady || (_controller != null && _controller.IsLockedOut)
             || (_stats.IsForcedSurging && _ability2.ActiveSurgeBlock);
@@ -988,6 +1159,30 @@ public class LocalUIManagerPD : MonoBehaviour
         if (showDuration)
             SetFill(ability2DurationBar, _ability2.ActiveTimeDuration > 0f
                 ? _ability2.ActiveTimeRemaining / _ability2.ActiveTimeDuration
+                : 0f);
+
+        // See UpdateAbility1's own identical comment for the full ChargeUI/ChargeCount/ChargeFill reasoning.
+        int maxCharges2 = _ability2.MaxCharges;
+        bool showChargeUI2 = maxCharges2 > 1;
+        if (showChargeUI2 != _ability2ChargeUIShown)
+        {
+            _ability2ChargeUIShown = showChargeUI2;
+            if (ability2ChargeUI != null) ability2ChargeUI.SetActive(showChargeUI2);
+        }
+        if (showChargeUI2 && _ability2.CurrentCharges != _lastAbility2ChargeCount)
+        {
+            _lastAbility2ChargeCount = _ability2.CurrentCharges;
+            SetText(ability2ChargeCount, $"{_lastAbility2ChargeCount}");
+        }
+        bool showChargeFill2 = _ability2.CurrentCharges >= 1 && _ability2.CurrentCharges < maxCharges2;
+        if (showChargeFill2 != _ability2ChargeFillShown)
+        {
+            _ability2ChargeFillShown = showChargeFill2;
+            if (ability2ChargeFill != null) ability2ChargeFill.gameObject.SetActive(showChargeFill2);
+        }
+        if (showChargeFill2)
+            SetFill(ability2ChargeFill, _ability2.CooldownDuration > 0f
+                ? _ability2.CooldownRemaining / _ability2.CooldownDuration
                 : 0f);
     }
 

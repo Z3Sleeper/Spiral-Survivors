@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: RogueVanishHighrollAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: '<color=#FFFFFF>Vanish: Shady Luck</color>'
+  description: '<color=#FFFFFF>+{invisibilityDurationBonusPercent}% Vanish Duration</color>
+
+    <color=#00FF87>+{highrollChancePercent}%
+    Total Highroll Chance</color> during <color=#FFFFFF>Vanish</color>.'
+  icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}
+  effectPrefab: {fileID: 1972915204926123432, guid: 03a25af91d2586e4b85b394bfb8bdc9f, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags: []
+  requiredTags: []
+  requiredAbilities: 01000000
+  incompatibleTags: []
+  unlockTag: Ability

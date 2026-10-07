@@ -11,6 +11,10 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         public float spearStateTimer;
         public float spearAttackCooldownTimer;
         public int spearAttacksRemaining;
+        // Runtime-scaled — see EnemyBaseState.scaledMaxHealth's own doc comment for why these live in State
+        // rather than as a plain field mutated by OnConfigureSpawn (2026-09-22 follow-up pass).
+        public int   scaledAttacksPerAttack;
+        public float scaledAttackCooldown;
         public void Dispose()
         {
             b.contactCooldowns.Dispose();
@@ -59,26 +63,20 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     [SerializeField] private float stabDuration       = 0.1f;
     [SerializeField] private float betweenStabPause   = 0.25f;
     [SerializeField] private float postStabPause      = 0.5f;
-    // Tier1-authored baseline, scaled per tier by attacksPerAttackTierGrowth below (applied in
-    // OnConfigureSpawn()). See _authoredAttacksPerAttack's own doc comment for why this needs the
-    // snapshot-and-reset treatment instead of just incrementing this field directly.
+    // Tier1-authored, pristine read-only baseline forever (2026-09-22) — OnConfigureSpawn scales it into
+    // State.scaledAttacksPerAttack instead of mutating this in place, so no _authoredX snapshot/reset is
+    // needed anymore (see EnemyBaseState.scaledMaxHealth's own doc comment for the full reasoning).
     [SerializeField] private int   attacksPerAttack   = 1;
     [SerializeField] private float dashSpeedMultiplier = 4f;
     // Flat + size-scaled (2026-09-03, was preferredRange/2f) — decoupled from preferredRange, matching
     // KingSpikePD.postChargeDashOffsetDistance's own flat-variable convention instead of deriving from the
     // shared approach/retreat/attack-range field. See EnterDashToTarget's own call site.
     [SerializeField] private float dashOffsetDistance = 2f;
-    // Captured once in OnAwake(), reset back onto attacksPerAttack every pooled reuse in LateAwake() —
-    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
-    // pattern established for BlitzGloomPD/DaggerGloomPD/MortarGloomPD's own identical attack-count fields.
-    private int _authoredAttacksPerAttack;
 
     [Header("Attack Cooldown")]
+    // Same "pristine read-only baseline" treatment as attacksPerAttack above — scales into
+    // State.scaledAttackCooldown instead.
     [SerializeField] private float attackCooldown = 5f;
-    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
-    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as _authoredAttacksPerAttack above.
-    private float _authoredAttackCooldown;
 
     [Header("Tier Scaling")]
     // Added onto attacksPerAttack per tier above 1 — see OnConfigureSpawn().
@@ -93,26 +91,16 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private SpearState GetSpearState(ref State s) => (SpearState)s.spearStateId;
     private void SetSpearState(ref State s, SpearState st) => s.spearStateId = (int)st;
 
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        _authoredAttacksPerAttack = attacksPerAttack;
-        _authoredAttackCooldown = attackCooldown;
-    }
-
     protected override void LateAwake()
     {
         base.LateAwake();
 
-        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
-        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredAttacksPerAttack's
-        // own doc comment.
-        attacksPerAttack = _authoredAttacksPerAttack;
-        attackCooldown = _authoredAttackCooldown;
+        // Placeholder only — attacksPerAttack/attackCooldown are the pristine tier1 baseline until
+        // OnConfigureSpawn() (always runs AFTER LateAwake(), once hierarchy.Create() returns) writes the
+        // real scaled values into State.scaledAttacksPerAttack/scaledAttackCooldown. Re-set again in
+        // OnRespawnReset() once those are actually tier-scaled (runs AFTER OnConfigureSpawn, on this life's
+        // first Simulate() tick).
         currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
-        // Re-set again in OnRespawnReset() once attacksPerAttack is actually tier-scaled (that always runs
-        // AFTER OnConfigureSpawn, on this life's first Simulate() tick) — this LateAwake() assignment is
-        // only ever a placeholder until then.
         currentState.spearAttacksRemaining    = attacksPerAttack;
     }
 
@@ -122,13 +110,13 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
-        attacksPerAttack += (spawnTier - 1) * attacksPerAttackTierGrowth;
+        currentState.scaledAttacksPerAttack = attacksPerAttack + (spawnTier - 1) * attacksPerAttackTierGrowth;
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder spearAttackCooldownTimer LateAwake() already assigned above, using the now-scaled
         // value.
-        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
-        currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
+        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
     }
 
     // Caches _windupClipRate/_stabClipRate/_postStabClipLength (re-derived live in UpdateView, scaled by
@@ -201,7 +189,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
                         // windup, whichever runs first — not EnterStab's own strike-resolve point) so an
                         // attempt cancelled via Interrupt() mid-dash or mid-windup still counts against the
                         // budget. See EnterMoving's own comment for why the reset moved here too.
-                        if (state.spearAttacksRemaining <= 0) state.spearAttacksRemaining = attacksPerAttack;
+                        if (state.spearAttacksRemaining <= 0) state.spearAttacksRemaining = state.scaledAttacksPerAttack;
                         state.spearAttacksRemaining--;
                         CaptureAttackAnchor(ref state);
                         if (dist > preferredRange / 2f) EnterDashToTarget(ref state);
@@ -245,7 +233,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
                         // Same refill-if-exhausted + decrement as the Moving case above — this is the other
                         // funnel into a fresh attempt (continuing an existing chain rather than starting a
                         // brand new one), same reasoning applies.
-                        if (state.spearAttacksRemaining <= 0) state.spearAttacksRemaining = attacksPerAttack;
+                        if (state.spearAttacksRemaining <= 0) state.spearAttacksRemaining = state.scaledAttacksPerAttack;
                         state.spearAttacksRemaining--;
                         CaptureAttackAnchor(ref state);
                         float dist = Vector3.Distance(transform.position, _target.position);
@@ -332,7 +320,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         if (forward == Vector3.zero) return;
         forward.Normalize();
 
-        float dmg = damage * stabDamageMultiplier;
+        float dmg = B.scaledDamage * stabDamageMultiplier;
         // Scaled by size (EnemyBasePD's generic per-enemy scalar) — stabWidth is tuned against the base
         // model's own footprint, and elite/bigger variants scale their model up via size, so the stab zone
         // needs to widen right along with it or it'd visually clip through a bigger model's own sides.
@@ -388,7 +376,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void EnterPostStab(ref State state)
     {
         state.spearStateTimer          = postStabPause;
-        state.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        state.spearAttackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         SetSpearState(ref state, SpearState.PostStab);
     }
@@ -429,7 +417,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.spearAttacksRemaining    = 0;
-        currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
@@ -541,8 +529,8 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     {
         ApplyAnimatorClipSpeeds();
         currentState.spearStateId             = 0;
-        currentState.spearAttacksRemaining    = attacksPerAttack;
-        currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.spearAttacksRemaining    = currentState.scaledAttacksPerAttack;
+        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
         currentState.spearStateTimer          = 0f;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.Hide();

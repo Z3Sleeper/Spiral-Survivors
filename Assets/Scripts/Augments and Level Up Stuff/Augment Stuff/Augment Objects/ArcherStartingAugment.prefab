@@ -46,3 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ArcherStartingAugment
   fireRateMultiplier: 8
   projectileSpeedMultiplier: 20
+  weaponRangeScalingMultiplier: 2.5

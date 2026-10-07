@@ -46,5 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::TipStrikeRangeExplosionAugment
   damagePercent: 0.2
   radiusMultiplier: 0.75
-  radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
   chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}

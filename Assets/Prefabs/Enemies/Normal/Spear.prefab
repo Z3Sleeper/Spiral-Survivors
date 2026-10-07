@@ -326,7 +326,7 @@ MonoBehaviour:
   rangeToleranceClose: 0.3
   damage: 10
   xpValue: 5
-  pointsValue: 5
+  pointsValue: 10
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -342,7 +342,7 @@ MonoBehaviour:
   stabDamageMultiplier: 1.5
   stabRange: 4.5
   stabWidth: 1.25
-  windupDuration: 1
+  windupDuration: 0.8
   stabDuration: 0.1
   betweenStabPause: 0.25
   postStabPause: 0.5

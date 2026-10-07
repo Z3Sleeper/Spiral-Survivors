@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba86b00b36b91eb41a640323d1157bb9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnDamageTakenGainMoveSpeedAugment
-  moveSpeedFlat: 5
+  moveSpeedPercent: 0.3
   duration: 3

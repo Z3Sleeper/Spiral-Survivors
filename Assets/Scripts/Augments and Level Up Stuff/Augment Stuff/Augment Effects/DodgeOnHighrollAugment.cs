@@ -10,10 +10,15 @@ using UnityEngine;
 // bool, the effect lives on CharacterStatsPD" shape PhantomBladeOnHitAugment already uses for its own
 // EnablePhantomBladeOnHit toggle.
 //
-// Also grants its own +3% Highroll Chance (Stats.AddBonusHighrollPercent — see that method's own doc comment
+// Also grants its own +2.5% Highroll Chance (Stats.AddBonusHighrollPercent — see that method's own doc comment
 // for why this is the Bonus tier, not AddHighrollPenalty's Penalty tier, for an ordinary buff like this one)
 // on top of the base trigger — this augment felt underpowered relying purely on whatever HighrollChance
 // investment the player happened to already have, so it brings a small chunk of its own.
+//
+// The dodge-check itself rolls at DOUBLE HighrollChance (2026-09-26, see CharacterStatsPD.TakeDamage's own
+// doc comment for the exact formula) — this augment's own description text can reference that via the plain
+// {highrollChancePercent} token below (its own granted bonus, not the doubled roll itself, which depends on
+// the character's full HighrollChance and isn't a single static number to preview).
 public class DodgeOnHighrollAugment : AugmentEffectPD<DodgeOnHighrollAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -21,11 +26,15 @@ public class DodgeOnHighrollAugment : AugmentEffectPD<DodgeOnHighrollAugment.Sta
         public void Dispose() { }
     }
 
-    [SerializeField] private float highrollChanceBonus = 0.03f;
+    // Public, not [SerializeField] private — same "AugmentDescriptionFormatter's reflection only checks
+    // public members" reasoning every other description-referenced augment field in this codebase already
+    // follows (e.g. SurgeInterruptAoEAugment.maxEnergyPerStack's own doc comment). Ends in "Percent" so the
+    // formatter's own *100 display convention applies directly.
+    public float highrollChancePercent = 0.025f;
 
     protected override void OnApply()
     {
         Stats.EnableDodgeOnHighroll();
-        Stats.AddBonusHighrollPercent(highrollChanceBonus);
+        Stats.AddBonusHighrollPercent(highrollChancePercent);
     }
 }

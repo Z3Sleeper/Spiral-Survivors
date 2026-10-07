@@ -59,6 +59,10 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         // shooting in the same direction until all shots are consumed" burst feel. Reset false at the start
         // of every fresh chain (EnterWindup).
         public bool burstLocked;
+        // Runtime-scaled — see EnemyBaseState.scaledMaxHealth's own doc comment for why these live in State
+        // rather than as a plain field mutated by OnConfigureSpawn (2026-09-22 follow-up pass).
+        public int   scaledMultishotCount;
+        public float scaledAttackCooldown;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
         public State Duplicate()
@@ -128,22 +132,16 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     [Header("Multishot")]
     // 0 = fire 1 bullet straight, no extra shots (tier1-authored baseline — "base 1" total shot). See
     // MultishotMath (WeaponBasePD.cs) for exactly how extra shots fan out — one always center, the rest
-    // split left-first between the two sides. Scaled per tier by multishotCountTierGrowth below (applied in
-    // OnConfigureSpawn()) — see _authoredMultishotCount's own doc comment for why this needs the
-    // snapshot-and-reset treatment instead of just incrementing this field directly.
+    // split left-first between the two sides. Tier1-authored, pristine read-only baseline forever
+    // (2026-09-22) — OnConfigureSpawn scales it into State.scaledMultishotCount instead of mutating this in
+    // place, so no _authoredX snapshot/reset is needed anymore (see EnemyBaseState.scaledMaxHealth's own
+    // doc comment for the full reasoning).
     [SerializeField] private int   multishotCount       = 0;
     [SerializeField] private float multishotSpreadAngle = 90f;
-    // Captured once in OnAwake(), reset back onto multishotCount every pooled reuse in LateAwake() —
-    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
-    // pattern established for the attack-count fields on Blitz/Dagger/Mortar/Spear/Orbiter.
-    private int _authoredMultishotCount;
 
     [Header("Attack Cooldown")]
+    // Same pristine-baseline treatment as multishotCount above — scales into State.scaledAttackCooldown.
     [SerializeField] private float attackCooldown = 5f;
-    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
-    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as _authoredMultishotCount above.
-    private float _authoredAttackCooldown;
 
     [Header("Tier Scaling")]
     // Added onto multishotCount per tier above 1 — see OnConfigureSpawn().
@@ -173,38 +171,28 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     // respawned, or teleported since the moment it actually went invalid).
     private Vector3 _windupTrackedTargetLastKnownPosition;
 
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        _authoredMultishotCount = multishotCount;
-        _authoredAttackCooldown = attackCooldown;
-    }
-
     protected override void LateAwake()
     {
         base.LateAwake();
-        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
-        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredMultishotCount's own
-        // doc comment.
-        multishotCount = _authoredMultishotCount;
-        attackCooldown = _authoredAttackCooldown;
+        // Placeholder only — attackCooldown is the pristine tier1 baseline until OnConfigureSpawn() (always
+        // runs AFTER LateAwake(), once hierarchy.Create() returns) writes the real scaled value into
+        // State.scaledAttackCooldown.
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
         currentState.shotsRemaining      = shotsPerAttack;
     }
 
     // Tier1-authored multishotCount, scaled by multishotCountTierGrowth per tier above 1 (see that field's
     // own doc comment). spawnTier is already final by the time this runs (set earlier in the same
-    // ConfigureSpawn() call). Read live at fire time (FireShots), not mirrored into State, so no extra reset
-    // needed anywhere else.
+    // ConfigureSpawn() call). Read live at fire time (FireShots) off State.scaledMultishotCount.
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
-        multishotCount += (spawnTier - 1) * multishotCountTierGrowth;
+        currentState.scaledMultishotCount = multishotCount + (spawnTier - 1) * multishotCountTierGrowth;
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
-        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
     }
 
     // Sets the WindupSpeed/ShootSpeed/PostShotSpeed Animator float parameters so each clip's actual
@@ -502,7 +490,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     private void EnterPostShot(ref State state)
     {
         state.shooterStateTimer   = postShotPause;
-        state.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        state.attackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
         SetShooterState(ref state, ShooterState.PostShot);
     }
 
@@ -538,7 +526,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.shotsRemaining      = 0;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
         EnterMoving(ref currentState);
     }
 
@@ -563,8 +551,8 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         baseDir.Normalize();
         if (baseDir == Vector3.zero) return;
 
-        float dmg = damage * shotDamageMultiplier;
-        MultishotMath.ComputeAngles(multishotCount, multishotSpreadAngle, _multishotAngles);
+        float dmg = B.scaledDamage * shotDamageMultiplier;
+        MultishotMath.ComputeAngles(state.scaledMultishotCount, multishotSpreadAngle, _multishotAngles);
 
         foreach (float angle in _multishotAngles)
         {
@@ -643,7 +631,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         currentState.shooterStateTimer   = 0f;
         currentState.shotsRemaining      = shotsPerAttack;
         currentState.burstLocked         = false;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
         // In case death happened mid-Windup/Shooting, while kinematic was on — HandleActiveState would
         // correct this on the next tick anyway (shooterStateId resets to Moving above), but resetting
         // explicitly here avoids even a one-tick window where a freshly-reused instance reads as kinematic.

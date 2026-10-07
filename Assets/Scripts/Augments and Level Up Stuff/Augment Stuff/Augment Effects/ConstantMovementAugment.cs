@@ -1,9 +1,10 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Passive: +20% Bonus-tier Move Speed (AddMoveSpeedPercent, 2026-09-19 — was a flat +4 via AddMoveSpeedFlat,
-// converted project-wide alongside every other flat-Move-Speed augment now that Move Speed no longer comes
-// off Stat augments, per explicit design), and the character is ALWAYS attempting to move — see
+// Passive: +20% Total-tier Move Speed (AddMoveSpeedTotalPercent, 2026-09-30 — was Bonus-tier via
+// AddMoveSpeedPercent, migrated project-wide the same day that whole Bonus-tier percent pair was removed
+// from CharacterStatsPD, see bonusMoveSpeedFlat's own doc comment there), and the character is ALWAYS
+// attempting to move — see
 // PlayerControllerPD.SetForceMovement's own doc comment for the actual mechanism (falls back to the last real
 // movement direction whenever there's no current input, instead of standing still, always at full speed —
 // see that same comment for why no extra normalization is needed). "You can't stand still." No OnDestroy()
@@ -20,7 +21,7 @@ public class ConstantMovementAugment : AugmentEffectPD<ConstantMovementAugment.S
 
     protected override void OnApply()
     {
-        Stats.AddMoveSpeedPercent(moveSpeedPercent);
+        Stats.AddMoveSpeedTotalPercent(moveSpeedPercent);
         var controller = Stats.GetComponent<PlayerControllerPD>();
         if (controller != null) controller.SetForceMovement(true);
     }

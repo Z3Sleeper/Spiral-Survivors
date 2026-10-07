@@ -53,5 +53,11 @@ public class OnHitHighRollHealHealthRegenAugment : AugmentEffectPD<OnHitHighRoll
         // just passes the raw amount through. baseHeal joins the scaled portion INSIDE the onHitPower
         // multiply, same convention OnHitHealHealthRegenAugment's own identical shape uses.
         Stats.Heal((baseHeal + Stats.BonusHealthRegen * bonusHealthRegenPercent) * data.onHitPower);
+
+        // Heal VFX opt-in (2026-09-26, user-curated per-augment, non-persistent heals only) — safe
+        // unconditionally: this callback only ever runs once per real hit, off CharacterStatsPD._onHit, a
+        // genuine PredictedEvent<WeaponHitData> (see VFXManager.PlayHealVfx's own per-target cooldown for the
+        // anti-spam side of this).
+        VFXManager.instance?.PlayHealVfx(Stats.transform);
     }
 }

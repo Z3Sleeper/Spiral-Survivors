@@ -15,7 +15,6 @@ public class WeaponManagerPD : MonoBehaviour
     // separate count keeps the two rings' own angular spacing from interfering with each other.
     public int        OuterWeaponCount  => _outerWeapons.Count;
     public Transform  VisualsRoot       => _visualsRoot;
-    public Vector3    WeaponPrefabScale => _weaponPrefabScale;
 
     private CharacterStatsPD          _stats;
     private readonly List<IWeaponPD> _weapons = new();
@@ -113,7 +112,13 @@ public class WeaponManagerPD : MonoBehaviour
 
         weapon.Init(_stats);
         weapon.InitModelVisuals();
-        weapon.transform.localScale = _weaponPrefabScale * _currentSize;
+        // No Size multiply here anymore (2026-09-30, was _weaponPrefabScale * _currentSize) — Size no longer
+        // scales any weapon's model/hitbox geometry at all, only the clearance-offset terms that already read
+        // _stats.bonusSizePercent directly (NominalOrbitRadius/ApplyHeightLift, and SetupWeaponRange's own
+        // hitboxTarget formula below). This was previously undone every call anyway by WeaponBasePD.ScaleModel's
+        // own bandaid reset — see project_weapon_size_decoupling_bandaid memory (now resolved/removed) for the
+        // full history of why that stopgap existed and why it's no longer needed once this line changed.
+        weapon.transform.localScale = _weaponPrefabScale;
         SetupWeaponRange(weapon);
         foreach (var a in weapon.transform.GetComponentsInChildren<PlayerColorApplicator>(true))
             a.Apply(_stats.PlayerColor);
@@ -285,19 +290,16 @@ public class WeaponManagerPD : MonoBehaviour
             foreach (var weapon in _outerWeapons) SetupWeaponRange(weapon);
         }
 
+        // _currentSize is now purely a change-detector (2026-09-30) — Size no longer scales any weapon's own
+        // transform (see RegisterWeapon's own comment), but SetupWeaponRange still needs re-running on a Size
+        // change: its own hitboxTarget formula bakes _stats.bonusSizePercent into a LOCAL position at call
+        // time (unlike NominalOrbitRadius/ApplyHeightLift, which read bonusSizePercent live every tick and
+        // need no such trigger).
         if (_stats.bonusSizePercent != _currentSize)
         {
             _currentSize = _stats.bonusSizePercent;
-            foreach (var weapon in _weapons)
-            {
-                weapon.transform.localScale = _weaponPrefabScale * _currentSize;
-                SetupWeaponRange(weapon);
-            }
-            foreach (var weapon in _outerWeapons)
-            {
-                weapon.transform.localScale = _weaponPrefabScale * _currentSize;
-                SetupWeaponRange(weapon);
-            }
+            foreach (var weapon in _weapons) SetupWeaponRange(weapon);
+            foreach (var weapon in _outerWeapons) SetupWeaponRange(weapon);
         }
     }
 }

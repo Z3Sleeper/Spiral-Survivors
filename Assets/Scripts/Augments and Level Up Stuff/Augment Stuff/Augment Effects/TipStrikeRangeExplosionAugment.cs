@@ -12,7 +12,7 @@ using UnityEngine;
 //
 // "AoE Effects" tag (2026-09-14) — spawns through the same shared AreaEffectPD chain/AreaEffectCastHelper
 // every other AoE Effects family member uses (DashExplosionAugment/ShieldBreakBurstAugment/DashHealAugment/
-// KnightAreaStunHealAbilityPD); chainPrefab can reuse the exact same "AreaChain" prefab those already
+// KnightBuffStunAbilityPD); chainPrefab can reuse the exact same "AreaChain" prefab those already
 // reference (Assets/Scripts/Augments and Level Up Stuff/Augment Stuff/Augment Objects/Helper Objects/
 // AreaChain.prefab) — AreaEffectPD isn't tied to any one augment. notifyOnHit: false (matches
 // ShieldBreakBurstAugment's own choice) — this augment is itself an _onHit listener, so re-notifying _onHit
@@ -27,7 +27,7 @@ using UnityEngine;
 // Size-based floor term. Stats.RangeWorldUnits (2026-09-16, was Stats.WeaponRange directly, back when that
 // property itself carried the real-world-distance compression — see RangeWorldUnits' own doc comment) — the
 // TRUE, un-Archer/Bladeweaver-scaled Range stat, not EffectiveWeaponRange, same "AoE Effects reads the real
-// stat, not the caster's true weapon extent" convention KnightAreaStunHealAbilityPD/RangeScalingAoEBase's own
+// stat, not the caster's true weapon extent" convention KnightBuffStunAbilityPD/RangeScalingAoEBase's own
 // doc comments already establish — just expressed as a genuine world-space distance now instead of the raw
 // player-facing stat number.
 //
@@ -60,10 +60,6 @@ public class TipStrikeRangeExplosionAugment : AugmentEffectPD<TipStrikeRangeExpl
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
             ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * damagePercent)} "
             : "";
-
-    [Header("VFX")]
-    // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
-    [SerializeField] private GameObject radiusVFXPrefab;
 
     // Can reuse the exact same "AreaChain" prefab DashExplosionAugment/ShieldBreakBurstAugment already
     // reference — pooled, so this is cheap even on frequent Tip Strike procs. Must be registered in
@@ -98,8 +94,15 @@ public class TipStrikeRangeExplosionAugment : AugmentEffectPD<TipStrikeRangeExpl
 
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
-            chain.Launch(Stats, castPosition, radius, radiusVFXPrefab,
+            chain.Launch(Stats, castPosition, radius, null,
                 damagePercent: effectiveDamagePercent, notifyOnHit: false, vfxPerCast: true,
                 forcedCrit: data.isCrit, forcedHighroll: data.isHighroll);
+
+        // Shockwave VFX opt-in (2026-09-26, user-curated, replaces the old flat-cylinder radiusVFXPrefab
+        // stand-in) — safe unconditionally: this callback only ever runs once per real hit, off
+        // CharacterStatsPD._onHit, a genuine PredictedEvent<WeaponHitData>. Spawned at the STRUCK ENEMY's
+        // position (castPosition above), matching where this AoE actually detonates, not the caster. Player
+        // color for both start/end (no override requested for this one).
+        VFXManager.instance?.PlayShockwaveVfx(castPosition, enemy.Size, Stats.PlayerColor, Stats.PlayerColor, radius);
     }
 }

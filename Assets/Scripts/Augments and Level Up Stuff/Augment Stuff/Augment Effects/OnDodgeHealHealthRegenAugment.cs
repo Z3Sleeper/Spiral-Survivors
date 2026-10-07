@@ -42,5 +42,11 @@ public class OnDodgeHealHealthRegenAugment : AugmentEffectPD<OnDodgeHealHealthRe
     {
         if (Stats == null || Stats.IsDead) return;
         Stats.Heal(baseHeal + Stats.BonusHealthRegen * bonusHealthRegenPercent);
+
+        // Heal VFX opt-in (2026-09-26, user-curated per-augment, non-persistent heals only) — safe
+        // unconditionally: this callback only ever runs once per real dodge, off a plain payload-free
+        // PredictedEvent (see class doc comment; VFXManager.PlayHealVfx's own per-target cooldown handles
+        // the anti-spam side of this).
+        VFXManager.instance?.PlayHealVfx(Stats.transform);
     }
 }

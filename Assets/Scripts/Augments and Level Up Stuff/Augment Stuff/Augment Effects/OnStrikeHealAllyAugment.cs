@@ -59,7 +59,16 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
         // was widened to IFriendlyPD as part of the combat-targeting migration). Non-player ally healing
         // shape isn't designed yet, same "stub for now" call as DamageNumberManager's own IFriendlyPD
         // overloads — a future non-player ally just doesn't get healed by this augment until that's decided.
-        if (data.ally is CharacterStatsPD player) player.HealFromAlly(totalHeal, Stats);
+        if (data.ally is CharacterStatsPD player)
+        {
+            player.HealFromAlly(totalHeal, Stats);
+            // Heal VFX opt-in (2026-09-26, user-curated per-augment, non-persistent heals only) — safe
+            // unconditionally: this callback only ever runs once per real ally strike, off
+            // CharacterStatsPD._onAllyStrike, a genuine PredictedEvent<AllyStrikeData> (see
+            // VFXManager.PlayHealVfx's own per-target cooldown for the anti-spam side of this).
+            VFXManager.instance?.PlayHealVfx(player.transform);
+        }
         Stats.Heal(totalHeal);
+        VFXManager.instance?.PlayHealVfx(Stats.transform);
     }
 }

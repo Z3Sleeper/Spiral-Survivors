@@ -405,15 +405,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::OrbiterPD
   _rigidbody: {fileID: 3081874023962065944}
   enemyName: Orbiter
-  moveSpeed: 8
+  moveSpeed: 6
   attackSpeed: 1
   maxHealth: 75
   preferredRange: 3
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 10
   xpValue: 5
-  pointsValue: 5
+  pointsValue: 10
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0

@@ -26,13 +26,14 @@ public class UpgradePanel : MonoBehaviour
     [SerializeField] private TextMeshProUGUI revivePowerButtonText;
     [SerializeField] private TextMeshProUGUI reviveTimePenaltyButtonText;
     [SerializeField] private TextMeshProUGUI levelUpOptionsButtonText;
-    [SerializeField] private TextMeshProUGUI totalStrengthPercentButtonText;
-    [SerializeField] private TextMeshProUGUI moveSpeedPercentButtonText;
     [SerializeField] private TextMeshProUGUI luckButtonText;
     [SerializeField] private TextMeshProUGUI strengthPerLevelButtonText;
     [SerializeField] private TextMeshProUGUI maxShieldButtonText;
     [SerializeField] private TextMeshProUGUI shieldRechargeTimeButtonText;
     [SerializeField] private TextMeshProUGUI deathPreventionButtonText;
+    [SerializeField] private TextMeshProUGUI rerollTokensButtonText;
+    [SerializeField] private TextMeshProUGUI surgeMoveSpeedPenaltyReductionButtonText;
+    [SerializeField] private TextMeshProUGUI rerollTokenLevelsPerGrantButtonText;
 
     [Header("Selection Bar")]
     [SerializeField] private Image selectedIcon;
@@ -92,13 +93,14 @@ public class UpgradePanel : MonoBehaviour
         RefreshButtonText(StatType.RevivePower,        "Revive Power",        revivePowerButtonText);
         RefreshButtonText(StatType.ReviveTimePenalty,  "Revive Time Penalty", reviveTimePenaltyButtonText);
         RefreshButtonText(StatType.LevelUpOptions,      "Level Up Options",    levelUpOptionsButtonText);
-        RefreshButtonText(StatType.TotalStrengthPercent, "Total Strength %",     totalStrengthPercentButtonText);
-        RefreshButtonText(StatType.MoveSpeedPercent,    "Move Speed %",        moveSpeedPercentButtonText);
         RefreshButtonText(StatType.Luck,                "Luck",                luckButtonText);
         RefreshButtonText(StatType.StrengthPerLevel,    "Strength Per Level",       strengthPerLevelButtonText);
         RefreshButtonText(StatType.MaxShield,            "Max Shield",             maxShieldButtonText);
         RefreshButtonText(StatType.ShieldRechargeTime,   "Shield Recharge",        shieldRechargeTimeButtonText);
         RefreshButtonText(StatType.DeathPrevention,      "Death Prevention",       deathPreventionButtonText);
+        RefreshButtonText(StatType.RerollTokens,         "Starting Reroll Tokens", rerollTokensButtonText);
+        RefreshButtonText(StatType.SurgeMoveSpeedPenaltyReduction, "Surge Speed Penalty", surgeMoveSpeedPenaltyReductionButtonText);
+        RefreshButtonText(StatType.RerollTokenLevelsPerGrant, "Level Up Reroll Tokens", rerollTokenLevelsPerGrantButtonText);
 
         foreach (var entry in upgradeButtons)
             if (entry.buttonObject != null)
@@ -129,12 +131,11 @@ public class UpgradePanel : MonoBehaviour
         StatType.ReviveTimePenalty  => "%",
         StatType.ShieldRechargeTime => "s",
         StatType.LevelUpStats        => "%",
-        StatType.TotalStrengthPercent => "%",
-        StatType.MoveSpeedPercent  => "%",
         StatType.RevivePower       => "%",
         // Fraction of MaxEnergy per second (2026-08-23 rework — see CharacterStatsPD.baseEnergyRegen's own
         // doc comment), same "stored as a fraction, displayed *100" convention as the other %-unit stats.
         StatType.EnergyRegen       => "%",
+        StatType.SurgeMoveSpeedPenaltyReduction => "%",
         _                          => ""
     };
 
@@ -143,7 +144,7 @@ public class UpgradePanel : MonoBehaviour
         int tier      = ProgressionManager.GetBaseStatTier(stat);
         int maxTier   = ProgressionManager.GetMaxBaseTier(stat);
         float perTier = ProgressionManager.GetBaseStatValuePerTier(stat);
-        float displayScale = (stat == StatType.RevivePower || stat == StatType.TotalStrengthPercent || stat == StatType.MaxShield || stat == StatType.MoveSpeedPercent || stat == StatType.EnergyRegen) ? 100f : 1f;
+        float displayScale = (stat == StatType.RevivePower || stat == StatType.MaxShield || stat == StatType.EnergyRegen || stat == StatType.SurgeMoveSpeedPenaltyReduction) ? 100f : 1f;
         float current = Mathf.Abs(perTier * tier)   * displayScale;
         float max     = Mathf.Abs(perTier * maxTier) * displayScale;
         float absPer  = Mathf.Abs(perTier)           * displayScale;
@@ -154,7 +155,7 @@ public class UpgradePanel : MonoBehaviour
         return stat switch
         {
             StatType.LevelUpStats      => $"Increases stat gains from level up rewards by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.Strength          => $"Increases your base Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nWeapon Strikes randomly deal between 50% to 150% of your Strength, influenced by Luck.",
+            StatType.Strength          => $"Increases your base Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nWeapon Strikes randomly deal between 75% to 125% of your Strength, influenced by Luck.",
             StatType.MaxHealth         => $"Increases your base Max Health by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.MoveSpeed         => $"Increases your base Move Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.AttackSpeed       => $"Increases your base Weapon Attack Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nAttack Speed is equivalent to revolutions per second.",
@@ -170,8 +171,6 @@ public class UpgradePanel : MonoBehaviour
             StatType.RevivePower       => $"(Multiplayer Only) Increases the speed you are revived by and revive allies by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.ReviveTimePenalty => $"(Multiplayer Only) Reduces your Revive Time Penalty per death by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.LevelUpOptions      => $"Increases your level up reward options by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.TotalStrengthPercent => $"Increases your Total Strength by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
-            StatType.MoveSpeedPercent    => $"Increases your Bonus Move Speed by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).",
             StatType.Luck                => $"Increases your base Luck by {absPer} per tier ({current}/{max}).\nEach 1 Luck tightens variance towards the maximum roll by 1%.\nAll damage is rolled by Luck and can Highroll for bonus damage.",
             StatType.StrengthPerLevel    => $"Increases your Strength per Level by {absPer} per tier ({current}/{max}).",
             StatType.MaxShield           => $"Increases your Max Shield by {absPer}{unit} of your Max Health ({sign}{current}{unit}/{sign}{max}{unit}).\nShield takes 5 seconds to fully recharge, reduced by Shield Recharge Time Reductions.",
@@ -180,6 +179,13 @@ public class UpgradePanel : MonoBehaviour
             // instead of the generic {current}/{max} amount phrasing above, so it still reads as "(0/1)"/
             // "(1/1)" like every other stat's tier count without implying a scaling amount that isn't real.
             StatType.DeathPrevention     => $"Unlocks Death Prevention ({tier}/{maxTier}).\nEvery 30 seconds, if you would die, instead set your Health to 1 and become Invincible for 2 seconds.",
+            StatType.RerollTokens        => $"Grants {absPer} Reroll Token per tier ({current}/{max}).\nSpend a Reroll Token to reroll your presented non-stat augment options during a level up.",
+            StatType.SurgeMoveSpeedPenaltyReduction => $"Reduces the Move Speed penalty applied while Surging by {absPer}{unit} per tier ({sign}{current}{unit}/{sign}{max}{unit}).\nSurge normally reduces your Move Speed by 50% to double your Attack Speed.",
+            // Single-tier unlock (2026-10-06, simplified from an earlier 5-tier 5/4/3/2/1 override table) —
+            // fixed "every 3 Levels" value, not derived from tier at all. Same {tier}/{maxTier} shape
+            // DeathPrevention uses above rather than the generic absPer/current/max phrasing (which doesn't
+            // apply to a flat constant).
+            StatType.RerollTokenLevelsPerGrant => $"Grants a Reroll Token every 3 Levels ({tier}/{maxTier}).",
             _                            => string.Empty
         };
     }
@@ -254,13 +260,14 @@ public class UpgradePanel : MonoBehaviour
     public void OnUpgradeRevivePowerClicked()          { Select(StatType.RevivePower); }
     public void OnUpgradeReviveTimePenaltyClicked()    { Select(StatType.ReviveTimePenalty); }
     public void OnUpgradeLevelUpOptionsClicked()        { Select(StatType.LevelUpOptions); }
-    public void OnUpgradeTotalStrengthPercentClicked() { Select(StatType.TotalStrengthPercent); }
-    public void OnUpgradeMoveSpeedPercentClicked()     { Select(StatType.MoveSpeedPercent); }
     public void OnUpgradeLuckClicked()                 { Select(StatType.Luck); }
     public void OnUpgradeStrengthPerLevelClicked()     { Select(StatType.StrengthPerLevel); }
     public void OnUpgradeMaxShieldClicked()            { Select(StatType.MaxShield); }
     public void OnUpgradeShieldRechargeTimeClicked()   { Select(StatType.ShieldRechargeTime); }
     public void OnUpgradeDeathPreventionClicked()      { Select(StatType.DeathPrevention); }
+    public void OnUpgradeRerollTokensClicked()         { Select(StatType.RerollTokens); }
+    public void OnUpgradeSurgeMoveSpeedPenaltyReductionClicked() { Select(StatType.SurgeMoveSpeedPenaltyReduction); }
+    public void OnUpgradeRerollTokenLevelsPerGrantClicked() { Select(StatType.RerollTokenLevelsPerGrant); }
 
     // Selection bar action buttons
     public void OnBuyOneClicked()

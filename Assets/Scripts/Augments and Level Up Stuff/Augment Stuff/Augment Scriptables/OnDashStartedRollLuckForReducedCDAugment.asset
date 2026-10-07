@@ -13,12 +13,12 @@ MonoBehaviour:
   m_Name: OnDashStartedRollLuckForReducedCDAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FF87>Let It Ride</color>
-  description: '<color=#00FF87>+3% Base Highroll Chance</color>
+  description: '<color=#00FF87>+{highrollChancePercent}% Base Highroll Chance</color>
 
     <color=#FFA000>On
-    <color=#00FFFF>Dash Start</color>:</color> <color=#00FF87>Roll Luck</color>.
-    <color=#FFA000>If <color=#00FF87>Highroll</color>:</color> <color=#FFA000>Reduce</color>
-    <color=#00FFFF>Dash Cooldown</color> by <color=#00FFFF>{cooldownReduction}</color>
+    <color=#00FFFF>Dash Start</color>:</color> <color=#00FF87>Roll Luck</color> with
+    <color=#FFA000>doubled</color> <color=#00FF87>Highroll Chance</color>. If <color=#00FF87>Highroll</color>,
+    <color=#FFA000>reduce</color> <color=#00FFFF>Dash Cooldown</color> by <color=#00FFFF>{cooldownReduction}</color>
     <color=#FFA000>seconds</color>.
 
     <color=#FFBE50>Can grant multiple Dash Charges</color>'

@@ -79,6 +79,15 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
 
     protected override void LateAwake() => instance = this;
 
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby). Destroyed(), not raw OnDestroy() — same PD lifecycle
+    // convention WeaponBasePD/EnemyBasePD's own Destroyed() overrides already use.
+    protected override void Destroyed()
+    {
+        if (instance == this) instance = null;
+    }
+
     // Only job here: generate eventSequence exactly once, on the very first real tick — see its own doc
     // comment for the full reasoning. Count == 0 is an unambiguous "not yet generated" sentinel (never
     // legitimately empty again once populated, given a non-empty eventPrefabs), so this can never

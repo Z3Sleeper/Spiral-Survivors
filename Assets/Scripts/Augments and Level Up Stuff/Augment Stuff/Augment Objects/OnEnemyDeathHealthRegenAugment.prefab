@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7ca4090170aadf94db519ba51e139949, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::HealthRegenOnEnemyDeathAugment
-  healthRegenMultiplier: 0.1
+  bonusHealthRegenPercent: 0.25
   baseHeal: 0.25

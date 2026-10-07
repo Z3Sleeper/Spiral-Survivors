@@ -19,7 +19,6 @@ public class PhantomBladeOnAbilityStartAugment : AugmentEffectPD<PhantomBladeOnA
     }
 
     [SerializeField] private GameObject phantomBladePrefab;
-    [SerializeField] private Color bladeColor = Color.white;
     public int bladeCount = 3;
     public float strengthMultiplierPercent = 0.12f;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
@@ -66,6 +65,6 @@ public class PhantomBladeOnAbilityStartAugment : AugmentEffectPD<PhantomBladeOnA
         if (baseCooldown <= 0f) return;
 
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, strengthMultiplierPercent * baseCooldown, bladeColor);
+            Stats.transform.position, bladeCount, strengthMultiplierPercent * baseCooldown);
     }
 }

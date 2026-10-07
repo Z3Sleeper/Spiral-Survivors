@@ -45,7 +45,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PhantomBladeOnDashAugment
   phantomBladePrefab: {fileID: 2942187867930129664, guid: 9123ce90c4dafb44cb96c2ca62f56ace, type: 3}
-  bladeColor: {r: 0, g: 1, b: 1, a: 1}
   bladeCount: 3
   strengthMultiplierPercent: 1
   phantomBladeDamageBonus: 0.05

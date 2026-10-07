@@ -52,5 +52,11 @@ public class OnDodgeReduceDashCDAugment : AugmentEffectPD<OnDodgeReduceDashCDAug
         if (flatCooldownReduction <= 0f) return;
 
         _controller.ReduceDashCooldown(flatCooldownReduction);
+
+        // Dash Restore VFX opt-in (2026-09-26, user-curated, non-persistent dash-cooldown-reduction triggers
+        // only) — safe unconditionally: this callback only ever runs once per real dodge, off a plain
+        // payload-free PredictedEvent (see VFXManager.PlayDashRestoreVfx's own per-target cooldown for the
+        // anti-spam side of this).
+        VFXManager.instance?.PlayDashRestoreVfx(Stats.transform);
     }
 }

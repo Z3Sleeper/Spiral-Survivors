@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5e014b09d0ceac24fbacdecaa3bc9065, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnDashStartedGainEnergyAugment
-  energyPerDashPercent: 0.3
+  energyPerDashPercent: 0.25
   bonusMaxEnergyFlat: 25

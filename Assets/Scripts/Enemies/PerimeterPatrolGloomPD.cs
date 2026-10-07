@@ -50,25 +50,14 @@ public class PerimeterPatrolGloomPD : EnemyBasePD<PerimeterPatrolGloomPD.State>
     // Distance at which this enemy advances to the next waypoint in the loop.
     [SerializeField] private float waypointArriveTolerance = 0.5f;
 
-    // Cached once in Launch() below — re-fetching PlayableAreaPD.GetInsetPerimeter every tick would be
-    // wasteful even though that method is itself cached internally.
-    private Vector3[] _perimeter;
-
     // Called by the spawning Event right after hierarchy.Create()/ConfigureSpawn — same "mutate right
     // after Create()" convention every other spawned one-shot in this codebase uses. startingWaypointIndex
     // is the waypoint this enemy should walk toward FIRST — the Event doesn't need to spawn this enemy
     // exactly ON that point (see PlayableAreaPD.GetPointAtArcLength, which generally spawns it mid-edge
     // instead, for true arc-length-even spacing across multiple spawns); HandleActiveState below already
     // just walks toward whichever waypoint is current from wherever this enemy actually is.
-    //
-    // Reads EventManagerPD's own hand-authored patrolGraph (2026-08-27 — was
-    // PlayableAreaPD.GetInsetPerimeter(wallOffset), which is only correct for a convex outerBoundary; see
-    // that method's own doc comment for why the whole procedural-placement approach was abandoned
-    // project-wide). No wallOffset parameter anymore — the hand-placed graph already accounts for wall
-    // clearance, there's no margin math left to compute here.
     public void Launch(int startingWaypointIndex)
     {
-        _perimeter = EventManagerPD.instance != null ? EventManagerPD.instance.GetPatrolGraph() : null;
         currentState.waypointIndex = startingWaypointIndex;
     }
 
@@ -79,10 +68,20 @@ public class PerimeterPatrolGloomPD : EnemyBasePD<PerimeterPatrolGloomPD.State>
         // class — bypassing it entirely here means this override needs its own explicit checks.
         if (state.b.movementDisabled) return;
         if (state.b.stunTimer > 0f) return;
-        if (_perimeter == null || _perimeter.Length == 0) return;
         if (_rigidbody == null) return;
 
-        Vector3 target = _perimeter[state.waypointIndex];
+        // Read live every tick, not cached once at Launch() (2026-09-22 fix) — Launch() is only ever called
+        // by the spawning Event, same "only runs on whichever machine actually made the spawn decision"
+        // caveat as ConfigureSpawn (see EnemyBaseState.scaledMaxHealth's own doc comment) — a machine where
+        // this patroller was instead created by PredictedHierarchy reconciling a misprediction would never
+        // call Launch() at all, permanently null-guarding HandleActiveState into doing nothing, freezing the
+        // patroller in place on that one client forever. GetPatrolGraph() is already cached internally by
+        // EventManagerPD and returns the same fixed, hand-authored array on every machine, so reading it
+        // live here costs nothing extra and closes the gap completely instead of just narrowing it.
+        var perimeter = EventManagerPD.instance != null ? EventManagerPD.instance.GetPatrolGraph() : null;
+        if (perimeter == null || perimeter.Length == 0) return;
+
+        Vector3 target = perimeter[state.waypointIndex];
         Vector3 toTarget = target - transform.position;
         toTarget.y = 0f;
 
@@ -90,8 +89,8 @@ public class PerimeterPatrolGloomPD : EnemyBasePD<PerimeterPatrolGloomPD.State>
         {
             // GetInsetPerimeter already guarantees increasing index = counterclockwise — this method never
             // needs its own direction logic.
-            state.waypointIndex = (state.waypointIndex + 1) % _perimeter.Length;
-            target = _perimeter[state.waypointIndex];
+            state.waypointIndex = (state.waypointIndex + 1) % perimeter.Length;
+            target = perimeter[state.waypointIndex];
             toTarget = target - transform.position;
             toTarget.y = 0f;
         }

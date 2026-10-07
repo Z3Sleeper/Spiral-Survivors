@@ -52,6 +52,15 @@ public class CharacterSelectUI : MonoBehaviour
     [SerializeField] private Image randomButtonImage;
     [SerializeField] private Color selectedButtonColor = Color.green;
 
+    // External, player-facing class names (2026-10-07, Stuart's own renaming pass) — index-aligned with
+    // CharacterRegistry's own prefab order (see Awake()'s own comment just below: Knight=0, Rogue=1,
+    // Archer=2, Bladeweaver=3, Executioner=4). Internal code identifiers/file/prefab names are
+    // DELIBERATELY left unchanged (KnightBerserkAbilityPD, the "Knight" prefab itself, etc.) — only text
+    // actually shown to players uses these, currently just the lobby player-list line in
+    // RefreshPlayerList() below.
+    private static readonly string[] ExternalClassNames =
+        { "Spiral Knight", "Spinfiltrator", "Helix Hunter", "Gyromancer", "Vortexecutor" };
+
     private Image[] _characterButtonImages;
     private Color[] _characterButtonDefaultColors;
     private Color _randomButtonDefaultColor;
@@ -87,6 +96,17 @@ public class CharacterSelectUI : MonoBehaviour
         if (randomButtonImage != null) _randomButtonDefaultColor = randomButtonImage.color;
 
         RefreshDifficultyDisplay();
+    }
+
+    // Not DontDestroyOnLoad — a fresh instance is created every time this panel's scene loads, and the old
+    // one is destroyed on the way out. Guarded (not unconditional), same reasoning as LocalUIManagerPD's own
+    // identical fix: an unconditional `instance = null` risks nulling out a NEWER, still-live instance if
+    // teardown/setup ordering ever overlaps. Without this, `instance` was left dangling on a destroyed
+    // object — `?.`/direct calls against it don't behave like a real null check on a destroyed
+    // UnityEngine.Object (Unity's own "fake null"), risking a silent misbehave instead of a clean no-op.
+    private void OnDestroy()
+    {
+        if (instance == this) instance = null;
     }
 
     private void UpdateCharacterButtonHighlight(int selectedIndex)
@@ -521,13 +541,13 @@ public class CharacterSelectUI : MonoBehaviour
 
             if (member.Id == GameStartData.LocalUserId)
             {
-                charName = _isRandom ? "Random" : CharacterRegistry.instance.GetPredictedPrefab(GameStartData.LocalCharacterIndex).name;
+                charName = _isRandom ? "Random" : ExternalClassNames[GameStartData.LocalCharacterIndex];
                 colorIndex = GameStartData.LocalColorIndex;
             }
             else
             {
                 if (_charSelections.TryGetValue(member.Id, out int charIdx))
-                    charName = charIdx == -1 ? "Random" : CharacterRegistry.instance.GetPredictedPrefab(charIdx).name;
+                    charName = charIdx == -1 ? "Random" : ExternalClassNames[charIdx];
                 if (_colorSelections.TryGetValue(member.Id, out int cIdx))
                     colorIndex = cIdx;
             }
@@ -644,6 +664,14 @@ public class CharacterSelectUI : MonoBehaviour
             // DifficultyPointMultiplier's own doc comment) — retune both together if it ever changes.
             int upgradePointsPercent = levelsAboveBase * 100;
             string upgradePointsLine = levelsAboveBase > 0 ? $"<color=green>+{upgradePointsPercent}% increased Upgrade Points</color>\n" : "";
+            // Pure text, describes the tier-count consequence of the shortened TL1-3 win condition (see
+            // project_threat_level_shorter_early_wins memory / EnemySpawnerPD.GetBossesToDefeatForWin) — NOT
+            // a gameplay change, GetCurrentTierNumber itself is untouched. TL1 sees only tier1 enemies (its
+            // 1-boss run ends before any tier-up), TL2 sees tiers 1-2, TL3 sees tiers 1-3, TL4+ sees the full
+            // 1-4 range same as before. Capped at 3 (matches "levelsAboveBase" cap shape every other line
+            // here already uses) so this doesn't keep climbing past TL4.
+            int enemyTierBonus = Mathf.Min(levelsAboveBase, 3);
+            string enemyTierLine = enemyTierBonus > 0 ? $"<color=red>+{enemyTierBonus} Enemy Tier{(enemyTierBonus > 1 ? "s" : "")}</color>\n" : "";
             // Threat Level 2's own unique modifier (CharacterStatsPD.ActivateDifficultyModifiers,
             // threatLevel2SlowMultiplier/Duration) — same "levelsAboveBase > 0" gate as the stat lines above
             // since Threat Level 1 has no unique modifier of its own, and this one's threshold happens to be
@@ -662,7 +690,7 @@ public class CharacterSelectUI : MonoBehaviour
             // Threat Level 6's own unique modifier (EnemySpawnerPD.threatLevel6BossCount).
             string threatLevel6Line = difficulty >= 6 ? "\nLevel 6: Double Boss spawns." : "";
             difficultyDescriptionText.text = levelsAboveBase > 0
-                ? $"{upgradePointsLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed and Attack Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
+                ? $"{upgradePointsLine}{enemyTierLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed and Attack Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
                 : "";
         }
 

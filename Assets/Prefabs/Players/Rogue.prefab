@@ -19,7 +19,7 @@ PrefabInstance:
     - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: weaponPrefab
       value: 
-      objectReference: {fileID: 2942187867930129664, guid: 76b2145e6a31a1f43b119a7682c153a2, type: 3}
+      objectReference: {fileID: 2942187867930129664, guid: 0705f39ae774ceb4bb1484238216fa0b, type: 3}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
       value: Rogue
@@ -98,7 +98,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::TestBurstPD
   icon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}
-  abilityName: <color=#FF0050>Eviscerate</color>
+  abilityName: <color=#FF0050>Spinfiltrate</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     <color=#00FFFF>Somersault</color>
@@ -106,12 +106,14 @@ MonoBehaviour:
     your <color=#FFA000>Weapons</color> <color=#FFA000>5 times each</color>, dealing
     a total of <color=#FFA000>{LiveDamageRatio}</color><color=#FFA000>(75% Weapon
     Damage x <color=#FF0050>Attack Speed</color>)</color>.'
-  cooldown: 6
+  cooldown: 8
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 1
-  duration: 0.75
+  canInterrupt: 0
+  duration: 0.7
   postActiveInvincibilityGrace: 0.2
   dashSpeed: 10
   visuals: {fileID: 2534175426824249865}
@@ -119,7 +121,7 @@ MonoBehaviour:
   damageRadiusSizeMultiplier: 1.5
   spinRate: 1080
   hitCountPerWeapon: 5
-  spinAbilityDamageMultiplier: 0.5
+  spinAbilityDamageMultiplier: 0.75
 --- !u!114 &-4890662838761607972
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -140,9 +142,13 @@ MonoBehaviour:
     <color=#FFA000>Invisible</color> and gain <color=#FFFFFF>{moveSpeedPercent}%
     total Move Speed</color> for <color=#FFA000>{duration} seconds</color>.'
   cooldown: 25
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 1
   tags: []
   activeSurgeBlock: 0
   duration: 3
   moveSpeedPercent: 0.3
+  blinkOnCast: 0
+  invisibilityDurationBonusPercent: 0
+  highrollChanceBonusPercent: 0

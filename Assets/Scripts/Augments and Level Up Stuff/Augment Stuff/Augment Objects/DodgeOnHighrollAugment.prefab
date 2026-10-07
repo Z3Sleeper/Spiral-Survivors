@@ -44,3 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 330bc4d495264fe4aa077e82520a4d32, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DodgeOnHighrollAugment
+  highrollChancePercent: 0.025

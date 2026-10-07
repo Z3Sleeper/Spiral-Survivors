@@ -19,7 +19,7 @@ PrefabInstance:
     - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: weaponPrefab
       value: 
-      objectReference: {fileID: 2942187867930129664, guid: d3d7e865e3672834280ffac23466fd13, type: 3}
+      objectReference: {fileID: 2942187867930129664, guid: 22d27d67fe02f034e96e8f5c8850c8cc, type: 3}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
       value: Executioner
@@ -103,15 +103,19 @@ MonoBehaviour:
 
     <color=#FFBE50><i>Executes
     are 20% effective vs Bosses</i></color>'
-  cooldown: 20
+  cooldown: 15
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 1
   tags: []
   activeSurgeBlock: 0
-  duration: 8
-  weaponRangeTotalPercent: 0.75
+  duration: 5
+  weaponRangeTotalPercent: 0.3
   executeThresholdPercent: 0.2
   critChancePercent: 0.3
+  buffStrengthMultiplier: 1
+  knockbackPercent: 0
+  attackSpeedPercent: 0
 --- !u!114 &-5547753293085439714
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -125,18 +129,32 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ExeAxeThrowAbilityPD
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
-  abilityName: <color=#FF8700>Axe Throw</color>
+  abilityName: <color=#FF5000>Axe Throw</color>
   description: "<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>\nThrow
     a returning axe <color=#3278FF>3x Range</color> ahead, dealing \n<color=#FF5000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{strengthPercent}%
     Strength</color>) damage</color> that <color=#FFA000>Interrupts</color>. Deals
     <color=#FFA000>double damage</color> on <color=#FF8700>Crit</color>.\n<color=#FFBE50><i>Size
     scales with Range</i></color>\n<color=#FFBE50><i>Triggers Weapon Strike effects</i></color>"
   cooldown: 8
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 0
   strengthPercent: 1
+  damageMultiplier: 1
+  knockbackMultiplier: 1
   maxRangeMultiplier: 3
   projectileSpeed: 20
   projectilePrefab: {fileID: 2942187867930129664, guid: 3917a023e9490874693890b5efd7102b, type: 3}
+  cooldownMultiplier: 1
+  restoreAllChargesOnCooldown: 0
+  miniAxeCount: 0
+  miniAxeArcDegrees: 0
+  miniAxeSizePercent: 1
+  miniAxeRangePercent: 1
+  miniAxeDamagePercent: 1
+  miniAxeKnockbackPercent: 1
+  miniAxeOnHitPowerPercent: 1
+  healFlat: 0
+  healRegenPercent: 0

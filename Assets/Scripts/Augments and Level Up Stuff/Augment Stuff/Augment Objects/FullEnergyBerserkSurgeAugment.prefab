@@ -44,3 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3579765797a76fe41bde2bd086f3d36d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::FullEnergyBerserkSurgeAugment
+  bonusMaxEnergyFlat: 25

@@ -41,6 +41,17 @@ public class AugmentData : ScriptableObject
     // one augment tagged "OnHit" AND any one augment tagged "PhantomBlade", regardless of which specific
     // augments those are or how many more get added to either tag later.
     public string[] requiredTags;
+    // Requires the player to currently have ALL of these specific abilities equipped (AND across all listed
+    // values, same convention as requiredTags above) — for an augment built around one exact ability (e.g.
+    // "RogueSpin hits twice") rather than a shared capability many augments/abilities might carry. Checked
+    // live against GetComponents<IAbilityPD>() at offer time (AugmentManagerPD.HasRequiredAbilities), same
+    // "whatever's actually equipped right now" safety requiredTags' own ability-matching already has — stays
+    // correct even if ability loadouts ever become swappable. Deliberately a SEPARATE field from
+    // tags/requiredTags above, not a tag — ability identity is a closed, one-to-one set (exactly as many
+    // values as abilities that exist), not a shared many-to-few capability pool, so mixing the two would
+    // clutter that pool with entries nothing else would ever reuse. Empty/null = no restriction, same as
+    // every other restriction field on this class.
+    public AbilityIdentity[] requiredAbilities;
     // Tag-based counterpart to incompatibleAugments above — excludes (and is excluded by) any augment
     // carrying one of these tags via its own "tags" list above, without needing to name every such augment
     // individually (same non-enumeration rationale as requiredTags). Checked symmetrically, same as

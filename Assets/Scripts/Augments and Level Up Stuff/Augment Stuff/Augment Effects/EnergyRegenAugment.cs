@@ -19,9 +19,12 @@ public class EnergyRegenAugment : AugmentEffectPD<EnergyRegenAugment.State>
 
     // 1f = 100% (this codebase's percent fields store the fraction, e.g. 0.05f = 5%).
     public float energyRegenTotalPercent = 2f;
+    // Flat, unconditional Max Energy grant (2026-10-03) — same shape as every KnightBerserk augment's own.
+    public float maxEnergyFlat = 25f;
 
     protected override void OnApply()
     {
         Stats.AddEnergyRegenTotalPercent(energyRegenTotalPercent);
+        Stats.AddMaxEnergyFlat(maxEnergyFlat);
     }
 }

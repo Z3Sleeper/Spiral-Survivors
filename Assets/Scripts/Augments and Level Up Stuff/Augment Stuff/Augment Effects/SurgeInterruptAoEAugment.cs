@@ -51,7 +51,7 @@ using UnityEngine;
 //    true-stun, this portion IS scaled by crowdControlResist unlike the automatic flat portion).
 //
 //    CastAoE's Launch() call ALSO passes pairedStunDuration as a plain onEnemyHit Stun() (2026-09-08 fix,
-//    was missing — matches KnightAreaStunHealAbilityPD's own identical dual-layer shape) — Interrupt()
+//    was missing — matches KnightBuffStunAbilityPD's own identical dual-layer shape) — Interrupt()
 //    itself only ever succeeds against an enemy currently CanBeInterrupted (mid-windup/dash/attack), so
 //    relying on the NotifyInterrupted-paired stun ALONE meant an enemy simply idling/walking when the burst
 //    landed got no stun at all. Now every enemy this cast hits gets the plain Stun() unconditionally, and
@@ -99,8 +99,11 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
     // only (2026-09-17, was a plain float) — Surge Cost itself is always a whole number in practice, and
     // this gate is denominated in the same units, so this is now enforced at the type level rather than left
     // as an unenforced convention. SurgeEnergySpentMoveSpeedAugment's own energySpentRequirement got the
-    // identical treatment, same day, same reasoning.
-    [SerializeField] private int energySpentRequirement = 50;
+    // identical treatment, same day, same reasoning. Public, not [SerializeField] private (2026-09-30 fix)
+    // — so AugmentDescriptionFormatter's reflection can resolve {energySpentRequirement} directly as a
+    // description token; only public fields/properties/methods are checked. Still Inspector-serializable
+    // either way.
+    public int energySpentRequirement = 50;
 
     [Header("On Successful Interrupt — Stacking Permanent Max Energy")]
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
@@ -127,15 +130,16 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
     [Header("AoE Effect — On Surge End (gated by energy spent)")]
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — standardized "AoE Effects" formula (see class
     // doc comment). 1 is the neutral default; tune per-augment feel without touching the WeaponRange/
-    // AreaEffectSize scaling itself.
-    [SerializeField] private float radiusMultiplier = 1.25f;
+    // AreaEffectSize scaling itself. Public, not [SerializeField] private (2026-09-30 fix) — so
+    // AugmentDescriptionFormatter's reflection can resolve {radiusMultiplier} directly as a description
+    // token; only public fields/properties/methods are checked. Still Inspector-serializable either way.
+    public float radiusMultiplier = 1.25f;
     // Rides NotifyInterrupted's own "additional stun on top of the automatic flat interrupt-stun" parameter
-    // (2026-09-06, added back) — see class doc comment #1 for the full combination shape.
-    [SerializeField] private float pairedStunDuration = 1f;
-
-    [Header("VFX")]
-    // Duration is not exposed here — RadiusIndicatorVFXPD owns its own playback timing on the prefab itself.
-    [SerializeField] private GameObject radiusVFXPrefab;
+    // (2026-09-06, added back) — see class doc comment #1 for the full combination shape. Public, not
+    // [SerializeField] private (2026-09-30 fix) — so AugmentDescriptionFormatter's reflection can resolve
+    // {pairedStunDuration} directly as a description token; only public fields/properties/methods are
+    // checked. Still Inspector-serializable either way.
+    public float pairedStunDuration = 1f;
 
     // Spawned on every qualifying Surge End — pooled, so this is cheap even when AreaEffectCount is just
     // 1. Must be registered in PredictedPrefabs.asset like any other spawned effect. Can reuse the exact
@@ -232,7 +236,7 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
         var go = hierarchy.GetGameObject(chainId.Value);
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             // onEnemyHit (2026-09-08 fix, was missing entirely) — same layering shape
-            // KnightAreaStunHealAbilityPD's own TriggerAoE uses: pairedStunDuration lands on EVERY enemy
+            // KnightBuffStunAbilityPD's own TriggerAoE uses: pairedStunDuration lands on EVERY enemy
             // this cast hits, unconditionally, via a direct Stun() call. Without this, the ONLY stun this
             // augment ever applied was NotifyInterrupted's own paired-stun bonus below, which only fires for
             // enemies Interrupt() actually succeeds on (CanBeInterrupted true — mid-windup/dash/attack) — an
@@ -240,9 +244,15 @@ public class SurgeInterruptAoEAugment : AugmentEffectPD<SurgeInterruptAoEAugment
             // gets the plain Stun() unconditionally, and an enemy ALSO successfully interrupted additionally
             // gets InterruptTrueStun's bonus layered on top via OnAoEInterrupt below — ApplyStun's own
             // Mathf.Max semantics mean the two calls can never fight each other.
-            chain.Launch(Stats, castPosition, radius, radiusVFXPrefab,
+            chain.Launch(Stats, castPosition, radius, null,
                 interrupt: true, onEnemyHit: enemy => enemy.Stun(pairedStunDuration),
                 onSuccessfulInterrupt: OnAoEInterrupt, vfxPerCast: true);
+
+        // Shockwave VFX opt-in (2026-09-26, user-curated, replaces the old flat-cylinder radiusVFXPrefab
+        // stand-in) — safe unconditionally: this callback only ever runs once per real qualifying Surge End,
+        // off CharacterStatsPD._onSurgeEnded, a genuine PredictedEvent. Player color for both start/end (no
+        // override requested for this one).
+        VFXManager.instance?.PlayShockwaveVfx(castPosition, Stats.Size, Stats.PlayerColor, Stats.PlayerColor, radius);
     }
 
     // Named method, not an inline lambda — currentState is a ref-returning property on the PD base class, and

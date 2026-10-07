@@ -55,6 +55,18 @@ public class PlayerUIWorldSpace : MonoBehaviour
     [SerializeField] private GameObject ability1DurationUI;
     [SerializeField] private Image ability1DurationBar;
     private bool _ability1DurationUIShown;
+    // Ability charge system (2026-10-02) — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment.
+    // ChargeUI is the parent container (count text + fill) — visible only while MaxCharges > 1; for a
+    // 1-charge ability (the default) this stays hidden and unused, same old off-cooldown look as before.
+    // ChargeFill shows the SAME CooldownRemaining/CooldownDuration fill ratio ability1CDFill already uses,
+    // just under a different visibility condition (castable right now AND not fully topped off) — see
+    // UpdateAbility1's own comment for the exact conditions.
+    [SerializeField] private GameObject ability1ChargeUI;
+    [SerializeField] private TextMeshProUGUI ability1ChargeCount;
+    [SerializeField] private Image ability1ChargeFill;
+    private bool _ability1ChargeUIShown;
+    private int  _lastAbility1ChargeCount = -1;
+    private bool _ability1ChargeFillShown;
 
     // Same shape as Ability1 UI above — both slots are functionally identical now (cooldown-gated
     // IAbilityPD), so Ability2 gets the same cooldown-text treatment too.
@@ -69,6 +81,13 @@ public class PlayerUIWorldSpace : MonoBehaviour
     [SerializeField] private GameObject ability2DurationUI;
     [SerializeField] private Image ability2DurationBar;
     private bool _ability2DurationUIShown;
+    // See ability1ChargeUI's own doc comment — identical shape for slot 2.
+    [SerializeField] private GameObject ability2ChargeUI;
+    [SerializeField] private TextMeshProUGUI ability2ChargeCount;
+    [SerializeField] private Image ability2ChargeFill;
+    private bool _ability2ChargeUIShown;
+    private int  _lastAbility2ChargeCount = -1;
+    private bool _ability2ChargeFillShown;
 
     // Cooldown countdown text genuinely changes almost every frame while active, so this can't eliminate
     // most rebuilds — but the display only shows 1 decimal (":F1"), so caching the ROUNDED (0.1s) value still
@@ -170,15 +189,18 @@ public class PlayerUIWorldSpace : MonoBehaviour
         // the instant the cooldown starts, draining to empty (0) as it becomes ready, the opposite of the
         // old "fills up as it becomes ready" direction. 0f fallback (not 1f) for a degenerate zero-duration
         // cooldown, since "no cooldown to deplete" should read as already-empty/ready.
-        // Tied to CooldownRemaining directly, NOT "!IsReady" — an ability can be unready for a reason that
-        // isn't a running cooldown at all (e.g. BWBlinkAbilityPD, only castable while Blade Dance is active
-        // — IsReady reads false the rest of the time with CooldownRemaining already sitting at 0). Using
-        // !IsReady here made this fill show a permanent, misleading "on cooldown" state in exactly that case.
-        // Also excludes AbilityIsActive — a buff ability sets cooldownTimer to its full value the INSTANT
-        // it's cast, then (with the default cooldownStartsOnCast = false) holds it there unticked for the
-        // whole active window, so CooldownRemaining reads > 0 throughout the buff too — this keeps the fill
-        // hidden until the buff actually ends and the real cooldown starts counting down.
-        bool onActualCooldown = _ability1.CooldownRemaining > 0f && !_ability1.AbilityIsActive;
+        // Tied to CurrentCharges, NOT "!IsReady" — an ability can be unready for a reason that isn't a zero
+        // charge count at all (e.g. BWBlinkAbilityPD, only castable while Blade Dance is active — IsReady
+        // reads false the rest of the time even with a charge sitting banked). Using !IsReady here made this
+        // fill show a permanent, misleading "on cooldown" state in exactly that case. Also excludes
+        // AbilityIsActive — a buff ability sets cooldownTimer to its full value the INSTANT it's cast, then
+        // (with the default cooldownStartsOnCast = false) holds it there unticked for the whole active
+        // window, so CooldownRemaining reads > 0 throughout the buff too — this keeps the fill hidden until
+        // the buff actually ends and the real cooldown starts counting down. Charge system (2026-10-02):
+        // CurrentCharges <= 0, not CooldownRemaining > 0 — a multi-charge ability can have CooldownRemaining
+        // > 0 (regenerating toward an EXTRA charge) while still fully castable off a banked charge, which
+        // must NOT show this "unready" fill — see ability1ChargeFill below for that in-between case instead.
+        bool onActualCooldown = _ability1.CurrentCharges <= 0 && !_ability1.AbilityIsActive;
         if (ability1CDFill != null)
         {
             float fill = _ability1.CooldownDuration > 0f
@@ -248,6 +270,43 @@ public class PlayerUIWorldSpace : MonoBehaviour
                 : 0f;
             if (!Mathf.Approximately(ability1DurationBar.fillAmount, fill)) ability1DurationBar.fillAmount = fill;
         }
+
+        // Ability charge system (2026-10-02) — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment.
+        // ChargeUI container: visible only while MaxCharges > 1 — a 1-charge ability (the default) never
+        // shows this at all, same old look as before. Live, not a one-time check, so a mid-run bonus-charge
+        // augment flips this on immediately.
+        int maxCharges1 = _ability1.MaxCharges;
+        bool showChargeUI1 = maxCharges1 > 1;
+        if (showChargeUI1 != _ability1ChargeUIShown)
+        {
+            _ability1ChargeUIShown = showChargeUI1;
+            if (ability1ChargeUI != null) ability1ChargeUI.SetActive(showChargeUI1);
+        }
+        if (showChargeUI1 && ability1ChargeCount != null && _ability1.CurrentCharges != _lastAbility1ChargeCount)
+        {
+            _lastAbility1ChargeCount = _ability1.CurrentCharges;
+            ability1ChargeCount.text = $"{_lastAbility1ChargeCount}";
+        }
+        // ChargeFill: castable right now (>=1 charge) AND not fully topped off (< max) — the "regenerating
+        // an EXTRA charge in the background while still ready" case the main CDFill/onActualCooldown fill
+        // above deliberately excludes. Same fill-ratio formula/source (CooldownRemaining/CooldownDuration)
+        // as the main CDFill, just a different element shown under a different condition.
+        bool showChargeFill1 = _ability1.CurrentCharges >= 1 && _ability1.CurrentCharges < maxCharges1;
+        if (ability1ChargeFill != null)
+        {
+            if (showChargeFill1 != _ability1ChargeFillShown)
+            {
+                _ability1ChargeFillShown = showChargeFill1;
+                ability1ChargeFill.gameObject.SetActive(showChargeFill1);
+            }
+            if (showChargeFill1)
+            {
+                float fill = _ability1.CooldownDuration > 0f
+                    ? _ability1.CooldownRemaining / _ability1.CooldownDuration
+                    : 0f;
+                if (!Mathf.Approximately(ability1ChargeFill.fillAmount, fill)) ability1ChargeFill.fillAmount = fill;
+            }
+        }
     }
 
     // Identical shape to UpdateAbility1 above — both slots are functionally the same now.
@@ -255,9 +314,9 @@ public class PlayerUIWorldSpace : MonoBehaviour
     {
         if (_ability2 == null) return;
 
-        // See UpdateAbility1's own identical comments for why this is CooldownRemaining (not !IsReady) AND
-        // excludes AbilityIsActive (not just "> 0f").
-        bool onActualCooldown = _ability2.CooldownRemaining > 0f && !_ability2.AbilityIsActive;
+        // See UpdateAbility1's own identical comments for why this is CurrentCharges (not CooldownRemaining/
+        // !IsReady) AND excludes AbilityIsActive.
+        bool onActualCooldown = _ability2.CurrentCharges <= 0 && !_ability2.AbilityIsActive;
         if (ability2CDFill != null)
         {
             float fill = _ability2.CooldownDuration > 0f
@@ -314,6 +373,36 @@ public class PlayerUIWorldSpace : MonoBehaviour
                 ? _ability2.ActiveTimeRemaining / _ability2.ActiveTimeDuration
                 : 0f;
             if (!Mathf.Approximately(ability2DurationBar.fillAmount, fill)) ability2DurationBar.fillAmount = fill;
+        }
+
+        // See UpdateAbility1's own identical comment for the full ChargeUI/ChargeCount/ChargeFill reasoning.
+        int maxCharges2 = _ability2.MaxCharges;
+        bool showChargeUI2 = maxCharges2 > 1;
+        if (showChargeUI2 != _ability2ChargeUIShown)
+        {
+            _ability2ChargeUIShown = showChargeUI2;
+            if (ability2ChargeUI != null) ability2ChargeUI.SetActive(showChargeUI2);
+        }
+        if (showChargeUI2 && ability2ChargeCount != null && _ability2.CurrentCharges != _lastAbility2ChargeCount)
+        {
+            _lastAbility2ChargeCount = _ability2.CurrentCharges;
+            ability2ChargeCount.text = $"{_lastAbility2ChargeCount}";
+        }
+        bool showChargeFill2 = _ability2.CurrentCharges >= 1 && _ability2.CurrentCharges < maxCharges2;
+        if (ability2ChargeFill != null)
+        {
+            if (showChargeFill2 != _ability2ChargeFillShown)
+            {
+                _ability2ChargeFillShown = showChargeFill2;
+                ability2ChargeFill.gameObject.SetActive(showChargeFill2);
+            }
+            if (showChargeFill2)
+            {
+                float fill = _ability2.CooldownDuration > 0f
+                    ? _ability2.CooldownRemaining / _ability2.CooldownDuration
+                    : 0f;
+                if (!Mathf.Approximately(ability2ChargeFill.fillAmount, fill)) ability2ChargeFill.fillAmount = fill;
+            }
         }
     }
 

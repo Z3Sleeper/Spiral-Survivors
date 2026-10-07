@@ -3,7 +3,7 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // The one generic multi-cast chain for the whole "AoE Effects" family — every caller (DashExplosionAugment,
-// DashHealAugment, ShieldBreakBurstAugment, KnightAreaStunHealAbilityPD) spawns this same class and just
+// DashHealAugment, ShieldBreakBurstAugment, KnightBuffStunAbilityPD) spawns this same class and just
 // passes different Launch() parameters (targetAllies/dealDamage/onEnemyHit/onAllyHit/onCastComplete — see
 // AreaEffectCastHelper.Cast's own doc comment for the full breakdown) rather than each needing its own
 // near-duplicate chain type. Supports a totalCasts > 1 sequence (a full retriggerRate-apart multi-cast) on
@@ -42,7 +42,24 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     private Vector3 _castPosition;
     private float _radius;
     private float _retriggerRate;
+
+    // Mutates the chain's own gameplay hitbox radius mid-activation — every subsequent Cast() reads
+    // _radius fresh, so this takes effect on the very next tick with no other bookkeeping needed. Called
+    // externally by ArcherArrowRainAbilityPD's own Simulate() (ArcherArrowRainGrowthAugment) once per tick,
+    // NOT routed through the VFX growth path (_radiusVfxGrowthPerSecond) — that's a separate, purely
+    // cosmetic constant-rate interpolation on the already-spawned VFX instance, deliberately decoupled from
+    // this discrete per-tick gameplay value (see ArcherArrowRainGrowthAugment's own doc comment for why a
+    // tiny visual/gameplay mismatch here is intentional and accepted).
+    public void SetRadius(float newRadius) => _radius = newRadius;
     private GameObject _radiusVFXPrefab;
+    // See RadiusIndicatorVFXPD.TintColor's own doc comment — null for every caller except ArcherArrowRainAbilityPD.
+    private Color? _radiusVfxTintColor;
+    // See AreaEffectCastHelper.SpawnRadiusVFX's own abilityDuration param doc comment — null for every
+    // caller except ArcherArrowRainAbilityPD.
+    private float? _radiusVfxAbilityDuration;
+    // See AreaEffectCastHelper.SpawnRadiusVFX's own radiusGrowthPerSecond param doc comment — null for
+    // every caller except ArcherArrowRainAbilityPD (ArcherArrowRainGrowthAugment).
+    private float? _radiusVfxGrowthPerSecond;
     // Passed straight through to every cast in the chain (not just the first) — see AreaEffectCastHelper.Cast's
     // own doc comment for what each means. Defaults match Cast()'s own enemy-targeting defaults, so a caller
     // that doesn't care about the ally-only or callback-only ones (e.g. DashExplosionAugment) can just omit
@@ -57,7 +74,7 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     private bool _interrupt;
     private Action<IEnemyPD> _onEnemyHit;
     private Action<IFriendlyPD> _onAllyHit;
-    // Fired once per cast with the total enemies/allies hit that cast — e.g. KnightAreaStunHealAbilityPD
+    // Fired once per cast with the total enemies/allies hit that cast — e.g. KnightBuffStunAbilityPD
     // healing itself based on how many enemies got stunned. null (default) for callers that don't need it.
     private Action<int> _onCastComplete;
     // See AreaEffectCastHelper.Cast's own doc comment — passed straight through, only meaningful when
@@ -72,6 +89,18 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
     // See AreaEffectCastHelper.Cast's own doc comment — passed straight through to every cast in the chain.
     private bool? _forcedCrit;
     private bool? _forcedHighroll;
+    // null (default) — every cast in the chain uses _damagePercent uniformly, unchanged behavior for every
+    // existing caller. Non-null (2026-10-05, ArcherArrowRainAbilityPD's own duration/tickInterval-derived
+    // pro-rated final tick) overrides JUST the LAST cast of the sequence with this percent instead — see
+    // Cast()'s own use for how "last cast" is identified off currentState.remainingCasts.
+    private float? _finalCastDamagePercentOverride;
+    // null (default) — the retrigger TRANSITION into the final cast uses _retriggerRate uniformly, same as
+    // every other transition, unchanged behavior for every existing caller. Non-null overrides JUST that
+    // one transition's delay — paired with _finalCastDamagePercentOverride above so the final cast can land
+    // at an EXACT arbitrary time (e.g. ArcherArrowRainAbilityPD's own duration, when it isn't a clean
+    // multiple of tickInterval) rather than on the regular tickInterval-spaced grid every other retrigger
+    // uses. See Simulate()'s own use for exactly which transition this affects.
+    private float? _finalRetriggerDelayOverride;
 
     private PredictedEvent _onRecast;
 
@@ -104,7 +133,9 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         Action<IEnemyPD> onSuccessfulInterrupt = null,
         bool overrideHitSfx = false, AudioClip hitSfxOverride = null, bool vfxPerCast = false,
         int totalCasts = 1, float retriggerRate = 0f,
-        bool? forcedCrit = null, bool? forcedHighroll = null)
+        bool? forcedCrit = null, bool? forcedHighroll = null, Color? radiusVfxTintColor = null,
+        float? finalCastDamagePercentOverride = null, float? finalRetriggerDelayOverride = null,
+        float? radiusVfxAbilityDuration = null, float? radiusVfxGrowthPerSecond = null)
     {
         if (_onRecast == null)
         {
@@ -117,6 +148,9 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         _radius = radius;
         _retriggerRate = retriggerRate;
         _radiusVFXPrefab = radiusVFXPrefab;
+        _radiusVfxTintColor = radiusVfxTintColor;
+        _radiusVfxAbilityDuration = radiusVfxAbilityDuration;
+        _radiusVfxGrowthPerSecond = radiusVfxGrowthPerSecond;
         _targetAllies = targetAllies;
         _dealDamage = dealDamage;
         _damagePercent = damagePercent;
@@ -134,6 +168,8 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         _vfxPerCast = vfxPerCast;
         _forcedCrit = forcedCrit;
         _forcedHighroll = forcedHighroll;
+        _finalCastDamagePercentOverride = finalCastDamagePercentOverride;
+        _finalRetriggerDelayOverride = finalRetriggerDelayOverride;
 
         currentState.remainingCasts = Mathf.Max(1, totalCasts) - 1;
         currentState.retriggerTimer = retriggerRate;
@@ -144,7 +180,7 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         // fresh every time instead (see this method's own doc comment), including this first call, so
         // skipped here to avoid a double-spawn on cast #1.
         if (!_vfxPerCast)
-            AreaEffectCastHelper.SpawnRadiusVFX(hierarchy, _radiusVFXPrefab, _castPosition, _radius);
+            AreaEffectCastHelper.SpawnRadiusVFX(hierarchy, _radiusVFXPrefab, _castPosition, _radius, _radiusVfxTintColor, _radiusVfxAbilityDuration, _radiusVfxGrowthPerSecond);
 
         Cast();
     }
@@ -154,7 +190,12 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         if (state.finished) return;
         if (state.remainingCasts <= 0) { state.finished = true; return; }
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
-        if (_owner == null || _owner.IsDead) { state.remainingCasts = 0; return; }
+        // Owner death no longer ends the chain (2026-09-27) — once cast, a zone like Arrow Rain's is an
+        // already-planted hazard that should keep dealing damage on its own, independent of whether its
+        // caster is still alive. _owner staying non-null and readable even after death is safe either way
+        // (CharacterStatsPD.IsDead is just a state flag — death never destroys the player GameObject), so the
+        // null check here is purely a genuine-destruction/despawn safety net, not a stand-in for IsDead.
+        if (_owner == null) { state.remainingCasts = 0; return; }
 
         state.retriggerTimer -= delta;
         if (state.retriggerTimer > 0f) return;
@@ -163,7 +204,14 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         _onRecast.Invoke();
 
         if (state.remainingCasts > 0)
-            state.retriggerTimer = _retriggerRate;
+        {
+            // remainingCasts == 1 here means the cast we're now arming a delay FOR is the final one in the
+            // sequence — see _finalRetriggerDelayOverride's own doc comment for why that transition
+            // specifically can use a different delay than every other one.
+            state.retriggerTimer = (state.remainingCasts == 1 && _finalRetriggerDelayOverride.HasValue)
+                ? _finalRetriggerDelayOverride.Value
+                : _retriggerRate;
+        }
     }
 
     private void Cast()
@@ -171,10 +219,19 @@ public class AreaEffectPD : PredictedIdentity<AreaEffectPD.State>
         // See Launch()'s own doc comment — fires fresh on every cast (this one included) when vfxPerCast is
         // true, instead of the single Launch()-time-only spawn used otherwise.
         if (_vfxPerCast)
-            AreaEffectCastHelper.SpawnRadiusVFX(hierarchy, _radiusVFXPrefab, _castPosition, _radius);
+            AreaEffectCastHelper.SpawnRadiusVFX(hierarchy, _radiusVFXPrefab, _castPosition, _radius, _radiusVfxTintColor, _radiusVfxAbilityDuration, _radiusVfxGrowthPerSecond);
+
+        // currentState.remainingCasts == 0 means THIS is the last cast of the sequence (Simulate() already
+        // decremented it before invoking _onRecast for a retrigger; for a single-cast totalCasts==1 chain
+        // it's already 0 the one time Cast() ever runs, from Launch() itself) — safe to read directly here
+        // since Cast() only ever runs synchronously within the same tick that owns this state, same
+        // reasoning KnightBuffStunAbilityPD.OnEnemyInterrupted's own identical currentState read uses.
+        float damagePercent = (_finalCastDamagePercentOverride.HasValue && currentState.remainingCasts <= 0)
+            ? _finalCastDamagePercentOverride.Value
+            : _damagePercent;
 
         AreaEffectCastHelper.Cast(hierarchy, _owner, _castPosition, _radius, _radiusVFXPrefab,
-            targetAllies: _targetAllies, dealDamage: _dealDamage, damagePercent: _damagePercent, onHitPowerPercent: _onHitPowerPercent,
+            targetAllies: _targetAllies, dealDamage: _dealDamage, damagePercent: damagePercent, onHitPowerPercent: _onHitPowerPercent,
             notifyOnHit: _notifyOnHit,
             hasKnockback: _hasKnockback, knockback: _knockback, interrupt: _interrupt,
             onEnemyHit: _onEnemyHit, onAllyHit: _onAllyHit, onCastComplete: _onCastComplete,

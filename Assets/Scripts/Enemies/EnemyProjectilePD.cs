@@ -15,6 +15,16 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
         // Deferred hierarchy.Delete() to UpdateView() off verified state, same pattern as
         // WeaponRangedProjectilePD/EnemyBasePD's own death handling.
         public bool    expired;
+        // Flight parameters, set once by Launch() — live in State, not a plain field (2026-09-22), for the
+        // same reason as EnemyBaseState.scaledMaxHealth: this projectile can be created on a client via
+        // PredictedHierarchy reconciling a misprediction rather than that machine's own local Launch() call,
+        // and a plain field would then silently stay at its C# default (0) forever — speed=0/maxRange=0
+        // means it never moves and instantly "expires" (distanceTravelled 0 >= maxRange 0), damage=0 means
+        // even a hit does nothing. Being in State means normal PurrDiction replication corrects it instead.
+        public float   damage;
+        public float   speed;
+        public float   maxRange;
+        public float   scale;
         public void Dispose() { }
     }
 
@@ -26,10 +36,6 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
     // the box-cast half-extents below instead of leaning on transform.lossyScale.
     [SerializeField] private Transform _visuals;
 
-    private float _damage;
-    private float _speed;
-    private float _maxRange;
-    private float _scale = 1f;
     // Plain view-layer bookkeeping, not predicted state — same instant-predicted-hide pattern as
     // WeaponRangedProjectilePD/PhantomBladePD.
     private bool _hiddenOnExpire;
@@ -40,10 +46,10 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
     // pattern as WeaponRangedProjectilePD.Launch().
     public void Launch(float damage, Vector3 direction, float speed, float maxRange, float scale = 1f, Material material = null)
     {
-        _damage   = damage;
-        _speed    = speed;
-        _maxRange = maxRange;
-        _scale    = scale;
+        currentState.damage   = damage;
+        currentState.speed    = speed;
+        currentState.maxRange = maxRange;
+        currentState.scale    = scale;
 
         currentState.direction = direction;
         currentState.distanceTravelled = 0f;
@@ -71,14 +77,14 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
         Vector3 prevPos = transform.position;
-        Vector3 step    = state.direction * (_speed * delta);
+        Vector3 step    = state.direction * (state.speed * delta);
         transform.position = prevPos + step;
         state.distanceTravelled += step.magnitude;
 
         float dist = step.magnitude;
         if (dist > 0.0001f)
         {
-            Vector3 half = halfExtents * _scale;
+            Vector3 half = halfExtents * state.scale;
             int n = Physics.BoxCastNonAlloc(prevPos, half, step / dist, _sweepResults, transform.rotation, dist, CombatLayerMasks.FriendlyHurtboxMask);
             for (int i = 0; i < n; i++)
             {
@@ -92,13 +98,13 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
                 // No firer-identity field on this projectile — attacker passed default, matches this
                 // interface param's "reserved for later, not wired to anything yet" status (see
                 // IFriendlyPD.TakeDamage's own doc comment).
-                target.TakeDamage(_damage, false, default);
+                target.TakeDamage(state.damage, false, default);
                 state.expired = true;
                 break;
             }
         }
 
-        if (!state.expired && state.distanceTravelled >= _maxRange)
+        if (!state.expired && state.distanceTravelled >= state.maxRange)
             state.expired = true;
     }
 

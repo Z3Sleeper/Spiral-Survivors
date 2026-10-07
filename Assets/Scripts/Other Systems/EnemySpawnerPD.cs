@@ -121,10 +121,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private string tier4NamePrefix = "Dread";
 
     [Header("Spawn Points")]
-    // Falls back to a ring around a random living player when fewer than 2 points are assigned.
+    // Requires at least 2 — see GetSpawnPosition's own doc comment.
     [SerializeField] private Transform[] spawnPoints;
-    [SerializeField] private float spawnMinDistance = 25f;
-    [SerializeField] private float spawnMaxDistance = 30f;
 
     [Header("Spawn Scaling")]
     // Q1-Q4 = Quarter 1 through Quarter 4 — see this file's own class-level "Tier Cycle"/"Quarter"/"Wave"
@@ -341,8 +339,25 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     [SerializeField] private int bossesToDefeatForWin = 4;
     // Public passthrough (2026-09-17) — EventManagerPD reads this as the real source of truth for "how many
     // Tier Cycles (and therefore mid-cycle event triggers) a run can ever have," since a win fires the moment
-    // this many bosses are defeated and a Tier Cycle always ends in a boss spawn.
+    // this many bosses are defeated and a Tier Cycle always ends in a boss spawn. Deliberately still the flat
+    // authored value, NOT GetBossesToDefeatForWin() below — this is only ever used as an upper-bound cap on
+    // how many event-sequence entries to pre-shuffle (see GenerateEventSequence's own doc comment); a run that
+    // ends sooner on a low Threat Level just never consumes the extra entries, harmless.
     public int BossesToDefeatForWin => bossesToDefeatForWin;
+
+    // Threat Level 1/2/3 end the run after 1/2/3 boss cycles respectively (2026-09-26, shorter early-Threat-
+    // Level runs, per explicit design — earlier levels are meant to be quick, not a full 4-cycle run at a
+    // trivial difficulty) — Threat Level 4+ unchanged, still the flat Inspector-tunable bossesToDefeatForWin
+    // (4). Same "no Inspector exposure for per-level tuning" convention as every other Threat-Level modifier
+    // (see feedback_all Level 2+ fields going Inspector-hidden) — this one's tuning IS the 1/2/3 literals
+    // here, not a field.
+    private int GetBossesToDefeatForWin(int difficulty) => difficulty switch
+    {
+        1 => 1,
+        2 => 2,
+        3 => 3,
+        _ => bossesToDefeatForWin
+    };
 
     [Header("Spawn Limits")]
     [SerializeField] private int maxNormalEnemies = 100;
@@ -424,6 +439,15 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         EnemyBasePD.ResetActiveCounts();
         // No longer built here — see BuildEliteSchedule's own doc comment for why it moved to Simulate()'s
         // own state.isActive activation point instead.
+    }
+
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby). Destroyed(), not raw OnDestroy() — same PD lifecycle
+    // convention WeaponBasePD/EnemyBasePD's own Destroyed() overrides already use.
+    protected override void Destroyed()
+    {
+        if (instance == this) instance = null;
     }
 
     // Predicted, not verified — matches the XP bar and other continuously-updating numeric displays
@@ -562,7 +586,11 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             // rather than leaving them to wander around XP-less after the fact. Fires on every boss defeat,
             // win-triggering or not, so the win screen doesn't have a stray swarm still visible either.
             WipeAllEnemies();
-            if (state.bossesDefeated >= bossesToDefeatForWin)
+            // Read off GameManagerPD.Difficulty directly, not the cached _currentDifficulty below — that
+            // field isn't refreshed until later in this same Simulate() call (see its own doc comment), same
+            // "server-authoritative single source of truth" reasoning as that later read.
+            int winCheckDifficulty = GameManagerPD.instance != null ? GameManagerPD.instance.Difficulty : 1;
+            if (state.bossesDefeated >= GetBossesToDefeatForWin(winCheckDifficulty))
             {
                 if (GameManagerPD.instance != null) GameManagerPD.instance.TriggerWin();
                 return;
@@ -1011,54 +1039,23 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // strafe system this comment used to reference is gone entirely as of 2026-08-28 (see EnemyBasePD.
     // HandleMovement's own doc comment) — a spawned-outside enemy now just walks straight in like any other
     // movement, nothing left to trigger regardless of how far outside the boundary it currently is.
+    // Requires >= 2 spawnPoints, always assigned in every current level (2026-09-22 — the old "ring around a
+    // random living player" fallback for < 2 points was removed entirely, not fixed in place: it picked its
+    // anchor player via CharacterStatsPD.All.Values enumeration order, a plain Dictionary with no ordering
+    // guarantee across machines — the exact same bug CLASS already confirmed live once in this codebase (see
+    // OrbiterGloomPD.TryStartGrab's own doc comment on why it sorts by ObjectId instead of trusting raw
+    // HashSet enumeration order). A divergent anchor pick here means a divergent spawn position, which means
+    // a divergent predicted enemy — precisely the kind of misprediction that forces PredictedHierarchy to
+    // reconcile, per project_spikeshield_instance_id_collision_bug. Since every real level already assigns
+    // spawnPoints, this was dead-in-practice risk, not a needed feature — simplest fix is removing it, not
+    // trying to make it deterministic. transform.position is still a defensive last resort if spawnPoints
+    // somehow ends up unassigned, so this can never throw.
     private Vector3 GetSpawnPosition()
     {
-        if (spawnPoints != null && spawnPoints.Length >= 2)
-        {
-            int i = GameRandom.instance.Next(spawnPoints.Length);
-            int j = (i + 1) % spawnPoints.Length;
-            return Vector3.Lerp(spawnPoints[i].position, spawnPoints[j].position, GameRandom.instance.NextFloat(0f, 1f));
-        }
+        if (spawnPoints == null || spawnPoints.Length < 2) return transform.position;
 
-        // Fallback: ring around a random living player, retried until far enough from every player. Reads
-        // CharacterStatsPD.All directly — safe from Simulate() the same way EnemyBasePD.FindClosestTarget()
-        // reads it, since we're only reading each entry's own predicted currentState, not relying on the
-        // dictionary's population timing.
-        int aliveCount = 0;
-        foreach (var p in CharacterStatsPD.All.Values)
-            if (!p.IsDead) aliveCount++;
-        if (aliveCount == 0) return transform.position;
-
-        Vector3 pos = transform.position;
-        for (int attempt = 0; attempt < 30; attempt++)
-        {
-            var anchor = GetNthAlivePlayer(GameRandom.instance.Next(aliveCount));
-            if (anchor == null) continue;
-
-            float angle = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
-            float distance = GameRandom.instance.NextFloat(spawnMinDistance, spawnMaxDistance);
-            pos = anchor.position + new Vector3(Mathf.Cos(angle) * distance, 0f, Mathf.Sin(angle) * distance);
-            if (IsFarEnoughFromPlayers(pos)) return pos;
-        }
-        return pos;
-    }
-
-    private Transform GetNthAlivePlayer(int n)
-    {
-        int seen = 0;
-        foreach (var p in CharacterStatsPD.All.Values)
-        {
-            if (p.IsDead) continue;
-            if (seen == n) return p.transform;
-            seen++;
-        }
-        return null;
-    }
-
-    private bool IsFarEnoughFromPlayers(Vector3 pos)
-    {
-        foreach (var p in CharacterStatsPD.All.Values)
-            if (Vector3.Distance(pos, p.transform.position) < spawnMinDistance) return false;
-        return true;
+        int i = GameRandom.instance.Next(spawnPoints.Length);
+        int j = (i + 1) % spawnPoints.Length;
+        return Vector3.Lerp(spawnPoints[i].position, spawnPoints[j].position, GameRandom.instance.NextFloat(0f, 1f));
     }
 }

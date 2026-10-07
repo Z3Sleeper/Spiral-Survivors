@@ -58,5 +58,11 @@ public class OnAbilityStartReduceDashCDAugment : AugmentEffectPD<OnAbilityStartR
         if (reduction <= 0f) return;
 
         _controller.ReduceDashCooldown(reduction);
+
+        // Dash Restore VFX opt-in (2026-09-26, user-curated, non-persistent dash-cooldown-reduction triggers
+        // only) — safe unconditionally: this callback only ever runs once per real ability start, off
+        // CharacterStatsPD._onAbilityStart, a genuine PredictedEvent<IAbilityPD> (see
+        // VFXManager.PlayDashRestoreVfx's own per-target cooldown for the anti-spam side of this).
+        VFXManager.instance?.PlayDashRestoreVfx(Stats.transform);
     }
 }

@@ -15,7 +15,7 @@ PrefabInstance:
     - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: weaponPrefab
       value: 
-      objectReference: {fileID: 2942187867930129664, guid: ec814f900baee3f4a95c9816bb5ef608, type: 3}
+      objectReference: {fileID: 2942187867930129664, guid: b07c7e1d95dcfeb4786fa270724494f0, type: 3}
     - target: {fileID: 664133172433053759, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_AnchorMax.y
       value: 0
@@ -178,10 +178,15 @@ MonoBehaviour:
     <color=#FFA000>Restores</color>
     the <color=#FFFF00>Energy</color> you had before casting it when it ends.'
   cooldown: 10
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 1
   tags: []
   activeSurgeBlock: 0
+  moveSpeedPercent: 0
+  lowHealthCooldownBonusMultiplier: 0
+  lowHealthThreshold: 0.5
+  energyGainPercent: 0
 --- !u!114 &7584897366354843561
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -206,19 +211,25 @@ MonoBehaviour:
     <color=#FFA000>(AoE) On End or
     Recast:</color> <color=#FFA000>Interrupt, Stun and 200% Knockback</color> all
     nearby enemies in a <color=#3278FF>1.25x Range radius</color> for <color=#FFA000>{LiveStunDurationRatio}seconds</color>.'
-  cooldown: 20
+  cooldown: 15
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 0
   tags:
   - AoE Effect
+  - Size Increase
   activeSurgeBlock: 0
-  duration: 8
+  duration: 5
   maxHealthPercent: 0.25
   rangePercent: 0.25
   sizePercent: 0.25
+  strengthPercent: 0
+  knockbackPercent: 0
+  buffStrengthMultiplier: 1
+  healPercentPerHit: 0
   recastBlockDuration: 0.5
-  radiusMultiplier: 1.25
-  stunDuration: 2
-  knockbackMultiplier: 2
-  radiusVFXPrefab: {fileID: 5351432771132445161, guid: 87adab62de684e34fad599000a028ee6, type: 3}
+  extraStunsEnabled: 0
+  radiusMultiplier: 2.5
+  stunDuration: 3
+  knockbackMultiplier: 3
   chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}

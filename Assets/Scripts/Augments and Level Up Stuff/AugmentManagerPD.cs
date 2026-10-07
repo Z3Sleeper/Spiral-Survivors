@@ -27,10 +27,10 @@ public struct PlayerPick
     // recomputed here" trust as multiplier, but for a genuinely random roll. Both stats on a card always
     // share ONE roll (not independent per-stat rolls) — these two fields carry the identical value, kept
     // separate only to mirror ApplyStatAugmentPick's existing entryA/entryB split. Manual picks:
-    // AugmentCardUI rolls once at card-display time via UnityEngine.Random (not the shared GameRandom
-    // stream) and caches it, so what's captured here is exactly what the card showed. Auto-picks: AutoPick
-    // rolls once via GameRandom instead, since that runs from Simulate()-context. Both default to 1f
-    // (neutral) for a player without the augment.
+    // AugmentCardUI rolls once at card-display time via UnityEngine.Random (not the deterministic
+    // AugmentRandom stream) and caches it, so what's captured here is exactly what the card showed.
+    // Auto-picks: AutoPick rolls once via AugmentRandom instead, since that runs from Simulate()-context.
+    // Both default to 1f (neutral) for a player without the augment.
     public float luckMultiplierA;
     public float luckMultiplierB;
     // Which round (State.levelBeingProcessed) this pick was submitted during — picks are whole-run, never
@@ -76,6 +76,14 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         // Next id a bonus round will be issued — starts at -1, decrements every bonus round. Never touched
         // by real rounds.
         public int nextBonusRoundId;
+        // Whether the CURRENTLY ACTIVE round (activeRoundId) was generated as a real-augment round rather
+        // than stat-only (2026-09-30, reroll system) — set once in GenerateOptionsForAllPlayers, alongside
+        // the local isAugmentLevel bool it already computes, so RequestReroll can gate "real augments only"
+        // reliably later in the round without re-deriving it. Re-deriving via activeRoundId %
+        // augmentLevelInterval wouldn't work for a bonus round (TriggerBonusAugmentRound's own negative
+        // activeRoundId space) or after augmentLevelInterval gets retuned mid-run, so this is captured
+        // directly instead of recomputed.
+        public bool isAugmentRound;
         // Whole-run record of every pick ever submitted (augment AND stat), never cleared — same
         // reasoning as pickedAugments below. Used to be cleared at the start of every round, which broke a
         // freshly-spawned local replica's ability to rebuild historical state (a reconnecting player's own
@@ -181,6 +189,9 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
 
     // For view/UI purposes only — verified, so the level-up screen doesn't flicker on rollback.
     public bool VerifiedIsPresenting => verifiedState?.isPresenting ?? false;
+    // For UI purposes only, same verified-not-predicted reasoning as VerifiedIsPresenting above — whether
+    // the round CURRENTLY presenting is a real-augment round (gates the reroll button's own visibility).
+    public bool VerifiedIsAugmentRound => verifiedState?.isAugmentRound ?? false;
 
     // Copies into the caller's own buffer rather than exposing pickedAugments directly — same reasoning
     // as EnemySpawnerPD.GetVerifiedActiveBosses: DisposableList<T>'s backing List<T> is pooled and can be
@@ -202,13 +213,23 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         }
     }
 
-    // Cached the moment each round's options are generated via GameRandom in Simulate(). Every machine
-    // calls GameRandom in the exact same deterministic order, so every machine lands on the identical
+    // Cached the moment each round's options are generated via AugmentRandom in Simulate(). Every machine
+    // calls AugmentRandom in the exact same deterministic order, so every machine lands on the identical
     // result independently — this cache itself isn't networked, it's just reproducibly-identical local
-    // storage for the UI to read. Regenerated fresh each round.
+    // storage for the UI to read. Regenerated fresh each round. AugmentRandom specifically (2026-09-22, was
+    // the shared GameRandom) — a DEDICATED stream that only this class ever draws from, so no other
+    // system's own GameRandom usage earlier in the same tick can ever shift these draws out of sync — see
+    // AugmentRandom's own doc comment for the confirmed-live bug class this closes (only ever manifested on
+    // the FIRST real-augment round, since that's the tick most likely to race against other systems still
+    // actively drawing from the shared stream near match start).
     private readonly Dictionary<PlayerID, List<PendingOption>> _currentOptions = new();
     private readonly List<PlayerID> _sortedPlayers = new();
     private readonly List<int> _availableAugmentsBuffer = new();
+    // Reroll-only scratch buffers (2026-09-30) — see RequestReroll/GenerateOptionsForPlayer's own doc
+    // comments. Same "plain, reproducibly-identical local scratch space" reasoning as _availableAugmentsBuffer
+    // above, just two more of them.
+    private readonly List<int> _rerollExcludeBuffer = new();
+    private readonly List<int> _rerollFilterBuffer = new();
     // Local skip-cache only, not predicted state — RegisterClassPassiveAugments() below still checks
     // HasPickedAugment() before ever adding a record, so even if this set ever diverges across machines
     // (it shouldn't — every machine iterates CharacterStatsPD.All in the same sorted order, same
@@ -257,6 +278,15 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     {
         if (instance != null) { Destroy(gameObject); return; }
         instance = this;
+    }
+
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby). Destroyed(), not raw OnDestroy() — same PD lifecycle
+    // convention WeaponBasePD/EnemyBasePD's own Destroyed() overrides already use.
+    protected override void Destroyed()
+    {
+        if (instance == this) instance = null;
     }
 
     protected override State GetInitialState() => new()
@@ -454,7 +484,7 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
     // (_currentOptions), same set SubmitPick validates cardIndex against — never against the full stat/
     // augment pool, so an auto-pick can only ever land on something this player was actually shown.
     // Re-checks "already picked" itself (SubmitPick does too) so a expired-timer tick that keeps calling
-    // this every frame doesn't keep burning GameRandom rolls after the first one already landed.
+    // this every frame doesn't keep burning AugmentRandom rolls after the first one already landed.
     public void AutoPick(PlayerID player, float multiplier)
     {
         if (!currentState.isPresenting) return;
@@ -463,25 +493,59 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         for (int i = 0; i < currentState.picks.Count; i++)
             if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.activeRoundId) return;
 
-        int randomIndex = GameRandom.instance.Next(options.Count);
+        int randomIndex = AugmentRandom.instance.Next(options.Count);
 
         // Same "one shared roll per card" luck-roll shape as AugmentCardUI's manual-pick path, but sourced
-        // from GameRandom instead of UnityEngine.Random — this runs from Simulate()-context (called from
-        // PlayerControllerPD.Simulate()), so it must draw from the shared, deterministic, order-sensitive PD
-        // stream like any other Simulate()-context random roll, not the local-only stream a client-side UI
-        // preview needs.
+        // from AugmentRandom instead of UnityEngine.Random — this runs from Simulate()-context (called from
+        // PlayerControllerPD.Simulate()), so it must draw from a deterministic, order-sensitive PD stream
+        // like any other Simulate()-context random roll, not the local-only stream a client-side UI preview
+        // needs. AugmentRandom specifically (not the shared GameRandom), so this can never be shifted by
+        // any other system's own draws earlier in the same tick — see AugmentRandom's own doc comment.
         // HighrollBonus is scaled down (not passed raw) — see AugmentCardUI's own identical comment on why.
         var option = options[randomIndex];
         float luckMultiplier = 1f;
         if (!option.isAugment && CharacterStatsPD.All.TryGetValue(player, out var stats) && stats.luckRolledLevelUpStats)
         {
-            luckMultiplier = WeaponDamageMath.RollLuckMultiplier(stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.HighrollBonus * stats.luckRolledLevelUpStatsHighrollScale, GameRandom.instance.NextFloat, out _);
+            luckMultiplier = WeaponDamageMath.RollLuckMultiplier(stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.HighrollBonus * stats.luckRolledLevelUpStatsHighrollScale, AugmentRandom.instance.NextFloat, out _);
             // Dampens the whole roll's swing down to (by default) half — see LuckRolledLevelUpStatsAugment's
             // own effectiveness doc comment. Mirrors AugmentCardUI's own identical manual-pick dampening.
             luckMultiplier = 1f + (luckMultiplier - 1f) * stats.luckRolledLevelUpStatsEffectiveness;
         }
 
         SubmitPick(player, randomIndex, multiplier, luckMultiplier, luckMultiplier);
+    }
+
+    // Called from PlayerControllerPD.Simulate() when that player's rerollPressed input fires (see that
+    // method's own doc comment) — spends one CharacterStatsPD.RerollTokens to regenerate this player's own
+    // ENTIRE presented option set from scratch, drawing fresh AugmentRandom numbers the exact same way
+    // GenerateOptionsForAllPlayers already does at round start (safe from the same Simulate()-context call
+    // chain every machine processes in the same deterministic order — see SubmitPick/StartDash's own
+    // identical direct-state-mutation-from-Simulate() precedent). Real-augment rounds only
+    // (State.isAugmentRound) — never during a stat-only round, per explicit design ("specifically real
+    // augments and not stat augments"). No per-round cap: a player can reroll repeatedly, once per
+    // available token, back to back if they want. Silently no-ops on every invalid condition (not
+    // presenting, stat-only round, already picked this round, no tokens) rather than erroring — same
+    // "just don't do anything" shape SubmitPick/AutoPick's own early-return guards already use.
+    public void RequestReroll(PlayerID player)
+    {
+        if (!currentState.isPresenting || !currentState.isAugmentRound) return;
+
+        for (int i = 0; i < currentState.picks.Count; i++)
+            if (currentState.picks[i].player == player && currentState.picks[i].roundLevel == currentState.activeRoundId) return;
+
+        if (!CharacterStatsPD.All.TryGetValue(player, out var stats) || stats.RerollTokens <= 0) return;
+
+        stats.AddRerollTokens(-1);
+
+        // Soft "don't repeat the just-rerolled-away augments" preference (2026-09-30) — see
+        // GenerateOptionsForPlayer's own doc comment for how the exclusion is applied.
+        _rerollExcludeBuffer.Clear();
+        if (_currentOptions.TryGetValue(player, out var previousOptions))
+            for (int i = 0; i < previousOptions.Count; i++)
+                if (previousOptions[i].isAugment)
+                    _rerollExcludeBuffer.Add(previousOptions[i].augmentIndex);
+
+        _currentOptions[player] = GenerateOptionsForPlayer(stats, player, true, _rerollExcludeBuffer);
     }
 
     // Mid-cycle event scaffolding (2026-08-24) — called by EventManagerPD.ResolveEvent() when an event's
@@ -585,9 +649,11 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         _currentOptions.Clear();
 
         bool isAugmentLevel = forceAugmentLevel || currentState.levelBeingProcessed % augmentLevelInterval == 0;
+        // See State.isAugmentRound's own doc comment for why this is captured, not re-derived later.
+        currentState.isAugmentRound = isAugmentLevel;
 
         // Sorted rather than iterating CharacterStatsPD.All directly — Dictionary iteration order isn't
-        // guaranteed identical across machines, and GameRandom draws are order-sensitive (a different
+        // guaranteed identical across machines, and AugmentRandom draws are order-sensitive (a different
         // iteration order hands different players different random numbers, which would desync).
         _sortedPlayers.Clear();
         _sortedPlayers.AddRange(CharacterStatsPD.All.Keys);
@@ -597,7 +663,13 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             _currentOptions[player] = GenerateOptionsForPlayer(CharacterStatsPD.All[player], player, isAugmentLevel);
     }
 
-    private List<PendingOption> GenerateOptionsForPlayer(CharacterStatsPD stats, PlayerID player, bool isAugmentLevel)
+    // excludeAugmentIndices: reroll-only (null on every normal round-start call) — augment indices that were
+    // just showing before this reroll. Soft preference, not a hard filter: with the database's 100+ augments
+    // this almost always has room to honor in full, but if excluding them would leave fewer candidates than
+    // the un-excluded pool would have drawn from (late-run, most of the class's pool already picked/
+    // incompatible), the exclusion is dropped entirely for this draw rather than coming up short or handing
+    // back fewer real-augment options than a non-reroll round would have offered.
+    private List<PendingOption> GenerateOptionsForPlayer(CharacterStatsPD stats, PlayerID player, bool isAugmentLevel, List<int> excludeAugmentIndices = null)
     {
         var options = new List<PendingOption>();
         int optionCount = Mathf.Max(1, stats.levelUpOptions);
@@ -606,15 +678,28 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         {
             GetAvailableAugmentIndices(stats.characterClass, player, _availableAugmentsBuffer);
 
-            int drawCount = Mathf.Min(optionCount, _availableAugmentsBuffer.Count);
+            int neededCount = Mathf.Min(optionCount, _availableAugmentsBuffer.Count);
+            var drawPool = _availableAugmentsBuffer;
+            if (excludeAugmentIndices != null && excludeAugmentIndices.Count > 0)
+            {
+                _rerollFilterBuffer.Clear();
+                for (int i = 0; i < _availableAugmentsBuffer.Count; i++)
+                    if (!excludeAugmentIndices.Contains(_availableAugmentsBuffer[i]))
+                        _rerollFilterBuffer.Add(_availableAugmentsBuffer[i]);
+
+                if (_rerollFilterBuffer.Count >= neededCount)
+                    drawPool = _rerollFilterBuffer;
+            }
+
+            int drawCount = Mathf.Min(optionCount, drawPool.Count);
             var drawnSlots = new HashSet<int>();
             for (int i = 0; i < drawCount; i++)
             {
                 int slot, attempts = 0;
-                do { slot = GameRandom.instance.Next(_availableAugmentsBuffer.Count); attempts++; }
+                do { slot = AugmentRandom.instance.Next(drawPool.Count); attempts++; }
                 while (drawnSlots.Contains(slot) && attempts < 20);
                 drawnSlots.Add(slot);
-                options.Add(new PendingOption(_availableAugmentsBuffer[slot]));
+                options.Add(new PendingOption(drawPool[slot]));
             }
         }
 
@@ -627,12 +712,12 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
             var usedPairs = new HashSet<(int, int)>();
             while (options.Count < optionCount)
             {
-                int idxA = GameRandom.instance.Next(statCount);
+                int idxA = AugmentRandom.instance.Next(statCount);
                 int idxB = idxA;
                 int attempts = 0;
                 while ((idxB == idxA || usedPairs.Contains((idxA, idxB)) || usedPairs.Contains((idxB, idxA))) && attempts < 20)
                 {
-                    idxB = GameRandom.instance.Next(statCount);
+                    idxB = AugmentRandom.instance.Next(statCount);
                     attempts++;
                 }
 
@@ -678,13 +763,36 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         return false;
     }
 
-    // Both the specific-augment requirement (requiredCount/requiredAugments — use when THIS SPECIFIC
-    // augment is required) and the tag-based requirement (requiredTags — use when "any augment with this
-    // general capability" is required, e.g. "any OnHit-effect augment") must independently pass.
+    // The specific-augment requirement (requiredCount/requiredAugments — use when THIS SPECIFIC augment is
+    // required), the tag-based requirement (requiredTags — use when "any augment with this general
+    // capability" is required, e.g. "any OnHit-effect augment"), and the ability-identity requirement
+    // (requiredAbilities — use when ONE EXACT ability must currently be equipped) must all independently
+    // pass.
     private bool ArePrerequisitesMet(AugmentData augment, PlayerID player)
     {
         if (!IsRequirementGroupSatisfied(augment.requiredAugments, augment.requiredCount, player)) return false;
         if (!HasPickedAugmentForEachTag(augment.requiredTags, player)) return false;
+        if (!HasRequiredAbilities(augment.requiredAbilities, player)) return false;
+        return true;
+    }
+
+    // Companion to HasPickedAugmentForEachTag below, for AugmentData.requiredAbilities — see that field's
+    // own doc comment for why ability identity is a separate check instead of folding into the tag system.
+    // Same live GetComponents<IAbilityPD>() scan, same "whatever's actually equipped right now" safety —
+    // stays correct even if ability loadouts ever become swappable, with no changes needed here.
+    private bool HasRequiredAbilities(AbilityIdentity[] required, PlayerID player)
+    {
+        if (required == null || required.Length == 0) return true;
+        if (!CharacterStatsPD.All.TryGetValue(player, out var stats)) return false;
+
+        IAbilityPD[] abilities = stats.GetComponents<IAbilityPD>();
+        foreach (var identity in required)
+        {
+            bool found = false;
+            foreach (var ability in abilities)
+                if (ability != null && ability.Identity == identity) { found = true; break; }
+            if (!found) return false;
+        }
         return true;
     }
 

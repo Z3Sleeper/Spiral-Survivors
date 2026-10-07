@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d57dcf568e9a34c4b88152bebc17d092, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnFirstDodgeGainCritChanceAugment
-  critChancePercent: 0.6
+  critChancePercent: 0.5
   duration: 10
   buffIcon: {fileID: 21300000, guid: 40fa89a1f0474a143bf77b5f5edf4333, type: 3}

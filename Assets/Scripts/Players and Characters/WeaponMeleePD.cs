@@ -3,40 +3,12 @@ using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Pivot-based orbit rework (2026-08-25) — replaced the old per-tick cos/sin position + LookRotation facing
-// (still readable in WeaponMeleePDOld.cs, deprecated/unused, kept only for reference) with a child orbitPivot
-// transform whose local position carries the live orbit radius (a single float write, not a vector built
-// from cos/sin) and whose parent (this weapon's own root) rotation carries the sweep angle via a plain
-// Quaternion.Euler — position and facing both fall out of ordinary Unity hierarchy composition instead of
-// being separately recomputed every substep of the hit-sweep. Same trick the King Orbiter indicator's own
-// pivot fix already used, generalized to melee weapon orbiting; validated live across WeaponRange, Size,
-// and WeaponRadius on Knight/Rogue/Bladeweaver's prefabs.
-//
-// Prefab contract: orbitPivot is a child of this weapon's root, empty of any local-offset meaning of its own
-// (script overwrites its localPosition every tick). Visuals and hitboxTarget are both children of orbitPivot
-// (not nested under each other any deeper than they already were) — their own local positions/rotations
-// relative to their parent are whatever small internal-geometry offsets they've always represented (the
-// orbit radius itself lives on orbitPivot, not baked into them). Whatever local rotation the model sits at
-// when orbitPivot's rotation is identity IS this weapon's "angle zero" facing.
-//
-// The PredictedTransform component (graphics smoothing) MUST live on orbitPivot itself, not on this weapon's
-// root — root no longer carries the orbit radius at all, so PredictedTransform reading root's own transform
-// would leave Visuals/Model completely blind to it, frozen as if WeaponRadius were always 0. Safe against
-// PurrDiction's actual tick loop (PredictionManager.SimulateFrame*): every identity's LateSimulate() —
-// including this weapon's own, which is what actually moves orbitPivot — finishes for the WHOLE scene before
-// ANY identity's GetLatestUnityState() (PredictedTransform's own capture hook) runs, as two strictly
-// separate, sequential passes. That barrier holds regardless of which GameObject within a spawned prefab
-// each identity lives on, so orbitPivot's position/rotation is always fully up to date by the time
-// PredictedTransform captures it — no dual-write, no per-frame fighting over Visuals; Model just stays a
-// plain, statically-authored child, same as Guard/Hilt/Connector always were.
-//
-// IsOrbitFlipped (RogueSpinAbilityPD's vertical-plane leap) is supported — see FlipTipRotation's own field
-// comment for the composition. Confirmed live: position tracks the player's own body center (via the
-// inherited ApplyHeightLift(), unconditionally — no flip-branching needed there at all, since that method
-// already adds the Size-scaled body-center lift specifically while IsOrbitFlipped), and the model's own rest
-// orientation already slices edge-first once rigidly tipped, with no extra local rotation needed — see
-// ApplyModelVisualAdjustments's own comment for why this reuses WeaponBasePD's visualHeightTarget directly
-// (widened to protected) rather than a separate Inspector reference.
+// Melee weapon hit detection (2026-09-28 rework, since renamed — see WeaponBasePD.cs's own class doc comment
+// for the full migration history). The hit-detection box never grows/shifts for a tip/backtip decoration at
+// all, unlike the old pre-rework system's own GetHitboxTipExtraReach/GetHitboxBackTipExtraReach mechanism
+// (deleted along with it — see WeaponSharedPD.cs). meleeHalfExtents.z * hb.lossyScale.z IS the hitbox's whole
+// depth now, full stop; hitboxHilt/hitboxTip (WeaponBasePD) only describe how that already-fixed total is
+// split up for the MODEL's own bucket positions, never for extending the real hitbox beyond it.
 public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 {
     public struct State : IPredictedData<State>
@@ -53,19 +25,30 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
     [SerializeField] private Vector3 meleeHalfExtents = new(0.1f, 0.1f, 0.5f);
 
-    // The new pivot — see this file's own class-level doc comment for the full contract. Root tracks
-    // position (the orbit origin) and rotation (the orbit angle); this transform's LOCAL position is
-    // overwritten every tick with (0, 0, radius) — a plain magnitude, no trig — and Visuals/hitboxTarget
-    // hang off it as children, inheriting both the radius offset and root's sweep rotation automatically.
     [SerializeField] private Transform orbitPivot;
 
-    // Same sign/composition as WeaponBasePD's own OrbitFlipTip — RogueSpinAbilityPD (the one caller of
-    // CharacterStatsPD.SetOrbitFlipped) is unchanged and untouched by the pivot rework, so this just needs
-    // to reproduce the same "stand the sweep plane up, oriented toward OrbitFacingYaw" composition the old
-    // per-tick cos/sin math used, applied once as an extra rotation layered on top of the ordinary sweep
-    // (Quaternion.Euler(0, stepAngle, 0)) instead of baked into a one-off position formula. Composed as the
-    // OUTERMOST rotation (tip * sweep) so it tips the whole circle — position, facing, hit-sweep sub-
-    // stepping, all of it — rather than needing separate handling anywhere.
+    // Editor-only preview (2026-09-29, moved here from WeaponBasePD — [ContextMenu] doesn't work on
+    // a method only inherited from an open generic base class, Unity's menu-command reflection can't bind to
+    // it even though this concrete subclass isn't generic itself; confirmed via the "is generic and cannot be
+    // used for menu commands" console warning). ScaleModel() only ever actually runs once a live
+    // CharacterStatsPD registers this weapon (WeaponManagerPD.RegisterWeapon, Play mode only), so outside Play
+    // mode Blade/Tip/the particle bucket just sit at whatever raw, unscaled state they were last left in — NOT
+    // representative of how they'll actually line up at runtime. [ContextMenu], not [ExecuteAlways]/
+    // OnValidate() — this is a PredictedIdentity, and running anything automatically during its own edit-mode
+    // lifecycle risks interfering with PurrDiction's own Awake/OnEnable expectations; a manual, on-demand
+    // right-click action has no such risk. Right-click this component's header in the Inspector -> "Preview
+    // Range In Editor" to see Blade/Tip/particles laid out as they'd actually appear at editorPreviewRange,
+    // without entering Play mode. Hilt is unaffected either way (its own Z position was never script-driven in
+    // the first place — see hiltParent's own field comment on WeaponBasePD).
+    [SerializeField] private float editorPreviewRange = 10f;
+
+    [ContextMenu("Preview Range In Editor")]
+    private void PreviewInEditor()
+    {
+        InitModelVisuals();
+        ScaleModel(editorPreviewRange);
+    }
+
     private static readonly Quaternion FlipTipRotation = Quaternion.Euler(0f, 0f, -90f);
 
     private bool _initialized;
@@ -74,10 +57,6 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private readonly Collider[] _overlapResults = new Collider[32];
     private readonly HashSet<IEnemyPD> _touchedThisTick = new();
     private readonly HashSet<IFriendlyPD> _touchedAlliesThisTick = new();
-    // "Tip" hits — see WeaponHitData.isTip's own doc comment. Populated alongside _touchedThisTick at every
-    // detection site (both the swept sub-arc BoxCasts and the final OverlapBox), so an enemy landing in the
-    // outer 10% of the hitbox in ANY of this tick's checks counts as a tip hit overall (same "any qualifying
-    // detection wins" convention _touchedThisTick itself already uses via HashSet.Add).
     private readonly HashSet<IEnemyPD> _tipHitsThisTick = new();
 
     private float HitCooldown => _stats != null ? 135f / _stats.WeaponSpeed : 0.25f;
@@ -116,20 +95,9 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
     protected override void Simulate(ref State state, float delta) { }
 
-    // WeaponBasePD.NominalOrbitRadius() is private, so it can't be called from here — duplicated rather
-    // than touching WeaponBasePD (this whole prototype is meant to be zero-risk to the real weapon system).
-    // Same formula, same meaning: nominal distance from the orbit origin to where this weapon's root sits.
-    private float NominalOrbitRadius()
-    {
-        float halfRange = rangeScaleTarget != null
-            ? designOrbit * RootScale.z
-            : (IsMelee ? RangeValue / 2f : 0.25f);
-        // EffectiveWeaponRange, not the raw WeaponRange stat — see WeaponBasePD.NominalOrbitRadius's own
-        // identical 2026-09-14 doc comment (this is a duplicate of that method, see this method's own doc
-        // comment above for why).
-        float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
-        return weaponRadiusOffset + _stats.bonusSizePercent * 0.5f + halfRange;
-    }
+    // NominalOrbitRadius() is inherited directly from WeaponBasePD now (protected there) — no need
+    // to duplicate it the way the original WeaponMeleePD had to (that was specifically to avoid touching the
+    // shared WeaponBasePD other legacy weapon types still depend on; this new base has no such constraint).
 
     private float SlotAngleOffset()
     {
@@ -146,19 +114,9 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         HitCooldownMath.Tick(state.hitCooldowns);
         HitCooldownMath.Tick(state.allyHitCooldowns);
 
-        // Negated (2026-08-25) — the pivot's rotation-only sweep came out spinning counterclockwise by
-        // default (opposite axis-convention parity from the old cos/sin+LookRotation math), backwards from
-        // the clockwise motion WeaponMeleePD always produced. Flipping the sign here, uniformly, reverses
-        // BOTH the sweep rotation AND the hit-detection sub-stepping direction together (both derive from
-        // this same currentAngle/startAngle) — orbitPivot's own RADIUS write further down never depends on
-        // angle sign at all (magnitude only), so nothing else needs touching for this.
         float angleSign = IsOuterTrack ? -1f : 1f;
         float currentAngle = -(angleSign * _stats.WeaponOrbitAngle + SlotAngleOffset());
 
-        // Extra outermost rotation layered onto the ordinary flat sweep while IsOrbitFlipped (e.g.
-        // RogueSpinAbilityPD's leap) — see FlipTipRotation's own field comment. Fixed for the whole tick
-        // (OrbitFacingYaw/IsOrbitFlipped don't change intra-tick), so computed once here rather than per
-        // substep below.
         Quaternion tip = _stats.IsOrbitFlipped
             ? Quaternion.Euler(0f, _stats.OrbitFacingYaw, 0f) * FlipTipRotation
             : Quaternion.identity;
@@ -166,46 +124,25 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         float radius = NominalOrbitRadius();
         if (radius <= 0.0001f) return;
 
-        // Root just tracks the origin — no cos/sin, the radius lives on orbitPivot's local offset instead.
-        // ApplyHeightLift() (inherited, unmodified) already adds SpecialHeightOffset (the player's own live
-        // leap-arc height) unconditionally, PLUS WeaponVisualConstants.BaseMidHeightLift * bonusSizePercent
-        // specifically while IsOrbitFlipped — i.e. exactly the player's own body CENTER (0.5 for the default
-        // 1-unit sphere, scaling with Size), not their ground-level root. Two earlier attempts at this (a
-        // flat 0, then SpecialHeightOffset + radius) were both reinventing this same term and getting it
-        // wrong — this already-inherited call is the correct one, unconditionally, no flip-branching needed
-        // here at all: the standing circle's CENTER now tracks the player's own body center, leaping with
-        // them, with the circle extending symmetrically above/below that by radius.
         Vector3 origin = _stats.EffectiveOrbitOrigin;
         transform.position = ApplyHeightLift(origin);
-        // Counter-scaled by rootZ (root's own Size-driven localScale.z) — orbitPivot is root's CHILD, so its
-        // local position would otherwise get implicitly multiplied by root's own scale when resolving to
-        // world space, unlike the old system where root's world position was assigned directly with no
-        // parent to inherit scale from. radius's own bonusSizePercent clearance term is deliberately meant
-        // to stay a flat, unscaled world-space addend (same reasoning WeaponManagerPD.SetupWeaponRange's own
-        // hitboxTarget division already documents) — without this, that term got scaled by Size a second
-        // time, ballooning the whole orbit outward during Size buffs.
         float rootZ = transform.localScale.z;
         orbitPivot.localPosition = new Vector3(0f, 0f, radius / Mathf.Max(0.0001f, rootZ));
+        orbitPivot.localRotation = Quaternion.identity;
 
         Transform hb = hitboxTarget != null ? hitboxTarget : orbitPivot;
 
-        float xRatio = xRangeScaleRatio > 0f
-            ? Mathf.Lerp(1f, hb.lossyScale.z / Mathf.Max(0.001f, designOrbit * transform.localScale.z), xRangeScaleRatio)
-            : 1f;
+        // Widens in step with the visual model's own resize now (2026-09-29 — was its own separate,
+        // similarly hitboxTip-baseline-broken ratio) — see WeaponBasePD.ComputeScaleMultiplier's
+        // own doc comment.
+        float xRatio = ComputeScaleMultiplier();
         Vector3 half = new(
             meleeHalfExtents.x * hb.lossyScale.x * xRatio,
             meleeHalfExtents.y * hb.lossyScale.y,
             meleeHalfExtents.z * hb.lossyScale.z);
 
-        // centerShift is the NET forward shift. Growing half.z by (tipExtra+backTipExtra)/2 while shifting
-        // center by (tipExtra-backTipExtra)/2 means the front edge only ever moves by tipExtra and the back
-        // edge only ever moves by backTipExtra — the growth term and the shift term cancel out for whichever
-        // end ISN'T being extended, so front/back extensions never interfere with each other.
-        float tipExtra = GetHitboxTipExtraReach();
-        float backTipExtra = GetHitboxBackTipExtraReach();
-        float centerShift = (tipExtra - backTipExtra) * 0.5f;
-        half.z += (tipExtra + backTipExtra) * 0.5f;
-
+        // No more centerShift/half.z growth for a tip/backtip decoration — meleeHalfExtents.z * hb.lossyScale.z
+        // IS the hitbox's whole depth now (see class doc comment). center is exactly hb's own position.
         _touchedThisTick.Clear();
         _touchedAlliesThisTick.Clear();
         _tipHitsThisTick.Clear();
@@ -214,13 +151,9 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
         if (state.prevSet)
         {
-            // hb's rotation here is still last tick's — root's rotation hasn't been touched yet this tick.
-            Vector3 prevCenter = hb.position + hb.rotation * Vector3.forward * centerShift;
+            Vector3 prevCenter = hb.position;
 
             float angleDelta = _stats.WeaponSpeed * delta;
-            // Angle at the START of this tick, before this tick's movement. Sign untested against the real
-            // spin direction yet — if the sub-arc sweep looks like it's sampling backward once this is
-            // live-tested, flip this to "+ angleSign * angleDelta" instead.
             float startAngle = currentAngle - angleSign * angleDelta;
             int subArcs = SweepMath.ComputeSubArcCount(angleDelta);
 
@@ -235,14 +168,11 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
                 transform.rotation = tip * Quaternion.Euler(0f, stepAngle, 0f);
                 hb.GetPositionAndRotation(out segCenter, out segRot);
-                segCenter += segRot * Vector3.forward * centerShift;
 
                 Vector3 sweep = segCenter - segStart;
                 float dist = sweep.magnitude;
                 if (dist > 0.001f)
                 {
-                    // Tip-zone edges for THIS segment's own landing geometry (segCenter/segRot) — see
-                    // IsInTipZone's own doc comment.
                     Vector3 segForward = segRot * Vector3.forward;
                     Vector3 segNearEdge = segCenter - segForward * half.z;
                     Vector3 segFarEdge  = segCenter + segForward * half.z;
@@ -276,10 +206,8 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         {
             transform.rotation = tip * Quaternion.Euler(0f, currentAngle, 0f);
             hb.GetPositionAndRotation(out center, out hitboxRot);
-            center += hitboxRot * Vector3.forward * centerShift;
         }
 
-        // Tip-zone edges for this tick's final, settled geometry — see IsInTipZone's own doc comment.
         Vector3 finalForward = hitboxRot * Vector3.forward;
         Vector3 finalNearEdge = center - finalForward * half.z;
         Vector3 finalFarEdge  = center + finalForward * half.z;
@@ -325,17 +253,6 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         UpdateWeaponParticlePause();
     }
 
-    // Own version of WeaponBasePD.ApplyVisualAdjustments() — reuses the SAME (now protected) visualHeightTarget
-    // field rather than a separate Inspector reference, since ApplyVisualAdjustments() itself is still used
-    // as-is by ExeAxeThrowProjectilePD (still on the old orbit system) and shouldn't be touched. Position-
-    // lift half: 0 while flipped — the leap-arc/body-center lift already lives on root itself now, see
-    // LateSimulate's own ApplyHeightLift() call — vs. BaseMidHeightLift while flat, same as before. The old
-    // system's own local-rotation tip (ModelTipRotation, calibrated for a LookRotation-based flip this
-    // script doesn't use) isn't needed at all under this rigid-composition approach — the model's own rest
-    // orientation already slices edge-first once tipped, confirmed live. (2026-08-25: an idle wobble sway
-    // used to live here too — tried, tuned, and fully reverted after live testing showed it read as
-    // negligible/off-putting from a top-down view; see project_pd_backlog memory for the full history if
-    // this ever gets revisited.)
     private void ApplyModelVisualAdjustments()
     {
         if (visualHeightTarget == null || _stats == null) return;
@@ -346,11 +263,6 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
 
     // ── Tip ───────────────────────────────────────────────────────────────────
 
-    // The outer 10% of the hitbox's own [nearEdge, farEdge] depth — see WeaponHitData.isTip's own doc
-    // comment. t is the enemy's projected fraction along that axis (0 = nearEdge, 1 = farEdge, unclamped —
-    // an enemy caught just outside either end by the physics query's own tolerance still resolves sanely
-    // since only t >= 0.9 matters here). totalLenSq near 0 (a degenerate zero-depth hitbox) reads as never-tip
-    // rather than dividing by ~0.
     private static bool IsInTipZone(Vector3 enemyPos, Vector3 nearEdge, Vector3 farEdge)
     {
         Vector3 axis = farEdge - nearEdge;
@@ -369,15 +281,6 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         bool isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, _stats.WeaponOnHitPower);
-        // weaponRadius/weaponOffset/weaponRangeMultiplier — see WeaponHitData's own doc comments on each.
-        // weaponRadius mirrors NominalOrbitRadius's own weaponRadiusOffset formula exactly (WeaponRadius,
-        // plus EffectiveWeaponRange again for an outer-track weapon specifically); weaponOffset is the
-        // universal bonusSizePercent*0.5f clearance term every weapon's orbit gets. weaponRangeMultiplier
-        // (2026-09-14) — this weapon's own hitbox depth is now genuinely scaled by this same stat (see
-        // WeaponManagerPD.SetupWeaponRange's own doc comment), so a consumer normalizing hitDistance back
-        // down to "genuine WeaponRange-only" terms (e.g. OnHitDamageDistanceAugment) needs to divide it out
-        // here too — previously left at the struct default 0/unset, correct back when only ranged weapons
-        // could ever carry a nonzero multiplier at all.
         float weaponRadius = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = _stats.WeaponStrength, onHitPower = _stats.WeaponOnHitPower, isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position), weaponRadius = weaponRadius, weaponOffset = _stats.bonusSizePercent * 0.5f, weaponRangeMultiplier = _stats.weaponRangeScalingBonusPercent * _stats.weaponRangeScalingPenalty, isTip = _tipHitsThisTick.Contains(enemy) };
         _stats.NotifyHit(hitData);
@@ -400,21 +303,17 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     private void OnDrawGizmos()
     {
         Transform hb = hitboxTarget != null ? hitboxTarget : transform;
-        float xRatio = (xRangeScaleRatio > 0f && designOrbit > 0f)
-            ? Mathf.Lerp(1f, hb.lossyScale.z / Mathf.Max(0.001f, designOrbit * transform.localScale.z), xRangeScaleRatio)
-            : 1f;
+        // ComputeScaleMultiplier() already no-ops safely (returns 1f) if _stats is null — same guard this
+        // gizmo draw needs for viewing the prefab in isolation, outside a live scene.
+        float xRatio = ComputeScaleMultiplier();
         Vector3 half = new(
             meleeHalfExtents.x * hb.lossyScale.x * xRatio,
             meleeHalfExtents.y * hb.lossyScale.y,
             meleeHalfExtents.z * hb.lossyScale.z);
-        float tipExtra = GetHitboxTipExtraReach();
-        float backTipExtra = GetHitboxBackTipExtraReach();
-        float centerShift = (tipExtra - backTipExtra) * 0.5f;
-        half.z += (tipExtra + backTipExtra) * 0.5f;
         Gizmos.color = new Color(1f, 0.5f, 0f, 0.4f);
         Matrix4x4 prev = Gizmos.matrix;
         Gizmos.matrix = Matrix4x4.TRS(hb.position, hb.rotation, Vector3.one);
-        Gizmos.DrawWireCube(new Vector3(0f, 0f, centerShift), half * 2f);
+        Gizmos.DrawWireCube(Vector3.zero, half * 2f);
         Gizmos.matrix = prev;
     }
 }

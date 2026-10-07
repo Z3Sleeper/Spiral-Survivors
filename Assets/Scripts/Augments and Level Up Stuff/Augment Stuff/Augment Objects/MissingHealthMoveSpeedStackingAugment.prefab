@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0c030c524cbf3a24ab7dc3115cc74ba3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MissingHealthMoveSpeedStackingAugment
-  moveSpeedPerStack: 1
-  missingHealthPercentPerStack: 0.15
+  perStackMoveSpeedPercent: 0.08
+  perStackMissingHealthPercent: 0.15
   maxStacks: 5

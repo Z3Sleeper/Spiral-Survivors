@@ -19,6 +19,10 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         public float stateTimer;
         public float attackCooldownTimer;
         public int   attacksRemaining;
+        // Runtime-scaled — see EnemyBaseState.scaledMaxHealth's own doc comment for why these live in State
+        // rather than as a plain field mutated by OnConfigureSpawn (2026-09-22 follow-up pass).
+        public int   scaledAttacksPerAttack;
+        public float scaledAttackCooldown;
         public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
 
         public State Duplicate()
@@ -61,31 +65,34 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     [SerializeField] private float spinDuration       = 0.1f;
     [SerializeField] private float betweenSpinPause   = 0.25f;
     [SerializeField] private float postSpinPause      = 0.5f;
-    // Tier1-authored baseline, scaled per tier by attacksPerAttackTierGrowth below (applied in
-    // OnConfigureSpawn()). See _authoredAttacksPerAttack's own doc comment for why this needs the
-    // snapshot-and-reset treatment instead of just incrementing this field directly.
+    // Tier1-authored, pristine read-only baseline forever (2026-09-22) — OnConfigureSpawn scales it into
+    // State.scaledAttacksPerAttack instead of mutating this in place, so no _authoredX snapshot/reset is
+    // needed anymore (see EnemyBaseState.scaledMaxHealth's own doc comment for the full reasoning).
     [SerializeField] private int   attacksPerAttack   = 1;
     [SerializeField] private float dashSpeedMultiplier = 4f;
     // Flat + size-scaled (2026-09-03, was preferredRange/4f) — decoupled from preferredRange, matching
     // KingSpikePD.postChargeDashOffsetDistance's own flat-variable convention instead of deriving from the
     // shared approach/retreat/attack-range field. See EnterDashToTarget's own call site.
     [SerializeField] private float dashOffsetDistance = 2f;
-    // Captured once in OnAwake(), reset back onto attacksPerAttack every pooled reuse in LateAwake() —
-    // otherwise OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot"
-    // pattern EnemyBasePD's own maxHealth/damage/moveSpeed/xpValue/enemyName already use (and BlitzGloomPD's
-    // own _authoredBlitzesPerAttack already established for this exact identical case).
-    private int _authoredAttacksPerAttack;
 
     [Header("Attack Cooldown")]
+    // Same "pristine read-only baseline" treatment as attacksPerAttack above — scales into
+    // State.scaledAttackCooldown instead.
     [SerializeField] private float attackCooldown = 5f;
-    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
-    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as _authoredAttacksPerAttack above.
-    private float _authoredAttackCooldown;
 
     [Header("Tier Scaling")]
-    // Added onto attacksPerAttack per tier above 1 — see OnConfigureSpawn().
+    // Added onto attacksPerAttack per tier above 1 — see OnConfigureSpawn(). Authored to 0 (2026-09-30) —
+    // per-attack scaling was producing too much visual clutter/forced dash usage relative to other enemies;
+    // attackCooldownTierGrowth below takes over instead. Left in place (not removed) in case it's ever
+    // reinstated.
     [SerializeField] private int attacksPerAttackTierGrowth = 1;
+    // TRUE compounding multiplier (2026-09-30, explicit exception to the project's usual "never
+    // compounding/exponential" *TierGrowth convention) — replaces attacksPerAttackTierGrowth as this enemy's
+    // own tier-scaling lever. scaledAttackCooldown = attackCooldown * attackCooldownTierGrowth^(spawnTier-1),
+    // e.g. 0.4 default: T1 = authored, T2 = authored*0.4, T3 = authored*0.4*0.4, T4 = authored*0.4^3 — each
+    // tier multiplies the PREVIOUS tier's already-reduced cooldown again, not a flat per-tier percentage off
+    // the base. Combined multiplicatively with attackCooldownMultiplier (Threat Level 5's own halving) too.
+    [SerializeField] private float attackCooldownTierGrowth = 0.4f;
 
     [Header("Indicators")]
     [SerializeField] private GameObject   _windupIndicator;
@@ -93,26 +100,16 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
 
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        _authoredAttacksPerAttack = attacksPerAttack;
-        _authoredAttackCooldown = attackCooldown;
-    }
-
     protected override void LateAwake()
     {
         base.LateAwake();
 
-        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
-        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredAttacksPerAttack's
-        // own doc comment.
-        attacksPerAttack = _authoredAttacksPerAttack;
-        attackCooldown = _authoredAttackCooldown;
+        // Placeholder only — attacksPerAttack/attackCooldown are the pristine tier1 baseline until
+        // OnConfigureSpawn() (always runs AFTER LateAwake(), once hierarchy.Create() returns) writes the
+        // real scaled values into State.scaledAttacksPerAttack/scaledAttackCooldown. Re-set again in
+        // OnRespawnReset() once those are actually tier-scaled (runs AFTER OnConfigureSpawn, on this life's
+        // first Simulate() tick — see its own comment for the BlitzGloomPD precedent).
         currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
-        // Re-set again in OnRespawnReset() once attacksPerAttack is actually tier-scaled (that always runs
-        // AFTER OnConfigureSpawn, on this life's first Simulate() tick — see its own comment for the
-        // BlitzGloomPD precedent) — this LateAwake() assignment is only ever a placeholder until then.
         currentState.attacksRemaining    = attacksPerAttack;
     }
 
@@ -122,12 +119,14 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
-        attacksPerAttack += (spawnTier - 1) * attacksPerAttackTierGrowth;
+        currentState.scaledAttacksPerAttack = attacksPerAttack + (spawnTier - 1) * attacksPerAttackTierGrowth;
 
-        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
-        // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
-        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment), combined
+        // multiplicatively with attackCooldownTierGrowth's own TRUE compounding per-tier reduction (see that
+        // field's own doc comment — Mathf.Pow, not a linear "1 - (tier-1)*growth" term). Re-set the
+        // placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
+        currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier * Mathf.Pow(attackCooldownTierGrowth, spawnTier - 1);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
     }
 
     // Sets WindupSpeed/SpinSpeed (and caches _postSpinClipLength, re-derived fresh from postSpinPause/
@@ -197,7 +196,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
                         // windup, whichever runs first — not EnterSpin's own strike-resolve point) so an
                         // attempt cancelled via Interrupt() mid-dash or mid-windup still counts against the
                         // budget. See EnterMoving's own comment for why the reset moved here too.
-                        if (state.attacksRemaining <= 0) state.attacksRemaining = attacksPerAttack;
+                        if (state.attacksRemaining <= 0) state.attacksRemaining = state.scaledAttacksPerAttack;
                         state.attacksRemaining--;
                         CaptureAttackAnchor(ref state);
                         if (dist > preferredRange / 2f) EnterDashToTarget(ref state);
@@ -239,7 +238,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
                         // Same refill-if-exhausted + decrement as the Moving case above — this is the other
                         // funnel into a fresh attempt (continuing an existing chain rather than starting a
                         // brand new one), same reasoning applies.
-                        if (state.attacksRemaining <= 0) state.attacksRemaining = attacksPerAttack;
+                        if (state.attacksRemaining <= 0) state.attacksRemaining = state.scaledAttacksPerAttack;
                         state.attacksRemaining--;
                         CaptureAttackAnchor(ref state);
                         float dist = Vector3.Distance(transform.position, _target.position);
@@ -307,7 +306,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         // convention.
         // * size — matches SpearGloomPD's own stabRange * size precedent; EnemyBasePD.size has no automatic
         // transform.localScale wiring, so elite/bigger variants need this explicit to actually hit wider.
-        float   dmg    = damage * spinDamageMultiplier;
+        float   dmg    = B.scaledDamage * spinDamageMultiplier;
         Vector3 origin = transform.position;
 
         int n = Physics.OverlapSphereNonAlloc(origin, spinRadius * size, _spinOverlapResults, CombatLayerMasks.FriendlyHurtboxMask);
@@ -347,7 +346,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private void EnterPostSpin(ref State state)
     {
         state.stateTimer          = postSpinPause;
-        state.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        state.attackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
         SetDaggerState(ref state, DaggerState.PostSpin);
     }
 
@@ -388,7 +387,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.attacksRemaining    = 0;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
@@ -478,8 +477,8 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     {
         ApplyAnimatorClipSpeeds();
         currentState.stateId             = 0;
-        currentState.attacksRemaining    = attacksPerAttack;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attacksRemaining    = currentState.scaledAttacksPerAttack;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
         currentState.stateTimer          = 0f;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.Hide();

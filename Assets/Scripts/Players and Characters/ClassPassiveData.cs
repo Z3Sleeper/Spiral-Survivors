@@ -27,8 +27,6 @@ public class ClassPassiveData : ScriptableObject
 
     [Header("Move Speed")]
     public float bonusMoveSpeedFlat = 0f;
-    public float bonusMoveSpeedPercent = 0f;
-    public float moveSpeedPenalty = 0f;
     public float totalMoveSpeedPercent = 0f;
     public float totalMoveSpeedPenalty = 0f;
 
@@ -137,7 +135,10 @@ public class ClassPassiveData : ScriptableObject
     // returns at the CharacterStatsPD sweep (see its own comment there). Confirmed 0 on every existing class
     // passive asset at rename time, so nothing tuned was lost.
     public float surgeCostReductionPercent = 0f;
-    public float surgeAttackSpeedPenalty = 0f;
+    // Renamed from surgeAttackSpeedPenalty (2026-10-02) — buff-only field (SurgeAttackSpeedMultiplierAugment
+    // writes the same CharacterStatsPD field additively), no debuff variant planned. Confirmed 0 on every
+    // existing class passive asset at rename time, so nothing tuned was lost.
+    public float surgeAttackSpeedBonusPercent = 0f;
 
     // dashHaste plays the "base+flat" role by itself (no separate base field — see CharacterStatsPD's own
     // declaration comment), so bonusDashHastePercent/totalDashHastePercent/totalDashHastePenalty are the

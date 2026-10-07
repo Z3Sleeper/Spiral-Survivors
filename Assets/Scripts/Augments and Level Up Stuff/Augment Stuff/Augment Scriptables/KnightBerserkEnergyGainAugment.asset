@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: KnightBerserkEnergyGainAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: '<color=#FFFFFF>Resolve: Unending</color>'
+  description: '<color=#FFFF00>+{maxEnergyFlat} Max Energy</color>
+
+    <color=#FFA000>Double</color>
+    <color=#FFFF00>Energy Gain</color> from all sources during <color=#FFFFFF>Resolve</color>'
+  icon: {fileID: 21300000, guid: 4bd44dc4f90852d45925e682f60154e6, type: 3}
+  effectPrefab: {fileID: 7881955095872996277, guid: 51ccefb062263184f9db9ca4c69dc217, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags: []
+  requiredTags: []
+  requiredAbilities: 02000000
+  incompatibleTags: []
+  unlockTag: Ability

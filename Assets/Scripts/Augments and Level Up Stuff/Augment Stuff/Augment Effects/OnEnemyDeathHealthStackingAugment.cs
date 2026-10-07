@@ -2,7 +2,7 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // New tech, not a port. Every deathsPerStack enemy deaths (any enemy worth anything, any player's kill —
-// same "reacts to every death" scope as HealthRegenOnEnemyDeathAugment, not a per-kill event), grants
+// same "reacts to every death" scope as OnEnemyDeathHealthRegenAugment, not a per-kill event), grants
 // bonusMaxHealthPerStack * Stats.StackPower bonus max health. No cap — infinitely scales with how many
 // enemies happen to die over the course of a run.
 //
@@ -19,7 +19,7 @@ using UnityEngine;
 // deathCount/stackCount both live in predicted State even though the mutation happens directly inside the
 // OnEnemyDeath handler rather than Simulate() — CharacterStatsPD.OnEnemyDeath is itself already a
 // verified-state, edge-detected reaction (fired once from Die()), so mutating currentState and calling
-// Stats.AddMaxHealthFlat directly from here is safe, same as HealthRegenOnEnemyDeathAugment's own direct
+// Stats.AddMaxHealthFlat directly from here is safe, same as OnEnemyDeathHealthRegenAugment's own direct
 // Stats.Heal() call from the same event.
 //
 // Recomputes its OWN total contribution from scratch on every new stack (removing exactly what it last

@@ -58,6 +58,14 @@ public class PlayableAreaPD : MonoBehaviour
         _boundaryPoints = BuildWorldBoundaryPoints();
     }
 
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby).
+    private void OnDestroy()
+    {
+        if (instance == this) instance = null;
+    }
+
     // Converts PlayableAreaOutlinePD's own local, untilted authoring points into world space — Y is always 0
     // in the local point before conversion (deliberately NOT PlayableAreaOutlinePD's own heightOffset, which
     // exists purely to keep ITS OWN LineRenderer visual from z-fighting the floor and has no business

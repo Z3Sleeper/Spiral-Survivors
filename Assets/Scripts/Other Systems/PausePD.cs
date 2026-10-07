@@ -55,6 +55,15 @@ public class PausePD : PredictedIdentity<PausePD.State>
 
     protected override void LateAwake() => instance = this;
 
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby). Destroyed(), not raw OnDestroy() — same PD lifecycle
+    // convention WeaponBasePD/EnemyBasePD's own Destroyed() overrides already use.
+    protected override void Destroyed()
+    {
+        if (instance == this) instance = null;
+    }
+
     protected override State GetInitialState() => new()
     {
         readyFallbackTimer = readyFallbackDuration,

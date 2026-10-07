@@ -150,7 +150,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 7965949495438917252}
-  - component: {fileID: 6937934420572055414}
+  - component: {fileID: 3605963227451107878}
   - component: {fileID: 4065948657444989573}
   m_Layer: 0
   m_Name: ArcherWeapon
@@ -175,7 +175,7 @@ Transform:
   - {fileID: 8719741040467532460}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &6937934420572055414
+--- !u!114 &3605963227451107878
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -184,32 +184,34 @@ MonoBehaviour:
   m_GameObject: {fileID: 2942187867930129664}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 214303305000eb641ac0ed762b9f3528, type: 3}
+  m_Script: {fileID: 11500000, guid: 1ba5594c14fa63f4fbdf1387930c6b7a, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WeaponRangedPD
+  m_EditorClassIdentifier: Assembly-CSharp::WeaponRangedPDNormalized
   hitboxTarget: {fileID: 3060469143772989073}
-  rangeScaleTarget: {fileID: 0}
-  rangeFollowers: []
-  tipOffset: 0
-  xRangeScaleRatio: 0
-  yScaleFollowers: []
-  xzScaleFollowers: []
-  xScaleFollowers: []
-  hitboxTip: {fileID: 0}
-  hitboxTipOffset: 0
-  hitboxTipScalesWithX: 0
-  hitboxTipScalesWithY: 0
-  hitboxTipScalesWithZ: 0
+  bladeParent: {fileID: 0}
+  hiltParent: {fileID: 0}
+  tipParent: {fileID: 0}
+  hitboxHilt: 0
+  hitboxTip: 0
+  particleSystemParent: {fileID: 0}
+  particlesExtendToHilt: 0
+  particlesExtendToTip: 0
+  rangeScalingBaseline: 1
+  rangeSizeScalingRatio: 0
   _renderers:
   - {fileID: 4230927786129755307}
   - {fileID: 3811083712774203412}
   - {fileID: 6938014202996967267}
   - {fileID: 2896685284800185084}
-  isRanged: 1
-  rangeMultiplier: 2.5
+  weaponParticles: []
+  minEmissionRate: 0
+  maxEmissionRate: 0
+  minEmissionRange: 0
+  maxEmissionRange: 0
   visualHeightTarget: {fileID: 7983150946184223005}
   projectilePrefab: {fileID: 2942187867930129664, guid: 2d918d54e127e5444b6e0a0f3407f294, type: 3}
   orbitPivot: {fileID: 8719741040467532460}
+  muzzleOrbitOffset: 0.25
 --- !u!114 &4065948657444989573
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -231,6 +233,8 @@ MonoBehaviour:
   tintedRenderers:
   - {fileID: 2896685284800185084}
   tintedMaterialIndex: 0
+  coloredParticleSystems: []
+  coloredTrailRenderers: []
   alpha: 1
 --- !u!1 &4318597951351945260
 GameObject:
@@ -353,6 +357,38 @@ MeshRenderer:
   m_SortingOrder: 0
   m_MaskInteraction: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &5253671402692036754
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5847288245257980809}
+  m_Layer: 0
+  m_Name: Blade (Bow)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5847288245257980809
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5253671402692036754}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 214279872147717802}
+  m_Father: {fileID: 7983150946184223005}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &5576697549929784999
 GameObject:
   m_ObjectHideFlags: 0
@@ -467,7 +503,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 7296903321199093940}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0.5, w: 0.8660254}
+  m_LocalRotation: {x: -0, y: -0, z: 0.5, w: 0.8660254}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -476,7 +512,7 @@ Transform:
   - {fileID: 4404238259609432595}
   - {fileID: 1956670189413978969}
   - {fileID: 5129147270984416389}
-  m_Father: {fileID: 7983150946184223005}
+  m_Father: {fileID: 5847288245257980809}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 60}
 --- !u!1 &8120648073110581364
 GameObject:
@@ -597,7 +633,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 214279872147717802}
+  - {fileID: 5847288245257980809}
   m_Father: {fileID: 3273598209279064071}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &9098146742048899407

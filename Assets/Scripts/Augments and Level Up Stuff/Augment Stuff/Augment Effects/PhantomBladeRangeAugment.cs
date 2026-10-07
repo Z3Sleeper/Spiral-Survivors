@@ -33,7 +33,6 @@ public class PhantomBladeRangeAugment : AugmentEffectPD<PhantomBladeRangeAugment
     }
 
     [SerializeField] private GameObject phantomBladePrefab;
-    [SerializeField] private Color bladeColor = Color.white;
     [SerializeField] private float phantomBladeDamageBonus = 0.1f;
     // Real cooldown duration, same convention as OnCrit/OnHighroll's own baseTimer (their comments explain
     // why this is a genuine cooldown, not a rapid re-roll interval).
@@ -124,7 +123,7 @@ public class PhantomBladeRangeAugment : AugmentEffectPD<PhantomBladeRangeAugment
     {
         if (phantomBladePrefab == null) return;
         PhantomBladeSummonHelper.SummonAtClosestEnemies(hierarchy, phantomBladePrefab, Stats,
-            Stats.transform.position, bladeCount, strengthMultiplierPercent, bladeColor);
+            Stats.transform.position, bladeCount, strengthMultiplierPercent);
     }
 
     protected override void Simulate(ref State state, float delta)

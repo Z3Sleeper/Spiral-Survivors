@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
+  m_Name: BWBladeDanceDurationAugment
+  m_EditorClassIdentifier: Assembly-CSharp::AugmentData
+  displayName: '<color=#FF5000>Blade Dance: Extended</color>'
+  description: <color=#FF5000>Blade Dance's</color> <color=#FFA000>max duration</color>
+    is <color=#FFA000>{durationBonusPercent}% longer</color>.
+  icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
+  effectPrefab: {fileID: 2474192727458186866, guid: b4abed66dde7da84c9212b482bd848d9, type: 3}
+  multiplayerOnly: 0
+  classRestrictionMode: 0
+  characterClasses: 
+  incompatibleAugments: []
+  requiredCount: 2147483647
+  requiredAugments: []
+  tags: []
+  requiredTags: []
+  requiredAbilities: 08000000
+  incompatibleTags: []
+  unlockTag: Ability

@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0b55e2449cd357f4d977632ee08da03f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::OnDodgeGainRangeAugment
-  weaponRangeFlat: 6
+  weaponRangeFlat: 5
   duration: 10
   buffIcon: {fileID: 21300000, guid: f2c8a7fb8497a4746b04f47c4f7d2a9a, type: 3}

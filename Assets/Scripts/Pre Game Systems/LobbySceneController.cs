@@ -66,6 +66,12 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private GameObject unlockPopup;
     [SerializeField] private TextMeshProUGUI unlockPopupText;
     [SerializeField] private AudioClip unlockSound;
+    // The Continue button's own label — always "Continue", plus a "(x/x)" suffix (current item's original
+    // position in the queue over the whole sequence's total) ONLY when more than one item was queued for
+    // this sequence. See ShowNextUnlock's own doc comment for how the total/index are tracked.
+    [SerializeField] private TextMeshProUGUI unlockContinueButtonText;
+    private int _unlockSequenceTotal;
+    private int _unlockSequenceIndex;
 
     // Main-menu counterpart to the old debug-only "Erase Save Data" button that used to live inside
     // UpgradePanel — not tied to the shop anymore, and gated behind a confirm/cancel panel now that it's a
@@ -133,7 +139,7 @@ public class LobbySceneController : MonoBehaviour
     private void OnUnlockQueuedWhileInLobby()
     {
         if (unlockPopup != null && !unlockPopup.activeSelf)
-            ShowNextUnlock();
+            ShowNextUnlock(isNewSequence: true);
     }
 
     private void Start()
@@ -205,7 +211,7 @@ public class LobbySceneController : MonoBehaviour
         if (unlockPopup != null)
         {
             if (UnlockManager.HasPending)
-                ShowNextUnlock();
+                ShowNextUnlock(isNewSequence: true);
             else
                 unlockPopup.SetActive(false);
         }
@@ -486,18 +492,35 @@ public class LobbySceneController : MonoBehaviour
         lobbyManager.JoinLobby(joinLobbyCodeInput.text.Trim());
     }
 
-    private void ShowNextUnlock()
+    // isNewSequence: true at the two places a sequence can START (an already-closed popup either picking up
+    // something queued while in the lobby, or finding something already pending on scene load) — captures
+    // UnlockManager.PendingCount BEFORE this item is dequeued (so it reflects the WHOLE sequence, this item
+    // included) and resets the running index to 0. false at OnUnlockPopupContinueClicked, which only ever
+    // continues an already-started sequence, so the total stays fixed and the index just keeps incrementing.
+    private void ShowNextUnlock(bool isNewSequence)
     {
+        if (isNewSequence)
+        {
+            _unlockSequenceTotal = UnlockManager.PendingCount;
+            _unlockSequenceIndex = 0;
+        }
+        _unlockSequenceIndex++;
+
         string msg = UnlockManager.Dequeue();
         if (unlockPopupText != null) unlockPopupText.text = $"{msg} Unlocked!";
         unlockPopup.SetActive(true);
         SFXManager.instance?.Play(unlockSound, Vector3.zero);
+
+        // "(x/x)" suffix only when more than one item was queued for this sequence — a lone unlock has
+        // nothing to count against, so the button just reads "Continue" on its own.
+        if (unlockContinueButtonText != null)
+            unlockContinueButtonText.text = _unlockSequenceTotal > 1 ? $"Continue ({_unlockSequenceIndex}/{_unlockSequenceTotal})" : "Continue";
     }
 
     public void OnUnlockPopupContinueClicked()
     {
         if (UnlockManager.HasPending)
-            ShowNextUnlock();
+            ShowNextUnlock(isNewSequence: false);
         else
             unlockPopup.SetActive(false);
     }

@@ -9,6 +9,27 @@ public enum AbilitySlot
     Ability2,
 }
 
+// Closed-set identity for every concrete IAbilityPD implementer (2026-10-02) — one entry per ability class,
+// used by AugmentData.requiredAbilities so an ability-specific augment can require a particular ability
+// without polluting the shared tags/requiredTags pool with a one-off, never-reused-elsewhere tag (that pool
+// is for shared CAPABILITIES many augments carry, not one-to-one ability identity — see AugmentData's own
+// doc comment). A real enum, not a string, so authoring is a dropdown with no typo risk and the set of
+// values is naturally exactly the set of abilities that actually exist. See IAbilityPD.Identity's own doc
+// comment for how a required value is actually checked against a player's currently-equipped abilities.
+public enum AbilityIdentity
+{
+    RogueSpin,
+    RogueVanish,
+    KnightBerserk,
+    KnightBuffStun,
+    ExeBigAxe,
+    ExeAxeThrow,
+    ArcherArrowRain,
+    ArcherFocusFire,
+    BWBladeDance,
+    BWBlink,
+}
+
 // Shared by every class-unique ability component (mirrors IWeaponPD/IEnemyPD's role as the generic contract
 // PlayerControllerPD talks to without needing to know which concrete class it's holding). IsReady is the
 // gate PlayerControllerPD checks before forwarding a press into Activate() — the underlying cooldown state
@@ -41,7 +62,7 @@ public interface IAbilityPD
     // without forcing a special action, e.g. BWBladeDanceAbilityPD, which never touches player movement at
     // all) and independent of IsWeaponsDisabled (a separate, orthogonal toggle — see its own doc comment).
     // Constant per concrete type, not state-dependent, same as ForcesSpecialAction. For an ability with no
-    // active window at all (e.g. ArcherArrowRainAbilityPD/KnightAreaStunHealAbilityPD — AbilityIsActive is
+    // active window at all (e.g. ArcherArrowRainAbilityPD/KnightBuffStunAbilityPD — AbilityIsActive is
     // always false) this is moot in practice, same as CooldownStartsOnCast's own doc comment notes for that
     // case — still exposed uniformly so the toggle exists on every implementer, ready to become meaningful
     // if that ability ever gains a real active window later. Each concrete implementer that DOES have an
@@ -85,7 +106,7 @@ public interface IAbilityPD
     bool AbilityIsActive { get; }
 
     // Whether this ability has a real active window AT ALL — false for an instantaneous ability
-    // (ArcherArrowRainAbilityPD/KnightAreaStunHealAbilityPD/ExeAxeThrowAbilityPD — AbilityIsActive is always
+    // (ArcherArrowRainAbilityPD/KnightBuffStunAbilityPD/ExeAxeThrowAbilityPD — AbilityIsActive is always
     // false for these), true for anything with a timed buff/locking window (RogueSpinAbilityPD's leap,
     // RogueVanishAbilityPD's buff, etc.). Constant per concrete type, not state-dependent, same as
     // ForcesSpecialAction/ActiveSurgeBlock — a plain hardcoded property, NOT a serialized Inspector field
@@ -123,13 +144,28 @@ public interface IAbilityPD
     // that has nothing to do with the design intent.
     float BaseCooldownDuration { get; }
 
+    // Charge system (2026-10-02) — "off cooldown" no longer directly means "castable"; IsReady now gates on
+    // CurrentCharges > 0 instead (see each concrete implementer's own authoredChargeCount field). Every
+    // cast spends exactly 1 charge; CooldownRemaining/CooldownDuration are REPURPOSED, not replaced — they
+    // now represent progress toward the NEXT charge (ticking only while CurrentCharges < MaxCharges), so a
+    // UI can still use the exact same fill-ratio formula it always has, just gated on a different visibility
+    // condition (see LocalUIManagerPD/PlayerUIWorldSpace's own ChargeFill vs. the ability-icon cooldown
+    // sweep). MaxCharges is authoredChargeCount PLUS whatever CharacterStatsPD.bonusAbility1Charges/
+    // bonusAbility2Charges currently grants for this ability's own Slot — a live value, not fixed at spawn,
+    // so a mid-run augment can raise it; each concrete implementer grants the newly-unlocked charge(s)
+    // immediately the tick MaxCharges increases, rather than making the player wait out a full regen cycle
+    // to benefit. For an ability authored with authoredChargeCount = 1 (the default) and no bonus, MaxCharges
+    // is always 1 and CurrentCharges is always 0 or 1 — behaviorally identical to the old off-cooldown model.
+    int CurrentCharges { get; }
+    int MaxCharges { get; }
+
     // false (the default on every implementer): CooldownRemaining only starts ticking down once
     // AbilityIsActive goes false — the cooldown reflects "time since the ability ended". true: it starts
     // ticking immediately at cast, running concurrently with the active window instead. Each concrete
     // implementer owns its own `cooldownStartsOnCast` Inspector field and the Simulate()-level gating that
     // reads it (see e.g. RogueSpinAbilityPD.Simulate()'s own comment) — this is just the read-only surface
     // PlayerControllerPD/UI could query generically. For an ability with no active window at all (e.g.
-    // KnightAreaStunHealAbilityPD, which is instantaneous — AbilityIsActive is always false) the two
+    // KnightBuffStunAbilityPD, which is instantaneous — AbilityIsActive is always false) the two
     // settings are indistinguishable in practice: the cooldown always starts immediately at cast either
     // way, since there's no active window to wait out. The field is still exposed there so the toggle
     // exists uniformly across every ability, ready to become meaningful if that ability ever gains a real
@@ -170,6 +206,16 @@ public interface IAbilityPD
     // GetComponents finds last wins silently in that case, so it's worth checking after duplicating a
     // character prefab.
     AbilitySlot Slot { get; }
+
+    // Fixed per concrete class (e.g. RogueSpinAbilityPD always returns AbilityIdentity.RogueSpin) — a plain
+    // hardcoded property, NOT a serialized Inspector field, same "constant per concrete type, nothing to
+    // tune per-instance" shape HasActiveWindow/ForcesSpecialAction already use on this interface. Checked by
+    // AugmentManagerPD against AugmentData.requiredAbilities the same way Tags is checked against
+    // requiredTags — a live GetComponents<IAbilityPD>() scan of the player's own CharacterStatsPD at offer
+    // time, not a static class-to-ability lookup, so this stays correct even if ability loadouts ever become
+    // swappable (whatever's actually equipped in a slot is what gets checked, not what a character "usually"
+    // has).
+    AbilityIdentity Identity { get; }
 
     // For display-only contexts (character select's detail panel) that want to show the ability in an
     // augment-card-style layout alongside the class's passive augments.

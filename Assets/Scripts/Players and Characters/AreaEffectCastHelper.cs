@@ -4,7 +4,7 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Shared cast logic for anything using the "AoE Effects" AreaEffectSize stat — DashExplosionAugment/
-// DashHealAugment/ShieldBreakBurstAugment/KnightAreaStunHealAbilityPD (all via the shared AreaEffectPD for
+// DashHealAugment/ShieldBreakBurstAugment/KnightBuffStunAbilityPD (all via the shared AreaEffectPD for
 // multi-cast chains) — augment or ability, whatever else follows the same shape. One single Cast() method
 // covers every existing combination (damage, knockback, onhit, stun, heal, self-heal-by-hit-count, ...) instead
 // of a new near-duplicate method per augment — see its own doc comment for the full parameter breakdown.
@@ -34,15 +34,15 @@ public static class AreaEffectCastHelper
     // there's no "deal damage to an ally" concept in this system, so callers targeting allies should just
     // leave dealDamage at its default (false) rather than pass it. dealDamage itself (not just
     // damagePercent == 0) gates the whole damage/onhit block — a caller that doesn't want to deal damage at
-    // all (e.g. KnightAreaStunHealAbilityPD) skips a real TakeDamage(0, ...) call and a 0-damage hit-feedback
+    // all (e.g. KnightBuffStunAbilityPD) skips a real TakeDamage(0, ...) call and a 0-damage hit-feedback
     // popup entirely, rather than just zeroing the number.
     // notifyOnHit: DashExplosionAugment wants onhit-triggered augments (OnHitDamageAugment,
     // CritTriggerOnHitAugment, etc.) to fire; ShieldBreakBurstAugment explicitly doesn't.
     // hasKnockback: deliberately its OWN gate, independent of dealDamage — a caller can want knockback with
-    // no damage at all (KnightAreaStunHealAbilityPD) just as easily as damage with no knockback
+    // no damage at all (KnightBuffStunAbilityPD) just as easily as damage with no knockback
     // (DashExplosionAugment's own call). Defaults to false ("no knockback at all") rather than every caller
     // needing to remember to explicitly opt out — DashExplosionAugment/ShieldBreakBurstAugment/
-    // KnightAreaStunHealAbilityPD all explicitly pass hasKnockback: true. Only meaningful when hasKnockback
+    // KnightBuffStunAbilityPD all explicitly pass hasKnockback: true. Only meaningful when hasKnockback
     // is true: knockback null means "use the default" (owner.Knockback exactly); a specific value overrides
     // entirely (ShieldBreakBurstAugment's own reworked knockback).
     //
@@ -51,7 +51,7 @@ public static class AreaEffectCastHelper
     // own ally.Heal(...) inline (DashHealAugment's own RollAndHeal). Exactly one of these is ever non-null for
     // a given call, matching targetAllies.
     // onCastComplete: fired once at the very end with the total hit/found count — e.g.
-    // KnightAreaStunHealAbilityPD healing itself based on how many enemies got stunned. Fires even when the
+    // KnightBuffStunAbilityPD healing itself based on how many enemies got stunned. Fires even when the
     // count is 0, so a caller that cares can decide for itself whether to no-op (matches every other optional
     // callback here — this helper never assumes what "0 hits" should mean for a given caller).
     // interrupt: only meaningful when targetAllies is false — calls IEnemyPD.Interrupt() on each enemy found,
@@ -62,7 +62,7 @@ public static class AreaEffectCastHelper
     // onSuccessfulInterrupt: fired only when interrupt is true AND that specific enemy's Interrupt() call
     // actually returned true — Interrupt()'s own return value is otherwise discarded here, so this is the
     // only way a caller learns "did this land." Feeds CharacterStatsPD's generic SI/FSI event pair (see
-    // CharacterStatsPD.NotifyInterrupted) — e.g. KnightAreaStunHealAbilityPD.
+    // CharacterStatsPD.NotifyInterrupted) — e.g. KnightBuffStunAbilityPD.
     // overrideHitSfx/hitSfxOverride: only meaningful when dealDamage is true — see HitFeedbackData's own doc
     // comment for the full tri-state shape. false (default) plays owner.hitSfx exactly as before this
     // existed. A caller expecting many simultaneous/rapid hits per cast (ArcherArrowRainAbilityPD: up to 20
@@ -171,10 +171,24 @@ public static class AreaEffectCastHelper
     // per retrigger (it used to be called unconditionally at the end of Cast() above, which meant a 21-tick
     // chain spawned the VFX 21 times — a real bug, not just cosmetic waste, once anything used a tick count
     // that high). AreaEffectPD now calls this itself, once, from Launch() only. Duration is NOT a parameter
-    // here — RadiusIndicatorVFXPD owns its own playback timing (a [SerializeField] on the prefab itself),
-    // same convention as any other prefab-authored visual effect. Only radius is gameplay-derived, so only
-    // radius gets threaded in from the caller.
-    public static void SpawnRadiusVFX(PredictedHierarchy hierarchy, GameObject radiusVFXPrefab, Vector3 position, float radius)
+    // RadiusIndicatorVFXPD itself ever sees — it still owns its own playback timing (a [SerializeField] on
+    // the prefab itself), same convention as any other prefab-authored visual effect; only radius/tint are
+    // gameplay-derived values threaded through ITS OWN Launch().
+    // tintColor: null (default, every existing caller) leaves the prefab's own authored color alone — see
+    // RadiusIndicatorVFXPD.TintColor's own doc comment. Added for ArcherArrowRainAbilityPD, which passes its
+    // caster's PlayerColor so the outline/rain particles match whoever cast it.
+    // abilityDuration: null (default, every existing caller) — ArcherArrowRainAbilityPD-specific (2026-10-05),
+    // forwarded to ArrowRainParticleRadiusPD.SetAbilityDuration IF that component happens to be on the
+    // spawned prefab, bypassing RadiusIndicatorVFXPD entirely rather than routing an ArrowRain-only concept
+    // through a class every other AoE VFX caller also shares — see that method's own doc comment for why.
+    // radiusGrowthPerSecond: null (default, every existing caller) — ArcherArrowRainGrowthAugment-specific
+    // (2026-10-05), same bypass-RadiusIndicatorVFXPD shape as abilityDuration above: forwarded straight to
+    // ArrowRainParticleRadiusPD.SetGrowth, which then grows the particle shape's radius (and, via its
+    // existing radiusSource.SetRadius push, the ground outline too) at this constant per-second rate for as
+    // long as the ability's own duration lasts. Deliberately NOT the same value as the real gameplay
+    // AreaEffectPD.SetRadius growth (which steps in discrete per-tick increments) — see
+    // ArcherArrowRainGrowthAugment's own doc comment for why that tiny visual/gameplay mismatch is accepted.
+    public static void SpawnRadiusVFX(PredictedHierarchy hierarchy, GameObject radiusVFXPrefab, Vector3 position, float radius, Color? tintColor = null, float? abilityDuration = null, float? radiusGrowthPerSecond = null)
     {
         if (radiusVFXPrefab == null) return;
 
@@ -183,6 +197,14 @@ public static class AreaEffectCastHelper
 
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out RadiusIndicatorVFXPD vfx))
-            vfx.Launch(radius);
+            vfx.Launch(radius, tintColor);
+
+        if (go != null && go.TryGetComponent(out ArrowRainParticleRadiusPD particleRadius))
+        {
+            if (abilityDuration.HasValue)
+                particleRadius.SetAbilityDuration(abilityDuration.Value);
+            if (radiusGrowthPerSecond.HasValue)
+                particleRadius.SetGrowth(radiusGrowthPerSecond.Value);
+        }
     }
 }

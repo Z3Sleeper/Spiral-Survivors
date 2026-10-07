@@ -30,6 +30,10 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         // phase — see DispatchPull's own doc comment for the one-at-a-time sequencing this drives. Reset to
         // 0 wherever Pulling begins (Moving's own TryStartGrab success branch).
         public int pullSequenceIndex;
+        // Runtime-scaled — see EnemyBaseState.scaledMaxHealth's own doc comment for why these live in State
+        // rather than as a plain field mutated by OnConfigureSpawn (2026-09-22 follow-up pass).
+        public int   scaledMaxGrabCount;
+        public float scaledAttackCooldown;
 
         public void Dispose()
         {
@@ -84,24 +88,17 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     [SerializeField] private float pullDamageMultiplier  = 1f;
     [SerializeField] private float orbitDamageMultiplier = 0.5f;
     // Single source of truth for how many plebs one grab pulls — retuning this alone is enough to change the
-    // count; no prefab surgery needed (see windupIndicatorTemplate's own comment for why). Tier1-authored
-    // baseline, scaled per tier by maxGrabCountTierGrowth below (applied in OnConfigureSpawn()). See
-    // _authoredMaxGrabCount's own doc comment for why this needs the snapshot-and-reset treatment instead of
-    // just incrementing this field directly.
+    // count; no prefab surgery needed (see windupIndicatorTemplate's own comment for why). Tier1-authored,
+    // pristine read-only baseline forever (2026-09-22) — OnConfigureSpawn scales it into
+    // State.scaledMaxGrabCount instead of mutating this in place, so no _authoredX snapshot/reset is needed
+    // anymore (see EnemyBaseState.scaledMaxHealth's own doc comment for the full reasoning).
+    // EnsureIndicatorPoolCapacity/GetInitialState's own heldPlebs sizing were ALREADY built (2026-08-19)
+    // anticipating this exact future tier-scaling — see their own doc comments.
     [SerializeField] private int maxGrabCount = 2;
-    // Captured once in OnAwake(), reset back onto maxGrabCount every pooled reuse in LateAwake() — otherwise
-    // OnConfigureSpawn's += would keep compounding across reuses, same "_authoredX snapshot" pattern
-    // established for BlitzGloomPD/DaggerGloomPD/MortarGloomPD/SpearGloomPD's own identical attack-count
-    // fields. EnsureIndicatorPoolCapacity/GetInitialState's own heldPlebs sizing were ALREADY built
-    // (2026-08-19) anticipating this exact future tier-scaling — see their own doc comments.
-    private int _authoredMaxGrabCount;
 
     [Header("Attack Cooldown")]
+    // Same pristine-baseline treatment as maxGrabCount above — scales into State.scaledAttackCooldown.
     [SerializeField] private float attackCooldown = 5f;
-    // Captured once in OnAwake(), reset back onto attackCooldown every pooled reuse in LateAwake(), scaled
-    // by attackCooldownMultiplier (Threat Level 5) in OnConfigureSpawn() — same "_authoredX snapshot"
-    // pattern as _authoredMaxGrabCount above.
-    private float _authoredAttackCooldown;
 
     [Header("Tier Scaling")]
     // Added onto maxGrabCount per tier above 1 — see OnConfigureSpawn().
@@ -132,22 +129,9 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
 
     private OrbiterState GetPhase(ref State s) => (OrbiterState)s.phaseId;
 
-    protected override void OnAwake()
-    {
-        base.OnAwake();
-        _authoredMaxGrabCount = maxGrabCount;
-        _authoredAttackCooldown = attackCooldown;
-    }
-
     protected override void LateAwake()
     {
         base.LateAwake();
-
-        // Reset to the tier1-authored baseline before OnConfigureSpawn (which always runs AFTER LateAwake(),
-        // once hierarchy.Create() returns) scales it fresh for this life — see _authoredMaxGrabCount's own
-        // doc comment.
-        maxGrabCount = _authoredMaxGrabCount;
-        attackCooldown = _authoredAttackCooldown;
 
         // Guaranteed at least one full cooldown before the first grab attempt, plus a randomized extra so
         // multiple Orbiters don't all attack in lockstep — same pattern every other timed-attack enemy in
@@ -173,20 +157,27 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     // higher-tier life even though it was correctly sized for whichever life built it first. Never shrinks —
     // a later lower-tier life just uses a prefix of the larger arrays; every other read site already scopes
     // to heldPlebs.Count/the current grab count, not the array's own Length.
+    // Reads currentState.scaledMaxGrabCount, not the plain maxGrabCount field (2026-09-22) — also now
+    // called defensively from TryStartGrab (not just OnConfigureSpawn) so a machine that never itself ran
+    // OnConfigureSpawn for this instance (a PredictedHierarchy-reconciled enemy — see
+    // EnemyBaseState.scaledMaxHealth's own doc comment) still grows the pool before it's actually needed,
+    // rather than staying stuck undersized forever. Cheap/idempotent either way (early-returns once already
+    // big enough), so calling it an extra time here costs nothing in the common case.
     private void EnsureIndicatorPoolCapacity()
     {
         if (windupIndicatorTemplate == null) return;
         int have = _windupIndicators?.Length ?? 0;
-        if (have >= maxGrabCount) return;
+        int need = currentState.scaledMaxGrabCount;
+        if (have >= need) return;
 
-        var newIndicators = new Transform[maxGrabCount];
-        var newFills = new WindupFillPD[maxGrabCount];
+        var newIndicators = new Transform[need];
+        var newFills = new WindupFillPD[need];
         for (int i = 0; i < have; i++)
         {
             newIndicators[i] = _windupIndicators[i];
             newFills[i] = _windupFills[i];
         }
-        for (int i = have; i < maxGrabCount; i++)
+        for (int i = have; i < need; i++)
         {
             var clone = Instantiate(windupIndicatorTemplate, windupIndicatorTemplate.parent);
             clone.gameObject.SetActive(false);
@@ -205,18 +196,20 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     protected override void OnConfigureSpawn()
     {
         base.OnConfigureSpawn();
-        maxGrabCount += (spawnTier - 1) * maxGrabCountTierGrowth;
+        currentState.scaledMaxGrabCount = maxGrabCount + (spawnTier - 1) * maxGrabCountTierGrowth;
         EnsureIndicatorPoolCapacity();
 
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
-        attackCooldown = _authoredAttackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
     }
 
     protected override State GetInitialState()
     {
         var s = base.GetInitialState();
+        s.scaledMaxGrabCount = maxGrabCount;
+        s.scaledAttackCooldown = attackCooldown;
         s.heldPlebs = DisposableList<PredictedObjectID>.Create(maxGrabCount);
         return s;
     }
@@ -370,7 +363,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                 {
                     ReleaseAllHeld(ref state);
                     state.phaseId             = (int)OrbiterState.Moving;
-                    state.attackCooldownTimer = attackCooldown;
+                    state.attackCooldownTimer = state.scaledAttackCooldown;
                 }
                 break;
         }
@@ -408,6 +401,10 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     {
         if (EnemySpawnerPD.instance == null) return false;
 
+        // Defensive — see EnsureIndicatorPoolCapacity's own doc comment for why this call is here too, not
+        // just in OnConfigureSpawn.
+        EnsureIndicatorPoolCapacity();
+
         _grabCandidates.Clear();
         foreach (var enemy in EnemySpawnerPD.instance.ActiveEnemies)
         {
@@ -443,7 +440,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         });
 
         state.heldPlebs.Clear();
-        int grabCount = Mathf.Min(maxGrabCount, _grabCandidates.Count);
+        int grabCount = Mathf.Min(state.scaledMaxGrabCount, _grabCandidates.Count);
         for (int i = 0; i < grabCount; i++)
         {
             var chosen = _grabCandidates[i];
@@ -572,7 +569,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         ReleaseAllHeld(ref currentState);
         currentState.phaseId             = (int)OrbiterState.Moving;
         currentState.phaseTimer          = 0f;
-        currentState.attackCooldownTimer = attackCooldown;
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
 
         // Fires AFTER the release above, per explicit design — every pleb that was just dropped gets
         // stunned by the ORBITER itself (not by whatever interrupted the Orbiter), silently: InterruptTrueStun

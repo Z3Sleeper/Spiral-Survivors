@@ -244,15 +244,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::ShielderGloomPD
   _rigidbody: {fileID: 3342080922387083965}
   enemyName: Shielder
-  moveSpeed: 8
+  moveSpeed: 6
   attackSpeed: 1
   maxHealth: 75
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 5
   xpValue: 5
-  pointsValue: 5
+  pointsValue: 10
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0

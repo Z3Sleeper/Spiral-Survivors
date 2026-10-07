@@ -4,10 +4,10 @@ using UnityEngine;
 
 // A short-lived, self-contained flying projectile — spawned by WeaponRangedPD.Fire(), not a child of the
 // weapon that fired it (an already-loosed shot keeps flying regardless of whether its firer is currently
-// alive). Deliberately NOT a WeaponBasePD<TState> subclass — none of that shared orbit/range-scaling
-// visual machinery (hitboxTarget, rangeScaleTarget, rangeFollowers, etc.) applies to a fixed-size flying
-// object, matching the old system where WeaponArrow was a plain NetworkIdentity, not a WeaponBase
-// subclass. Box-sweep hit detection, ricochet retargeting, and multiplicative per-hit damage/on-hit-power
+// alive). Deliberately NOT a WeaponBasePD<TState> subclass — none of that shared orbit/range-scaling visual
+// machinery (hitboxTarget, rangeScaleTarget/bladeParent, rangeFollowers, etc.) applies to a fixed-size flying
+// object, matching the old system where WeaponArrow was a plain NetworkIdentity, not a WeaponBase subclass.
+// Box-sweep hit detection, ricochet retargeting, and multiplicative per-hit damage/on-hit-power
 // dropoff port directly from the old WeaponArrow.
 public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectilePD.State>
 {
@@ -32,6 +32,24 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         // LateSimulate() would be acting on a not-yet-confirmed tick), gated on THIS instead of `expired`
         // directly so the object survives the extra linger window before actually being deleted/pooled.
         public bool    readyToDelete;
+        // Homing support (2026-10-06, ArcherFocusFireMultishotHomingAugment) — default/0f/false (every
+        // caller without the augment) is a true no-op: homingActive starts false whenever Launch() isn't
+        // given a real homingTargetId, so the re-aim block in LateSimulate() below never even runs for a
+        // normal shot. homingTargetId: default (instanceId 0, never a real assigned ID — PredictedHierarchy's
+        // own instance counter starts at 2) means "no target," same sentinel-free convention
+        // MortarGloomPD.pendingHazardId already relies on — no separate "is set" bool needed for IT
+        // specifically, but homingActive is still tracked separately so it can be permanently latched false
+        // on the first real hit (see ProcessHit) without needing to also clear homingTargetId itself.
+        public PredictedObjectID homingTargetId;
+        // Counts DOWN from whatever delay Launch() was given — see that param's own doc comment. While > 0,
+        // this shot flies straight on its initial (fanned-out, multishot-spread) heading; once it hits 0,
+        // LateSimulate() starts re-aiming toward homingTargetId every tick instead.
+        public float   homingDelayRemaining;
+        // Latched false permanently the instant this shot lands its first real hit (ProcessHit) — "stop
+        // homing and travel straight (or ricochet) upon hitting the target" (Stuart's own spec). After that,
+        // the EXISTING ricochet-retarget system (ApplyHitDropoffAndRicochet/FindRicochetTarget) takes over
+        // completely untouched, same as it always has for a non-homing shot.
+        public bool    homingActive;
         public void Dispose() { }
     }
 
@@ -63,12 +81,12 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     private float _knockback;
     private float _damageDropoff;
     private float _onHitDropoff;
-    // WeaponRangedPD.EffectiveRangeMultiplier at Launch time — carried into every hit's own
+    // The firing weapon's own EffectiveRangeMultiplier at Launch time — carried into every hit's own
     // WeaponHitData.weaponRangeMultiplier (see that field's own doc comment).
     private float _rangeMultiplier;
     // The firing weapon's own weaponRadius/weaponOffset at Launch time — carried into every hit's own
-    // identically-named WeaponHitData fields (see their own doc comments). Computed by WeaponRangedPD itself
-    // (not here) since weaponRadius depends on THAT weapon instance's own IsOuterTrack.
+    // identically-named WeaponHitData fields (see their own doc comments). Computed by the firing weapon
+    // itself (not here) since weaponRadius depends on THAT weapon instance's own IsOuterTrack.
     private float _weaponRadius;
     private float _weaponOffset;
     // The raw targeting range passed into Launch() (Stats.WeaponRange scaled by the firing weapon's own
@@ -111,7 +129,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     {
         _baseScale = transform.localScale;
 
-        // Same "correct for the player's default 1x1x1-unit sphere" constant WeaponBasePD.
+        // Same "correct for the player's default 1x1x1-unit sphere" constant WeaponBasePD's own
         // ApplyVisualAdjustments() lifts orbiting weapon models by — this projectile's own root spawns at
         // the firing weapon's un-lifted, ground-level position (WeaponRangedPD.Fire()'s `transform.position`
         // reads the weapon root, not its own visually-lifted model), so the visual mesh needs the same
@@ -141,11 +159,14 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // left it at during its PREVIOUS life; `*=` would compound further every reuse instead of resetting.
     // _hitTargets is a plain field too (not part of predicted State, so GetInitialState() can't reset it) —
     // cleared here so a recycled instance doesn't inherit a previous life's hit history.
-    // effectiveWeaponRange is WeaponRangedPD.EffectiveWeaponRange (Stats.WeaponRange, scaled by the firing
-    // weapon's own isRanged/rangeMultiplier if it's set) — passed in rather than re-read here so this
-    // projectile's own max travel distance can never drift out of sync with the raycast/aim distance
-    // WeaponRangedPD itself just used to find this target.
-    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, int ricochets, float effectiveWeaponRange, float rangeMultiplier, float weaponRadius, float weaponOffset)
+    // effectiveWeaponRange is the firing weapon's own EffectiveWeaponRange (Stats.WeaponRange, scaled by the
+    // firing weapon's own isRanged/rangeMultiplier if it's set) — passed in rather than re-read here so this
+    // projectile's own max travel distance can never drift out of sync with the raycast/aim distance the
+    // firing weapon itself just used to find this target.
+    // homingTargetId/homingDelay: default/0f (every caller except WeaponRangedPD.Fire()'s ContinuousFire
+    // branch with ArcherFocusFireMultishotHomingAugment equipped) — see State.homingTargetId/homingActive's
+    // own doc comments for the full mechanism.
+    public void Launch(CharacterStatsPD stats, Vector3 direction, float speed, int ricochets, float effectiveWeaponRange, float rangeMultiplier, float weaponRadius, float weaponOffset, PredictedObjectID homingTargetId = default, float homingDelay = 0f)
     {
         _stats = stats;
         _speed          = speed;
@@ -168,6 +189,10 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         currentState.ricochetsRemaining  = ricochets;
         currentState.currentDamage       = stats.WeaponStrength;
         currentState.currentOnHitPower   = stats.WeaponOnHitPower;
+        currentState.homingTargetId      = homingTargetId;
+        currentState.homingDelayRemaining = homingDelay;
+        // !Equals(default) — see homingTargetId's own doc comment for why instanceId 0 is a safe sentinel.
+        currentState.homingActive        = !homingTargetId.Equals(default);
 
         transform.rotation    = Quaternion.LookRotation(direction);
         transform.localScale  = _baseScale * stats.bonusSizePercent;
@@ -209,6 +234,38 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
             state.expiredTimer -= delta;
             if (state.expiredTimer <= 0f) state.readyToDelete = true;
             return;
+        }
+
+        // Homing re-aim (2026-10-06, ArcherFocusFireMultishotHomingAugment) — runs BEFORE the movement step
+        // below so a re-aimed direction takes effect the same tick it's computed, same ordering
+        // ApplyHitDropoffAndRicochet's own ricochet re-aim already uses. No-op whenever homingActive is
+        // false (every shot without the augment, or any shot that's already landed its first hit — see
+        // State.homingActive's own doc comment).
+        if (state.homingActive)
+        {
+            if (state.homingDelayRemaining > 0f)
+            {
+                // Still in the initial fan-out window — keep flying straight on the multishot-spread
+                // heading Launch() gave it (Stuart's own framing: "fan out then home in").
+                state.homingDelayRemaining -= delta;
+            }
+            else if (TryResolveHomingTarget(ref state, out IEnemyPD target))
+            {
+                Vector3 toTarget = target.transform.position - transform.position;
+                if (toTarget != Vector3.zero)
+                {
+                    state.direction = toTarget.normalized;
+                    transform.rotation = Quaternion.LookRotation(state.direction);
+                }
+            }
+            else
+            {
+                // Original target dead/gone AND no living replacement found anywhere in range — "just
+                // travel straight from their current heading" (Stuart's own accepted fallback). Latched
+                // false so this doesn't re-run the (non-trivial) OverlapSphereNonAlloc retarget query every
+                // remaining tick of this shot's flight for nothing.
+                state.homingActive = false;
+            }
         }
 
         Vector3 prevPos = transform.position;
@@ -258,6 +315,12 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
 
     private void ProcessHit(ref State state, IEnemyPD enemy)
     {
+        // See State.homingActive's own doc comment — permanently stops homing on the first real hit,
+        // whether that hit landed ON the homed target or something else happened to be in the way; the
+        // existing ricochet-retarget system below (ApplyHitDropoffAndRicochet/FindRicochetTarget) takes over
+        // completely untouched from here, same as it always has for a non-homing shot.
+        state.homingActive = false;
+
         _hitTargets.Add(enemy);
 
         float damage = WeaponDamageMath.RollDamage(state.currentDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
@@ -351,6 +414,41 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
             if (dist < bestDist) { bestDist = dist; targetPosition = enemy.transform.position; found = true; }
         }
         return found;
+    }
+
+    // Homing support (2026-10-06, ArcherFocusFireMultishotHomingAugment) — resolves state.homingTargetId to
+    // a still-living IEnemyPD via the shared hierarchy, same "store an ID, resolve it later" pattern
+    // MortarGloomPD.pendingHazardId already established. If that specific target died/despawned mid-flight,
+    // retargets to whatever's now the closest living enemy in range instead ("if the target dies mid-flight
+    // while still homing, retarget to next target" — Stuart's own spec) — same OverlapSphereNonAlloc query
+    // shape FindRicochetTarget uses just above, reusing its _retargetResults buffer (safe: never called
+    // concurrently with FindRicochetTarget, since homingActive is always false by the time a hit — the only
+    // thing that triggers a ricochet retarget — actually lands). Returns false only when NO living enemy at
+    // all is found anywhere in range — the caller then stops homing entirely and lets this shot keep flying
+    // straight on its last heading (Stuart's own accepted fallback for that case).
+    private bool TryResolveHomingTarget(ref State state, out IEnemyPD target)
+    {
+        if (!state.homingTargetId.Equals(default))
+        {
+            var go = hierarchy.GetGameObject(state.homingTargetId);
+            if (go != null && go.TryGetComponent(out target) && !target._isDead) return true;
+        }
+
+        int n = Physics.OverlapSphereNonAlloc(transform.position, _maxRange, _retargetResults, CombatLayerMasks.EnemyHurtboxMask);
+        float bestDist = float.MaxValue;
+        target = null;
+
+        for (int i = 0; i < n; i++)
+        {
+            var candidate = _retargetResults[i].GetComponent<IEnemyPD>();
+            if (candidate == null || candidate._isDead || _hitTargets.Contains(candidate)) continue;
+            float dist = Vector3.Distance(transform.position, candidate.transform.position);
+            if (dist < bestDist) { bestDist = dist; target = candidate; }
+        }
+
+        if (target == null) return false;
+        state.homingTargetId = target.ObjectId;
+        return true;
     }
 
     // ── View ──────────────────────────────────────────────────────────────────

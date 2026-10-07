@@ -59,66 +59,75 @@ public static class ProgressionManager
     //    ProgressionManager.HighestUnlockedDifficulty, and UnlockNextDifficulty for the "More X Shop Tiers"
     //    announcement a newly-crossed threshold queues. This is a hand-tuned list the user edits directly, so
     //    deliberately no further inline commentary here.
+    //    3a. Threat Level gating pulled back project-wide (2026-09-30, explicit "went overboard restricting
+    //        things to Threat Levels" correction) — every array now only gates tier 0 (if it already did;
+    //        several stats were never gated at all), every later tier's own requirement zeroed out. Cost
+    //        alone gates progression past that point — a tier expensive enough to need real playtime to
+    //        afford doesn't also need a separate Threat Level clear on top. (The "77" permanent-soft-disable
+    //        sentinel pattern this same pass exempted MoveSpeedPercent/TotalStrengthPercent from is still a
+    //        valid convention for some FUTURE stat that needs parking — see project_totalstrengthpercent_removal_planned
+    //        memory — but both of those two specific stats were scrapped entirely, same day, once the
+    //        CharacterStatsPD-side bug investigation that found them showed they'd never actually be used.)
     private static readonly int[] StrengthCosts =
         { 50, 500, 1000, 2000, 3500, 5500, 7500, 9500 };
     private static readonly int[] StrengthUnlockDifficulty =
-        { 0, 0, 0, 2, 3, 4, 5, 6 };
+        { 0, 0, 0, 0, 0, 0, 0, 0 };
     private static readonly int[] DashChargesCosts =
         { 50, 500, 2000, 3500 };
     private static readonly int[] DashChargesUnlockDifficulty =
-        { 0, 0, 3, 3 };
+        { 0, 0, 0, 0 };
     private static readonly int[] LuckCosts =
         { 50, 500, 1500, 2500 };
     private static readonly int[] LuckUnlockDifficulty =
-        { 0, 0, 2, 2 };
+        { 0, 0, 0, 0 };
     // 4 tiers (2026-08-23, was 3) — matches +1.25%/tier * 4 = +5% total from the shop (retuned 2026-08-24
     // from +2.5%/tier alongside baseEnergyRegen's own 10% -> 5% nerf), landing exactly on the intended 5%
     // base -> 10% fully-upgraded target (see GetBaseStatValuePerTier's own EnergyRegen entry). Same
     // {0, 250, 500, 750} cost curve as DashHaste/AbilityHaste/CritChance's own 4-tier arrays.
     private static readonly int[] EnergyRegenCosts =
-        { 10, 500, 1500, 2500 };
+        { 50, 500, 1500, 2500 };
     private static readonly int[] EnergyRegenUnlockDifficulty =
-        { 0, 0, 2, 2 };
+        { 0, 0, 0, 0 };
     private static readonly int[] DashHasteCosts =
-        { 10, 500, 1500, 2500 };
+        { 50, 500, 1500, 2500 };
     private static readonly int[] DashHasteUnlockDifficulty =
-        { 0, 0, 2, 2 };
+        { 0, 0, 0, 0 };
     private static readonly int[] AbilityHasteCosts =
-        { 10, 500, 1500, 2500 };
+        { 50, 500, 1500, 2500 };
     private static readonly int[] AbilityHasteUnlockDifficulty =
-        { 0, 0, 2, 2 };
+        { 0, 0, 0, 0 };
     private static readonly int[] CritChanceCosts =
-        { 10, 500, 1500, 2500 };
+        { 50, 500, 1500, 2500 };
     private static readonly int[] CritChanceUnlockDifficulty =
-        { 0, 0, 2, 2 };
+        { 0, 0, 0, 0 };
     private static readonly int[] HealthRegenCosts =
-        { 10, 500, 1500, 2500 };
+        { 50, 500, 1500, 2500 };
     private static readonly int[] HealthRegenUnlockDifficulty =
-        { 0, 0, 2, 2 };
+        { 0, 0, 0, 0 };
     private static readonly int[] MaxShieldCosts =
-        { 10, 1000, 2000 };
+        { 50, 1000, 2000 };
     private static readonly int[] MaxShieldUnlockDifficulty =
         { 0, 0, 0 };
     private static readonly int[] WeaponRangeCosts =
         { 1000, 4000, 8000, 12000 };
     private static readonly int[] WeaponRangeUnlockDifficulty =
-        { 2, 3, 4, 5 };
+        { 2, 0, 0, 0 };
     private static readonly int[] MaxHealthCosts =
         { 500, 1500, 3000, 5000, 7000 };
     private static readonly int[] MaxHealthUnlockDifficulty =
-        { 0, 2, 3, 4, 5 };
+        { 0, 0, 0, 0, 0 };
     private static readonly int[] RevivePowerCosts =
         { 500, 1500, 3000, 5000, 7000 };
     private static readonly int[] RevivePowerUnlockDifficulty =
-        { 0, 2, 3, 4, 5 };
+        { 0, 0, 0, 0, 0 };
     private static readonly int[] MaxEnergyCosts =
         { 500, 1500, 3000, 5000, 7000 };
     private static readonly int[] MaxEnergyUnlockDifficulty =
-        { 0, 2, 3, 4, 5 };
+        { 0, 0, 0, 0, 0 };
     private static readonly int[] CollectionRadiusCosts =
         { 500, 1500, 3000, 5000, 7000 };
     private static readonly int[] CollectionRadiusUnlockDifficulty =
-        { 0, 2, 3, 4, 5 };
+        { 0, 0, 0, 0, 0 };
     private static readonly int[] ReviveTimePenaltyCosts =
         { 1000, 2000 };
     private static readonly int[] ReviveTimePenaltyUnlockDifficulty =
@@ -126,41 +135,45 @@ public static class ProgressionManager
     private static readonly int[] AttackSpeedCosts =
         { 2000, 8000, 16000, 24000 };
     private static readonly int[] AttackSpeedUnlockDifficulty =
-        { 2, 3, 4, 5 };
+        { 2, 0, 0, 0 };
     private static readonly int[] ShieldRechargeTimeCosts =
         { 3000, 15000 };
     private static readonly int[] ShieldRechargeTimeUnlockDifficulty =
-        { 2, 4 };
+        { 2, 0 };
     private static readonly int[] MoveSpeedCosts =
         { 3000, 12000, 24000, 36000, 48000 };
     private static readonly int[] MoveSpeedUnlockDifficulty =
-        { 2, 3, 4, 5, 6 };
+        { 2, 0, 0, 0, 0 };
     private static readonly int[] DeathPreventionCosts =
         { 3000 };
     private static readonly int[] DeathPreventionUnlockDifficulty =
-        { 2 };
+        { 3 };
     // Re-derived 2026-08-29 from the new unified formula (rule 1 above) off the same 2000 seed — every
     // chain below is now a flat "cost[i-1] + base * effUD(i)" walk, no more geometric crossing exponent.
     private static readonly int[] LevelUpStatsCosts =
-        { 3000, 9000, 18000, 27000, 39000, 39000, 51000, 51000, 63000, 63000 };
+        { 3000, 18000, 39000, 51000, 63000 };
     private static readonly int[] LevelUpStatsUnlockDifficulty =
-        { 2, 2, 3, 3, 4, 4, 5, 5, 6, 6 };
+        { 2, 3, 4, 5, 6 };
     private static readonly int[] LevelUpOptionsCosts =
-        { 2500, 10000 };
+        { 5000, 10000 };
     private static readonly int[] LevelUpOptionsUnlockDifficulty =
-        { 3, 3 };
-    private static readonly int[] MoveSpeedPercentCosts =
-        { 3000, 12000, 24000, 36000, 48000 };
-    private static readonly int[] MoveSpeedPercentUnlockDifficulty =
-        { 77, 77, 77, 77, 77 };
+        { 4, 0 };
     private static readonly int[] StrengthPerLevelCosts =
         { 3000, 12000, 24000, 36000, 48000 };
     private static readonly int[] StrengthPerLevelUnlockDifficulty =
         { 2, 3, 4, 5, 6 };
-    private static readonly int[] TotalStrengthPercentCosts =
-        { 5000, 15000, 30000, 45000, 65000, 85000, 110000, 135000, 165000, 195000 };
-    private static readonly int[] TotalStrengthPercentUnlockDifficulty =
-        { 77, 77, 77, 77, 77, 77, 77, 77, 77, 77 };
+    private static readonly int[] RerollTokensCosts =
+        { 500, 1000, 1500, 2000, 2500 };
+    private static readonly int[] RerollTokensUnlockDifficulty =
+        { 2, 3, 4, 5, 6 };
+    private static readonly int[] SurgeMoveSpeedPenaltyReductionCosts =
+        { 9000, 12000, 15000, 18000, 21000};
+    private static readonly int[] SurgeMoveSpeedPenaltyReductionUnlockDifficulty =
+        { 5, 0, 0, 0, 0 };
+    private static readonly int[] RerollTokenLevelsPerGrantCosts =
+        { 20000 };
+    private static readonly int[] RerollTokenLevelsPerGrantUnlockDifficulty =
+        { 6 };
 
     private static string SavePath => Path.Combine(Application.persistentDataPath, SaveFileName);
 
@@ -300,14 +313,15 @@ public static class ProgressionManager
         StatType.ReviveTimePenalty => ReviveTimePenaltyCosts,
         StatType.LevelUpOptions    => LevelUpOptionsCosts,
         StatType.LevelUpStats       => LevelUpStatsCosts,
-        StatType.TotalStrengthPercent => TotalStrengthPercentCosts,
         StatType.Luck                => LuckCosts,
         StatType.StrengthPerLevel    => StrengthPerLevelCosts,
         StatType.MaxShield           => MaxShieldCosts,
         StatType.ShieldRechargeTime  => ShieldRechargeTimeCosts,
         StatType.AbilityHaste        => AbilityHasteCosts,
         StatType.DeathPrevention     => DeathPreventionCosts,
-        StatType.MoveSpeedPercent    => MoveSpeedPercentCosts,
+        StatType.RerollTokens        => RerollTokensCosts,
+        StatType.SurgeMoveSpeedPenaltyReduction => SurgeMoveSpeedPenaltyReductionCosts,
+        StatType.RerollTokenLevelsPerGrant => RerollTokenLevelsPerGrantCosts,
         _                           => System.Array.Empty<int>()
     };
 
@@ -331,14 +345,15 @@ public static class ProgressionManager
         StatType.ReviveTimePenalty => ReviveTimePenaltyUnlockDifficulty,
         StatType.LevelUpOptions    => LevelUpOptionsUnlockDifficulty,
         StatType.LevelUpStats       => LevelUpStatsUnlockDifficulty,
-        StatType.TotalStrengthPercent => TotalStrengthPercentUnlockDifficulty,
         StatType.Luck                => LuckUnlockDifficulty,
         StatType.StrengthPerLevel    => StrengthPerLevelUnlockDifficulty,
         StatType.MaxShield           => MaxShieldUnlockDifficulty,
         StatType.ShieldRechargeTime  => ShieldRechargeTimeUnlockDifficulty,
         StatType.AbilityHaste        => AbilityHasteUnlockDifficulty,
         StatType.DeathPrevention     => DeathPreventionUnlockDifficulty,
-        StatType.MoveSpeedPercent    => MoveSpeedPercentUnlockDifficulty,
+        StatType.RerollTokens        => RerollTokensUnlockDifficulty,
+        StatType.SurgeMoveSpeedPenaltyReduction => SurgeMoveSpeedPenaltyReductionUnlockDifficulty,
+        StatType.RerollTokenLevelsPerGrant => RerollTokenLevelsPerGrantUnlockDifficulty,
         _                           => System.Array.Empty<int>()
     };
 
@@ -472,9 +487,7 @@ public static class ProgressionManager
         StatType.RevivePower       => 0.1f,
         StatType.ReviveTimePenalty => -25f,
         StatType.LevelUpOptions    => 1f,
-        StatType.LevelUpStats       => 10f,
-        StatType.TotalStrengthPercent => 0.1f,
-        StatType.MoveSpeedPercent    => 0.1f,
+        StatType.LevelUpStats       => 20f,
         StatType.Luck                => 5f,
         StatType.StrengthPerLevel    => 1f,
         StatType.MaxShield           => 0.05f,
@@ -483,6 +496,19 @@ public static class ProgressionManager
         // Not a scaling amount — just a nonzero flag so GetBaseStatBonus reads > 0 once bought (tier 1 of 1)
         // and 0 otherwise. See CharacterStatsPD.ApplyProgressionBonuses' own DeathPrevention handling.
         StatType.DeathPrevention     => 1f,
+        // +1 CharacterStatsPD.RerollTokens per tier — see CharacterStatsPD.ApplyProgressionBonuses' own
+        // rerollTokensBonus handling.
+        StatType.RerollTokens        => 1f,
+        // +5% move speed retained during Surge per tier — see CharacterStatsPD.bonusSurgeMoveSpeedPenaltyFlat's
+        // own doc comment.
+        StatType.SurgeMoveSpeedPenaltyReduction => 0.05f,
+        // Not actually read for this stat's real effect — RerollTokenLevelsPerGrant is a single-tier
+        // unlock flag (2026-10-06, simplified from an earlier 5-tier 5/4/3/2/1 override table), not a flat
+        // per-tier addition, so CharacterStatsPD just writes the fixed "every 3 levels" constant directly
+        // once GetBaseStatTier > 0 — see rerollTokenLevelsPerGrant's own doc comment there. -1f here is just
+        // a sane non-broken value for GetBaseStatBonus's own generic formula, in case anything ever calls it
+        // generically for this stat.
+        StatType.RerollTokenLevelsPerGrant => -1f,
         _                           => 0f
     };
 
@@ -624,11 +650,12 @@ public static class ProgressionManager
         StatType.MaxEnergy,
         StatType.RevivePower,
         StatType.ReviveTimePenalty,
+        StatType.RerollTokens,
+        StatType.SurgeMoveSpeedPenaltyReduction,
         StatType.StrengthPerLevel,
-        StatType.TotalStrengthPercent,
-        StatType.MoveSpeedPercent,
         StatType.LevelUpStats,
         StatType.LevelUpOptions,
+        StatType.RerollTokenLevelsPerGrant,
     };
 
     // Repeatedly buys whatever's currently affordable, one purchase at a time: among affordable+unlocked
@@ -733,14 +760,18 @@ public static class ProgressionManager
         StatType.ReviveTimePenalty => "Revive Time Penalty",
         StatType.LevelUpOptions    => "Level Up Options",
         StatType.LevelUpStats       => "Level Up Stats",
-        StatType.TotalStrengthPercent => "Total Strength %",
-        StatType.MoveSpeedPercent    => "Move Speed Percent",
         StatType.Luck                => "Luck",
         StatType.StrengthPerLevel    => "Strength Per Level",
         StatType.MaxShield           => "Max Shield",
         StatType.ShieldRechargeTime  => "Shield Recharge Time",
         StatType.AbilityHaste        => "Ability Haste",
         StatType.DeathPrevention     => "Death Prevention",
+        // Player-facing name is "Starting Reroll Tokens" (2026-10-01, was "Reroll Tokens" — renamed to
+        // disambiguate from the newer "Level Up Reroll Tokens" item) — see CharacterStatsPD.RerollTokens's
+        // own doc comment.
+        StatType.RerollTokens        => "Starting Reroll Tokens",
+        StatType.SurgeMoveSpeedPenaltyReduction => "Surge Speed Penalty",
+        StatType.RerollTokenLevelsPerGrant => "Level Up Reroll Tokens",
         _                           => stat.ToString()
     };
 

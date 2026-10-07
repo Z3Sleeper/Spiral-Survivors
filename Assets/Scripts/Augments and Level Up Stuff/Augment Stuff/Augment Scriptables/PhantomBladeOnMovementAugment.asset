@@ -15,7 +15,7 @@ MonoBehaviour:
   displayName: <color=#8C8C8C>Phantom</color> <color=#FFFFFF>Step</color>
   description: '<color=#FFA000>Every <color=#FFFFFF>10 Units</color> Moved without
     <color=#00FFFF>Dashing</color>:</color> <color=#FFA000>Summon</color> <color=#8C8C8C>{bladeCount}</color>
-    <color=#8C8C8C>Phantom Blades</color> piercing the nearest 3 enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{strengthMultiplierPercent}%
+    <color=#8C8C8C>Phantom Blades</color> piercing the nearest enemies for <color=#FF5000>{LiveBladeDamageRatio}</color><color=#FFA000>(<color=#FF5000>{strengthMultiplierPercent}%
     Strength</color>) damage</color>.
 
     <color=#8C8C8C>+5% Phantom Blade Damage

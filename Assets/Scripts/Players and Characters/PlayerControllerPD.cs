@@ -32,8 +32,20 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // not a MoveSpeed multiplier anymore — used to scale with the player's own current MoveSpeed (so a
     // MoveSpeed buff also sped up the dash), which stopped feeling right once MoveSpeed buffs got common;
     // 50 preserves how the dash already felt at baseline (no buffs) before this change.
+    // DashSpeed retuned 30 -> 25 -> 20 (2026-09-30) — the 2026-09-22 drag-removal commit (0fc7b56) made
+    // dashes travel their full undamped distance every tick instead of decaying via the Rigidbody's own
+    // linear drag over the window, going noticeably farther than before at the old 30/0.35 values. A
+    // from-first-principles equivalent-distance calc (treating the old drag=9 decay as continuous
+    // exponential, matching this codebase's own ln(force/threshold)/drag knockback-stun math) landed around
+    // ~9.1, but live testing said that felt way too slow — 20 is the user's own live-feel retune instead
+    // (tried 25 first, still felt too far), duration left untouched.
     private const float DashDuration = 0.35f;
-    private const float DashSpeed    = 30f;
+    private const float DashSpeed    = 20f;
+    // Public passthrough (2026-10-04) — real-world distance a normal dash travels, exposed for anything
+    // that wants to match dash's own range without duplicating these two private constants (e.g.
+    // RogueVanishBlinkAugment's own Blink-range cap). Not itself augmentable by anything — DashSpeed/
+    // DashDuration are fixed constants, not stats.
+    public float DashRange => DashSpeed * DashDuration;
 
     // The player Rigidbody's own real linearDamping value outside of a dash/special-movement window — used
     // for TWO things now (2026-09-21, renamed from knockbackStunDrag once it took on this second role):
@@ -166,14 +178,18 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         }
     }
 
-    // Not predicted state — set once (ConstantMovementAugment.OnApply(), never reverted, same "permanent for
-    // the whole match" lifecycle every other simple stat-granting augment already uses, e.g. MoveSpeedAugment
-    // never overrides OnDestroy() either) and read every Simulate() tick, same category as any other
-    // effectively-constant-for-the-match field (baseMoveSpeed, etc.) rather than a per-tick predicted value.
+    // State-backed (2026-09-22 fix — moved off a plain field). Set once, permanently, by
+    // ConstantMovementAugment.OnApply() (called from AugmentEffectPD.UpdateView(), off verified state, same
+    // safe cross-identity currentState-write convention CharacterStatsPD.ApplyProgressionBonuses/
+    // ApplyStatAugmentPick already use). This used to cite baseMoveSpeed as its precedent for why a plain
+    // field was safe here — that precedent turned out to be wrong (see CharacterStatsPD.ApplyProgressionBonuses'
+    // own doc comment): PlayerControllerPD is a sibling component on the same player character GameObject as
+    // CharacterStatsPD, spawned via the same hierarchy.Create() call, so it's equally exposed to a
+    // PredictedHierarchy reconciliation resetting a plain field back to its C# default with nothing left to
+    // re-grant it (ConstantMovementAugment's own OnApply() only ever fires once, ever, for a given pick).
     // Forces the Movement block below to fall back to state.lastMoveDir whenever there's no current input,
     // instead of standing still — "you can't stand still."
-    private bool _forceMovement;
-    public void SetForceMovement(bool force) => _forceMovement = force;
+    public void SetForceMovement(bool force) => currentState.forceMovement = force;
 
     private bool _wasDeadLastFrame;
     private bool _pendingReadyPressed;
@@ -183,6 +199,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     private float _pendingPickLuckMultiplierA = 1f;
     private float _pendingPickLuckMultiplierB = 1f;
     private bool _pendingEndScreenReadyPressed;
+    private bool _pendingRerollPressed;
     private InputSystem_Actions _input;
 
     // Predicted, not verified — this only drives the local owner's own button label, and instant
@@ -227,6 +244,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         public bool readyPressed;
         public bool pickPressed;
         public int pickedCardIndex;
+        // Reroll the whole set of presented augment options at the cost of one CharacterStatsPD.RerollTokens
+        // — same buffer-and-drain edge-triggered shape as pickPressed above, see RequestReroll's own doc
+        // comment.
+        public bool rerollPressed;
         public bool endScreenReadyPressed;
         // The picking player's own meta-progression multiplier — captured here (owning client only,
         // via GetFinalInput) rather than recomputed by AugmentManagerPD, since a remote machine's own
@@ -303,11 +324,20 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         public float chargeRegenTimer;
         public float orbSweepTimer;
         public bool isReady;
+        // State-backed (2026-09-22 fix — moved off a plain field mutated directly inside Simulate(), the
+        // exact "plain field with a real runtime mutator" bug class this whole session has been hunting:
+        // a plain field doesn't roll back on resimulation, so the speculative pass of a tick that detects
+        // _stats.dashCharges changing would permanently consume the detection (writing the new value into
+        // the plain field), and a later corrected replay of that SAME tick would then see no change at all
+        // (the plain field already matches), silently skipping the state.currentCharges top-up that tick was
+        // actually supposed to grant. See Simulate()'s own "Grant the extra charge immediately" comment.
+        public int lastKnownMaxCharges;
+        // State-backed (2026-09-22 fix) — see SetForceMovement's own doc comment for the full reasoning.
+        public bool forceMovement;
         public void Dispose() { }
     }
 
     // ── Lifecycle ──────────────────────────────────────────────────────────
-    private int _lastKnownMaxCharges;
 
     private void Awake()
     {
@@ -324,7 +354,6 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (physicsChild != null) _physicsCollider = physicsChild.GetComponent<Collider>();
         if (_rigidbody != null) _predictedTransform = _rigidbody.GetComponent<PredictedTransform>();
         _orbLayer = LayerMask.GetMask("XPOrb");
-        _lastKnownMaxCharges = _stats != null ? _stats.dashCharges : 1;
     }
 
     protected override State GetInitialState() => new()
@@ -332,6 +361,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         lastMoveDir  = Vector3.forward,
         cursorDir    = Vector3.forward,
         currentCharges = _stats != null ? _stats.dashCharges : 1,
+        lastKnownMaxCharges = _stats != null ? _stats.dashCharges : 1,
     };
 
     public Transform CameraTarget => _cameraTarget != null ? _cameraTarget : transform;
@@ -378,6 +408,12 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _pendingPickLuckMultiplierA = luckMultiplierA;
         _pendingPickLuckMultiplierB = luckMultiplierB;
     }
+
+    // Called from whatever reroll UI ends up wired up (button, hotkey, etc.). Same buffer-and-drain
+    // edge-triggered pattern as ready/pause/pick above — the actual validation (isPresenting, real-augment
+    // round, not already picked, RerollTokens > 0) and the token spend + option regeneration all happen
+    // deterministically in Simulate() via AugmentManagerPD.RequestReroll, never here.
+    public void RequestReroll() => _pendingRerollPressed = true;
 
     // Called from the win/game-over screen's ready button. Same buffer-and-drain pattern as ready/pause.
     public void RequestEndScreenReady() => _pendingEndScreenReadyPressed = true;
@@ -438,6 +474,9 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
 
         input.endScreenReadyPressed |= _pendingEndScreenReadyPressed;
         _pendingEndScreenReadyPressed = false;
+
+        input.rerollPressed |= _pendingRerollPressed;
+        _pendingRerollPressed = false;
     }
 
     protected override void GetFinalInput(ref Input input)
@@ -487,6 +526,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         input.readyPressed = false;
         input.pickPressed = false;
         input.endScreenReadyPressed = false;
+        input.rerollPressed = false;
     }
 
     // ── Simulation ─────────────────────────────────────────────────────────
@@ -521,6 +561,9 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         if (input.pickPressed && AugmentManagerPD.instance != null && owner.HasValue)
             AugmentManagerPD.instance.SubmitPick(owner.Value, input.pickedCardIndex, input.pickMultiplier, input.pickLuckMultiplierA, input.pickLuckMultiplierB);
 
+        if (input.rerollPressed && AugmentManagerPD.instance != null && owner.HasValue)
+            AugmentManagerPD.instance.RequestReroll(owner.Value);
+
         // Not gated by isPresenting/IsPaused — the end screen only ever shows once the game has already
         // won/ended, and readying up from it should work regardless of whatever pause state happens to be
         // latched at that point.
@@ -554,10 +597,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         state.isReady = false;
 
         // Grant the extra charge immediately when max charges increases, instead of only refilling via regen over time.
-        if (_stats != null && _stats.dashCharges != _lastKnownMaxCharges)
+        if (_stats != null && _stats.dashCharges != state.lastKnownMaxCharges)
         {
-            state.currentCharges += _stats.dashCharges - _lastKnownMaxCharges;
-            _lastKnownMaxCharges = _stats.dashCharges;
+            state.currentCharges += _stats.dashCharges - state.lastKnownMaxCharges;
+            state.lastKnownMaxCharges = _stats.dashCharges;
         }
 
         // Charge regen runs even while dead so the player has dashes on revive. Paused while actually
@@ -760,7 +803,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // real direction instead of standing still. state.lastMoveDir is already normalized (only ever
         // assigned from an already-.normalized moveDir above), so this stays full-speed, same as every real
         // move input — see SetForceMovement's own doc comment.
-        else if (_forceMovement)
+        else if (state.forceMovement)
             moveDir = state.lastMoveDir;
 
         // Reasserted every tick from State, same reasoning as the velocity writes right below (and the same
@@ -930,11 +973,15 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // original uncorrected speed: falling back to full speed would just recreate the exact obstacle-landing
     // problem this whole system exists to avoid.
     //
-    // Deliberately does NOT constrain this to the playable area's own boundary (unlike BWBlink's own
-    // isValidPosition) — real physical Rigidbody motion is still genuinely blocked by the solid Bounds wall
-    // collider itself (neither a dash nor a special-movement window was ever made to phase through Bounds,
-    // only decorative Obstacles), so no precomputed velocity here could ever actually carry the player past it
-    // regardless; this only ever needs to resolve around Obstacles.
+    // DOES constrain this to the playable area's own boundary now (2026-09-22 fix, same isValidPosition
+    // convention as BWBlinkAbilityPD) — the original reasoning here ("real physical Rigidbody motion is still
+    // genuinely blocked by the solid Bounds wall collider, so no precomputed velocity could ever carry the
+    // player past it") turned out not to hold: BoundsCollision lives on _physicsCollider, which StartDash()
+    // disables for the ENTIRE dash window (needed so dashes can pass through decorative Obstacles/Bounds
+    // geometry at all) — so there's no physical collision to rely on for the whole duration of a dash, not just
+    // a tunneling edge case. Passing isValidPosition here means the CORRECTED endpoint this method computes can
+    // never be one that lands outside PlayableAreaPD's own polygon in the first place, same belt-and-suspenders
+    // reasoning BWBlink's own isValidPosition already relies on.
     private Vector3 ResolveSafeTravelVelocity(Vector3 startPosition, Vector3 direction, float speed, float duration)
     {
         if (duration <= 0f) return direction * speed;
@@ -972,7 +1019,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
                 stepSize,
                 checkRadius,
                 obstacleMask,
-                maxDistance: graceDistance);
+                maxDistance: graceDistance,
+                isValidPosition: PlayableAreaPD.instance != null ? PlayableAreaPD.instance.IsInsidePlayableArea : (System.Func<Vector3, bool>)null);
 
             if (clearedEndpoint.HasValue)
             {
@@ -988,7 +1036,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             stepSize,
             checkRadius,
             obstacleMask,
-            maxDistance: naturalDistance + stepSize);
+            maxDistance: naturalDistance + stepSize,
+            isValidPosition: PlayableAreaPD.instance != null ? PlayableAreaPD.instance.IsInsidePlayableArea : (System.Func<Vector3, bool>)null);
 
         if (!nearEndpoint.HasValue) return Vector3.zero;
 
@@ -1025,6 +1074,32 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     //
     // ResetInterpolation() only fires when a correction actually happened, so the overwhelmingly common
     // uneventful case pays zero extra cost here beyond the queries this always makes regardless.
+    // Resolves a PROSPECTIVE teleport target to a safe nearby spot if it would otherwise land inside/past
+    // Bounds/Obstacle geometry or outside the playable area — extracted (2026-10-04) from BWBlinkAbilityPD's
+    // own inline copy of this exact block (left untouched there — this is a pure addition, not a refactor of
+    // working code) so a second teleport-to-a-point user (RogueVanishBlinkAugment) doesn't need to duplicate
+    // the same safety math a third time. Different shape from ResolveTeleportSafeLanding below: that one
+    // corrects the CURRENT position after a dash/special-movement window already happened (searching
+    // outward from a known-clear start); this one resolves a TARGET before ever moving there at all
+    // (FindSafeTeleportPositionMultiDirectional, not a two-direction search, since a teleport is free to
+    // resolve to any direction around the target — it never physically travels through the space in
+    // between). See TeleportSafetyPD's own doc comment for the full algorithm. Falls back to fromPosition
+    // itself (i.e. "don't move at all") on total failure — a caller-level choice, not something
+    // TeleportSafetyPD bakes in generically.
+    public Vector3 ResolveSafeTeleportTarget(Vector3 rawTarget, Vector3 fromPosition)
+    {
+        Vector2 direction2D = new Vector2(rawTarget.x - fromPosition.x, rawTarget.z - fromPosition.z);
+        float physicsRadius = PhysicsColliderRadius;
+        float stepSize = physicsRadius * 0.5f;
+        return TeleportSafetyPD.FindSafeTeleportPositionMultiDirectional(
+            rawTarget,
+            direction2D,
+            stepSize,
+            physicsRadius + stepSize,
+            LayerMask.GetMask("Bounds", "Obstacle"),
+            isValidPosition: PlayableAreaPD.instance != null ? PlayableAreaPD.instance.IsInsidePlayableArea : (System.Func<Vector3, bool>)null) ?? fromPosition;
+    }
+
     private void ResolveTeleportSafeLanding(Vector3 startPosition, Vector3 fallbackTravelVelocity)
     {
         Vector3 currentPosition = _rigidbody.position;
@@ -1037,12 +1112,19 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // ResolveSafeTravelVelocity/BWBlinkAbilityPD — see ResolveSafeTravelVelocity's own doc comment for
         // the full derivation of why a MORE permissive margin causes a visible "boop" and why a
         // step-size-proportional buffer is the fix, not another flat guess).
+        // isValidPosition (2026-09-22 fix, same convention as ResolveSafeTravelVelocity/BWBlinkAbilityPD) —
+        // this is the backstop for an INTERRUPTED window or mid-window death: _physicsCollider (which
+        // BoundsCollision lives on) is disabled for the entire dash/special-movement window, so the
+        // currentPosition it's correcting FROM can genuinely be anywhere outside the playable area at the
+        // moment of interrupt/death, not just near an obstacle — without this the correction search itself
+        // could walk further out into the open space past the wall instead of back toward the map.
         Vector3 safePosition = TeleportSafetyPD.FindSafeTeleportPositionMultiDirectional(
             currentPosition,
             searchDirection2D,
             stepSize,
             physicsRadius + stepSize,
-            obstacleMask) ?? startPosition;
+            obstacleMask,
+            isValidPosition: PlayableAreaPD.instance != null ? PlayableAreaPD.instance.IsInsidePlayableArea : (System.Func<Vector3, bool>)null) ?? startPosition;
         if (safePosition != currentPosition)
         {
             _rigidbody.position = safePosition;
@@ -1054,11 +1136,19 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     private void EndDash(ref State state, bool interrupted = false)
     {
         state.isDashing = false;
+        // Position resolved FIRST, before re-enabling the physics collider or firing any event (2026-09-22
+        // reorder — was collider-enable, THEN position resolve, the wrong order) — StartDash() disables
+        // _physicsCollider for the whole dash window (the BoundsCollision check lives on that collider), so an
+        // interrupted/cut-short dash can genuinely be resting outside the playable area at this exact instant.
+        // Same "resolve position first, everything else after" convention the death-path early-return in
+        // Simulate() already documents and follows — e.g. a lethal hit's own Knockback() calls Interrupt()
+        // (and therefore this exact method) before applying its own impulse, so the corrected position has to
+        // already be in place before that impulse, or before _onDashInterrupted/_onDashEnded's own listeners
+        // can read a still-out-of-bounds transform.
+        ResolveTeleportSafeLanding(state.dashStartPosition, state.dashVelocity);
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         // linearDamping restoration handled every tick in the Movement section, not here — see that block's
         // own comment.
-
-        ResolveTeleportSafeLanding(state.dashStartPosition, state.dashVelocity);
 
         _rigidbody.velocity = Vector3.zero;
         if (interrupted)
@@ -1110,10 +1200,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     private void EndSpecialMovement(ref State state)
     {
         state.isSpecialMoving = false;
+        // Position resolved FIRST — same reorder/reasoning as EndDash's own comment.
+        ResolveTeleportSafeLanding(state.specialMoveStartPosition, state.specialVelocity);
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         // linearDamping restoration handled every tick in the Movement section — see EndDash's own comment.
-
-        ResolveTeleportSafeLanding(state.specialMoveStartPosition, state.specialVelocity);
 
         _rigidbody.velocity = Vector3.zero;
     }
@@ -1163,7 +1253,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // A Berserk Surge (2026-08-23) is interruptible — unlike a normal Surge (blocked outright by
         // forcedSurge via TryEndSurge()), a hard interrupt landing here can cut one short via ForceEndSurge()
         // (see its own doc comment for the forcedSurge reset + BerserkSurgeEndGrace hand-off this correctly
-        // triggers, same as a natural energy-depletion end). This is what makes KnightBigBuffAbilityPD's own
+        // triggers, same as a natural energy-depletion end). This is what makes KnightBerserkAbilityPD's own
         // buff (which only ever ends via the resulting _onSurgeEnded, see its own class doc comment) end
         // early on an interrupt instead of running until Berserk naturally drains dry.
         if (_stats != null && _stats.IsForcedSurging)

@@ -18,11 +18,15 @@ public enum StatType
     LevelUpOptions    = 17,
     LevelUpStats      = 18,
     Luck                = 19,
-    TotalStrengthPercent = 20,
+    // 20 (TotalStrengthPercent) removed 2026-09-30 — permanent-soft-disable shop item scrapped entirely per
+    // explicit request, never coming back. Gap preserved, not reused — see project_totalstrengthpercent_removal_planned memory.
     StrengthPerLevel    = 21,
     MaxShield           = 22,
     ShieldRechargeTime  = 23,
     AbilityHaste        = 24,
     DeathPrevention     = 25,
-    MoveSpeedPercent    = 26,
+    // 26 (MoveSpeedPercent) removed 2026-09-30 — same treatment/reasoning as TotalStrengthPercent above.
+    RerollTokens        = 27,
+    SurgeMoveSpeedPenaltyReduction = 28,
+    RerollTokenLevelsPerGrant = 29,
 }

@@ -72,6 +72,15 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         // this is the radial component to that field's angular one — together they fully rate-cap this
         // hazard's tracked position instead of only its bearing.
         public CompressedFloat trackedDistance;
+        // Hit-detection/damage — live in State, not a plain field (2026-09-22), for the same reason
+        // EnemyBaseState.scaledMaxHealth does: this hazard can be created on a client via PredictedHierarchy
+        // reconciling a misprediction rather than that machine's own local Launch() call, and a plain field
+        // would then silently stay at its C# default (0) — a zero-size hitbox dealing zero damage — until
+        // (or unless) replication corrects it. Being in State means it's replicated as part of the same
+        // bundle as windupTimer/fireTimer, which already need this protection.
+        public float halfWidth;
+        public float halfDepth;
+        public float damage;
         public void Dispose() { }
     }
 
@@ -80,9 +89,6 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
     // See SpearGloomPD._stabOverlapResults's own doc comment for the buffer-size reasoning.
     private static readonly Collider[] _fireOverlapResults = new Collider[8];
 
-    private float _halfWidth;
-    private float _halfDepth;
-    private float _damage;
     // This life's own total phase durations, captured once at Launch() — the denominators for
     // UpdateView's own live SetProgress() ratio (see its own doc comment for why this replaced a self-timed
     // StartFill()) and for LateSimulate's own elapsed-time-into-each-phase math.
@@ -139,9 +145,9 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         float projectileSpawnHeightOffset = 0f, float projectileSpawnForwardOffset = 0f,
         float size = 1f, Material tierAccentMaterial = null)
     {
-        _halfWidth = width * 0.5f;
-        _halfDepth = depth * 0.5f;
-        _damage    = damage;
+        currentState.halfWidth = width * 0.5f;
+        currentState.halfDepth = depth * 0.5f;
+        currentState.damage    = damage;
         _windupDuration = windupDuration;
         _fireDuration   = fireDuration;
         _windupAttackSpeed = Mathf.Max(0.0001f, windupAttackSpeed);
@@ -252,7 +258,7 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         // Y half-extent is a fixed generous constant — see SpearGloomPD._stabOverlapResults's own doc
         // comment neighbor reasoning (every character's hurtbox collider sits at roughly the same
         // ground-level height regardless of this hazard's own width/depth).
-        Vector3 halfExtents = new Vector3(_halfWidth, 2f, _halfDepth);
+        Vector3 halfExtents = new Vector3(state.halfWidth, 2f, state.halfDepth);
         Quaternion rot = Quaternion.LookRotation(forward);
 
         int n = Physics.OverlapBoxNonAlloc(center, halfExtents, _fireOverlapResults, rot, CombatLayerMasks.FriendlyHurtboxMask);
@@ -269,7 +275,7 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
             // No firer-identity field on this hazard (only a snapshot _firerPosition — see class doc
             // comment), so attacker is passed default — matches this interface param's "reserved for later,
             // not wired to anything yet" status (see IFriendlyPD.TakeDamage's own doc comment).
-            stats.TakeDamage(_damage, false, default);
+            stats.TakeDamage(state.damage, false, default);
         }
         state.expired = true;
     }
@@ -325,7 +331,7 @@ public class MortarHazardPD : PredictedIdentity<MortarHazardPD.State>
         // the true center (unlike Blitz/Spear/etc., which sit at the near edge), and it's explicitly,
         // synchronously self-positioned every LateSimulate tick with no separate smoother involved, so it was
         // never actually susceptible to the jitter ShowRectangle's own doc comment describes.
-        if (_windupFill != null) _windupFill.ShowRectangle(_halfDepth * 2f, _halfWidth * 2f);
+        if (_windupFill != null) _windupFill.ShowRectangle(viewState.halfDepth * 2f, viewState.halfWidth * 2f);
 
         // Live, every frame — same feedback_windupfill_self_timed_drift fix as RemoteSpikeBurstPD.UpdateView.
         // Gate reads verified (avoids a stale pooled-reuse timer value reading as "almost done" right after a

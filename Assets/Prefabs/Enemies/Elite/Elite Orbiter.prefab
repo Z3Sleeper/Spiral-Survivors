@@ -54,7 +54,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5865112749993343226, guid: 453ec4a2b6765b849b2b787593146834, type: 3}
       propertyPath: pointsValue
-      value: 25
+      value: 50
       objectReference: {fileID: 0}
     - target: {fileID: 5865112749993343226, guid: 453ec4a2b6765b849b2b787593146834, type: 3}
       propertyPath: sizeYOffset

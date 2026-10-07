@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 5f4affb0517fbd74f935fbf7fc5ecada, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CriticalHealingAugment
-  critHealPowerPercent: 0.3
+  critHealPowerPercent: 0.5

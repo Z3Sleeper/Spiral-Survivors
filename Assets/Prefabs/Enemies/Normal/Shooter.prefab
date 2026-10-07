@@ -356,9 +356,10 @@ MonoBehaviour:
   preferredRange: 8
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 10
   xpValue: 5
-  pointsValue: 5
+  pointsValue: 10
   size: 1
   contactColliderEnabled: 0
   stunResistant: 0
@@ -386,7 +387,7 @@ MonoBehaviour:
   spawnOffset: 0.75
   projectileScale: 1
   multishotCount: 0
-  multishotSpreadAngle: 90
+  multishotSpreadAngle: 120
   attackCooldown: 5
   multishotCountTierGrowth: 2
 --- !u!135 &3908022877477359117

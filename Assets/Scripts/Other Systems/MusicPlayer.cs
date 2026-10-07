@@ -17,6 +17,14 @@ public class MusicPlayer : MonoBehaviour
         loopSource.loop = true;
     }
 
+    // Not DontDestroyOnLoad — see LocalUIManagerPD.OnDestroy's own doc comment for the full reasoning
+    // (guarded against nulling out a newer instance; without this, `instance` was left dangling on a
+    // destroyed object across a scene return to lobby).
+    private void OnDestroy()
+    {
+        if (instance == this) instance = null;
+    }
+
     public void Play()
     {
         double startTime = AudioSettings.dspTime + 0.1;

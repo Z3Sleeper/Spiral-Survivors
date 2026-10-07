@@ -19,7 +19,7 @@ PrefabInstance:
     - target: {fileID: -3762473324914141039, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: weaponPrefab
       value: 
-      objectReference: {fileID: 2942187867930129664, guid: b811a8e03d9fe404390c8122d89cef4d, type: 3}
+      objectReference: {fileID: 2942187867930129664, guid: d62770260a786874eab00cd03fb6d49b, type: 3}
     - target: {fileID: 2272951876664129887, guid: 7140951266a3b304f83201d6cfdc025c, type: 3}
       propertyPath: m_Name
       value: Archer
@@ -100,15 +100,19 @@ MonoBehaviour:
     at the nearest enemy for <color=#FFA000>{duration} seconds</color> with <color=#FFA000>{fireRatePenaltyPercent}%
     reduced <color=#FF0050>Fire Rate</color></color>. <color=#FFA000>Recast</color>
     to end.'
-  cooldown: 8
+  cooldown: 15
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 0
   tags: []
   activeSurgeBlock: 0
-  isActionAbility: 0
-  duration: 3
+  duration: 5
   fireRatePenaltyPercent: 0.35
   recastBlockDuration: 0.5
+  ricochetFlat: 0
+  multishotFlat: 0
+  homingProjectiles: 0
+  homingDelay: 0.1
 --- !u!114 &-8620584594776125514
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -122,27 +126,32 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ArcherArrowRainAbilityPD
   icon: {fileID: 21300000, guid: 23366daf0e8cd88499305548a92eb295, type: 3}
-  abilityName: <color=#FFB4FF>Arrow Rain</color>
+  abilityName: <color=#FFB4FF>Volley</color>
   description: '<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>
 
     <color=#FFA000>(AoE)</color>
-    Fire a rain of arrows within <color=#3278FF>2x Bow Range</color>, dealing <color=#FF5000>{LiveDamageRatio}</color><color=#FFA000>(<color=#FF5000>{TotalDamagePercent}%
+    Rain down a stream of projectiles within <color=#3278FF>2x Bow Range</color>,
+    dealing <color=#FF5000>{LiveDamageRatio}</color><color=#FFA000>(<color=#FF5000>{TotalDamagePercent}%
     Strength</color>) damage</color> over <color=#FFA000>5 seconds</color> and <color=#FFA000>Slowing</color>
     enemies by <color=#FFA000>{LiveSlowRatio}%</color>.'
   cooldown: 10
+  authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 1
   tags:
   - AoE Effect
   activeSurgeBlock: 0
-  isActionAbility: 1
   castRangeMultiplier: 2
-  castRadius: 4
-  tickCount: 21
+  castRadius: 3
+  duration: 4
+  strengthPerSecond: 1
   tickInterval: 0.25
-  strengthPercentPerTick: 0.15
+  damageMultiplier: 1
+  durationMultiplier: 1
   slowPercent: 0.35
   slowDuration: 0.5
-  recastRetriggerRate: 0.5
+  slowPercentMultiplier: 1
+  growthPercentPerSecond: 0
+  castOnSelf: 0
   radiusVFXPrefab: {fileID: 5351432771132445161, guid: f238e103dc50fdf41a69da3cb67089ef, type: 3}
   chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}
