@@ -43,6 +43,8 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 77328e43a344adc4491cfb3891461ca3, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::CritExecuteAugment
-  critExecuteThreshold: 0.2
-  bonusCritChanceFlat: 0.1
+  m_EditorClassIdentifier: Assembly-CSharp::ExecutionerStartingAugment
+  critExecuteThresholdPercent: 0.3
+  attackSpeedPenaltyPercent: 0.1
+  knockbackBonusPercent: 1
+  effectiveWeaponRangeBonusPercent: 0.2

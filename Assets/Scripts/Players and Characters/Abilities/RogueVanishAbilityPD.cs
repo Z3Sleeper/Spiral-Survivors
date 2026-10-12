@@ -66,10 +66,13 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     // ability's own invisibility window — same Add-at-Activate/Remove-at-end pairing moveSpeedPercent above
     // already uses.
     [HideInInspector] public float highrollChanceBonusPercent = 0f;
-    // false (default) until RogueVanishBlinkAugment sets it — see EffectiveCooldown's own doc comment for
+    // 0f (default, off) until RogueVanishBlinkAugment sets it — see EffectiveCooldown's own doc comment for
     // the full contract. [HideInInspector] — the augment owns this switch, same reasoning as the other
-    // augment-owned fields above.
-    [HideInInspector] public bool dashHasteAffectsCooldown = false;
+    // augment-owned fields above. Doubles as both "is this on" AND "how much" (0 means off, same "0 means
+    // neutral/off" convention this codebase uses elsewhere) — nerfed from a plain bool (2026-10-08, was a
+    // full 1:1 pass-through of EffectiveDashHaste) once Dash Haste's full value folded in felt too strong;
+    // the augment now sets this to 0.5 (50% of Dash Haste) instead of toggling a bool.
+    [HideInInspector] public float dashHasteContributionPercent = 0f;
 
     private CharacterStatsPD _stats;
     // Only resolved/used when blinkOnCast is on — see Activate()'s own teleport block, same fields
@@ -134,26 +137,28 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
 
     // Same formula as CharacterStatsPD.DashCooldown (baseCooldown / (1 + haste/100)) — a haste augment
     // shortens this ability's cooldown the same way it already does for dash, or lengthens it if
-    // EffectiveAbilityHaste ever goes negative (a penalty). dashHasteAffectsCooldown (2026-10-05,
+    // EffectiveAbilityHaste ever goes negative (a penalty). dashHasteContributionPercent (2026-10-05,
     // RogueVanishBlinkAugment — "the ability's cooldown should ALSO get reduced by Dash Haste, same way
-    // Ability Haste already affects it") folds EffectiveDashHaste into the SAME divide, additively with
-    // EffectiveAbilityHaste — same "two haste sources combining additively in one denominator" shape a
-    // single haste stat's own internal Bonus/Total tiers already use, rather than two separate divides
-    // multiplying together (which would double-dip on already-hasted time, same reasoning every other
-    // "combine two percent sources additively, not multiplicatively" convention in this codebase follows).
-    // 0f/false by default, so this is a pure no-op without the augment.
+    // Ability Haste already affects it"; nerfed 2026-10-08 from a full 1:1 fold-in to a 0.5 multiplier,
+    // i.e. only 50% of Dash Haste counts) folds EffectiveDashHaste * dashHasteContributionPercent into the
+    // SAME divide, additively with EffectiveAbilityHaste — same "two haste sources combining additively in
+    // one denominator" shape a single haste stat's own internal Bonus/Total tiers already use, rather than
+    // two separate divides multiplying together (which would double-dip on already-hasted time, same
+    // reasoning every other "combine two percent sources additively, not multiplicatively" convention in
+    // this codebase follows). 0f by default, so this is a pure no-op without the augment (multiplying by 0
+    // naturally zeroes out the Dash Haste term, no separate on/off branch needed).
     private float EffectiveCooldown => _stats != null
-        ? cooldown / (1f + (_stats.EffectiveAbilityHaste + (dashHasteAffectsCooldown ? _stats.EffectiveDashHaste : 0f)) / 100f)
+        ? cooldown / (1f + (_stats.EffectiveAbilityHaste + _stats.EffectiveDashHaste * dashHasteContributionPercent) / 100f)
         : cooldown;
 
-    // Mirrors EffectiveCooldown's own formula exactly, including the dashHasteAffectsCooldown fold-in —
+    // Mirrors EffectiveCooldown's own formula exactly, including the dashHasteContributionPercent fold-in —
     // see that property's own doc comment. Outside a live match, falls back to the base field itself —
     // exact at neutral haste (0, i.e. cooldown / (1+0/100) == cooldown), same "neutral stat value == the
     // base field" convention as every other Live*Ratio in this file.
     public string LiveCooldownRatio(CharacterStatsPD stats)
     {
         float value = AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? cooldown / (1f + (stats.EffectiveAbilityHaste + (dashHasteAffectsCooldown ? stats.EffectiveDashHaste : 0f)) / 100f)
+            ? cooldown / (1f + (stats.EffectiveAbilityHaste + stats.EffectiveDashHaste * dashHasteContributionPercent) / 100f)
             : cooldown;
         return $"{AugmentDescriptionFormatter.FormatLiveNumber(value)} ";
     }
@@ -229,9 +234,11 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         // trigger off it.
         if (blinkOnCast && _controller != null && _rigidbody != null)
         {
+            // Also what DashEffectDoubleTriggerAugment listens to now (2026-10-10, replaces the removed
+            // NotifyRealDashStarted/RealDashEnded pair) — see PlayerControllerPD._onDashMovementEnded's own
+            // field comment.
             _controller.NotifyDashStarted();
             _controller.NotifyDashMovementStarted();
-            _controller.NotifyRealDashStarted();
 
             Vector3 fromPosition = _stats.transform.position;
             float blinkDistance = Mathf.Min(_controller.currentState.cursorDistance, _controller.DashRange);
@@ -245,9 +252,9 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
             _stats.transform.position = blinkTarget;
             _predictedTransform?.ResetInterpolation();
 
+            // interrupted: false — an instant teleport has nothing mid-flight to interrupt.
             _controller.NotifyDashEnded();
-            _controller.NotifyDashMovementEnded();
-            _controller.NotifyRealDashEnded();
+            _controller.NotifyDashMovementEnded(false);
         }
 
         // No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedPercent are both plain,

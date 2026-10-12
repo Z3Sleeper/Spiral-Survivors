@@ -13,13 +13,14 @@ MonoBehaviour:
   m_Name: ExeBigAxeBleedAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FF8700>Execution Time: Bleed</color>'
-  description: 'Your <color=#FFA000>Strikes</color> during <color=#FF8700>Execution
-    Time</color> apply a <color=#FFA000>Bleed</color> to the enemy hit, dealing <color=#FFA000>{LiveBleedPerSecondRatio}</color><color=#FFA000>(<color=#FF5000>{bleedPerSecondPercent}%
+  description: 'During <color=#FF8700>Execution Time</color>, apply a <color=#FFA000>Bleed
+    On Hit</color>, dealing <color=#FFA000>{LiveBleedPerSecondRatio}</color><color=#FFA000>(<color=#FF5000>{bleedPerSecondPercent}%
     Strength</color>)</color> over <color=#FFA000>{bleedDuration} seconds</color>,
     <color=#FFA000>doubled</color> on <color=#FF8700>Crits</color>.
 
     <color=#FFBE50>Each
-    Bleed application refreshes the duration of all Bleeds on the target</color>'
+    Bleed application from any source refreshes the duration of all Bleeds on the
+    target</color>'
   icon: {fileID: 21300000, guid: 40fa89a1f0474a143bf77b5f5edf4333, type: 3}
   effectPrefab: {fileID: 5823066454985748522, guid: abedb1ae781c751488d938b5f425e3ec, type: 3}
   multiplayerOnly: 0

@@ -15,9 +15,9 @@ MonoBehaviour:
   displayName: <color=#00FFFF>Explosive Entrance</color>
   description: <color=#FFA000>(AoE) On <color=#00FFFF>Dash End</color>:</color> Deal
     <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
-    Strength</color>) damage</color>, <color=#FFA000>100% Knockback</color> and trigger
-    <color=#FFA000>On Hit Effects</color> at <color=#FFA000>{LiveOnHitPowerRatio}({onHitPowerPercent}%
-    On Hit Power)</color> on all enemies in <color=#3278FF>x{radiusMultiplier} Range</color>.
+    Strength</color>) damage</color>, <color=#FFA000>{knockbackMultiplierPercent}%
+    Knockback</color> and trigger <color=#FFA000>On Hit Effects</color> at <color=#FFA000>{onHitPowerPercent}%</color>
+    to all enemies in <color=#3278FF>x{radiusMultiplier} Range</color>.
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   effectPrefab: {fileID: 3922366251959986115, guid: a6f2b8790a9fdc0459a00805e92228f8, type: 3}
   multiplayerOnly: 0
@@ -30,5 +30,6 @@ MonoBehaviour:
   - AoE Effect
   - Dash Effect
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

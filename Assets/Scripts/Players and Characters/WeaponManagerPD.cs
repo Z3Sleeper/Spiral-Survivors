@@ -39,7 +39,7 @@ public class WeaponManagerPD : MonoBehaviour
         _stats             = stats;
         _currentCount      = stats.WeaponCount;
         _currentRange      = stats.EffectiveWeaponRange;
-        _currentSize       = stats.bonusSizePercent;
+        _currentSize       = stats.Size;
         _weaponPrefabScale = weaponPrefab.transform.localScale;
         if (stats.isServer) _pendingSpawn = stats.WeaponCount;
     }
@@ -114,8 +114,8 @@ public class WeaponManagerPD : MonoBehaviour
         weapon.InitModelVisuals();
         // No Size multiply here anymore (2026-09-30, was _weaponPrefabScale * _currentSize) — Size no longer
         // scales any weapon's model/hitbox geometry at all, only the clearance-offset terms that already read
-        // _stats.bonusSizePercent directly (NominalOrbitRadius/ApplyHeightLift, and SetupWeaponRange's own
-        // hitboxTarget formula below). This was previously undone every call anyway by WeaponBasePD.ScaleModel's
+        // _stats.Size directly (NominalOrbitRadius/ApplyHeightLift, and SetupWeaponRange's own hitboxTarget
+        // formula below). This was previously undone every call anyway by WeaponBasePD.ScaleModel's
         // own bandaid reset — see project_weapon_size_decoupling_bandaid memory (now resolved/removed) for the
         // full history of why that stopgap existed and why it's no longer needed once this line changed.
         weapon.transform.localScale = _weaponPrefabScale;
@@ -159,23 +159,23 @@ public class WeaponManagerPD : MonoBehaviour
             if (weapon.rangeScaleTarget != null)
             {
                 // Both terms divided by rootZ uniformly, not just the r term — the character-radius
-                // clearance is a WORLD-space quantity (_stats.bonusSizePercent already IS the character's
-                // current world scale — see ExeAxeThrowAbilityPD.spawnOffsetBase's own doc comment for why
-                // this reads the stat directly rather than transform.lossyScale.x, numerically identical
-                // here too since this component lives on the same player root CharacterStatsPD does), but
-                // this whole expression is written in the weapon's own LOCAL space, which Unity implicitly
-                // re-multiplies by rootZ (the weapon's own Size-driven scale) when resolving hitboxTarget's
-                // world position from its local one. Previously only r was divided by rootZ before that
-                // implicit multiply, so it came back out as exactly r (correct, scale-invariant) — but the
-                // character-radius term came back out as bonusSizePercent*0.5f*rootZ instead of the intended
-                // bonusSizePercent*0.5f, compounding with the weapon's OWN Size-driven scale on top of
-                // already including the character's Size once directly. That's what pulled the hitbox's near
-                // edge back past the handle at higher Size (confirmed against a screenshot where it visibly
-                // intruded into the hurtbox) while staying correct at Size 1 (rootZ's multiplier was 1, so
-                // the bug was invisible there) — dividing it too keeps the clearance scaling linearly with
-                // just the character's own Size, not the weapon's Size on top of that.
+                // clearance is a WORLD-space quantity (_stats.Size already IS the character's current world
+                // scale — see ExeAxeThrowAbilityPD.spawnOffsetBase's own doc comment for why this reads the
+                // stat directly rather than transform.lossyScale.x, numerically identical here too since this
+                // component lives on the same player root CharacterStatsPD does), but this whole expression
+                // is written in the weapon's own LOCAL space, which Unity implicitly re-multiplies by rootZ
+                // (the weapon's own Size-driven scale) when resolving hitboxTarget's world position from its
+                // local one. Previously only r was divided by rootZ before that implicit multiply, so it came
+                // back out as exactly r (correct, scale-invariant) — but the character-radius term came back
+                // out as Size*0.5f*rootZ instead of the intended Size*0.5f, compounding with the weapon's OWN
+                // Size-driven scale on top of already including the character's Size once directly. That's
+                // what pulled the hitbox's near edge back past the handle at higher Size (confirmed against a
+                // screenshot where it visibly intruded into the hurtbox) while staying correct at Size 1
+                // (rootZ's multiplier was 1, so the bug was invisible there) — dividing it too keeps the
+                // clearance scaling linearly with just the character's own Size, not the weapon's Size on top
+                // of that.
                 var p = weapon.hitboxTarget.localPosition;
-                weapon.hitboxTarget.localPosition = new Vector3(p.x, p.y, (r * 0.5f - _stats.bonusSizePercent * 0.5f) / rootZ);
+                weapon.hitboxTarget.localPosition = new Vector3(p.x, p.y, (r * 0.5f - _stats.Size * 0.5f) / rootZ);
             }
         }
         else
@@ -292,12 +292,11 @@ public class WeaponManagerPD : MonoBehaviour
 
         // _currentSize is now purely a change-detector (2026-09-30) — Size no longer scales any weapon's own
         // transform (see RegisterWeapon's own comment), but SetupWeaponRange still needs re-running on a Size
-        // change: its own hitboxTarget formula bakes _stats.bonusSizePercent into a LOCAL position at call
-        // time (unlike NominalOrbitRadius/ApplyHeightLift, which read bonusSizePercent live every tick and
-        // need no such trigger).
-        if (_stats.bonusSizePercent != _currentSize)
+        // change: its own hitboxTarget formula bakes _stats.Size into a LOCAL position at call time (unlike
+        // NominalOrbitRadius/ApplyHeightLift, which read Size live every tick and need no such trigger).
+        if (_stats.Size != _currentSize)
         {
-            _currentSize = _stats.bonusSizePercent;
+            _currentSize = _stats.Size;
             foreach (var weapon in _weapons) SetupWeaponRange(weapon);
             foreach (var weapon in _outerWeapons) SetupWeaponRange(weapon);
         }

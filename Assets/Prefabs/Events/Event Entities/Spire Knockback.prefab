@@ -677,6 +677,7 @@ MonoBehaviour:
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 10
   xpValue: 0
   pointsValue: 0
@@ -694,6 +695,7 @@ MonoBehaviour:
   - {fileID: 4217391084382548226}
   - {fileID: 3622794697054359341}
   invulnerableShell: {fileID: 484935195704614788}
+  _yAxisMovers: {fileID: 6705824777853674429}
   knockbackWindupDuration: 10
   knockbackForce: 100
   knockbackRadius: 5

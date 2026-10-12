@@ -16,7 +16,7 @@ MonoBehaviour:
   description: '<color=#FF0050>Spinfiltrate</color> can now <color=#FFA000>Interrupt</color>
     enemies.
 
-    <color=#FFA000>On Successful Interrupt:</color> Reduce <color=#FF0050>Spinfiltrate''s</color>
+    <color=#FFA000>On Any Interrupt:</color> Reduce <color=#FF0050>Spinfiltrate''s</color>
     <color=#FFA000>cooldown</color> by <color=#FFA000>50%</color>.'
   icon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}
   effectPrefab: {fileID: 1818223088856347513, guid: 7133c604f8eb3e741b5446ac5b8cea94, type: 3}

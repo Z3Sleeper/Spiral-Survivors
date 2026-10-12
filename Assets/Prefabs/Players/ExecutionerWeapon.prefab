@@ -5241,7 +5241,7 @@ MonoBehaviour:
   minEmissionRange: 0
   maxEmissionRange: 0
   visualHeightTarget: {fileID: 6538681499716106083}
-  meleeHalfExtents: {x: 0.05, y: 0.1, z: 0.5}
+  meleeHalfExtents: {x: 0.025, y: 0.1, z: 0.5}
   orbitPivot: {fileID: 1946876040768958371}
   axeHeadPercent: 0.6
   axeHeadHalfWidth: 0.2
@@ -5310,7 +5310,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.7071068, y: -0, z: -0, w: 0.7071068}
   m_LocalPosition: {x: 0, y: 0, z: -0}
-  m_LocalScale: {x: 0.1, y: 0.5, z: 0.10000001}
+  m_LocalScale: {x: 0.05, y: 0.5, z: 0.05}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 6929856999581411320}

@@ -3,13 +3,19 @@ using PurrNet.Prediction;
 // Executioner BigAxe-specific augment (2026-10-07). This augment's own .asset must set requiredAbilities =
 // [ExeBigAxe] — scripts-only convention, that part is Editor-side, not here.
 //
-// While ExeBigAxeAbilityPD's own active window is running, every weapon strike (any weapon — BigAxe itself
-// deals no damage, it's a self-buff, so this is "struck while wielding the massive axe," not "struck BY
-// the axe specifically," same "struck while the buff is up" reasoning BWBladeDanceSlowAugment/
-// BWBladeDanceStunAugment use for their own ability) inflicts a stacking bleed: bleedPerSecondPercent
-// (10% Strength per second default) for bleedDuration (3s), scaled by onHitPower (damage only — duration
-// is never touched by onHitPower). Listens to the exactly-once _onStrike (not _onHit) — Stuart's own
-// explicit framing was "dealt on-strike."
+// While ExeBigAxeAbilityPD's own active window is running, every hit (any source — BigAxe itself deals no
+// damage, it's a self-buff, so this is "while wielding the massive axe," not "struck BY the axe
+// specifically," same "while the buff is up" reasoning BWBladeDanceSlowAugment/BWBladeDanceStunAugment use
+// for their own ability) inflicts a stacking bleed: bleedPerSecondPercent (10% Strength per second default)
+// for bleedDuration (3s), scaled by onHitPower (damage only — duration is never touched by onHitPower).
+//
+// Listens to _onHit, not the exactly-once _onStrike (reworked 2026-10-08, was _onStrike — Stuart's own
+// original framing was "dealt on-strike," but switching to _onHit lets this synergize with anything else
+// that routes through _onHit specifically: CritTriggerOnHitAugment re-invoking NotifyHit on a crit now also
+// re-triggers this (a crit applies bleed twice while BigAxe is up), and PhantomBladePD/AreaEffectCastHelper
+// hits (which only ever call NotifyHit, never NotifyStrike) now apply bleed too, not just genuine weapon
+// swings. Every real weapon (Melee/Axe/RangedProjectile/ExeAxeThrowProjectile/RogueSpin) still fires both
+// events together, so this doesn't lose any coverage it already had, only gains the extra sources.
 //
 // Rolled through the FULL standard damage pipeline, same shape OnHitDamageAugment's own doc comment
 // describes for an on-hit secondary effect: WeaponDamageMath.RollDamageInherited for luck variance, then
@@ -39,9 +45,12 @@ public class ExeBigAxeBleedAugment : AugmentEffectPD<ExeBigAxeBleedAugment.State
     // Baseline per-stack rate at 100% HealPower-equivalent (onHitPower/luck/crit variance aren't included
     // since all three vary per-hit, not a stat to preview) for AugmentDescriptionFormatter's
     // {LiveBleedPerSecondRatio} token — same shape every other rate-based augment's own Live*Ratio uses.
+    // Reads _bigAxe directly (a field on this same instance, cached in LateAwake()) rather than taking it as
+    // a param — Live*Ratio methods are reflection-invoked with a fixed (CharacterStatsPD) signature, so
+    // anything else this preview needs has to come from the instance itself.
     public string LiveBleedPerSecondRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * bleedPerSecondPercent)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * bleedPerSecondPercent * (_bigAxe != null ? _bigAxe.buffStrengthMultiplier : 1f))} "
             : "";
 
     // Cached once — see KnightBerserkHealAugment._berserk's own identical caching pattern, avoids a fresh
@@ -56,16 +65,16 @@ public class ExeBigAxeBleedAugment : AugmentEffectPD<ExeBigAxeBleedAugment.State
 
     protected override void OnApply()
     {
-        Stats.AddStrikeListener(OnStrike);
+        Stats.AddHitListener(OnHit);
     }
 
     protected override void OnDestroy()
     {
         base.OnDestroy();
-        if (Stats != null) Stats.RemoveStrikeListener(OnStrike);
+        if (Stats != null) Stats.RemoveHitListener(OnHit);
     }
 
-    private void OnStrike(WeaponHitData data)
+    private void OnHit(WeaponHitData data)
     {
         // Should never be null — requiredAbilities already guarantees this augment is only ever offered to
         // a player with ExeBigAxeAbilityPD equipped — but guarded anyway, same defensive convention every
@@ -74,13 +83,20 @@ public class ExeBigAxeBleedAugment : AugmentEffectPD<ExeBigAxeBleedAugment.State
         if (!data.target.TryGetComponent<IEnemyPD>(predictionManager, out var enemy) || enemy._isDead) return;
 
         // Anything that deals damage rolls luck variance — no exceptions. onHitPower scales damage only —
-        // bleedDuration below is never touched by it.
-        float preRoll = Stats.Strength * bleedPerSecondPercent * data.onHitPower;
+        // bleedDuration below is never touched by it. _bigAxe.buffStrengthMultiplier (2026-10-08) folds in
+        // ExeBigAxeBuffAugment's own shared amplifier — same multiplier that already scales Range/Execute
+        // Threshold/Crit Chance/Knockback/Attack Speed on the ability itself — so picking Buff now also
+        // amps this augment's bleed rate, adding cross-augment synergy within the BigAxe family. 1f neutral
+        // default (every BigAxe throw without the Buff augment), so this is a true no-op without it.
+        float preRoll = Stats.Strength * bleedPerSecondPercent * data.onHitPower * _bigAxe.buffStrengthMultiplier;
         float rolledPerSecond = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll);
         rolledPerSecond = WeaponDamageMath.ApplyCritAndHighroll(rolledPerSecond, data.isHighroll, data.isCrit, Stats.HighrollBonus, Stats.CritDamage);
         // Extra flat doubling on top of the normal crit multiplier above — Stuart's own explicit spec.
         if (data.isCrit) rolledPerSecond *= 2f;
 
-        enemy.ApplyBleed(rolledPerSecond, bleedDuration, Stats.owner ?? default);
+        // executeThresholdPercent/critExecuteThresholdPercent (2026-10-08 perf fix) — captured directly off
+        // Stats here, while the live reference is already in hand, rather than making every future bleed
+        // tick re-look it up via CharacterStatsPD.All — see IEnemyPD.TakeDamage's own doc comment.
+        enemy.ApplyBleed(rolledPerSecond, bleedDuration, Stats.owner ?? default, Stats.executeThreshold, Stats.critExecuteThreshold);
     }
 }

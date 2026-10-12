@@ -131,7 +131,7 @@ public static class AreaEffectCastHelper
                     }
                     rolledDamage = WeaponDamageMath.ApplyCritAndHighroll(rolledDamage, dmgHighroll, isCrit, owner.HighrollBonus, owner.CritDamage);
 
-                    enemy.TakeDamage(rolledDamage, isCrit, owner.owner ?? default, dmgHighroll);
+                    enemy.TakeDamage(rolledDamage, isCrit, owner.owner ?? default, dmgHighroll, owner.executeThreshold, owner.critExecuteThreshold);
                     owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolledDamage, isCrit = isCrit, isHighroll = dmgHighroll, attacker = owner, isPriority = true, overrideSfx = overrideHitSfx, sfx = hitSfxOverride });
 
                     if (notifyOnHit)
@@ -170,17 +170,18 @@ public static class AreaEffectCastHelper
     // own totalCasts/retriggerRate) needs the radius VFX to spawn exactly ONCE for the whole chain, not once
     // per retrigger (it used to be called unconditionally at the end of Cast() above, which meant a 21-tick
     // chain spawned the VFX 21 times — a real bug, not just cosmetic waste, once anything used a tick count
-    // that high). AreaEffectPD now calls this itself, once, from Launch() only. Duration is NOT a parameter
-    // RadiusIndicatorVFXPD itself ever sees — it still owns its own playback timing (a [SerializeField] on
-    // the prefab itself), same convention as any other prefab-authored visual effect; only radius/tint are
-    // gameplay-derived values threaded through ITS OWN Launch().
+    // that high). AreaEffectPD now calls this itself, once, from Launch() only. RadiusIndicatorVFXPD still
+    // owns its own playback timing by default (a [SerializeField] on the prefab itself, same convention as
+    // any other prefab-authored visual effect) — abilityDuration below only overrides that for a caller
+    // whose real duration can vary at runtime; every other caller still gets the prefab's own flat value.
     // tintColor: null (default, every existing caller) leaves the prefab's own authored color alone — see
     // RadiusIndicatorVFXPD.TintColor's own doc comment. Added for ArcherArrowRainAbilityPD, which passes its
     // caster's PlayerColor so the outline/rain particles match whoever cast it.
     // abilityDuration: null (default, every existing caller) — ArcherArrowRainAbilityPD-specific (2026-10-05),
-    // forwarded to ArrowRainParticleRadiusPD.SetAbilityDuration IF that component happens to be on the
-    // spawned prefab, bypassing RadiusIndicatorVFXPD entirely rather than routing an ArrowRain-only concept
-    // through a class every other AoE VFX caller also shares — see that method's own doc comment for why.
+    // forwarded to RadiusIndicatorVFXPD.Launch's own durationOverride (2026-10-11 fix — see its own doc
+    // comment) AND to ArrowRainParticleRadiusPD.SetAbilityDuration on the spawned prefab's nested child,
+    // bypassing RadiusIndicatorVFXPD's class-level logic entirely for everyone else rather than routing an
+    // ArrowRain-only concept through a class every other AoE VFX caller also shares.
     // radiusGrowthPerSecond: null (default, every existing caller) — ArcherArrowRainGrowthAugment-specific
     // (2026-10-05), same bypass-RadiusIndicatorVFXPD shape as abilityDuration above: forwarded straight to
     // ArrowRainParticleRadiusPD.SetGrowth, which then grows the particle shape's radius (and, via its
@@ -197,14 +198,33 @@ public static class AreaEffectCastHelper
 
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out RadiusIndicatorVFXPD vfx))
-            vfx.Launch(radius, tintColor);
+            // durationOverride: abilityDuration (2026-10-11 fix) — this root's own self-timed duration field
+            // is a flat, hand-authored value (ArrowRainVFXPD.prefab's own RadiusIndicatorVFXPD: 5) that has
+            // no idea the real ability can run longer than that (ArcherArrowRainDurationAugment). Passing
+            // the real ability duration through here (null for every other caller, which still falls back
+            // to that prefab-authored value exactly as before) keeps the WHOLE VFX tree alive — Unity
+            // destroys children with their parent, and this root is deleted the instant its own timer
+            // expires — for as long as the real AoE actually lasts, instead of vanishing at a flat 5s
+            // regardless of how long the gameplay hazard underneath it keeps ticking.
+            vfx.Launch(radius, tintColor, abilityDuration);
 
-        if (go != null && go.TryGetComponent(out ArrowRainParticleRadiusPD particleRadius))
+        // GetComponentInChildren, NOT go.TryGetComponent (2026-10-11 fix) — ArrowRainParticleRadiusPD lives
+        // on ArrowRainVFXPD.prefab's nested Visuals/ArrowRainVFX child, not on the root `go` itself (that's
+        // RadiusIndicatorVFXPD's own object, right above). go.TryGetComponent only ever checks the exact
+        // GameObject passed in, never descendants, so this was SILENTLY finding nothing and skipping the
+        // whole block below on every single cast — the real original cause of growth/duration never visibly
+        // doing anything (the Start()-vs-Init() pooling fix earlier was real but moot, since this call site
+        // never reached it in the first place).
+        var particleRadius = go != null ? go.GetComponentInChildren<ArrowRainParticleRadiusPD>() : null;
+        if (particleRadius != null)
         {
-            if (abilityDuration.HasValue)
-                particleRadius.SetAbilityDuration(abilityDuration.Value);
-            if (radiusGrowthPerSecond.HasValue)
-                particleRadius.SetGrowth(radiusGrowthPerSecond.Value);
+            // Unconditional, not gated on .HasValue — this VFX prefab is pooled and reused across casts, so
+            // a cast that DOESN'T have the growth/duration augment must still explicitly clear whatever a
+            // PREVIOUS cast on this same pooled instance left cached, not just skip setting it. Init() (not
+            // Start() — see its own doc comment) then acts on both right after.
+            particleRadius.SetAbilityDuration(abilityDuration);
+            particleRadius.SetGrowth(radiusGrowthPerSecond);
+            particleRadius.Init();
         }
     }
 }

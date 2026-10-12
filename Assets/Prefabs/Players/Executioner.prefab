@@ -110,9 +110,9 @@ MonoBehaviour:
   tags: []
   activeSurgeBlock: 0
   duration: 10
-  weaponRangeTotalPercent: 0.3
-  executeThresholdPercent: 0.2
-  critChancePercent: 0.3
+  weaponRangeTotalPercent: 0.4
+  executeThresholdPercent: 0.3
+  critChancePercent: 0.2
   buffStrengthMultiplier: 1
   rangeMultiplierBonus: 0
   knockbackPercent: 0
@@ -133,10 +133,11 @@ MonoBehaviour:
   abilityName: <color=#FF5000>Axe Throw</color>
   description: "<color=#FFBE50>Cooldown: {LiveCooldownRatio}seconds</color>\nThrow
     a returning axe <color=#3278FF>3x Range</color> ahead, dealing \n<color=#FF5000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{strengthPercent}%
-    Strength</color>) damage</color> that <color=#FFA000>Interrupts</color>. Deals
-    <color=#FFA000>double damage</color> on <color=#FF8700>Crit</color>.\n<color=#FFBE50><i>Size
-    scales with Range</i></color>\n<color=#FFBE50><i>Triggers Weapon Strike effects</i></color>"
-  cooldown: 8
+    Strength</color>) damage</color> that <color=#FFA000>Interrupts</color> and inflicts
+    <color=#FFA000>{baseKnockbackBonusPercent}% Knockback</color>. Deals <color=#FFA000>double
+    damage</color> on <color=#FF8700>Crit</color>.\n<color=#FFBE50><i>Size scales
+    with Range</i></color>\n<color=#FFBE50><i>Triggers Weapon Strike effects</i></color>"
+  cooldown: 6
   authoredChargeCount: 1
   cooldownStartsOnCast: 0
   slot: 0
@@ -144,8 +145,9 @@ MonoBehaviour:
   activeSurgeBlock: 0
   strengthPercent: 1
   damageMultiplier: 1
+  baseKnockbackBonusPercent: 2
   knockbackMultiplier: 1
-  maxRangeMultiplier: 3
+  maxRangeMultiplier: 2
   projectileSpeed: 20
   projectilePrefab: {fileID: 2942187867930129664, guid: 3917a023e9490874693890b5efd7102b, type: 3}
   cooldownMultiplier: 1

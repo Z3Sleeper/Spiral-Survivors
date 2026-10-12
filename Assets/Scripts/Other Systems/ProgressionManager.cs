@@ -5,7 +5,7 @@ using UnityEngine;
 
 public static class ProgressionManager
 {
-    private const int    CurrentSaveVersion = 10;
+    private const int    CurrentSaveVersion = 11;
     private const string SaveFileName       = "progression.json";
 
     private const long  PointsCap     = 1_000_000_000_000_000_000L;
@@ -69,7 +69,7 @@ public static class ProgressionManager
     //        memory — but both of those two specific stats were scrapped entirely, same day, once the
     //        CharacterStatsPD-side bug investigation that found them showed they'd never actually be used.)
     private static readonly int[] StrengthCosts =
-        { 50, 500, 1000, 2000, 3500, 5500, 7500, 9500 };
+        { 50, 250, 500, 1000, 1500, 3000, 4500, 6000 };
     private static readonly int[] StrengthUnlockDifficulty =
         { 0, 0, 0, 0, 0, 0, 0, 0 };
     private static readonly int[] DashChargesCosts =
@@ -155,15 +155,15 @@ public static class ProgressionManager
     private static readonly int[] LevelUpStatsUnlockDifficulty =
         { 2, 3, 4, 5, 6 };
     private static readonly int[] LevelUpOptionsCosts =
-        { 5000, 10000 };
+        { 8000, 40000 };
     private static readonly int[] LevelUpOptionsUnlockDifficulty =
-        { 4, 0 };
+        { 3, 0 };
     private static readonly int[] StrengthPerLevelCosts =
         { 3000, 12000, 24000, 36000, 48000 };
     private static readonly int[] StrengthPerLevelUnlockDifficulty =
         { 2, 3, 4, 5, 6 };
     private static readonly int[] RerollTokensCosts =
-        { 500, 1000, 1500, 2000, 2500 };
+        { 500, 2000, 4000, 6000, 8000 };
     private static readonly int[] RerollTokensUnlockDifficulty =
         { 2, 3, 4, 5, 6 };
     private static readonly int[] SurgeMoveSpeedPenaltyReductionCosts =

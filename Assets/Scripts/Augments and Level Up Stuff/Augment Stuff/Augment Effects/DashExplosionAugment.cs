@@ -39,9 +39,12 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
     // scaling itself.
     [SerializeField] private float radiusMultiplier    = 1.25f;
     // Multiplies Stats.Knockback (unpenalized — no onHitPower multiply, same convention
-    // ShieldBreakBurstAugment's own knockbackMultiplier uses). 1 preserves this augment's previous
-    // behavior (raw Stats.Knockback, unscaled) now that it's exposed for tuning.
-    [SerializeField] private float knockbackMultiplier = 1f;
+    // ShieldBreakBurstAugment's own knockbackMultiplierPercent uses). 1 preserves this augment's previous
+    // behavior (raw Stats.Knockback, unscaled) now that it's exposed for tuning. Public, "Percent" suffix
+    // at the END (not public/not-Percent-suffixed before) — so AugmentDescriptionFormatter's reflection can
+    // resolve {knockbackMultiplierPercent} directly as a description token, with its auto-*100 formatting
+    // firing correctly.
+    public float knockbackMultiplierPercent = 1f;
 
     // Mirrors AreaEffectCastHelper.Cast's own damage formula, minus the luck/crit roll (baseline preview, not
     // a randomly-sampled one — see OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the
@@ -49,13 +52,6 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
     public string LiveStrengthRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
             ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.Strength * damagePercent)} "
-            : "";
-
-    // Mirrors the onHitPower half of the same Cast() formula, for AugmentDescriptionFormatter's
-    // {LiveOnHitPowerRatio} token.
-    public string LiveOnHitPowerRatio(CharacterStatsPD stats) =>
-        AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(stats.OnHitPower * onHitPowerPercent)} "
             : "";
 
     // Spawned on every dash (see OnDashEnded) — pooled, so this is cheap even when AreaEffectCount is just
@@ -84,7 +80,7 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
 
         Vector3 castPosition = Stats.transform.position;
         float radius = Stats.RangeScalingAoEBase * radiusMultiplier;
-        float knockback = Stats.Knockback * knockbackMultiplier;
+        float knockback = Stats.Knockback * knockbackMultiplierPercent;
 
         var chainId = hierarchy.Create(chainPrefab, castPosition, Quaternion.identity);
         if (!chainId.HasValue) return;

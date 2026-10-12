@@ -7,10 +7,9 @@ using UnityEngine;
 // exposed Radius directly (the same value ApplyRadialTransform scales the root/outline with) rather than
 // re-deriving it from transform.lossyScale.
 //
-// One-shot in Start(), not a per-frame poll — _radius is set once by Launch() and never changes for the rest
-// of this instance's life (no augment retroactively resizes an already-spawned cast). Start() is safe timing:
-// Launch() always runs synchronously right after hierarchy.Create() returns (same convention as every other
-// spawned effect here), which completes well before Unity's own deferred Start() callback fires.
+// Real per-cast setup happens in Init(), called every cast from AreaEffectCastHelper.SpawnRadiusVFX right
+// after hierarchy.Create() returns — NOT Start(), which only fires once per real object instance and never
+// re-fires on this prefab's own pooled reuse (see Init()'s own doc comment for the bug that caused).
 //
 // Also owns this particle system's pause handling (2026-09-27) — PausePD never touches Time.timeScale (see
 // its own doc comment), so a native ParticleSystem has zero built-in pause awareness and just keeps animating
@@ -28,37 +27,50 @@ public class ArrowRainParticleRadiusPD : MonoBehaviour
     private bool _lastPaused;
 
     // Set by AreaEffectCastHelper.SpawnRadiusVFX (2026-10-05, ArcherArrowRainAbilityPD's own duration/
-    // tickInterval rework), called synchronously right after hierarchy.Create() — same timing as
-    // RadiusIndicatorVFXPD.Launch() itself, well before Unity's own deferred Start() callback fires, so
-    // this just caches the raw value for Start() to actually act on. Deliberately NOT routed through
-    // RadiusIndicatorVFXPD (which stays a dumb, reusable "radius + tint" passthrough for every OTHER AoE
-    // VFX caller) — this is purely an ArrowRain-specific concept (the raining-particle emitter's own
-    // duration/startLifetime shape), so it lives entirely in this ArrowRain-specific script instead.
+    // tickInterval rework), called synchronously right after hierarchy.Create(), right before Init() (see
+    // its own doc comment — NOT Start(), which doesn't re-fire on a pooled reuse) actually acts on this.
+    // Deliberately NOT routed through RadiusIndicatorVFXPD (which stays a dumb, reusable "radius + tint"
+    // passthrough for every OTHER AoE VFX caller) — this is purely an ArrowRain-specific concept (the
+    // raining-particle emitter's own duration/startLifetime shape), so it lives entirely in this
+    // ArrowRain-specific script instead.
     private float? _abilityDuration;
 
-    // Called once, right after hierarchy.Create() — see _abilityDuration's own doc comment for the timing
-    // reasoning. Stuart's own framing: "tell the VFX its duration and the VFX will account for it."
-    public void SetAbilityDuration(float duration) => _abilityDuration = duration;
+    // Called every cast, right after hierarchy.Create() — see _abilityDuration's own doc comment for the
+    // timing reasoning. Stuart's own framing: "tell the VFX its duration and the VFX will account for it."
+    // Nullable (2026-10-11 fix) — see SetGrowth's own doc comment for why a pooled reuse needs this to be
+    // able to explicitly clear, not just set.
+    public void SetAbilityDuration(float? duration) => _abilityDuration = duration;
 
-    // Growth support (2026-10-05, ArcherArrowRainGrowthAugment). Same one-shot-cache-then-act-in-
-    // Start()/Update() shape as _abilityDuration above — set once, right after hierarchy.Create(), well
-    // before Start() fires. Deliberately a CONSTANT per-second rate applied every real frame (Update()),
-    // not stepped to match the real gameplay radius's own discrete per-Simulate-tick growth
-    // (AreaEffectPD.SetRadius) — Stuart's own explicit framing: "have the outline and particle system grow
-    // over time at a constant rate while the actual gameplay tick rate stuff under the hood is actually
-    // doing it in incrementally larger radii. Very tiny visual to gameplay mismatch that should be
-    // unnoticeable." _startRadius is captured in Start() (radiusSource.Radius, same value the shape.radius
-    // assignment right above it uses), so growth always starts from whatever the real cast radius was,
-    // never a hardcoded baseline.
+    // Growth support (2026-10-05, ArcherArrowRainGrowthAugment). Deliberately a CONSTANT per-second rate
+    // applied every real frame (Update()), not stepped to match the real gameplay radius's own discrete
+    // per-Simulate-tick growth (AreaEffectPD.SetRadius) — Stuart's own explicit framing: "have the outline
+    // and particle system grow over time at a constant rate while the actual gameplay tick rate stuff under
+    // the hood is actually doing it in incrementally larger radii. Very tiny visual to gameplay mismatch that
+    // should be unnoticeable." _startRadius is captured in Init() (radiusSource.Radius, same value the
+    // shape.radius assignment right above it uses), so growth always starts from whatever the real cast
+    // radius was, never a hardcoded baseline.
     private float? _growthPerSecond;
     private float _startRadius;
     private float _elapsedSinceStart;
 
-    public void SetGrowth(float growthPerSecond) => _growthPerSecond = growthPerSecond;
+    // Nullable (2026-10-11 fix) — both this and SetAbilityDuration above must be able to explicitly CLEAR a
+    // previous cast's value, not just set a new one, now that Init() (not Start()) is the one being called
+    // every real cast — see Init()'s own doc comment for why that distinction matters.
+    public void SetGrowth(float? growthPerSecond) => _growthPerSecond = growthPerSecond;
 
-    private void Start()
+    // Real per-cast initialization (2026-10-11 fix, replaces the old Start()-based version) — called every
+    // cast, from AreaEffectCastHelper.SpawnRadiusVFX right after SetAbilityDuration/SetGrowth, same as every
+    // other per-cast setter on this class. Start() was WRONG for this: these spawned VFX prefabs are pooled
+    // and reused across casts (see [[feedback_pooled_lazy_init_pattern]]), and Unity's Start() only ever
+    // fires once per real object instance, never again on a pooled reuse — so every cast after the VFX
+    // instance's very first ever use would keep _elapsedSinceStart stuck at whatever the PREVIOUS cast's
+    // growth left it at (already at/past that cast's own duration), silently skipping all growth from frame
+    // one, while the real gameplay hitbox (driven through Simulate(), which the PD framework DOES reliably
+    // re-run every cast) kept growing and dealing damage well outside the frozen-looking visual.
+    public void Init()
     {
         _ps = GetComponent<ParticleSystem>();
+        _elapsedSinceStart = 0f;
         if (radiusSource == null) return;
 
         var shape = _ps.shape;

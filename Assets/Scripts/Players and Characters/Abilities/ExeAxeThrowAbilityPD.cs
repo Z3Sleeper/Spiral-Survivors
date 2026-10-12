@@ -30,7 +30,7 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     [SerializeField] private Sprite icon;
     [SerializeField] private string abilityName = "Axe Throw";
     [SerializeField, TextArea] private string description =
-        "Throw an axe dealing 200% Unpenalized Strength that pierces every enemy in its path. Crits deal double crit damage.";
+        "Throw an axe dealing 200% Unpenalized Strength with +500% Unpenalized Knockback that pierces every enemy in its path. Crits deal double crit damage.";
     public float cooldown = 6f;
     // How many charges this ability starts with (1 = old off-cooldown behavior, unchanged) — see
     // IAbilityPD.MaxCharges's own doc comment. CharacterStatsPD.bonusAbility2Charges adds on top live.
@@ -51,16 +51,29 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     [Header("Effect")]
     public float strengthPercent    = 2f;
 
-    // Live multipliers (2026-10-06, ExeAxeThrowKnockbackAugment) — 1f (neutral) default, [HideInInspector]
-    // since both are augment-owned. ADDITIVE onto these rather than destructively multiplying
-    // strengthPercent/Knockback directly — see [[feedback_additive_over_multiplicative_default]].
-    // EffectiveStrengthPercent (not the raw field) is what Activate() actually passes into the projectile's
-    // own Launch() as its damage baseline; knockbackMultiplier is passed straight through to Launch() too
-    // (the projectile reads live _stats.Knockback itself, so the multiplier has to travel with it rather
-    // than being pre-folded into anything here).
+    // Live multiplier (2026-10-06, ExeAxeThrowKnockbackAugment) — 1f (neutral) default, [HideInInspector]
+    // since it's augment-owned. ADDITIVE onto this rather than destructively multiplying strengthPercent
+    // directly — see [[feedback_additive_over_multiplicative_default]]. EffectiveStrengthPercent (not the
+    // raw field) is what Activate() actually passes into the projectile's own Launch() as its damage
+    // baseline.
     [HideInInspector] public float damageMultiplier = 1f;
+    // Ability's own innate Knockback baseline (2026-10-08, nerfed same day from 5f/+500% — overshot on
+    // first pass, +200% feels right) — NOT augment-owned, hence visible (not [HideInInspector]). Authored
+    // as a flat "+2f = +200%" bonus-to-1, same additive-to-neutral shape damageMultiplier above uses.
+    public float baseKnockbackBonusPercent = 2f;
+    // Augment-owned (2026-10-08, ExeAxeThrowKnockbackAugment) — reworked from an ADDITIVE accumulator
+    // (+= 5f onto a 1f baseline) to a genuine MULTIPLICATIVE total, once the ability's own
+    // baseKnockbackBonusPercent above made the old flat +500% redundant with what players already had for
+    // free ("devalues the augment" — Stuart's own words). Multiplying the WHOLE existing total (baseline
+    // included) instead of adding another flat chunk means the augment's value always scales proportionally
+    // with whatever the ability's own baseline happens to be tuned to, rather than shrinking in relative
+    // impact if that baseline ever goes up. 1f neutral default (every throw without the augment); the
+    // augment itself sets this to 2f ("doubles the multiplier" — nerfed same day from 3f, since even the
+    // +200% baseline alone already proved 500% was "super wonky," so 3x on top of that was never getting
+    // tested as-is).
     [HideInInspector] public float knockbackMultiplier = 1f;
     private float EffectiveStrengthPercent => strengthPercent * damageMultiplier;
+    private float EffectiveKnockbackMultiplier => (1f + baseKnockbackBonusPercent) * knockbackMultiplier;
 
     // Baseline (unrolled) damage — this ability has no AreaEffectPower scaling at all (see class doc
     // comment), so this is a straight preview of EffectiveStrengthPercent * Strength, same "baseline, not a
@@ -77,12 +90,12 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // spawnOffset, but not a flat constant: the projectile's own visual model grows with WeaponRange too
     // (see ExeAxeThrowProjectilePD's own rangeScaleTarget), so a fixed offset either buries it back inside
     // the caster at high range or sits oddly close at low range. spawnOffsetBase is the flat starting
-    // clearance, scaled by the caster's own bonusSizePercent directly (a bigger caster via Size augments
-    // needs proportionally more clearance so the throw doesn't spawn back inside their now-bigger body) —
-    // reads the stat itself, not _stats.transform.lossyScale.x (numerically identical for a player root with
-    // no scaled parent, since CharacterStatsPD.AddSizePercent sets transform.localScale = Vector3.one *
-    // bonusSizePercent uniformly, but the stat is the direct, canonical source rather than reading it back
-    // out of the transform). spawnOffsetRangeMultiplier scales separately, additively, with WeaponRange —
+    // clearance, scaled by the caster's own Size directly (a bigger caster via Size augments needs
+    // proportionally more clearance so the throw doesn't spawn back inside their now-bigger body) — reads
+    // the stat itself, not _stats.transform.lossyScale.x (numerically identical for a player root with no
+    // scaled parent, since CharacterStatsPD.AddSizePercent sets transform.localScale = Vector3.one * Size
+    // uniformly, but the stat is the direct, canonical source rather than reading it back out of the
+    // transform). spawnOffsetRangeMultiplier scales separately, additively, with WeaponRange —
     // same "base + range * multiplier" shape WeaponBasePD.OrbitalPosition's own radius formula uses for the
     // equipped weapon's own clearance (WeaponRadius + character clearance + halfRange).
     //
@@ -280,13 +293,13 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
                 : _stats.EffectiveWeaponRange;
             float maxRange = trueReach * maxRangeMultiplier;
 
-            // spawnOffsetBase scales with the caster's own Size (bonusSizePercent) — see that field's own
-            // doc comment — so a bigger caster (Size augments) doesn't spawn the throw back inside their
-            // own now-bigger body. RangeWorldUnits (2026-09-16, was plain WeaponRange) — this is the ABILITY's
-            // own spawn positioning, not weapon geometry, so it reads the TRUE (un-Archer/Bladeweaver-scaled)
-            // Range stat as a world-space distance, same "class ability reads true Range" convention
+            // spawnOffsetBase scales with the caster's own Size — see that field's own doc comment — so a
+            // bigger caster (Size augments) doesn't spawn the throw back inside their own now-bigger body.
+            // RangeWorldUnits (2026-09-16, was plain WeaponRange) — this is the ABILITY's own spawn
+            // positioning, not weapon geometry, so it reads the TRUE (un-Archer/Bladeweaver-scaled) Range
+            // stat as a world-space distance, same "class ability reads true Range" convention
             // EffectiveWeaponRange's own doc comment establishes.
-            float spawnOffset = spawnOffsetBase * _stats.bonusSizePercent + _stats.RangeWorldUnits * spawnOffsetRangeMultiplier;
+            float spawnOffset = spawnOffsetBase * _stats.Size + _stats.RangeWorldUnits * spawnOffsetRangeMultiplier;
             Vector3 spawnPos = origin + throwDir * spawnOffset;
 
             var id = hierarchy.Create(projectilePrefab, spawnPos, Quaternion.LookRotation(throwDir));
@@ -296,8 +309,8 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
                 if (go != null && go.TryGetComponent(out ExeAxeThrowProjectilePD projectile))
                     // spawnOffset doubles as the return-trip's arrival radius — see
                     // ExeAxeThrowProjectilePD.Launch()'s own doc comment for why. EffectiveStrengthPercent/
-                    // knockbackMultiplier/healFlat/healRegenPercent — see those fields' own doc comment.
-                    projectile.Launch(_stats, throwDir, projectileSpeed, maxRange, EffectiveStrengthPercent, spawnOffset, knockbackMultiplier,
+                    // EffectiveKnockbackMultiplier/healFlat/healRegenPercent — see those fields' own doc comment.
+                    projectile.Launch(_stats, throwDir, projectileSpeed, maxRange, EffectiveStrengthPercent, spawnOffset, EffectiveKnockbackMultiplier,
                         healFlat: healFlat, healRegenPercent: healRegenPercent);
             }
 
@@ -325,7 +338,7 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
                         // this augment's own values happen to be tuned to.
                         miniProjectile.Launch(_stats, miniDir, projectileSpeed, maxRange * miniAxeRangePercent,
                             EffectiveStrengthPercent * miniAxeDamagePercent, spawnOffset,
-                            knockbackMultiplier * miniAxeKnockbackPercent, miniAxeSizePercent, miniAxeOnHitPowerPercent,
+                            EffectiveKnockbackMultiplier * miniAxeKnockbackPercent, miniAxeSizePercent, miniAxeOnHitPowerPercent,
                             healFlat * 0.5f, healRegenPercent * 0.5f);
                 }
             }

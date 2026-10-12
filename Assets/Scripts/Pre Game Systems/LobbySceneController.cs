@@ -169,6 +169,12 @@ public class LobbySceneController : MonoBehaviour
         // and a disconnect-triggered kick back to this scene, regardless of what state it was left in.
         LoadingScreen.instance?.Hide();
 
+        // Nothing else ever calls this for the Lobby scene's own MusicPlayer (the Game scene's equivalent
+        // call lives in GameManagerPD.UpdateView, gated on its own loading-screen-reveal sync — no such
+        // sync is needed here, this is a plain local scene load) — so without this, a MusicPlayer sitting
+        // in this scene with clips assigned would never actually start playing.
+        MusicPlayer.instance?.Play();
+
         if (!networkManager)
             networkManager = NetworkManager.main;
 

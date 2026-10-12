@@ -13,14 +13,15 @@ MonoBehaviour:
   m_Name: DashThroughInterruptAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FFFF>Sorry to Interrupt</color>
-  description: 'Every third <color=#00FFFF>Dash</color> <color=#FFA000>Interrupts</color>
+  description: '<color=#00FFFF>Dashing</color> <color=#FFA000>Interrupts</color>
     enemies you pass through.
 
-    <color=#FFA000>On Interrupt:</color> Gain <color=#00FFFF>+{dashHastePerStack}</color>
-    <color=#9664FF>Stacking</color> <color=#00FFFF>Dash Haste</color>.
+    <color=#FFA000>On Any Interrupt:</color> Gain
+    <color=#00FFFF>+{dashHastePerStack}</color> <color=#9664FF>Stacking</color> <color=#00FFFF>Dash
+    Haste</color>.
 
-    <color=#FFBE50>Current
-    Bonus: <color=#00FFFF>+{LiveStackedDashHaste} Dash Haste</color></color>'
+    <color=#FFBE50>Current Bonus: <color=#00FFFF>+{LiveStackedDashHaste}
+    Dash Haste</color></color>'
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   effectPrefab: {fileID: 2354420055750801843, guid: 9bfb57b51c3981447a54034402605119, type: 3}
   multiplayerOnly: 0
@@ -32,5 +33,6 @@ MonoBehaviour:
   tags:
   - Stacking
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

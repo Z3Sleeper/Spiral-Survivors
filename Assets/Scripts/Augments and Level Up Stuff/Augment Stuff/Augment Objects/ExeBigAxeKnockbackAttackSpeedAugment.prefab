@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ExeBigAxeKnockbackAttackSpeedAugment
   knockbackPercent: 1
-  attackSpeedPercent: 0.3
+  attackSpeedPercent: 0.8

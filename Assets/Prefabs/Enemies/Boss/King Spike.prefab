@@ -362,13 +362,14 @@ MonoBehaviour:
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 10
   xpValue: 500
   pointsValue: 1000
   size: 3
   contactColliderEnabled: 1
   stunResistant: 0
-  crowdControlResist: 0.8
+  crowdControlResist: 0.65
   showDamageNumbers: 1
   isStunnable: 1
   _renderers:

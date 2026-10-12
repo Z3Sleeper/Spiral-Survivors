@@ -15,8 +15,8 @@ MonoBehaviour:
   displayName: '<color=#00FFFF>Blade Blink: Grand Arrival</color>'
   description: <color=#00FFFF>Blade Blink</color> now <color=#FFA000>{knockbackMultiplierPercent}%
     Knockbacks</color>, <color=#FFA000>Interrupts</color> and <color=#FFA000>Stuns</color>
-    enemies for {stunDuration} second in <color=#3278FF>x{radiusMultiplier} Range</color>
-    on arrival.
+    enemies for <color=#FFA000>{stunDuration} second</color> in <color=#3278FF>x{radiusMultiplier}
+    Range</color> on arrival.
   icon: {fileID: 21300000, guid: e6f34b8a9c4a26b4ab601d25c367a580, type: 3}
   effectPrefab: {fileID: 1889933058124648941, guid: 847194d493a24494492686cf0e9db690, type: 3}
   multiplayerOnly: 0

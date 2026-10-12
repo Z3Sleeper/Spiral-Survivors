@@ -20,6 +20,14 @@ using UnityEngine;
 // "amount-to-remove" authoring convention OuterTrackAugment's own identical reach-reduction field already
 // uses (0.5 = weapon reaches 50% as far) — see AddWeaponRangeScalingPenaltyPercent's own doc comment for why
 // a reduction needs to be multiplicative, not additive, with any other reduction source.
+//
+// +25% Total Attack Speed (2026-10-10, balance pass — Bladeweaver's own kit was correctly identified as
+// underpowered rather than mis-designed: +2 weapons only nets +50% actual damage after WeaponStrength's own
+// softened divide, and neither BWBladeDance nor BWBlink add damage/defense on top the way the other three
+// classes' abilities do, so the passive itself is the right lever to pull). Routed through
+// AddAttackSpeedTotalPercent — the additive Total tier every generic Attack Speed buff reads, same bucket
+// Rogue's own class-passive Attack Speed grant uses (buffs go into the additive Percent/Total tier, nerfs
+// into the multiplicative Penalty tier — see [[feedback_buff_debuff_bucket_convention]]).
 public class BladeweaverStartingAugment : AugmentEffectPD<BladeweaverStartingAugment.State>
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
@@ -27,11 +35,13 @@ public class BladeweaverStartingAugment : AugmentEffectPD<BladeweaverStartingAug
     [SerializeField] private int   bonusWeaponCountFlat  = 2;
     [SerializeField] private float bonusWeaponRadiusFlat  = 3f;
     [SerializeField] private float weaponRangeScalingPenaltyPercent = 0.5f;
+    public float attackSpeedBonusPercent = 0.25f;
 
     protected override void OnApply()
     {
         Stats.AddWeaponCountFlat(bonusWeaponCountFlat);
         Stats.AddWeaponRadiusFlat(bonusWeaponRadiusFlat);
         Stats.AddWeaponRangeScalingPenaltyPercent(weaponRangeScalingPenaltyPercent);
+        Stats.AddAttackSpeedTotalPercent(attackSpeedBonusPercent);
     }
 }

@@ -83,7 +83,9 @@ public class PhantomBladeOnMovementAugment : AugmentEffectPD<PhantomBladeOnMovem
     }
 
     private void OnMovementStarted() => currentState.isDashing = true;
-    private void OnMovementEnded()   => currentState.isDashing = false;
+    // interrupted (2026-10-10, PlayerControllerPD._onDashMovementEnded payload addition) — unused here,
+    // this only cares that the window closed, not why, same as before that payload existed.
+    private void OnMovementEnded(bool interrupted) => currentState.isDashing = false;
 
     protected override void LateSimulate(ref State state, float delta)
     {

@@ -13,9 +13,10 @@ MonoBehaviour:
   m_Name: TipStrikeRangeExplosionAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#3278FF>Explosive Tip</color>
-  description: <color=#FFA000>(AoE)</color> <color=#3278FF>Tip Strikes</color> create
-    a <color=#3278FF>x{radiusMultiplier) Range</color> explosion, dealing <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
-    Strength</color>)</color> <color=#FFA000>damage</color>.
+  description: <color=#FFA000>(AoE)</color> <color=#3278FF>Tip Strikes</color> deal
+    <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
+    Strength</color>)</color> <color=#FFA000>damage</color> in a <color=#3278FF>x{radiusMultiplier)
+    Range</color> area around the enemy hit.
   icon: {fileID: 21300000, guid: f2c8a7fb8497a4746b04f47c4f7d2a9a, type: 3}
   effectPrefab: {fileID: 5952432120102352108, guid: c432de9e3012ebd40b4fc7711efd33d5, type: 3}
   multiplayerOnly: 0
@@ -27,5 +28,6 @@ MonoBehaviour:
   tags:
   - AoE Effect
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

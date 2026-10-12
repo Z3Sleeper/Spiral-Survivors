@@ -15,6 +15,10 @@ public class LoadingScreen : MonoBehaviour
     [SerializeField] private string[] hints;
     [SerializeField] private float hintInterval = 5f;
 
+    [Header("Spinner")]
+    [SerializeField] private RectTransform spinnerTransform;
+    [SerializeField] private float spinnerDegreesPerSecond = 180f;
+
     public static LoadingScreen instance;
 
     // Backed directly by the canvas's own active state (not a separate tracked bool) — a logical "are we
@@ -44,13 +48,19 @@ public class LoadingScreen : MonoBehaviour
 
     private void Update()
     {
-        // Only ticks while actually shown — cheap either way, but no reason to keep animating text nobody
-        // can see.
-        if (loadingText == null || canvasGameObject == null || !canvasGameObject.activeSelf) return;
+        // Only ticks while actually shown — cheap either way, but no reason to keep animating text/spinner
+        // nobody can see.
+        if (canvasGameObject == null || !canvasGameObject.activeSelf) return;
 
-        // Unscaled — the loading screen can be up during moments Time.timeScale is 0 (e.g. mid pause-menu
-        // transition), and the dots should keep animating regardless so it never LOOKS frozen, which is the
-        // entire point of this.
+        // Unscaled, same reasoning as the dot/spinner timers below — the loading screen can be up during a
+        // Time.timeScale == 0 moment (e.g. mid pause-menu transition) and should never visually freeze.
+        // Negative Z so it spins clockwise (positive Z rotation is counter-clockwise in Unity's standard
+        // screen-space convention) — Stuart's own explicit "Clockwise!" spec.
+        if (spinnerTransform != null)
+            spinnerTransform.Rotate(0f, 0f, -spinnerDegreesPerSecond * Time.unscaledDeltaTime);
+
+        if (loadingText == null) return;
+
         _dotTimer += Time.unscaledDeltaTime;
         if (_dotTimer < dotInterval) return;
         _dotTimer -= dotInterval;
@@ -76,6 +86,12 @@ public class LoadingScreen : MonoBehaviour
         _dotTimer = 0f;
         _dotCount = 0;
         if (loadingText != null) loadingText.text = baseText;
+
+        // Fades out whichever scene's MusicPlayer is currently alive (2026-10-12) — hooked here, once, so
+        // every one of this method's own call sites gets it for free rather than needing the same call
+        // duplicated at each. Relies on this method's own idempotent early-return above to only actually
+        // fire once per real show, same contract the hint-cycle restart fix right above already depends on.
+        MusicPlayer.instance?.FadeOut();
 
         if (_hintRoutine != null) StopCoroutine(_hintRoutine);
         if (hintText != null && hints != null && hints.Length > 0)

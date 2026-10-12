@@ -412,16 +412,32 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // tuning knob), never the Highroll one — folded into the critDamage argument passed to
         // ApplyCritAndHighroll so it still only affects the crit half of an additive highroll+crit stack.
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage * critDamageMultiplier);
-        if (isHighroll) _stats.NotifyStrikeHighroll(damage, _stats.OnHitPower);
 
-        // _onHitPowerPercent — ExeAxeThrowMiniAxesAugment's own bonus, 1f (no-op) for every throw without
-        // it — see that field's own doc comment.
-        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = damage, onHitPower = _stats.OnHitPower * _onHitPowerPercent, isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position) };
+        // _strengthPercent also scales OnHitPower now (2026-10-08 fix) — this ability treats itself as a
+        // singular weapon, entirely ignoring the player's own weapon-count/Multishot divide (it already read
+        // plain, undivided _stats.Strength/_stats.OnHitPower, by design, same as every other "cosplays a
+        // weapon strike" effect — see CharacterStatsPD.Strength/OnHitPower's own doc comments), and instead
+        // uses its OWN ratio. Mental model (Stuart's own framing): _strengthPercent isn't "Strength," it's
+        // "this throw counts as x% of a regular single-weapon hit" — so it should scale OnHitPower by that
+        // same x%, independently of Strength/damage, the same way a real weapon's own per-hit onHitPower and
+        // damage both move together. onHitPower was previously left reading the stat totally unscaled by
+        // this ratio — invisible while strengthPercent happened to default to a normal-hit-equivalent value
+        // (effectively a no-op), not a no-op in general. For a mini axe, _strengthPercent already has
+        // miniAxeDamagePercent folded in (see Activate()'s own mini-axe Launch() call), so this correctly
+        // scales a mini axe's own onHitPower down by that same reduced percentage too.
+        // _onHitPowerPercent — ExeAxeThrowMiniAxesAugment's own SEPARATE, explicit halving on top of that
+        // (1f/no-op for the main throw, 0.5f for mini axes) — see that field's own doc comment. Both factors
+        // apply together, so mini axes keep their existing extra halving on top of the new strengthPercent
+        // scaling, not instead of it.
+        float resolvedOnHitPower = _stats.OnHitPower * _strengthPercent * _onHitPowerPercent;
+        if (isHighroll) _stats.NotifyStrikeHighroll(damage, resolvedOnHitPower);
+
+        var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = damage, onHitPower = resolvedOnHitPower, isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position) };
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
 
-        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll);
+        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll, _stats.executeThreshold, _stats.critExecuteThreshold);
 
         // Every hit interrupts — Executioner's own way of interacting with enemies beyond raw damage
         // (Knight has interrupt+stun, Bladeweaver has range+dodge, Archer has a slow, Rogue has dodge+
@@ -438,7 +454,16 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // WeaponRangedProjectilePD's own `_knockback * onHitPower`), per the user's own call.
         // _knockbackMultiplier — ExeAxeThrowKnockbackAugment's own bonus, 1f (no-op) for every throw
         // without it — see that field's own doc comment.
-        Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
+        //
+        // Away from the PLAYER (_stats.transform.position), not away from this projectile's own position
+        // (2026-10-08 fix) — this axe boomerangs, so "away from the projectile" flips direction on the
+        // return trip: an enemy standing between the returning axe and the caster used to get knocked
+        // TOWARD the caster, since the axe-to-enemy vector points roughly that way on the way back. Every
+        // other knockback source in this codebase pushes away from whoever/whatever dealt the hit in a way
+        // that's always away from the player by construction (melee/orbit weapons, AoE casts centered on
+        // the player) — this was the only one that could ever point the wrong way, since it's the only
+        // attack whose own position doesn't stay fixed relative to the player mid-flight.
+        Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * _knockbackMultiplier);
 
         _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });

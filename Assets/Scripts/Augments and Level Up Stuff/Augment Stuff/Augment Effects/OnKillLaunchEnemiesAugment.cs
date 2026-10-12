@@ -72,6 +72,10 @@ public class OnKillLaunchEnemiesAugment : AugmentEffectPD<OnKillLaunchEnemiesAug
         Vector3 direction = enemy.transform.position - Stats.transform.position;
         direction.y = 0f;
 
-        enemy.StartKillLaunch(direction, launchSpeed, launchDistance, damage, isCrit, isHighroll);
+        // executeThreshold/critExecuteThreshold (2026-10-08 perf fix) — captured here, while Stats is still
+        // the live reference in scope, rather than making HandleKillLaunch re-look it up via
+        // CharacterStatsPD.All for every enemy this corpse later sweeps through — see
+        // EnemyBasePD.StartKillLaunch's own doc comment.
+        enemy.StartKillLaunch(direction, launchSpeed, launchDistance, damage, isCrit, isHighroll, Stats.executeThreshold, Stats.critExecuteThreshold);
     }
 }

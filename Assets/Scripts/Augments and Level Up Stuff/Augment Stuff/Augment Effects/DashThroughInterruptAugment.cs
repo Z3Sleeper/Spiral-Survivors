@@ -66,29 +66,17 @@ using UnityEngine;
 // inside the sweep; that direct call is now CharacterStatsPD.NotifyInterrupted (SI/FSI) from the sweep, plus
 // a separate SI subscription (see OnApply/OnSuccessfulInterrupt) that performs the actual stacking grant.
 //
-// Every-Nth-dash gate (2026-09-12) — the interrupt sweep (part 1) no longer runs on every dash; only every
-// dashesRequired-th dash (default 3) carries it, decided once at OnMovementStarted (RogueSpin's leap and
-// BWBlink's teleport both still count as "a dash" here, same as everywhere else in this family — they fire
-// the same DashMovementStarted/Ended pair). Starts ready (State.dashesUntilReady defaults to 0, its own
-// natural int default — no explicit GetInitialState seeding needed), so the very FIRST dash taken with this
-// augment active already carries the interrupt, exactly like every other "starts ready" gate in this
-// codebase (e.g. SurgeInterruptAoEAugment's own energySpentSinceLastBurst seed). Non-qualifying dashes skip
-// the sweep entirely (isSweeping never goes true for them) — no wasted SphereCastNonAlloc work on the 2 out
-// of every 3 dashes that can't possibly interrupt anything. Part 2 (the SI-driven stacking Dash Haste grant)
-// is completely untouched by this — it still reacts to a successful interrupt from ANY source, gated dash or
-// not.
-//
-// New buff-bar icon (2026-09-12), same permanent-progress-tracker shape as SurgeInterruptAoEAugment's own —
-// SetStackText shows "{progress}/{dashesRequired}" while building up, or the literal text "Ready" once a
-// dash is actually primed to interrupt (see UpdateView below).
+// Every dash carries the interrupt sweep (part 1) — removed the every-Nth-dash gate this used to have
+// (2026-10-10, "weird" per explicit design feedback), which only ran the sweep on every dashesRequired-th
+// dash. Every dash now sweeps unconditionally. Part 2 (the SI-driven stacking Dash Haste grant) was always
+// untouched by that gate either way — it still reacts to a successful interrupt from ANY source.
 public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptAugment.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
     {
-        // True between OnMovementStarted and OnMovementEnded — the active sweep window. Only ever set true
-        // for a dash that actually qualifies for the interrupt gate below (see OnMovementStarted) — a
-        // non-qualifying dash leaves this false for its whole duration, so LateSimulate/OnMovementEnded's own
-        // sweep never runs at all for it.
+        // True between OnMovementStarted and OnMovementEnded — the active sweep window, now set true
+        // unconditionally for every dash (see class doc comment — used to only be set for a dash that
+        // qualified under the removed every-Nth-dash gate).
         public bool isSweeping;
         public Vector3 sweepPrevPos;
         // Guards FirstSuccessfulInterrupt (FSI) for this dash's own sweep — reset at OnMovementStarted, no
@@ -100,10 +88,6 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         // Permanent — never reset, unlike interruptedThisActivation above. See OnSuccessfulInterrupt's own
         // doc comment for the stacking Dash Haste grant this drives.
         public int stackCount;
-        // Every-Nth-dash gate's own countdown (see class doc comment) — <= 0 means "ready, the next dash
-        // qualifies." Defaults to 0 (its natural int default), which is exactly the "starts ready" state we
-        // want, so GetInitialState needs no explicit seeding for this field.
-        public int dashesUntilReady;
         public void Dispose() { touchedEnemies.Dispose(); }
 
         public State Duplicate()
@@ -119,22 +103,11 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
     // too-tight sweep feel unreliable at connecting). Every "Dash Through" augment should use this same 1.5f.
     [SerializeField] private float sweepRadius = 1.5f;
 
-    [Header("Every-Nth-Dash Gate")]
-    // How many dashes (RogueSpin/BWBlink included) between each dash that actually carries the interrupt —
-    // see class doc comment. 3 (2026-09-12) = every 3rd dash.
-    [SerializeField] private int dashesRequired = 3;
-
     [Header("On Successful Interrupt — Stacking Permanent Dash Haste")]
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
     // {dashHastePerStack} directly in the description text — see its own doc comment (only public
     // fields/properties/methods are checked).
     public float dashHastePerStack = 1f;
-
-    // Permanent buff-bar icon (2026-09-12) — same "always visible once picked, tracks gate progress instead
-    // of a countdown" shape as SurgeInterruptAoEAugment's own. See UpdateView below for the fill/text mapping.
-    [Header("Buff Bar")]
-    [SerializeField] private Sprite buffIcon;
-    private BuffIconPD _buffIconInstance;
 
     private PlayerControllerPD _controller;
     // Matches EnemyBasePD's own _killLaunchSweepResults buffer size — this is the exact same kind of
@@ -168,16 +141,11 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         // Re-values every already-earned stack the instant StackPower itself changes (2026-09-02), not just
         // lazily on the next new stack — see CharacterStatsPD._onStackPowerChanged's own doc comment.
         Stats.AddStackPowerChangedListener(OnStackPowerChanged);
-
-        if (isOwner && BuffBarPD.instance != null && _buffIconInstance == null)
-            _buffIconInstance = BuffBarPD.instance.AddBuffIcon(buffIcon);
     }
 
     protected override void OnDestroy()
     {
         base.OnDestroy();
-        if (_buffIconInstance != null && BuffBarPD.instance != null)
-            BuffBarPD.instance.RemoveBuffIcon(_buffIconInstance);
         if (_controller != null)
         {
             _controller.RemoveDashMovementStartedListener(OnMovementStarted);
@@ -188,26 +156,6 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
             Stats.RemoveSuccessfulInterruptListener(OnSuccessfulInterrupt);
             Stats.RemoveStackPowerChangedListener(OnStackPowerChanged);
         }
-    }
-
-    // Progress toward the next qualifying dash (see class doc comment) for the buff icon's cooldown-sweep
-    // fill and "{progress}/{dashesRequired}" text — same cooldown-sweep semantics as SurgeInterruptAoEAugment
-    // (0 = fully ready, sweep empty; 1 = just consumed, sweep full), just keyed off an integer dash countdown
-    // instead of a continuous energy-spent float. dashesRequired - 1 is the countdown's own reset value (see
-    // OnMovementStarted) — floored at 1 here only to keep the FILL FRACTION's denominator safe from a
-    // degenerate dashesRequired <= 1 configuration (every dash ready); the countdown/reset logic itself
-    // never divides by anything, so it doesn't need this floor.
-    protected override void UpdateView(State viewState, State? verified)
-    {
-        base.UpdateView(viewState, verified);
-        if (_buffIconInstance == null) return;
-
-        int remaining = Mathf.Max(0, viewState.dashesUntilReady);
-        int cycleLength = Mathf.Max(1, dashesRequired - 1);
-        bool ready = remaining <= 0;
-
-        _buffIconInstance.SetCooldownFill(ready ? 0f : (float)remaining / cycleLength);
-        _buffIconInstance.SetStackText(ready ? "Ready" : $"{dashesRequired - remaining}/{dashesRequired}");
     }
 
     // Current total Dash Haste this passive has actually granted so far (dashHastePerStack * current stack
@@ -253,28 +201,17 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
 
     private void OnMovementStarted()
     {
-        // Every-Nth-dash gate (see class doc comment) — decided once, right here, for this dash's whole
-        // duration. A qualifying dash resets the countdown to dashesRequired - 1 (so exactly that many MORE
-        // dashes are needed before the next one qualifies); a non-qualifying dash just ticks the countdown
-        // down by one and skips the sweep entirely.
-        bool ready = currentState.dashesUntilReady <= 0;
-        currentState.isSweeping = ready;
-        currentState.dashesUntilReady = ready ? dashesRequired - 1 : currentState.dashesUntilReady - 1;
-        if (!ready) return;
-
+        currentState.isSweeping = true;
         currentState.sweepPrevPos = Stats.transform.position;
         currentState.interruptedThisActivation = false;
         currentState.touchedEnemies.Clear();
     }
 
-    private void OnMovementEnded()
+    // interrupted (2026-10-10, PlayerControllerPD._onDashMovementEnded payload addition) — unused here,
+    // this sweep only cares that the window closed, not why, same as before that payload existed.
+    private void OnMovementEnded(bool interrupted)
     {
-        // Captured before the reset below — see class doc comment: a non-qualifying dash never set this
-        // true in the first place, so its OnMovementEnded is a plain no-op, same as the whole dash having no
-        // sweep window at all.
-        bool wasSweeping = currentState.isSweeping;
         currentState.isSweeping = false;
-        if (!wasSweeping) return;
         if (Stats == null || _controller == null) return;
 
         // Catch-up sweep — see class doc comment for why this is needed (BWBlinkAbilityPD's instant,
@@ -307,7 +244,7 @@ public class DashThroughInterruptAugment : AugmentEffectPD<DashThroughInterruptA
         float dist = segment.magnitude;
         if (dist < 0.0001f) return;
         Vector3 dir = segment / dist;
-        float radius = sweepRadius * Stats.bonusSizePercent;
+        float radius = sweepRadius * Stats.Size;
 
         int n = Physics.SphereCastNonAlloc(fromPos, radius, dir, _sweepResults, dist, CombatLayerMasks.EnemyHurtboxMask);
         for (int i = 0; i < n; i++)

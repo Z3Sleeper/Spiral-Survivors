@@ -18,7 +18,10 @@ MonoBehaviour:
     <color=#FFA000>Weapons orbit
     at a distance</color>
 
-    <color=#3278FF>-35% Weapon Range</color>'
+    <color=#3278FF>-35% Weapon Range</color>
+
+    <color=#FF0050>+25%
+    Total Attack Speed</color>'
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 5287227028414036435, guid: 357bffb3a42bc354ca5158c1faff441b, type: 3}
   multiplayerOnly: 0

@@ -507,9 +507,6 @@ public class AugmentManagerPD : PredictedIdentity<AugmentManagerPD.State>
         if (!option.isAugment && CharacterStatsPD.All.TryGetValue(player, out var stats) && stats.luckRolledLevelUpStats)
         {
             luckMultiplier = WeaponDamageMath.RollLuckMultiplier(stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.HighrollBonus * stats.luckRolledLevelUpStatsHighrollScale, AugmentRandom.instance.NextFloat, out _);
-            // Dampens the whole roll's swing down to (by default) half — see LuckRolledLevelUpStatsAugment's
-            // own effectiveness doc comment. Mirrors AugmentCardUI's own identical manual-pick dampening.
-            luckMultiplier = 1f + (luckMultiplier - 1f) * stats.luckRolledLevelUpStatsEffectiveness;
         }
 
         SubmitPick(player, randomIndex, multiplier, luckMultiplier, luckMultiplier);

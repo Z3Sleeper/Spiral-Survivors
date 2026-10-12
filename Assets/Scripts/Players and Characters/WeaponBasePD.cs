@@ -233,7 +233,7 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
         // model/hitbox geometry at all. WeaponManagerPD.RegisterWeapon()/LateUpdate() set transform.localScale
         // = weaponPrefabScale directly (no Size multiply — see that file's own RegisterWeapon comment), so
         // rootZ below is correct by construction, nothing to undo/reset here anymore. Size now ONLY affects
-        // the clearance offset terms that already read _stats.bonusSizePercent directly (NominalOrbitRadius,
+        // the clearance offset terms that already read _stats.Size directly (NominalOrbitRadius,
         // ApplyHeightLift, hitboxTarget's own corrected formula in WeaponManagerPD.SetupWeaponRange) — nothing
         // scales bigger/smaller just because the player picked up a Size augment. (This started as a
         // Normalized-system-only bandaid that reset transform.localScale every call to undo a *_currentSize
@@ -403,7 +403,7 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
             ? hitboxTip * ComputeScaleMultiplier() * GetTipExtraMultiplier() * RootScale.z
             : GetNonBladeHalfRange();
         float weaponRadiusOffset = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;
-        return weaponRadiusOffset + _stats.bonusSizePercent * 0.5f + halfRange;
+        return weaponRadiusOffset + _stats.Size * 0.5f + halfRange;
     }
 
     protected Vector3 OrbitalPosition(float baseAngle, Vector3 origin)
@@ -424,7 +424,7 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     protected Vector3 ApplyHeightLift(Vector3 position)
     {
         float lift = _stats.SpecialHeightOffset;
-        if (_stats.IsOrbitFlipped) lift += WeaponVisualConstants.BaseMidHeightLift * _stats.bonusSizePercent;
+        if (_stats.IsOrbitFlipped) lift += WeaponVisualConstants.BaseMidHeightLift * _stats.Size;
         return position + Vector3.up * lift;
     }
 

@@ -102,7 +102,9 @@ public class DashThroughHPScaledDamageAugment : AugmentEffectPD<DashThroughHPSca
         currentState.touchedEnemies.Clear();
     }
 
-    private void OnMovementEnded()
+    // interrupted (2026-10-10, PlayerControllerPD._onDashMovementEnded payload addition) — unused here,
+    // this sweep only cares that the window closed, not why, same as before that payload existed.
+    private void OnMovementEnded(bool interrupted)
     {
         currentState.isSweeping = false;
         if (Stats == null || _controller == null) return;
@@ -137,7 +139,7 @@ public class DashThroughHPScaledDamageAugment : AugmentEffectPD<DashThroughHPSca
         float dist = segment.magnitude;
         if (dist < 0.0001f) return;
         Vector3 dir = segment / dist;
-        float radius = sweepRadius * Stats.bonusSizePercent;
+        float radius = sweepRadius * Stats.Size;
 
         int n = Physics.SphereCastNonAlloc(fromPos, radius, dir, _sweepResults, dist, CombatLayerMasks.EnemyHurtboxMask);
         for (int i = 0; i < n; i++)
@@ -159,7 +161,7 @@ public class DashThroughHPScaledDamageAugment : AugmentEffectPD<DashThroughHPSca
         float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
         rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, isCrit, Stats.HighrollBonus, Stats.CritDamage);
 
-        enemy.TakeDamage(rolled, isCrit, Stats.owner ?? default, isHighroll);
+        enemy.TakeDamage(rolled, isCrit, Stats.owner ?? default, isHighroll, Stats.executeThreshold, Stats.critExecuteThreshold);
         Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = true });
 
         Stats.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolled, onHitPower = Stats.OnHitPower, isCrit = isCrit, isHighroll = isHighroll });

@@ -83,7 +83,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     [SerializeField] private float leapHeight = 1f;
 
     [Header("Damage")]
-    // Capsule radius = this * the player's own Size (bonusSizePercent) — see DealDamage()'s own doc comment
+    // Capsule radius = this * the player's own Size — see DealDamage()'s own doc comment
     // for the capsule's length (reaches out to the current weapon's real range, not tuned here).
     [SerializeField] private float damageRadiusSizeMultiplier = 1.25f;
     // Flat degrees/sec weapons spin at for the whole ability, overriding the normal AttackSpeed-driven rate —
@@ -100,8 +100,11 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // (ability end), the rest spread between. See HitTime()'s own doc comment for the exact spacing.
     public int hitCountPerWeapon = 6;
     // Flat multiplier on each hit's damage — base damage per hit is Strength * AttackSpeed * this (see
-    // BaseDamage()'s own doc comment).
-    public float spinAbilityDamageMultiplier = 1f;
+    // BaseDamage()'s own doc comment). "Percent" suffix at the END (2026-10-09, renamed from
+    // spinAbilityDamageMultiplier) so AugmentDescriptionFormatter's auto-*100 formatting actually fires for
+    // the {spinAbilityDamageMultiplierPercent} token — Stuart had been typing "75% Weapon Damage" as plain
+    // hardcoded text in this ability's own description before now.
+    public float spinAbilityDamageMultiplierPercent = 1f;
 
     // Total damage across the whole burst at current stats — hitCountPerWeapon * current TotalWeaponCount
     // (mirrors _effectiveHitCount's own Activate()-time formula, just read live off CURRENT weapon count
@@ -113,7 +116,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // Multishot).
     public string LiveDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * stats.WeaponStrength * stats.AttackSpeed * spinAbilityDamageMultiplier)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * stats.WeaponStrength * stats.AttackSpeed * spinAbilityDamageMultiplierPercent)} "
             : "";
 
     private CharacterStatsPD    _stats;
@@ -378,12 +381,11 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         _controller?.NotifyDashStarted();
         // Also opens the movement-window pair (DashThroughInterruptAugment's sweep consumes this, not
         // Started/Ended) — matched by NotifyDashMovementEnded in EndActiveWindow below, on EVERY end path
-        // including an interrupted one (unlike NotifyDashEnded, which an interrupt skips).
+        // including an interrupted one (unlike NotifyDashEnded, which an interrupt skips). Also what
+        // DashEffectDoubleTriggerAugment listens to now (2026-10-10, replaces the removed
+        // NotifyRealDashStarted/RealDashEnded pair) — see PlayerControllerPD._onDashMovementEnded's own
+        // field comment for why that pair's job folded into this one.
         _controller?.NotifyDashMovementStarted();
-        // Counts as a genuine dash-like trigger for DashEffectDoubleTriggerAugment too (2026-09-03) — see
-        // PlayerControllerPD._onRealDashStarted's own field comment for why this is a separate call from
-        // NotifyDashStarted above, matched by NotifyRealDashEnded below.
-        _controller?.NotifyRealDashStarted();
     }
 
     public void NotifyActivationBlocked() { }
@@ -489,16 +491,15 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         else
         {
             _controller?.NotifyDashEnded();
-            // See NotifyRealDashStarted's own comment in Activate() above.
-            _controller?.NotifyRealDashEnded();
             // Fired the instant AbilityIsActive flips false — see IAbilityPD.AbilityIsActive's own doc
             // comment. See the matching NotifyAbilityStart call in Activate() for why this is gated on
             // cooldown > 0 too.
             if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
         }
         // Closes the movement window unconditionally (interrupted or not) — see NotifyDashMovementStarted's
-        // own comment in Activate() above.
-        _controller?.NotifyDashMovementEnded();
+        // own comment in Activate() above. interrupted threaded straight through, same value this method's
+        // own early branches above already used to decide Invincibility/DashEnded.
+        _controller?.NotifyDashMovementEnded(interrupted);
     }
 
     // Fires from PlayerControllerPD.Interrupt() — only meaningful while this ability's own leap is the thing
@@ -542,7 +543,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         // adds `radius` past p1) lands exactly at _damageReach, so the capsule's real reach matches the
         // weapon's own real reach exactly rather than overshooting by an extra radius' worth.
         Vector3 center = _stats.transform.position;
-        float   radius = damageRadiusSizeMultiplier * _stats.bonusSizePercent;
+        float   radius = damageRadiusSizeMultiplier * _stats.Size;
         Vector3 castDir = Quaternion.Euler(0f, _facingYaw, 0f) * Vector3.forward;
         Vector3 p0 = center;
         Vector3 p1 = center + castDir * Mathf.Max(0f, _damageReach - radius);
@@ -578,16 +579,16 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // its own HIT COUNT with weapon count (hitCountPerWeapon/_effectiveHitCount) — pairing that with
     // WeaponStrength's own divide is exactly what a real multi-weapon setup already does (more instances,
     // each smaller, total roughly constant), not a double-penalty. Times the LIVE AttackSpeed (unrelated to
-    // spinRate, which is a flat, AttackSpeed-independent value now) times spinAbilityDamageMultiplier.
+    // spinRate, which is a flat, AttackSpeed-independent value now) times spinAbilityDamageMultiplierPercent.
     // Deliberately reads WeaponStrength/AttackSpeed live, not snapshotted at cast time — unlike
     // _facingYaw/_damageReach/_weaponCountAtcast above, neither needs to stay fixed for the whole active
     // window.
-    private float BaseDamage() => _stats.WeaponStrength * _stats.AttackSpeed * spinAbilityDamageMultiplier;
+    private float BaseDamage() => _stats.WeaponStrength * _stats.AttackSpeed * spinAbilityDamageMultiplierPercent;
 
     // Same shape as BaseDamage() (same reasoning/exception), but WeaponOnHitPower instead of WeaponStrength
     // — the onHitPower this hit reports to onhit-triggered effects (via WeaponHitData/AllyStrikeData below),
     // not the damage the hit itself deals.
-    private float OnHitPowerForEffects() => _stats.WeaponOnHitPower * _stats.AttackSpeed * spinAbilityDamageMultiplier;
+    private float OnHitPowerForEffects() => _stats.WeaponOnHitPower * _stats.AttackSpeed * spinAbilityDamageMultiplierPercent;
 
     // Mirrors WeaponMeleePD.Hit() exactly, baseDamage swapped from Strength to BaseDamage().
     private void HitEnemy(IEnemyPD enemy)
@@ -615,7 +616,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
-        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll);
+        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll, _stats.executeThreshold, _stats.critExecuteThreshold);
         Vector3 knockDir = (enemy.transform.position - _stats.transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _stats.Knockback * hitData.onHitPower);
         _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });

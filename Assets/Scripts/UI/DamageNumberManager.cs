@@ -447,8 +447,7 @@ public class DamageNumberManager : MonoBehaviour
     // the visual "top" upward (the rest grows downward); straight-multiplying by the raw size value (the old
     // behavior, equivalent to _sizeScalingRate = 1) put numbers noticeably too high on anything bigger than
     // default, most visible on bosses. rawSize is whatever the source's own 1f-baseline size multiplier is
-    // (EnemyBasePD.Size / CharacterStatsPD.bonusSizePercent) — both already use the same "1f = default"
-    // convention.
+    // (EnemyBasePD.Size / CharacterStatsPD.Size) — both already use the same "1f = default" convention.
     private float SizeOffsetMultiplier(float rawSize) => 1f + (rawSize - 1f) * _sizeScalingRate;
 
     public void Spawn(float amount, IEnemyPD source, int stackKey, bool isCrit = false, bool isHighroll = false, PlayerID attackerOwner = default, bool isPriority = false)
@@ -762,7 +761,7 @@ public class DamageNumberManager : MonoBehaviour
         // doc comment) — a bigger player has a taller/wider model (and health bar) to clear, so the spawn
         // height still needs to scale up with size, just at half rate since the model scales around its own
         // center.
-        Vector3 pos = target.transform.position + new Vector3(xOffset, _playerSpawnYOffset * SizeOffsetMultiplier(target.bonusSizePercent), 0f);
+        Vector3 pos = target.transform.position + new Vector3(xOffset, _playerSpawnYOffset * SizeOffsetMultiplier(target.Size), 0f);
         num.InitLockedPlayer(amount, pos, height * _stackHeightStep, zRot, target, this, color, isHeal, isCrit);
         // ReleasePlayer, not Release (2026-08-18) — Player Damage/Heal release into a straight-up-drift
         // animation now (status-popup style), not Damage's own arc. See DamageNumber.InitLockedPlayer's own
@@ -961,7 +960,7 @@ public class DamageNumberManager : MonoBehaviour
         if (pending.playerTarget != null)
         {
             // SizeOffsetMultiplier — see SpawnAndReleasePlayerNumber's own identical comment for why.
-            Vector3 worldPos = pending.playerTarget.transform.position + new Vector3(xOffset, _playerStatusSpawnYOffset * SizeOffsetMultiplier(pending.playerTarget.bonusSizePercent), 0f);
+            Vector3 worldPos = pending.playerTarget.transform.position + new Vector3(xOffset, _playerStatusSpawnYOffset * SizeOffsetMultiplier(pending.playerTarget.Size), 0f);
             num.InitStatus(message, worldPos, pending.playerTarget, zRot, this, color, pending.durationMultiplier);
         }
         else if (!IsDestroyed(pending.enemyTarget))

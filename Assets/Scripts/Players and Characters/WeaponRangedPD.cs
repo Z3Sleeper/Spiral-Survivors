@@ -290,7 +290,7 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
             if (go != null && go.TryGetComponent(out WeaponRangedProjectilePD projectile))
             {
                 float weaponRadius = IsOuterTrack ? _stats.WeaponRadius + EffectiveWeaponRange : _stats.WeaponRadius;
-                projectile.Launch(_stats, dir, _stats.ProjectileSpeed, ricochet, EffectiveWeaponRange, EffectiveRangeMultiplier, weaponRadius, _stats.bonusSizePercent * 0.5f, homingTargetId, homingDelay);
+                projectile.Launch(_stats, dir, _stats.ProjectileSpeed, ricochet, EffectiveWeaponRange, EffectiveRangeMultiplier, weaponRadius, _stats.Size * 0.5f, homingTargetId, homingDelay);
             }
         }
     }

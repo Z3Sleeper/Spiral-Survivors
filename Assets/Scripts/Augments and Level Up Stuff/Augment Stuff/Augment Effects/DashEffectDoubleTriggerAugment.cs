@@ -10,24 +10,33 @@ using UnityEngine;
 // invincibility grant, no actual movement — purely re-fires the EVENT, so every other "Dash...Augment"
 // reacting to it (DashHealAugment, DashExplosionAugment, PhantomBladeOnDashAugment) triggers a second time
 // too, from the player's real position/state 0.25s later. "Genuine dash-like Start/End" means a real dash
-// (StartDash/EndDash) OR RogueSpin's leap OR BWBlink's teleport — anything that fires
-// PlayerControllerPD._onRealDashStarted/_onRealDashEnded.
+// (StartDash/EndDash) OR RogueSpin's leap OR BWBlink's teleport OR RogueVanish's blink — anything that fires
+// PlayerControllerPD._onDashMovementStarted/_onDashMovementEnded, but see the interrupted check below for
+// why Ended specifically also has to pass that.
 //
-// Listens to _onRealDashStarted/_onRealDashEnded (2026-09-03 rework), NOT the _onDashStarted/_onDashEnded
-// pair its own retrigger fires into — two real bugs this fixes at the root instead of guarding around them:
+// Listens to _onDashMovementStarted/_onDashMovementEnded (2026-10-10, was a separate _onRealDashStarted/
+// _onRealDashEnded pair this augment was the ONLY listener of anywhere in the codebase — folded away once
+// _onDashMovementEnded grew an `interrupted` payload, making the separate pair redundant), NOT the
+// _onDashStarted/_onDashEnded pair its own retrigger fires into — two real bugs this still has to avoid,
+// same as the old RealDash pair was built to fix:
 // 1. This augment used to listen to the exact same event its own retrigger call re-invokes, so the
 //    retrigger firing the event called straight back into its own listener, re-arming a fresh 0.25s timer
-//    forever — an infinite self-sustaining loop. Listening to a genuinely separate event this augment never
-//    fires into makes that structurally impossible, no reentrancy guard needed.
-// 2. Even with a reentrancy guard (the first fix attempted), a SECOND real trigger of the same type
-//    (Started-after-Started, or Ended-after-Ended) landing before the first one's own 0.25s retrigger fired
-//    would silently stomp/drop the first one's pending timer if tracked as a single bool+float — a real,
-//    easily-hit case: an ability activated mid-dash cleanly ends the dash (EndDash, a natural end — fires
-//    _onRealDashEnded) and then that same ability's own Activate() (e.g. RogueSpin) fires
-//    _onRealDashStarted a moment later, well within the 0.25s window, landing two genuine "Started" events
-//    close together. Fixed by tracking a LIST of independent pending retrigger timers instead of one shared
-//    slot (see State below) — every genuine trigger gets its own retrigger fired at its own time, no matter
-//    how many land close together.
+//    forever — an infinite self-sustaining loop. The Movement pair is never touched by this augment's own
+//    retrigger (which only ever fires the plain Started/Ended pair), so that's structurally impossible here
+//    too, no reentrancy guard needed — same property the old RealDash pair had.
+// 2. Even with a reentrancy guard (the first fix attempted, long before the RealDash rework), a SECOND real
+//    trigger of the same type landing before the first one's own 0.25s retrigger fired would silently
+//    stomp/drop the first one's pending timer if tracked as a single bool+float. Fixed by tracking a LIST of
+//    independent pending retrigger timers instead of one shared slot (see State below) — unrelated to which
+//    event pair is listened to, still needed regardless.
+//
+// On the End side specifically, interrupted is checked and skipped (OnDashMovementEnded below) — unlike
+// Start, Ended fires on EVERY movement-window close including an interrupted one, which the old RealDashEnded
+// never did (it only ever fired on a natural completion). Without this check, an interrupted dash — which
+// already correctly pays its direct reward zero times (DashExplosionAugment/DashHealAugment skip it too,
+// same "being interrupted is a punishment" rule) — would still get rewarded once via this augment's own
+// delayed echo. Checking it here is what lets this augment use the Movement pair safely instead of needing
+// its own dedicated event.
 public class DashEffectDoubleTriggerAugment : AugmentEffectPD<DashEffectDoubleTriggerAugment.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -73,8 +82,8 @@ public class DashEffectDoubleTriggerAugment : AugmentEffectPD<DashEffectDoubleTr
         _controller = Stats.GetComponent<PlayerControllerPD>();
         if (_controller != null)
         {
-            _controller.AddRealDashStartedListener(OnRealDashStarted);
-            _controller.AddRealDashEndedListener(OnRealDashEnded);
+            _controller.AddDashMovementStartedListener(OnDashMovementStarted);
+            _controller.AddDashMovementEndedListener(OnDashMovementEnded);
         }
     }
 
@@ -83,13 +92,21 @@ public class DashEffectDoubleTriggerAugment : AugmentEffectPD<DashEffectDoubleTr
         base.OnDestroy();
         if (_controller != null)
         {
-            _controller.RemoveRealDashStartedListener(OnRealDashStarted);
-            _controller.RemoveRealDashEndedListener(OnRealDashEnded);
+            _controller.RemoveDashMovementStartedListener(OnDashMovementStarted);
+            _controller.RemoveDashMovementEndedListener(OnDashMovementEnded);
         }
     }
 
-    private void OnRealDashStarted() => currentState.pendingStartTimers.Add(retriggerDelay);
-    private void OnRealDashEnded() => currentState.pendingEndTimers.Add(retriggerDelay);
+    private void OnDashMovementStarted() => currentState.pendingStartTimers.Add(retriggerDelay);
+
+    // interrupted: skipped outright — see class doc comment for why this check is what lets this augment
+    // safely use the Movement pair (which fires on every close, interrupted or not) in place of the old,
+    // narrower RealDashEnded (which only ever fired on a natural completion).
+    private void OnDashMovementEnded(bool interrupted)
+    {
+        if (interrupted) return;
+        currentState.pendingEndTimers.Add(retriggerDelay);
+    }
 
     protected override void Simulate(ref State state, float delta)
     {

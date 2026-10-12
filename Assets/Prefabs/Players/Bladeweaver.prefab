@@ -187,7 +187,7 @@ MonoBehaviour:
   tags: []
   activeSurgeBlock: 0
   castRangeMultiplier: 2
-  travelSpeed: 50
+  travelSpeed: 20
   holdDuration: 3
   durationMultiplier: 1
   attackSpeedPercentPerHaste: 0.01
@@ -224,4 +224,7 @@ MonoBehaviour:
   activeSurgeBlock: 0
   duration: 2
   moveSpeedPercent: 0.3
+  moveSpeedMultiplier: 1
+  durationMultiplier: 1
+  grantInvisibility: 0
   postBlinkInvincibility: 0.05

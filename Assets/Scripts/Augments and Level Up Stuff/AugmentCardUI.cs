@@ -42,9 +42,6 @@ public class AugmentCardUI : MonoBehaviour
         if (hasLuckRoll)
         {
             luckMultiplier = WeaponDamageMath.RollLuckMultiplier(stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.HighrollBonus * stats.luckRolledLevelUpStatsHighrollScale, UnityEngine.Random.Range, out isHighroll);
-            // Dampens the whole roll's swing down to (by default) half — see LuckRolledLevelUpStatsAugment's
-            // own effectiveness doc comment.
-            luckMultiplier = 1f + (luckMultiplier - 1f) * stats.luckRolledLevelUpStatsEffectiveness;
         }
         _luckMultiplierA = luckMultiplier;
         _luckMultiplierB = luckMultiplier;

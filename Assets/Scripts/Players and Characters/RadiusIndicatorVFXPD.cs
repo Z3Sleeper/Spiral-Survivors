@@ -50,11 +50,17 @@ public class RadiusIndicatorVFXPD : PredictedIdentity<RadiusIndicatorVFXPD.State
 
     // Called immediately after hierarchy.Create() returns — same "mutate currentState right after Create()"
     // pattern as every other spawned effect in this codebase (RemoteSpikeBurstPD.Launch(), XPOrbPD.SetValue()).
-    public void Launch(float radius, Color? tintColor = null)
+    // durationOverride: null (default, every pre-existing caller) keeps this self-timed off the prefab's own
+    // authored `duration` field exactly as before. Non-null (2026-10-11 fix, ArcherArrowRainAbilityPD) lets
+    // a caller whose own real duration can vary at runtime (ArcherArrowRainDurationAugment) keep this root —
+    // and everything nested under it, since Unity destroys children with their parent — alive for exactly as
+    // long as that real duration actually is, instead of this flat authored value silently going stale the
+    // moment something makes the real effect run longer.
+    public void Launch(float radius, Color? tintColor = null, float? durationOverride = null)
     {
         _radius = radius;
         _tintColor = tintColor;
-        currentState.timer = duration;
+        currentState.timer = durationOverride ?? duration;
         currentState.expired = false;
     }
 

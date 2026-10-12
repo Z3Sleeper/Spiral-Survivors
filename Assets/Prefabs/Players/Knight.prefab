@@ -229,7 +229,7 @@ MonoBehaviour:
   healPercentPerHit: 0
   recastBlockDuration: 0.5
   extraStunsEnabled: 0
-  radiusMultiplier: 2.5
+  radiusMultiplier: 2
   stunDuration: 3
   knockbackMultiplier: 3
   chainPrefab: {fileID: 5351432771132445161, guid: 97057982942aed743a28127d3102d296, type: 3}

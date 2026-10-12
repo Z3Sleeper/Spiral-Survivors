@@ -45,9 +45,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ExeAxeThrowMiniAxesAugment
   miniAxeCount: 2
-  miniAxeArcDegrees: 75
+  miniAxeArcDegrees: 90
   miniAxeSizePercent: 0.5
-  miniAxeRangePercent: 0.5
+  miniAxeRangePercent: 1
   miniAxeDamagePercent: 0.5
   miniAxeKnockbackPercent: 0.5
   miniAxeOnHitPowerPercent: 0.5

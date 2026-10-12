@@ -165,7 +165,21 @@ public interface IEnemyPD
     // only a caller with a real isHighroll value in scope (a real weapon strike, or an onhit/onstrike effect
     // inheriting data.isHighroll) needs to pass it, so WasKilledByHighroll below reflects the actual killing
     // hit's status regardless of which source lands it.
-    void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner, bool isHighroll = false);
+    //
+    // executeThresholdPercent/critExecuteThresholdPercent: default 0f (no-op, same "0 means off" convention
+    // CharacterStatsPD's own fields already use) — trailing/optional, 2026-10-08 perf fix. Previously
+    // TakeDamage looked up the attacker's CharacterStatsPD via attackerOwner (a CharacterStatsPD.All
+    // dictionary lookup) purely to read these two fields for the Execute check, on EVERY hit, even for the
+    // overwhelming majority of attackers who never have Execute active at all. Every REAL call site already
+    // has the attacker's live CharacterStatsPD in scope (it's where attackerOwner itself gets extracted
+    // from, via Stats.owner) and can just pass Stats.executeThreshold/Stats.critExecuteThreshold directly —
+    // a plain property read on a reference already in hand, not a lookup. Bleed (EnemyBasePD.ApplyBleed) is
+    // the other reason this couldn't just become "pass the live CharacterStatsPD reference instead of an
+    // ID" — a class reference can't be stored in EnemyBaseState at all (State must stay a fixed-layout value
+    // type for resimulation), so bleed instead captures these two values as plain floats into State at
+    // ApplyBleed() time (when the augment still has the live reference) and replays them every tick with no
+    // lookup ever needed again.
+    void TakeDamage(float damage, bool isCrit, PlayerID attackerOwner, bool isHighroll = false, float executeThresholdPercent = 0f, float critExecuteThresholdPercent = 0f);
     void AddKnockbackVelocity(Vector3 impulse);
     void Stun(float duration);
     // multiplier is how much of normal move speed remains while active (e.g. 0.5 = half speed), not a
@@ -173,8 +187,10 @@ public interface IEnemyPD
     void Slow(float multiplier, float duration);
     // Bleed status (2026-10-06, ExeBigAxeBleedAugment) — bucket model, adds damagePerSecond into a running
     // total and refreshes the shared duration — see EnemyBasePD.ApplyBleed's own doc comment for the full
-    // mechanism.
-    void ApplyBleed(float damagePerSecond, float duration, PlayerID attacker);
+    // mechanism. executeThresholdPercent/critExecuteThresholdPercent (2026-10-08): the attacker's own
+    // Stats.executeThreshold/Stats.critExecuteThreshold at the moment of application, captured once here
+    // rather than re-looked-up every tick — see IEnemyPD.TakeDamage's own doc comment for the full reasoning.
+    void ApplyBleed(float damagePerSecond, float duration, PlayerID attacker, float executeThresholdPercent = 0f, float critExecuteThresholdPercent = 0f);
     // Cancels this enemy's current active-attack-sequence (if any) outright and returns it to Moving/idle —
     // see EnemyBasePD.Interrupt()'s own doc comment. Call this BEFORE a paired Stun()/AddKnockbackVelocity
     // on the same hit (e.g. AreaEffectCastHelper's own interrupt param), never after — see Interrupt()'s
@@ -415,7 +431,10 @@ public interface IEnemyPD
     // Starts the on-kill launch effect (OnKillLaunchEnemiesAugment) — see EnemyBasePD.StartKillLaunch's own
     // doc comment. Die() already reserved this effect's death-hold via the killer's killEventCount; the
     // caller doesn't need to request or track one itself, only trust HandleKillLaunch to release it.
-    void StartKillLaunch(Vector3 direction, float speed, float distance, float damage, bool isCrit = false, bool isHighroll = false);
+    // executeThresholdPercent/critExecuteThresholdPercent (2026-10-08): the killing player's own
+    // Stats.executeThreshold/Stats.critExecuteThreshold, captured once here rather than re-looked-up per
+    // enemy this corpse later sweeps through — same reasoning as IEnemyPD.ApplyBleed's own identical params.
+    void StartKillLaunch(Vector3 direction, float speed, float distance, float damage, bool isCrit = false, bool isHighroll = false, float executeThresholdPercent = 0f, float critExecuteThresholdPercent = 0f);
 
     // Called by EnemySpawnerPD (the enemy-targeting hub) whenever ANY friendly's taunt/invisible state
     // changes — generic regardless of concrete TState, same reason this interface exists at all.
@@ -483,12 +502,25 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // simplified decay, instead of capped count with true independent decay).
     public float bleedDamagePerSecond;
     public float bleedTimer;
+    // Counts down to the next discrete damage tick (2026-10-08, was continuous/every-simulation-tick) — see
+    // BleedTickInterval's own doc comment for why. 0 default (zero-init, same as every other State field on
+    // a fresh/pooled spawn) means the very first tick after a fresh ApplyBleed fires almost immediately
+    // rather than waiting a full interval — matches how the old continuous version also started dealing
+    // damage on the very next tick, not after a delay.
+    public float bleedTickTimer;
     // Kill-credit/attacker attribution for bleed tick damage — "most recent stack wins," same accepted
     // "last contributor" limitation as MortarGloomPD.pendingHazardId/ArcherArrowRainAbilityPD.activeChainId
     // — the bucket model merges potentially-different-players' stacks (4-player co-op) into one shared
     // rate with no per-stack attacker tracking, so there's no way to attribute each tick's damage to
     // "whichever player's stack happens to be ticking right now" even in principle.
     public PlayerID bleedAttacker;
+    // Captured Execute threshold values (2026-10-08 perf fix) — same "last contributor wins" convention as
+    // bleedAttacker above, captured from the live CharacterStatsPD at ApplyBleed() time instead of being
+    // re-looked-up via bleedAttacker on every tick (see IEnemyPD.TakeDamage's own doc comment for the full
+    // reasoning). 0f default means Execute simply never triggers from a bleed tick until a real
+    // Execute-having player applies a stack.
+    public float bleedExecuteThresholdPercent;
+    public float bleedCritExecuteThresholdPercent;
     public bool atPreferredRange;
     // Rolled once per spawn (LateAwake, alongside separationCheckTimer/personalPushAngle above) via
     // GameRandom, not re-rolled per strafe — same "decide once, use for the whole lifetime" reasoning those
@@ -635,6 +667,12 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // each hit's queued damage-number feedback — see HandleKillLaunch's own comment.
     public bool    killLaunchIsCrit;
     public bool    killLaunchIsHighroll;
+    // Captured once at StartKillLaunch() time (2026-10-08 perf fix), straight from the killing player's own
+    // live Stats — OnKillLaunchEnemiesAugment.OnEnemyDeath still has that reference in scope at that exact
+    // moment, so this avoids a CharacterStatsPD.All lookup per enemy this corpse later sweeps through during
+    // HandleKillLaunch, same "capture once, replay forever" pattern State.bleedExecuteThresholdPercent uses.
+    public float   killLaunchExecuteThresholdPercent;
+    public float   killLaunchCritExecuteThresholdPercent;
     // Which enemies this launch has already damaged — travelling through a cluster shouldn't repeatedly
     // hit the same target every tick it stays overlapped.
     public DisposableList<PredictedObjectID> killLaunchHitIds;
@@ -880,6 +918,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Inspector field. Named ContactCooldownDuration (not ContactCooldown) to avoid colliding with the
     // ContactCooldown struct type used by B.contactCooldowns below.
     private const float ContactCooldownDuration = 0.5f;
+    // Discrete bleed damage tick interval (2026-10-08, was continuous/every-simulation-tick — see
+    // State.bleedTickTimer's own doc comment). Reasoned perf fix (Stuart's own call, not yet actually
+    // profiled as a real bottleneck): bleed is now triggered off _onHit (any weapon/Phantom Blade/AoE while
+    // ExeBigAxe's buff is up, not just genuine weapon swings — see ExeBigAxeBleedAugment's own doc comment),
+    // so a lot of enemies could plausibly be bleeding simultaneously in 4-player co-op, each previously
+    // paying a TakeDamage call (itself a CharacterStatsPD.All dictionary lookup for the Execute check) PLUS
+    // a CharacterStatsPD.All lookup and a PredictedEvent.Invoke for the damage-number popup, every single
+    // simulation tick, for the bleed's entire duration. 0.25s cuts that to ~4 ticks/second regardless of the
+    // underlying simulation rate, which is still visually smooth (ShowDamageNumber's own per-(enemy,attacker)
+    // stacking just climbs a bit more coarsely) but a meaningful multiple cheaper at scale.
+    private const float BleedTickInterval = 0.25f;
     public bool stunResistant = false;
     // Reduces knockback velocity (AddKnockbackVelocity) AND reduces the duration of any other stun source
     // (Stun()) — except the stun knockback itself produces, which is deliberately exempt since that duration
@@ -1664,20 +1713,30 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (b.slowTimer > 0f) b.slowTimer -= delta;
 
         // Bleed tick (2026-10-06, ExeBigAxeBleedAugment) — see State.bleedDamagePerSecond's own doc
-        // comment for the bucket mechanism. Continuous, delta-scaled damage every tick rather than
-        // discrete periodic pulses — mathematically the same total damage over the bleed's lifetime,
-        // simpler (no second tick-interval timer needed), and safe to call TakeDamage directly here since
-        // this is a same-identity mutation (the enemy damaging itself from its own Simulate()), not a
-        // cross-identity call — none of the deferred-delta/UpdateView dance a cross-identity DoT-style
-        // accumulator would need. Independent of stunTimer/slowTimer — bleed is pure damage, not a CC
-        // effect, so it ticks through a stun exactly like it would through anything else.
+        // comment for the bucket mechanism. Discrete BleedTickInterval-spaced pulses (2026-10-08, was
+        // continuous/every-simulation-tick — see BleedTickInterval's own doc comment for the perf
+        // reasoning), each dealing exactly bleedDamagePerSecond * BleedTickInterval — a fixed per-tick
+        // amount, not scaled by the actual frame delta, so every tick represents the same slice of real time
+        // regardless of simulation rate. The while loop (not a plain if) catches up correctly if a long
+        // delta (lag spike, etc.) skips past more than one interval in a single Simulate() call, same
+        // "don't lose ticks under a hitch" reasoning any fixed-interval accumulator needs; it always
+        // terminates since bleedTickTimer strictly increases by BleedTickInterval (> 0) each iteration.
+        // Safe to call TakeDamage directly here since this is a same-identity mutation (the enemy damaging
+        // itself from its own Simulate()), not a cross-identity call. Independent of stunTimer/slowTimer —
+        // bleed is pure damage, not a CC effect, so it ticks through a stun exactly like it would through
+        // anything else.
         if (b.bleedTimer > 0f)
         {
             b.bleedTimer -= delta;
-            if (b.bleedDamagePerSecond > 0f)
+            b.bleedTickTimer -= delta;
+            while (b.bleedTickTimer <= 0f && b.bleedDamagePerSecond > 0f)
             {
-                float tickDamage = b.bleedDamagePerSecond * delta;
-                TakeDamage(tickDamage, isCrit: false, b.bleedAttacker);
+                b.bleedTickTimer += BleedTickInterval;
+                float tickDamage = b.bleedDamagePerSecond * BleedTickInterval;
+                // executeThresholdPercent/critExecuteThresholdPercent — captured once at ApplyBleed() time,
+                // not re-looked-up here (2026-10-08 perf fix) — see State.bleedExecuteThresholdPercent's
+                // own doc comment.
+                TakeDamage(tickDamage, isCrit: false, b.bleedAttacker, executeThresholdPercent: b.bleedExecuteThresholdPercent, critExecuteThresholdPercent: b.bleedCritExecuteThresholdPercent);
 
                 // Damage number popup — same "resolve the PlayerID to a live CharacterStatsPD, then fire
                 // THIS enemy's own _onHitFeedback" pattern the kill-launch splash damage above already uses
@@ -1690,7 +1749,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 if (CharacterStatsPD.All.TryGetValue(b.bleedAttacker, out var bleedAttackerStats))
                     _onHitFeedback.Invoke(new HitFeedbackData { target = ObjectId, damage = tickDamage, isCrit = false, isHighroll = false, attacker = bleedAttackerStats, isPriority = false });
             }
-            if (b.bleedTimer <= 0f) b.bleedDamagePerSecond = 0f;
+            if (b.bleedTimer <= 0f)
+            {
+                b.bleedDamagePerSecond = 0f;
+                b.bleedTickTimer = 0f;
+                b.bleedExecuteThresholdPercent = 0f;
+                b.bleedCritExecuteThresholdPercent = 0f;
+            }
         }
 
         if (b.stunTimer > 0f)
@@ -2925,8 +2990,15 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected bool IsTargetStillValid =>
         _targetStats != null && !_targetStats.IsDead && (!_targetStats.IsInvisible || _targetStats.IsTaunting);
 
+    // Mirrors CharacterStatsPD.BossExecuteThreshold/BossCritExecuteThreshold's own 0.2f ratio exactly — kept
+    // as a separate local constant (2026-10-08) since TakeDamage no longer has a live CharacterStatsPD
+    // reference to read those two properties off of (see TakeDamage's own doc comment on
+    // executeThresholdPercent/critExecuteThresholdPercent for why). If that ratio's own value is ever
+    // retuned, this must be updated to match by hand.
+    private const float BossExecuteThresholdRatio = 0.2f;
+
     // ── Combat ─────────────────────────────────────────────────────────────
-    public virtual void TakeDamage(float damage, bool isCrit = false, PlayerID attackerOwner = default, bool isHighroll = false)
+    public virtual void TakeDamage(float damage, bool isCrit = false, PlayerID attackerOwner = default, bool isHighroll = false, float executeThresholdPercent = 0f, float critExecuteThresholdPercent = 0f)
     {
         ref var b = ref B;
         if (b.isDead) return;
@@ -2942,22 +3014,28 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // Phantom Blade, onhit effect, AOE augment, etc.) already funnels through, so hooking it here
         // covers a crit (or, in the future, ANY hit — see CharacterStatsPD.executeThreshold's own doc
         // comment) from anything uniformly, with no per-call-site changes needed anywhere else. Bosses use
-        // separately reduced thresholds (BossExecuteThreshold/BossCritExecuteThreshold, -80% each) instead
-        // of the raw player-facing ones, so a boss doesn't get finished off nearly as easily as a normal/
-        // elite enemy — each scaled down individually BEFORE combining below, not the other way around.
-        // critExecuteThreshold combines with executeThreshold multiplicatively on a crit (2026-08-14 — was
-        // a flat sum), not an independent trip-wire — same "never reach 100%" diminishing-returns shape as
-        // AddExecuteThresholdPercent's own stacking (see its own doc comment): e.g. 25% execute + 15%
-        // crit-execute means non-crits execute at 25%, crits execute at 1-(1-0.25)*(1-0.15) = 36.25%, not a
-        // flat 40%. A non-crit hit only ever sees the plain executeThreshold.
-        if (b.health > 0f && CharacterStatsPD.All.TryGetValue(attackerOwner, out var attackerStats) && attackerStats.Execute)
+        // a separately reduced threshold (BossExecuteThresholdRatio, -80%) instead of the raw player-facing
+        // ones, so a boss doesn't get finished off nearly as easily as a normal/elite enemy — each scaled
+        // down individually BEFORE combining below, not the other way around. critExecuteThresholdPercent
+        // combines with executeThresholdPercent multiplicatively on a crit (2026-08-14 — was a flat sum),
+        // not an independent trip-wire — same "never reach 100%" diminishing-returns shape as
+        // CharacterStatsPD.AddExecuteThresholdPercent's own stacking (see its own doc comment): e.g. 25%
+        // execute + 15% crit-execute means non-crits execute at 25%, crits execute at
+        // 1-(1-0.25)*(1-0.15) = 36.25%, not a flat 40%. A non-crit hit only ever sees the plain
+        // executeThresholdPercent.
+        //
+        // No CharacterStatsPD.All lookup (2026-10-08 perf fix) — executeThresholdPercent/
+        // critExecuteThresholdPercent are passed straight in by the caller now instead of being looked up
+        // here via attackerOwner; see TakeDamage's own interface doc comment (IEnemyPD) for the full
+        // reasoning. A plain float comparison against 0f replaces the old CharacterStatsPD.Execute check.
+        if (b.health > 0f && (executeThresholdPercent > 0f || critExecuteThresholdPercent > 0f))
         {
             bool isBoss = spawnCategory == EnemySpawnCategory.Boss;
 
-            float executeThresh = isBoss ? attackerStats.BossExecuteThreshold : attackerStats.executeThreshold;
+            float executeThresh = isBoss ? executeThresholdPercent * BossExecuteThresholdRatio : executeThresholdPercent;
             if (isCrit)
             {
-                float critBonus = isBoss ? attackerStats.BossCritExecuteThreshold : attackerStats.critExecuteThreshold;
+                float critBonus = isBoss ? critExecuteThresholdPercent * BossExecuteThresholdRatio : critExecuteThresholdPercent;
                 executeThresh = 1f - (1f - executeThresh) * (1f - critBonus);
             }
 
@@ -3090,7 +3168,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // reserved exactly one for this effect via the killer's killEventCount (see Die()'s own comment), since
     // OnKillLaunchEnemiesAugment.OnApply() incremented that count. HandleKillLaunch releases that reserved
     // hold once the corpse finishes travelling.
-    public void StartKillLaunch(Vector3 direction, float speed, float distance, float damage, bool isCrit = false, bool isHighroll = false)
+    public void StartKillLaunch(Vector3 direction, float speed, float distance, float damage, bool isCrit = false, bool isHighroll = false, float executeThresholdPercent = 0f, float critExecuteThresholdPercent = 0f)
     {
         ref var b = ref B;
         b.killLaunchActive = true;
@@ -3100,6 +3178,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         b.killLaunchDamage = damage;
         b.killLaunchIsCrit = isCrit;
         b.killLaunchIsHighroll = isHighroll;
+        b.killLaunchExecuteThresholdPercent = executeThresholdPercent;
+        b.killLaunchCritExecuteThresholdPercent = critExecuteThresholdPercent;
 
         if (_rigidbody != null)
         {
@@ -3145,10 +3225,23 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 if (enemy._isDead) continue;
                 if (b.killLaunchHitIds.Contains(enemy.ObjectId)) continue;
                 b.killLaunchHitIds.Add(enemy.ObjectId);
-                enemy.TakeDamage(b.killLaunchDamage, b.killLaunchIsCrit, b.killerOwner, b.killLaunchIsHighroll);
+
+                // Execute thresholds no longer need a lookup here (2026-10-08 perf fix) — captured once at
+                // StartKillLaunch() time into b.killLaunchExecuteThresholdPercent/
+                // killLaunchCritExecuteThresholdPercent (see that field's own doc comment), so this now costs
+                // nothing regardless of how many enemies one corpse's flight sweeps through. The damage-number
+                // popup below still genuinely needs a live CharacterStatsPD object (not just values) for its
+                // own attribution/color, so that one lookup remains — reused for the popup only now, not for
+                // Execute too.
+                enemy.TakeDamage(b.killLaunchDamage, b.killLaunchIsCrit, b.killerOwner, b.killLaunchIsHighroll,
+                    b.killLaunchExecuteThresholdPercent, b.killLaunchCritExecuteThresholdPercent);
                 // TakeDamage alone never shows a damage number (see TriggerHitFeedback's own doc comment on
                 // IEnemyPD) — fired through _onHitFeedback rather than a queue (see HitFeedbackData's own
-                // doc comment for why a plain queue here was resimulation-unsafe).
+                // doc comment for why a plain queue here was resimulation-unsafe). Still needs a genuine
+                // CharacterStatsPD.All lookup — no live reference is available at this call site (b.killerOwner
+                // is a PlayerID carried over from StartKillLaunch time, not a reference in scope here), and
+                // unlike Execute above, the popup's own attribution/color genuinely needs the live object,
+                // not just cached values.
                 if (CharacterStatsPD.All.TryGetValue(b.killerOwner, out var killLaunchAttacker))
                     _onHitFeedback.Invoke(new HitFeedbackData { target = enemy.ObjectId, damage = b.killLaunchDamage, isCrit = b.killLaunchIsCrit, isHighroll = b.killLaunchIsHighroll, attacker = killLaunchAttacker, isPriority = false });
             }
@@ -3277,12 +3370,16 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // of every application. No crowdControlResist/stunResistant gating — unlike Slow/Stun, bleed is pure
     // damage-over-time, not a crowd-control effect, so nothing in this codebase's existing CC-resist
     // taxonomy applies to it.
-    public void ApplyBleed(float damagePerSecond, float duration, PlayerID attacker)
+    public void ApplyBleed(float damagePerSecond, float duration, PlayerID attacker, float executeThresholdPercent = 0f, float critExecuteThresholdPercent = 0f)
     {
         if (_isDead || damagePerSecond <= 0f || duration <= 0f) return;
         B.bleedDamagePerSecond += damagePerSecond;
         B.bleedTimer = Mathf.Max(B.bleedTimer, duration);
         B.bleedAttacker = attacker;
+        // Same "most recent stack wins" convention as bleedAttacker above — see State.bleedExecuteThresholdPercent's
+        // own doc comment.
+        B.bleedExecuteThresholdPercent = executeThresholdPercent;
+        B.bleedCritExecuteThresholdPercent = critExecuteThresholdPercent;
     }
 
     // Cancels this enemy's current active-attack-sequence outright (as opposed to a true Stun(), which now

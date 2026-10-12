@@ -117,9 +117,9 @@ public interface IFriendlyPD
     Transform transform { get; }
     PredictedObjectID ObjectId { get; }
     // Generic per-friendly size scalar — mirrors IEnemyPD.Size exactly (see that interface's own doc
-    // comment: "same 'bigger target needs a taller offset' convention CharacterStatsPD.bonusSizePercent
-    // already established for players" — this IS that same property, just also exposed on the interface
-    // now so future ally code can read it generically). CharacterStatsPD backs this with bonusSizePercent.
+    // comment: "same 'bigger target needs a taller offset' convention CharacterStatsPD.Size already
+    // established for players" — this IS that same property, just also exposed on the interface now so
+    // future ally code can read it generically).
     float Size { get; }
 
     // isCrit/attacker mirror IEnemyPD.TakeDamage's own shape for symmetry — no enemy attack rolls a
@@ -441,7 +441,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // own doc comment for why. Not Inspector-visible (computed properties, no SerializedProperty) — kept
     // here purely for source-level grouping alongside baseDashCooldown, not because the Inspector shows them.
     public int dashCharges => currentState.dashCharges != 0 ? currentState.dashCharges : 1;
-    public int levelUpOptions => currentState.levelUpOptions != 0 ? currentState.levelUpOptions : 3;
+    // Clamped to 5 (2026-10-12, explicit request) — no UI room past that regardless of how much shop/
+    // progression bonus a player has stacked (currently 2 base + up to 2 shop tiers = 4 max, but this clamp
+    // stays in place as a hard ceiling for any future source too, not just today's content).
+    public int levelUpOptions => Mathf.Min(currentState.levelUpOptions != 0 ? currentState.levelUpOptions : 2, 5);
 
     [Header("Luck")]
     // Same State-backed shape as baseMoveSpeed above — see _authoredMoveSpeed's own doc comment. 0f authored
@@ -626,7 +629,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // totalMoveSpeedPercent's own doc comment for why (this specific field is the one that surfaced the
     // issue live: WeaponManagerPD.Init(), called from CharacterStatsPD.LateAwake() itself, read this before
     // GetInitialState() had applied, producing a 0-scale weapon root and NaN/Infinity downstream).
-    public float bonusSizePercent => currentState.bonusSizePercent != 0f ? currentState.bonusSizePercent : 1f;
+    // Exposed separately too, same "every tier gets its own property" convention every other Penalty field
+    // in this codebase follows (knockbackPenalty, weaponRangePenalty, etc.). Combined with the Bonus tier
+    // down in Size below, not here — see that property's own doc comment for why there's no longer a
+    // separate public bonusSizePercent property at all.
+    public float sizePenalty => currentState.sizePenalty != 0f ? currentState.sizePenalty : 1f;
 
     // In State, not a plain field — see State struct's own doc comment (ExeBigAxeAbilityPD's crit buff
     // needs this to roll back correctly). No zero-guard needed here unlike the 1f-neutral fields (see
@@ -811,6 +818,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     public float knockbackMultiplier => currentState.knockbackMultiplier != 0f ? currentState.knockbackMultiplier : 1f;
     public float knockbackPenalty => currentState.knockbackPenalty != 0f ? currentState.knockbackPenalty : 1f;
+    // Total-tier Knockback (2026-10-08, ExecutionerStartingAugment) — same role as attackSpeedTotalPercent,
+    // a second additive-to-1 tier alongside knockbackMultiplier's own Bonus tier (see AddKnockbackTotalPercent's
+    // own doc comment for why this one's its own tier rather than just going into knockbackMultiplier).
+    public float totalKnockbackPercent => currentState.totalKnockbackPercent != 0f ? currentState.totalKnockbackPercent : 1f;
 
     public float bonusOnHitPowerMultiplier => currentState.bonusOnHitPowerMultiplier != 0f ? currentState.bonusOnHitPowerMultiplier : 1f;
     public float bonusOnHitPowerPenalty => currentState.bonusOnHitPowerPenalty != 0f ? currentState.bonusOnHitPowerPenalty : 1f;
@@ -1144,19 +1155,19 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // only ever touches one place instead of every family member + their doc comments.
     //
     // The flat 0.5 offset is meant to represent the same "near-body reach" a weapon's own hitbox has even at
-    // zero WeaponRange — 2026-08-23 fix: now scaled by bonusSizePercent (the player's actual physical Size
-    // stat, e.g. from KnightBerserkAbilityPD's own buff), same as a weapon's own root transform already
-    // scales with Size (see bonusSizePercent's own doc comment: "Every weapon's own root localScale reads
-    // this directly too"). Before this fix the offset only scaled with AreaEffectSize, so a caster who got
-    // physically bigger/smaller (Size, not AreaEffectSize) saw their weapon hitboxes resize but not this
-    // shared near-body AoE offset — inconsistent with what a real weapon does. Scales symmetrically both
-    // directions (shrinks for Size < 1, grows for Size > 1) since bonusSizePercent is a plain multiplier.
-    // WeaponRange itself is untouched by this — only the flat offset term gets the extra Size factor.
-    // WeaponRange here is RangeWorldUnits (2026-09-16, was plain WeaponRange back when that property itself
-    // carried the world-unit compression — see RangeWorldUnits' own doc comment) — this keeps the exact same
-    // live numeric result as before the WeaponRange rework; only WHERE the compression is applied moved, not
-    // the actual value this formula produces.
-    public float RangeScalingAoEBase => (0.5f * bonusSizePercent + RangeWorldUnits) * AreaEffectSize;
+    // zero WeaponRange — 2026-08-23 fix: now scaled by Size (the player's actual physical Size stat, e.g.
+    // from KnightBerserkAbilityPD's own buff), same as a weapon's own root transform already scales with
+    // Size (see that property's own doc comment: "Every weapon's own root localScale reads this directly
+    // too"). Before this fix the offset only scaled with AreaEffectSize, so a caster who got physically
+    // bigger/smaller (Size, not AreaEffectSize) saw their weapon hitboxes resize but not this shared
+    // near-body AoE offset — inconsistent with what a real weapon does. Scales symmetrically both directions
+    // (shrinks for Size < 1, grows for Size > 1) since Size is a plain multiplier. WeaponRange itself is
+    // untouched by this — only the flat offset term gets the extra Size factor. WeaponRange here is
+    // RangeWorldUnits (2026-09-16, was plain WeaponRange back when that property itself carried the
+    // world-unit compression — see RangeWorldUnits' own doc comment) — this keeps the exact same live
+    // numeric result as before the WeaponRange rework; only WHERE the compression is applied moved, not the
+    // actual value this formula produces.
+    public float RangeScalingAoEBase => (0.5f * Size + RangeWorldUnits) * AreaEffectSize;
 
     // Same Bonus/Total split — totalCritChancePercent is the new Total tier CritChanceAugment grants.
     public float CritChance => (baseCritChance + bonusCritChanceFlat * bonusCritChancePercent) * totalCritChancePercent * totalCritChancePenalty;
@@ -1340,7 +1351,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // exactly as good as a normal roll, never worse.
     public float HighrollBonus => Mathf.Max(1f, baseHighrollBonus * bonusHighrollBonusPercent * highrollBonusPenalty);
 
-    public float Knockback => baseKnockback * knockbackMultiplier * knockbackPenalty;
+    public float Knockback => baseKnockback * knockbackMultiplier * totalKnockbackPercent * knockbackPenalty;
 
     // bonusOnHitPowerMultiplier is already a genuine multiplier (no base/flat addition to split, unlike
     // most other stats here) — totalOnHitPowerPercent is simply appended as one more independent multiplier
@@ -1525,6 +1536,10 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public float executeThreshold;
         public float bonusCritChanceFlat;
         public float bonusSizePercent;
+        // Multiplicative Penalty tier (2026-10-10, GremlinAugment rework) — see the bonusSizePercent
+        // property's own doc comment for why this is folded into that accessor rather than exposed as a
+        // second value callers have to remember to multiply in themselves.
+        public float sizePenalty;
         public float totalMaxHealthPercent;
         public float totalStrengthPercent;
         public float damageReductionPercent;
@@ -1633,6 +1648,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         public float highrollBonusPenalty;
         public float knockbackMultiplier;
         public float knockbackPenalty;
+        public float totalKnockbackPercent;
         public float bonusOnHitPowerMultiplier;
         public float bonusOnHitPowerPenalty;
         public float totalOnHitPowerPercent;
@@ -1756,10 +1772,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         // LuckRolledLevelUpStatsAugment's own highrollBonusScale doc comment for why this can't just use the
         // full (damage-scope) HighrollBonus value directly.
         public float luckRolledLevelUpStatsHighrollScale;
-        // Dampens the WHOLE rolled multiplier's deviation from 1 (2026-08-31) — see
-        // LuckRolledLevelUpStatsAugment's own effectiveness doc comment for why this is applied AFTER
-        // RollLuckMultiplier rather than scaling LuckFloor/LuckCeiling/HighrollBonus themselves.
-        public float luckRolledLevelUpStatsEffectiveness;
         public bool  modelSidewaysTipped;
         public float orbitFacingYaw;
         public bool  lethalDamagePrevented;
@@ -1803,6 +1815,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         attackSpeedTotalPercent = 1f,
         totalWeaponRangePercent = 1f,
         bonusSizePercent = 1f,
+        sizePenalty = 1f,
         totalMaxHealthPercent = 1f,
         totalStrengthPercent = 1f,
         damageReductionPercent = 1f,
@@ -1875,6 +1888,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         highrollBonusPenalty = 1f,
         knockbackMultiplier = 1f,
         knockbackPenalty = 1f,
+        totalKnockbackPercent = 1f,
         bonusOnHitPowerMultiplier = 1f,
         bonusOnHitPowerPenalty = 1f,
         totalOnHitPowerPercent = 1f,
@@ -1903,7 +1917,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         weaponTracks = 1,
         shieldRechargeTime = 5f,
         dashCharges = 1,
-        levelUpOptions = 3
+        levelUpOptions = 2
     };
 
     // ── Events ─────────────────────────────────────────────────────────────
@@ -2201,7 +2215,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         currentState.dodgedThisMovement = false;
     }
 
-    private void OnDashMovementEnded() => currentState.inDashMovement = false;
+    // interrupted (2026-10-10, PlayerControllerPD._onDashMovementEnded payload addition) — unused here,
+    // this only cares that the window closed, not why, same as before that payload existed.
+    private void OnDashMovementEnded(bool interrupted) => currentState.inDashMovement = false;
     public void NotifyAbilityEnd(IAbilityPD ability) => _onAbilityEnd.Invoke(ability);
     public void AddColorChangedListener(Action<int> listener) => _onColorChanged.AddListener(listener);
     public void RemoveColorChangedListener(Action<int> listener) => _onColorChanged.RemoveListener(listener);
@@ -2341,7 +2357,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         _onColorChanged.AddListener(ApplyColor);
 
         // bonuses applied by PlayerDataPD.Simulate after spawn
-        GetComponent<WeaponManagerPD>()?.Init(this);
+        // WeaponManagerPD.Init(this) moved to Simulate() (2026-10-10) — see _weaponManagerInitialized's own
+        // doc comment for why LateAwake() was the wrong spot (runs before GetInitialState() has applied).
         // TODO: GetComponent<RogueClassPassive>()?.Init(this);
 
         UIHealth = baseMaxHealth;
@@ -2376,6 +2393,21 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // NotifyDodge's own doc comments for what this subscription drives.
     private PlayerControllerPD _controller;
 
+    // Moved here from LateAwake() (2026-10-10) — same class of ordering gap as _controller above, just
+    // discovered via a different symptom: LateAwake() genuinely runs BEFORE GetInitialState() has applied
+    // on a fresh spawn (confirmed by reading PredictedIdentityStatefull.Setup()'s own source — the
+    // documented "invoked after full init" contract on LateAwake() isn't honored for State specifically), so
+    // calling WeaponManagerPD.Init(this) from there read bonusSizePercent/Size back at its raw zero-init
+    // value. Simulate() can only ever run after Setup() has fully completed (the tick module that drives it
+    // isn't wired up until after GetInitialState() applies in that same call), so this plain-field guard —
+    // same shape as _controller's own lazy init just above — is provably safe: it can't fire early, and
+    // since this is a plain (non-State) field, it can't be reset by a resimulation replay either, so
+    // WeaponManagerPD.Init() genuinely only ever runs once per real object, not once per replay. Confirmed
+    // safe to move at all: WeaponManagerPD's own _pendingSpawn (the one thing Init() sets that anything
+    // later depends on) isn't consumed until its own LateUpdate(), a separate, later real-time Unity
+    // callback — nothing needs this done synchronously within the same tick Init() used to run on.
+    private bool _weaponManagerInitialized;
+
     // ── IFriendlyPD ───────────────────────────────────────────────────────────
     // IsDead/IsInvisible/IsTaunting/IsInvincible/transform/Slow already exist elsewhere on this class
     // with matching signatures and need no extra code here — see IFriendlyPD's own doc comment.
@@ -2384,11 +2416,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // same PredictedIdentity<TState> base both classes extend.
     public PredictedObjectID ObjectId => id.objectId;
 
-    // Mirrors IEnemyPD.Size exactly — see IFriendlyPD.Size's own doc comment. Already-existing
-    // bonusSizePercent (its public property, not currentState directly — see that property's own doc
-    // comment for the 0f-during-the-LateAwake-window guard it already has) IS this value; no new State
-    // needed.
-    public float Size => bonusSizePercent;
+    // Mirrors IEnemyPD.Size exactly — see IFriendlyPD.Size's own doc comment — but is also, as of 2026-10-10,
+    // the ONE canonical public accessor for the character's current effective size, full stop: every
+    // internal call site that used to read the old separate bonusSizePercent property directly (dozens,
+    // across WeaponManagerPD/WeaponBasePD's own orbit/hitbox clearance terms, RangeScalingAoEBase,
+    // projectile scaling, UI indicator scale, etc.) was swapped over to this property instead, and the old
+    // bonusSizePercent property was removed outright rather than kept as a second name for the same value —
+    // Size was only ever a passthrough alias for it, and having two public names for one value no longer
+    // made sense once GremlinAugment's sizePenalty gave this a real combine step worth keeping in one place.
+    // currentState.bonusSizePercent (the private State field, 0f-during-the-LateAwake-window guard inlined
+    // directly below) is still the correct name for the underlying raw Bonus-tier accumulator itself — only
+    // the public PROPERTY that combined it with sizePenalty was the one being removed.
+    public float Size => (currentState.bonusSizePercent != 0f ? currentState.bonusSizePercent : 1f) * sizePenalty;
 
     // The actual sphere hurtbox collider this player's hit-detection uses — wire this to the same
     // collider CombatLayerMasks.FriendlyHurtboxMask queries target (every enemy AoE attack AND every player
@@ -2478,6 +2517,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
                 _controller.AddDashMovementStartedListener(OnDashMovementStarted);
                 _controller.AddDashMovementEndedListener(OnDashMovementEnded);
             }
+        }
+
+        // See _weaponManagerInitialized's own doc comment for why this moved here from LateAwake().
+        if (!_weaponManagerInitialized)
+        {
+            _weaponManagerInitialized = true;
+            GetComponent<WeaponManagerPD>()?.Init(this);
         }
 
         // Server-authoritative color assignment — see GameStartData.HostColorAssignments' own doc comment.
@@ -2966,6 +3012,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public void AddWeaponRangeScalingBonusPercent(float amount) => ApplyStatChange(() => currentState.weaponRangeScalingBonusPercent += amount);
     public void AddWeaponRangeScalingPenaltyPercent(float amount) => ApplyStatChange(() => currentState.weaponRangeScalingPenalty *= (1f - amount));
     public void AddAttackSpeedTotalPercent(float amount) => ApplyStatChange(() => currentState.attackSpeedTotalPercent += amount);
+    // Penalty-tier counterpart (2026-10-08, ExecutionerStartingAugment) — attackSpeedPenalty itself already
+    // existed as its own standalone multiplicative tier in the AttackSpeed formula (see that field's own
+    // doc comment), just with no mutator ever wired up to it before now. Same "*= (1f - amount), authored
+    // as a positive amount-to-remove" shape as AddWeaponRangeScalingPenaltyPercent — see
+    // [[feedback_buff_debuff_bucket_convention]].
+    public void AddAttackSpeedPenaltyPercent(float amount) => ApplyStatChange(() => currentState.attackSpeedPenalty *= (1f - amount));
     // attackSpeedFlat (renamed from attackSpeedPercent) is added directly in the same units as
     // baseAttackSpeed, not a raw fraction — matches the progression system's own conversion
     // (entry.value * 0.01f * baseAttackSpeed) so a caller here can pass an intuitive fraction (e.g. 0.25 for
@@ -3069,9 +3121,11 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // is better for the player here. The parameter keeps this class's usual "positive = better for the
     // player" convention (e.g. 0.05 for a 5% easier highroll threshold); it's SUBTRACTED under the hood.
     public void AddHighrollPenalty(float amount) => ApplyStatChange(() => currentState.highrollPenalty -= amount);
-    // The tier plain "buff Highroll chance" augments should actually use (2026-09-13 — DodgeOnHighrollAugment/
-    // LuckHighRollAugment both switched to this from AddHighrollPenalty above, which read as "buffing by
-    // adding a penalty," backwards for an ordinary stat pick). Same inverted-subtraction shape as
+    // The tier plain "buff Highroll chance" augments should actually use (2026-09-13 — DodgeOnHighrollAugment
+    // switched to this from AddHighrollPenalty above, which read as "buffing by adding a penalty," backwards
+    // for an ordinary stat pick; LuckCeilingAugment/LuckRolledLevelUpStatsAugment both also call this now,
+    // 2026-10-12, after LuckHighRollAugment — the augment that originally paired with DodgeOnHighrollAugment
+    // here — was folded into LuckCeilingAugment and removed). Same inverted-subtraction shape as
     // AddHighrollPenalty (unavoidable — Highroll is a threshold where LOWER is better, so any tier that
     // multiplies into it needs the same sign flip regardless of which field carries it), just targeting the
     // separate bonusHighrollPercent field instead, so a plain buff and a genuine Penalty-tier tradeoff can
@@ -3082,6 +3136,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // CHANCE directly, not the inverted raw threshold, so a plain additive buff here already moves the
     // odds the RIGHT direction with no sign-flip needed.
     public void AddTotalHighrollChancePercent(float amount) => ApplyStatChange(() => currentState.totalHighrollChancePercent += amount);
+    // First augment-facing writer for this field (2026-10-12, LuckRolledLevelUpStatsAugment) — previously
+    // only ever mutated by ApplyProgressionBonuses' own one-shot shop-bonus application at spawn (see
+    // levelUpOptions' own doc comment). Plain integer count, no Flat/Percent-against-a-baseline shape to
+    // match (same reasoning dashCharges has no augment-facing Add method either) — the public levelUpOptions
+    // property's own Mathf.Min(..., 5) clamp already caps whatever this pushes it to.
+    public void AddLevelUpOptions(int amount) => ApplyStatChange(() => currentState.levelUpOptions += amount);
     public void AddCritChanceFlat(float amount) => ApplyStatChange(() => currentState.bonusCritChanceFlat += amount);
     // Same "additive against the 1f baseline" pattern as AddMaxHealthPercent, for CritChance's own percent
     // multiplier. Bonus tier — see AddMaxHealthPercent's own comment; kept for ClassPassiveData, no augment
@@ -3280,6 +3340,12 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // "Additive against the 1f baseline" pattern, same as AddCritChancePercent — knockbackMultiplier starts
     // at 1f (also aggregated multiplicatively by ClassPassiveData separately), e.g. +0.5 = +50% knockback.
     public void AddKnockbackPercent(float amount) => ApplyStatChange(() => currentState.knockbackMultiplier += amount);
+    // Total-tier counterpart (2026-10-08, ExecutionerStartingAugment) — same "separate outer tier" shape
+    // attackSpeedTotalPercent/totalWeaponRangePercent already use, kept distinct from knockbackMultiplier's
+    // own Bonus tier so a big class-defining Knockback grant (ExecutionerStartingAugment's +100%) reads from
+    // its own tier rather than crowding the generic Bonus accumulator every plain +Knockback augment writes
+    // into.
+    public void AddKnockbackTotalPercent(float amount) => ApplyStatChange(() => currentState.totalKnockbackPercent += amount);
 
     // Shared "stacking bonus" scaffold for the whole Phantom Blade augment family — each Phantom Blade
     // augment the player has picked contributes its own delta here (matching old system's per-augment
@@ -3328,7 +3394,6 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public bool dodgeOnHighrollEnabled => currentState.dodgeOnHighrollEnabled;
     public bool luckRolledLevelUpStats => currentState.luckRolledLevelUpStats;
     public float luckRolledLevelUpStatsHighrollScale => currentState.luckRolledLevelUpStatsHighrollScale;
-    public float luckRolledLevelUpStatsEffectiveness => currentState.luckRolledLevelUpStatsEffectiveness;
     public float phantomBladeOnHitPowerPercent => currentState.phantomBladeOnHitPowerPercent;
     public void AddPhantomBladeDamageBonus(float amount) => currentState.phantomBladeDamageBonus += amount;
     public void AddPhantomBladeSizeBonus(float amount) => currentState.phantomBladeSizeBonus += amount;
@@ -3341,11 +3406,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // enables. Same "augment just flips a permanent bool, the actual effect lives here" shape
     // phantomBladeOnHitEnabled/EnablePhantomBladeOnHit already establish.
     public void EnableDodgeOnHighroll() => currentState.dodgeOnHighrollEnabled = true;
-    public void EnableLuckRolledLevelUpStats(float highrollBonusScale, float effectiveness)
+    // effectiveness param removed (2026-10-12) — LuckFloor/LuckCeiling's own live baseline (0.75/1.25) now
+    // already IS the intended ~75%-125% swing directly, so dampening it further on top was redundant with
+    // what the base roll already produces; see LuckRolledLevelUpStatsAugment's own doc comment.
+    public void EnableLuckRolledLevelUpStats(float highrollBonusScale)
     {
         currentState.luckRolledLevelUpStats = true;
         currentState.luckRolledLevelUpStatsHighrollScale = highrollBonusScale;
-        currentState.luckRolledLevelUpStatsEffectiveness = effectiveness;
     }
     public void AddPhantomBladeOnHitPowerPercent(float amount) => currentState.phantomBladeOnHitPowerPercent += amount;
 
@@ -3481,16 +3548,37 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     // Additive against the 1f baseline (amount is a delta, e.g. +0.25 = +25%), same convention as every
     // other bonus here — unlike a direct transform.localScale *= multiplier, which would compound
-    // multiplicatively across multiple size augments instead of stacking their percentages. Re-derives
-    // the full scale from bonusSizePercent every call rather than incrementally adjusting the transform,
-    // so this stays correct no matter how many size augments have been applied. Each weapon's own root
-    // localScale already reads bonusSizePercent directly too (see WeaponManagerPD's own RegisterWeapon/
-    // LateUpdate — WeaponRadius itself deliberately doesn't, see its own comment for why), so no separate
-    // call is needed here to scale the weapon.
+    // multiplicatively across multiple size augments instead of stacking their percentages. Each weapon's
+    // own root localScale already reads bonusSizePercent directly too (see WeaponManagerPD's own
+    // RegisterWeapon/LateUpdate — WeaponRadius itself deliberately doesn't, see its own comment for why), so
+    // no separate call is needed here to scale the weapon.
     public void AddSizePercent(float amount)
     {
         currentState.bonusSizePercent += amount;
-        transform.localScale = Vector3.one * currentState.bonusSizePercent;
+        RecomputeSizeTransform();
+    }
+
+    // Multiplicative Penalty tier (2026-10-10, GremlinAugment rework — the first genuine Size nerf in this
+    // codebase) — same "*= (1f - amount), authored as a positive amount-to-remove" shape every other Penalty
+    // tier uses (see [[feedback_buff_debuff_bucket_convention]]). Kept as a genuinely separate accumulator
+    // from bonusSizePercent above (not folded into the same field via a second *= operation on it) — mixing
+    // an additive accumulator and a multiplicative one into the SAME field would make the final result
+    // depend on application order, which is exactly what the Buff/Penalty tier split exists to avoid
+    // everywhere else in this codebase. Combined only at the point of actual use, via the Size PROPERTY
+    // (not currentState.bonusSizePercent directly) — see that property's own doc comment.
+    public void AddSizePenaltyPercent(float amount)
+    {
+        currentState.sizePenalty *= (1f - amount);
+        RecomputeSizeTransform();
+    }
+
+    // Shared by AddSizePercent/AddSizePenaltyPercent above — re-derives the full scale from the combined
+    // Size PROPERTY (bonus * penalty) every call rather than incrementally adjusting the transform, so this
+    // stays correct no matter how many size augments of either kind have been applied.
+    private void RecomputeSizeTransform()
+    {
+        float effectiveSize = Size;
+        transform.localScale = Vector3.one * effectiveSize;
 
         // Counter-scales against each child's own ORIGINAL authored scale (cached in Awake()), not a
         // hardcoded Vector3.one — see _unscaledSizeChildrenOriginalScales' own doc comment for the bug this
@@ -3502,7 +3590,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         {
             var child = unscaledSizeChildren[i];
             if (child != null)
-                child.localScale = _unscaledSizeChildrenOriginalScales[i] / currentState.bonusSizePercent;
+                child.localScale = _unscaledSizeChildrenOriginalScales[i] / effectiveSize;
         }
     }
 

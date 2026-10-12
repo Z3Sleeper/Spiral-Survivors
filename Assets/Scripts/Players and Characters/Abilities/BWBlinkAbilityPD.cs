@@ -268,12 +268,11 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         if (!IsReady) return;
 
         // Fired at the OLD position, before anything moves — see class doc comment for why Started/Ended
-        // straddle the teleport instead of both firing together.
+        // straddle the teleport instead of both firing together. Also what DashEffectDoubleTriggerAugment
+        // listens to now (2026-10-10, replaces the removed NotifyRealDashStarted/RealDashEnded pair) — see
+        // PlayerControllerPD._onDashMovementEnded's own field comment.
         _controller?.NotifyDashStarted();
         _controller?.NotifyDashMovementStarted();
-        // Counts as a genuine dash-like trigger for DashEffectDoubleTriggerAugment too (2026-09-03) — see
-        // PlayerControllerPD._onRealDashStarted's own field comment.
-        _controller?.NotifyRealDashStarted();
 
         // See class doc comment for why this is currentOrigin (the blades' LIVE position), not
         // _bladeDance.currentState.targetPosition (their final resting point).
@@ -349,10 +348,10 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
         // previously causing a visible "blades chasing the player" shimmy instead of an instant snap.
         _bladeDance.RecallInstantly(blinkTarget);
 
-        // Fired at the NEW (blinked-to) position — see class doc comment.
+        // Fired at the NEW (blinked-to) position — see class doc comment. interrupted: false — an instant
+        // teleport has nothing mid-flight to interrupt.
         _controller?.NotifyDashEnded();
-        _controller?.NotifyDashMovementEnded();
-        _controller?.NotifyRealDashEnded();
+        _controller?.NotifyDashMovementEnded(false);
 
         ApplyBuffAndCooldown();
     }
@@ -416,12 +415,14 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     // under their own power (natural Return-phase completion ONLY — that call site deliberately never
     // reaches here from the death-forced end, since there's no point buffing a caster who's already dead).
     // Grants Blink's usual Move Speed buff/duration/cooldown/Ability Started notification exactly as if it
-    // had really been cast, and still fires DashStarted/DashEnded (so DashExplosionAugment/DashHealAugment
-    // etc. still trigger off an auto-cast Blink same as a manual one) — but back to back, with no teleport
-    // straddled in between, since there's nowhere left to teleport TO (the blades already got there on
-    // their own) and so nothing for Started/Ended to meaningfully bracket. Every OTHER teleport-specific
-    // side effect (position snap, invincibility grace, RecallInstantly) is still skipped for the same
-    // reason. Only gated on cooldown, deliberately NOT the full IsReady (which also requires
+    // had really been cast. Deliberately does NOT fire DashStarted/DashEnded, DashMovementStarted/
+    // DashMovementEnded, or RealDashStarted/RealDashEnded (2026-10-10, all six removed — was "back to back,
+    // no teleport straddled in between," since there's nowhere left to teleport TO; on review this wasn't
+    // good enough reasoning to justify DashExplosionAugment/DashHealAugment/DashEffectDoubleTriggerAugment
+    // etc. still paying out for an auto-cast that never actually dashed) — all six now only ever fire from
+    // a REAL Blink cast (Activate(), above). Position snap, invincibility grace, and RecallInstantly were
+    // already skipped here for the same "nothing to teleport to" reason and remain skipped. Only gated on
+    // cooldown, deliberately NOT the full IsReady (which also requires
     // _bladeDance.IsActive) — that gate exists so a MANUAL cast can't teleport into a dance that isn't
     // running; this only ever fires the instant the dance STOPS running, so that same check would
     // incorrectly fail every single time here. Also deliberately NOT gated on !currentState.isActive
@@ -437,12 +438,6 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     public void AutoCastOnDanceReturn()
     {
         if (_stats == null || _stats.IsDead || currentState.charges <= 0) return;
-        _controller?.NotifyDashStarted();
-        _controller?.NotifyDashMovementStarted();
-        _controller?.NotifyRealDashStarted();
-        _controller?.NotifyDashEnded();
-        _controller?.NotifyDashMovementEnded();
-        _controller?.NotifyRealDashEnded();
         ApplyBuffAndCooldown();
     }
 

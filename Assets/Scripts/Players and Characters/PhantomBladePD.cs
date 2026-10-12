@@ -183,7 +183,7 @@ public class PhantomBladePD : PredictedIdentity<PhantomBladePD.State>
         // its whole flight, not a fresh per-hit roll. isHighroll reported here (2026-09-14, was hardcoded
         // false — the blade's damage roll could already highroll and inflate _damage, this just makes that
         // now VISIBLE to the player/downstream listeners too, matching isCrit's own already-correct behavior).
-        enemy.TakeDamage(_damage, _isCrit, _owner.owner ?? default, _isHighroll);
+        enemy.TakeDamage(_damage, _isCrit, _owner.owner ?? default, _isHighroll, _owner.executeThreshold, _owner.critExecuteThreshold);
         _owner.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = _damage, isCrit = _isCrit, isHighroll = _isHighroll, attacker = _owner, isPriority = true });
 
         // Only fires if some Phantom Blade augment actually enabled it — most blades never touch the OnHit

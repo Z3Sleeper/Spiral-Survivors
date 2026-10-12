@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: adf38722ec085b54a9ff0ac23def2a78, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ExeBigAxeBleedAugment
-  bleedPerSecondPercent: 0.1
+  bleedPerSecondPercent: 0.25
   bleedDuration: 3

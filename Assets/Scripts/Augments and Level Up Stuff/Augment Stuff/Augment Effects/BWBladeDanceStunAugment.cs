@@ -13,6 +13,20 @@ using PurrNet.Prediction;
 // stunDuration as the paired-stun amount), then the plain Stun() call unconditionally after — ApplyStun's
 // own Mathf.Max semantics mean the two can never fight each other, whichever produces the longer duration
 // simply wins. Listens to the exactly-once _onStrike (not _onHit), same reasoning as the Slow augment.
+//
+// Also refills energyRefillPercent Max Energy when THIS augment's own hit lands the interrupt (2026-10-10,
+// buff pass — this and BWBladeDanceDurationAugment were both underperforming). Deliberately checked inside
+// the SAME `if (enemy.Interrupt())` branch below rather than via the generic SI/FSI broadcast every other
+// interrupt-reactive augment in this codebase listens to — this needs to know the interrupt came from THIS
+// hit specifically (not just "an interrupt happened somewhere, from any source"), and Interrupt()'s own
+// return value already tells us exactly that with no extra bookkeeping.
+//
+// Synergy point with BWBladeDanceDurationAugment falls out for free, no extra code needed: GainEnergy
+// already multiplies by CharacterStatsPD.bonusEnergyGainPercent internally, and that augment's own
+// +100% energy generation IS bonusEnergyGainPercent for the whole dance window (via AddEnergyGainPercent) —
+// so with both picked, GainEnergy(MaxEnergy * energyRefillPercent) already resolves to a full 100% refill
+// on its own. A manual "is the other augment also picked" check here would just be duplicating a multiply
+// that's already happening.
 public class BWBladeDanceStunAugment : AugmentEffectPD<BWBladeDanceStunAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -29,6 +43,8 @@ public class BWBladeDanceStunAugment : AugmentEffectPD<BWBladeDanceStunAugment.S
     // Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection can resolve
     // {stunDuration} directly as a description token; only public fields/properties/methods are checked.
     public float stunDuration = 1f;
+    // "Percent" suffix at the END so AugmentDescriptionFormatter's auto-*100 formatting fires.
+    public float energyRefillPercent = 0.5f;
 
     // Cached once — see KnightBerserkHealAugment._berserk's own identical caching pattern, avoids a fresh
     // GetComponent call on every single strike (this event can fire very often in a busy fight).
@@ -75,7 +91,14 @@ public class BWBladeDanceStunAugment : AugmentEffectPD<BWBladeDanceStunAugment.S
         // unconditionally after — see class doc comment for why the ordering doesn't actually matter here
         // (Mathf.Max combines them regardless) but matches the established convention anyway.
         if (enemy.Interrupt())
+        {
             Stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast, stunDuration);
+
+            // Energy refill — see class doc comment for why this is gated on THIS hit's own Interrupt()
+            // success specifically, and for why the BWBladeDanceDurationAugment synergy needs no extra code
+            // here (GainEnergy's own bonusEnergyGainPercent multiply already handles it).
+            Stats.GainEnergy(Stats.MaxEnergy * energyRefillPercent);
+        }
         enemy.Stun(stunDuration);
     }
 }

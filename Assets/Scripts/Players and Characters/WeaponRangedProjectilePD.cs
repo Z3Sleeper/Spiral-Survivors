@@ -134,9 +134,9 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         // the firing weapon's un-lifted, ground-level position (WeaponRangedPD.Fire()'s `transform.position`
         // reads the weapon root, not its own visually-lifted model), so the visual mesh needs the same
         // compensating offset to render at the same mid-body height the bow model appears to fire from. No
-        // explicit * bonusSizePercent here (deliberately — "no size mods", matching ApplyVisualAdjustments'
+        // explicit * stats.Size here (deliberately — "no size mods", matching ApplyVisualAdjustments'
         // own reasoning): this is a LOCAL offset, and Launch() below already scales this projectile's own
-        // root by stats.bonusSizePercent, so Unity's ordinary parent-child scale inheritance applies that
+        // root by stats.Size, so Unity's ordinary parent-child scale inheritance applies that
         // multiply for free. Set once here, not in Launch() — this value never changes per-launch (no
         // per-shot state it could depend on), and Awake() is guaranteed to fire exactly once per real
         // GameObject instance even under this projectile's own SetActive-based pooling (see this method's
@@ -155,7 +155,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // are captured once here (not re-read live from stats later), so a level-up mid-flight can't
     // retroactively change an already-loosed shot's damage. Size scaling and color application port
     // directly from the old WeaponBow.Fire() — but scale is set as an absolute multiple of _baseScale, not
-    // multiplied onto the current value, since a pooled instance's current scale is whatever bonusSizePercent
+    // multiplied onto the current value, since a pooled instance's current scale is whatever stats.Size
     // left it at during its PREVIOUS life; `*=` would compound further every reuse instead of resetting.
     // _hitTargets is a plain field too (not part of predicted State, so GetInitialState() can't reset it) —
     // cleared here so a recycled instance doesn't inherit a previous life's hit history.
@@ -195,7 +195,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         currentState.homingActive        = !homingTargetId.Equals(default);
 
         transform.rotation    = Quaternion.LookRotation(direction);
-        transform.localScale  = _baseScale * stats.bonusSizePercent;
+        transform.localScale  = _baseScale * stats.Size;
 
         _hitTargets.Clear();
         _struckAllies.Clear();
@@ -345,7 +345,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         _stats.NotifyHit(hitData);
         _stats.NotifyStrike(hitData);
         if (isCrit) _stats.NotifyCritStrike(hitData);
-        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll);
+        enemy.TakeDamage(damage, isCrit, _stats.owner ?? default, isHighroll, _stats.executeThreshold, _stats.critExecuteThreshold);
         Vector3 knockDir = (enemy.transform.position - transform.position).normalized;
         enemy.AddKnockbackVelocity(knockDir * _knockback * state.currentOnHitPower);
         _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });

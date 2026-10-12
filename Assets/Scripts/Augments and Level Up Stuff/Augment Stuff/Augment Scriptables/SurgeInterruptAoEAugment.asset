@@ -19,7 +19,7 @@ MonoBehaviour:
     radius for <color=#FFA000>{pairedStunDuration} seconds</color>.
 
     <color=#FFA000>On
-    Interrupt:</color> Gain <color=#FFFF00>+{maxEnergyPerStack} <color=#9664FF>Stacking</color>
+    Any Interrupt:</color> Gain <color=#FFFF00>+{maxEnergyPerStack} <color=#9664FF>Stacking</color>
     Max Energy</color>.
 
     <color=#FFBE50>Current Bonus: <color=#FFFF00>+{LiveStackedMaxEnergy}
@@ -36,5 +36,6 @@ MonoBehaviour:
   - AoE Effect
   - Stacking
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

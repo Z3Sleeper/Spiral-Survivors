@@ -106,6 +106,17 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // ability now and has nothing of its own worth describing.
     [HideInInspector] public float attackSpeedPercentPerHaste = 0f;
 
+    // Augment-owned (2026-10-10, BWBladeDanceDurationAugment) — [HideInInspector]/0f (true no-op) default,
+    // same Pattern B shape as attackSpeedPercentPerHaste above. Additive onto CharacterStatsPD's own
+    // bonusEnergyGainPercent (AddEnergyGainPercent) for the whole Outbound/Hold/Return window — granted once
+    // at cast (fresh-cast branch only, same as the attack-speed grant) and reversed with the identical
+    // snapshotted value in EndDance(). Doubles as this family's own "is the Duration augment also picked"
+    // signal for BWBladeDanceStunAugment's synergy point — only ever set away from 0 by that one augment, so
+    // reading it directly is a cross-augment-via-the-ability check, same "shared knob lives on the ability,
+    // not a GetComponent<OtherAugment> reference" convention this codebase already uses for other
+    // within-one-ability-family synergies (e.g. ExeBigAxeAbilityPD.buffStrengthMultiplier).
+    [HideInInspector] public float energyGenerationBonusPercent = 0f;
+
     private CharacterStatsPD   _stats;
     private WeaponManagerPD    _weaponManager;
     private PlayerControllerPD _controller;
@@ -115,6 +126,8 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
 
     // Snapshotted at cast time — see attackSpeedPercentPerHaste's own doc comment for why.
     private float _appliedAttackSpeedPercent;
+    // Snapshotted at cast time — see energyGenerationBonusPercent's own doc comment for why.
+    private float _appliedEnergyGenerationPercent;
 
     protected override State GetInitialState() => default;
 
@@ -320,6 +333,11 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         _appliedAttackSpeedPercent = _stats.EffectiveAbilityHaste * attackSpeedPercentPerHaste;
         _stats.AddAttackSpeedFlat(_appliedAttackSpeedPercent);
 
+        // 0f (no-op) until BWBladeDanceDurationAugment bumps energyGenerationBonusPercent — see that field's
+        // own doc comment for the full reasoning.
+        _appliedEnergyGenerationPercent = energyGenerationBonusPercent;
+        _stats.AddEnergyGainPercent(_appliedEnergyGenerationPercent);
+
         currentState.targetPosition = origin + cursorDir * castDistance;
         currentState.currentOrigin  = origin;
         SetPhase(ref currentState, Phase.Outbound);
@@ -453,6 +471,7 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
         SetPhase(ref state, Phase.Idle);
         if (activeSurgeBlock) _stats?.RemoveSurgeBlock();
         _stats?.AddAttackSpeedFlat(-_appliedAttackSpeedPercent);
+        _stats?.AddEnergyGainPercent(-_appliedEnergyGenerationPercent);
         _stats?.SetOrbitOriginOverride(null);
         if (cooldown > 0f) _stats?.NotifyAbilityEnd(this);
     }

@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4bc1586087cb53840b9c84868858540b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ExeAxeThowKnockbackAugment
-  knockbackBonusPercent: 5
+  knockbackMultiplierPercent: 2
   damageBonusPercent: 0.25

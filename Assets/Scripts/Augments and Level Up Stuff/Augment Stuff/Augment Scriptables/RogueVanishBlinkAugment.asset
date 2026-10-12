@@ -17,10 +17,10 @@ MonoBehaviour:
 
     <color=#FFFFFF>Vanish</color>
     now <color=#00FFFF>Blinks</color> to your cursor and its cooldown is affected
-    by <color=#00FFFF>Dash Haste</color>.
+    by <color=#00FFFF>{dashHasteToCooldownPercent}% Dash Haste</color>.
 
-    <color=#FFBE50>Max cast range is Dash
-    distance</color>'
+    <color=#FFBE50>Max
+    cast range is Dash distance</color>'
   icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}
   effectPrefab: {fileID: 1466034766169346201, guid: cb78ad74a03fe554fab2deed72f82300, type: 3}
   multiplayerOnly: 0

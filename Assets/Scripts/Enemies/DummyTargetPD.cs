@@ -39,6 +39,63 @@ using UnityEngine;
 public abstract class DummyTargetPD<TState> : EnemyBasePD<TState>
     where TState : struct, IPredictedData<TState>
 {
+    // Spawn-in rise (2026-10-10) — a Spire looks like it's lifting up out of the ground on spawn. Driven
+    // through the YAxisMovers wrapper every enemy prefab already has (everything meant to visually rise
+    // lives under it), never EnemyBasePD.Visuals directly (that's continuously re-synced toward the
+    // tick-accurate physics root every render frame by PredictedTransform, so a cosmetic offset written
+    // there would just get fought/overwritten) and never the physics root itself (that drives the real
+    // hurtbox — lifting it would move the actual hit-detection zone, not just the visual). Same wrapper/
+    // reasoning as LeaperGloomPD's own _yAxisMovers arc-bob.
+    [Header("Visuals")]
+    [SerializeField] private Transform _yAxisMovers;
+
+    private Vector3 _yAxisMoversRestPosition;
+    private bool    _yAxisMoversRestPositionCaptured;
+    private float   _spawnLiftTimer;
+
+    // Fixed, un-augmentable visual flourish — plain consts, not Inspector fields.
+    private const float SpawnLiftStartOffsetY = -2f;
+    private const float SpawnLiftDuration = 2f;
+
+    protected override void LateAwake()
+    {
+        base.LateAwake();
+
+        // Guarded to a single real capture per instance, same reasoning as LeaperGloomPD's own identical
+        // _yAxisMoversRestPosition capture — an unconditional recapture here could bake in a mid-lift
+        // offset as the new "rest" position if this instance ever gets pooled/reused while still rising.
+        if (!_yAxisMoversRestPositionCaptured && _yAxisMovers != null)
+        {
+            _yAxisMoversRestPosition = _yAxisMovers.localPosition;
+            _yAxisMoversRestPositionCaptured = true;
+        }
+
+        // LateAwake() re-fires on every real spawn/pooled reuse, not just the first — this reliably restarts
+        // the rise animation each time a Spire is (re)spawned, snapping straight to the "buried" offset so
+        // there's no one-frame pop at the old resting height before UpdateView's own lerp takes over below.
+        _spawnLiftTimer = 0f;
+        if (_yAxisMovers != null)
+            _yAxisMovers.localPosition = _yAxisMoversRestPosition + new Vector3(0f, SpawnLiftStartOffsetY, 0f);
+    }
+
+    protected override void UpdateView(TState viewState, TState? verified)
+    {
+        base.UpdateView(viewState, verified);
+
+        // Purely cosmetic — plain per-client real-time timer, not PredictedIdentity State. This never
+        // touches the physics root/hurtbox and has zero gameplay effect, so there's no reason to spend
+        // State bandwidth/determinism machinery on it, unlike LeaperGloomPD's own bob (which rides on a
+        // real attack-timing State field that already exists for gameplay reasons regardless).
+        if (_yAxisMovers != null && _spawnLiftTimer < SpawnLiftDuration)
+        {
+            bool paused = PausePD.instance != null && PausePD.instance.IsPaused;
+            if (!paused) _spawnLiftTimer += Time.deltaTime;
+
+            float t = Mathf.Clamp01(_spawnLiftTimer / SpawnLiftDuration);
+            _yAxisMovers.localPosition = _yAxisMoversRestPosition + new Vector3(0f, Mathf.Lerp(SpawnLiftStartOffsetY, 0f, t), 0f);
+        }
+    }
+
     protected override void OnAwake()
     {
         // Forced here, not left as a per-prefab Inspector toggle — "completely stationary, can't be pushed"

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: ExeAxeThowKnockbackAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FF5000>Axe Throw: Power Toss</color>'
-  description: <color=#FF5000>Axe Throw</color> gains <color=#FFA000>+{knockbackBonusPercent}%
+  description: <color=#FF5000>Axe Throw</color> gains <color=#FFA000>+{knockbackMultiplierPercent}%
     Knockback</color> and deals <color=#FF5000>+{damageBonusPercent}% damage</color>.
   icon: {fileID: 21300000, guid: e266ffe6eab190e499110fa27e0ede9f, type: 3}
   effectPrefab: {fileID: 112697139769288748, guid: 0cfea35fa1bde97439412d31dcbeeb93, type: 3}

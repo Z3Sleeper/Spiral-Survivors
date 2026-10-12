@@ -44,4 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 03f5e34cb1adb0f42a2a1e152404e79f, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BWBladeDanceStunAugment
-  stunDuration: 1
+  stunDuration: 2

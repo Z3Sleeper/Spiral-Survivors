@@ -13,8 +13,13 @@ MonoBehaviour:
   m_Name: LuckRolledLevelUpStatsAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#00FF87>Lucky Picks</color>
-  description: '<color=#FFA000>Level Up Stats</color> are <color=#00FF87>Luck Rolled</color>
-    at half effectiveness and can <color=#00FF87>Highroll</color> for <color=#00FF87>5%
+  description: '<color=#FFA000>+1 Level Up Option</color>
+
+    <color=#00FF87>+{highrollChanceBonusPercent}%
+    Base Highroll Chance</color>
+
+    <color=#FFA000>Level Up Stats</color> are <color=#00FF87>Luck
+    Rolled</color> and can <color=#00FF87>Highroll</color> for <color=#00FF87>{highrollBonusScalePercent}%
     Highroll Bonus</color>.
 
     <color=#FFBE50><i>Roll results will show up above
@@ -29,5 +34,6 @@ MonoBehaviour:
   requiredAugments: []
   tags: []
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

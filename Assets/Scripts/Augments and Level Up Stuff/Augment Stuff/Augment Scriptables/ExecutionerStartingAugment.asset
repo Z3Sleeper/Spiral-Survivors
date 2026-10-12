@@ -14,9 +14,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FF8700>Vortexecutor</color>
   description: '<color=#FF8700>Crits</color> <color=#FFA000>Execute</color> enemies
-    below <color=#FFA000>20% health</color>.
+    below <color=#FFA000>{critExecuteThresholdPercent}% health</color>.
 
-    <color=#FF8700>+10% Crit Chance</color>
+    <color=#FF0050>-{attackSpeedPenaltyPercent}%
+    Total Attack Speed</color>
+
+    <color=#3278FF>+{effectiveWeaponRangeBonusPercent}%
+    Weapon Range</color>
+
+    <color=#FFA000>+{knockbackBonusPercent}% Total Knockback</color>
 
     <color=#FFBE50><i>Executes
     are 20% effective vs Bosses</i></color>'

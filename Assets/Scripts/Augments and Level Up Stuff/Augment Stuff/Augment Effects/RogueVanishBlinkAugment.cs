@@ -12,13 +12,14 @@ using PurrNet.Prediction;
 //
 // Also makes RogueVanishAbilityPD's own cooldown get reduced by Dash Haste, the SAME way Ability Haste
 // already reduces it (2026-10-05, explicit request — "compared to the others it's just a small dash on a
-// long cooldown," this gives it a second haste source to shrink that cooldown with) — see
-// RogueVanishAbilityPD.EffectiveCooldown's own doc comment for the combined formula (the two haste
-// sources add together inside one divide, not two separate divides multiplying together).
+// long cooldown," this gives it a second haste source to shrink that cooldown with), but only counting
+// dashHasteToCooldownPercent of Dash Haste's full value (nerfed 2026-10-08 from a full 1:1 fold-in to 50%,
+// explicit request) — see RogueVanishAbilityPD.EffectiveCooldown's own doc comment for the combined formula
+// (the two haste sources add together inside one divide, not two separate divides multiplying together).
 //
 // Pattern B (see KnightBerserkMoveSpeedAugment's own doc comment) — all three no-op-by-default switches
 // live directly on the ability (RogueVanishAbilityPD.blinkOnCast/invisibilityDurationBonusPercent/
-// dashHasteAffectsCooldown), since the teleport has to happen synchronously inside Activate() itself
+// dashHasteContributionPercent), since the teleport has to happen synchronously inside Activate() itself
 // (mirrors BWBlinkAbilityPD's own instant-teleport block) and the other two only touch formulas owned by
 // this ability (GrantInvisibility's own contribution, EffectiveCooldown). This augment just flips all
 // three in OnApply().
@@ -30,6 +31,11 @@ public class RogueVanishBlinkAugment : AugmentEffectPD<RogueVanishBlinkAugment.S
     // {invisibilityDurationBonusPercent} directly as a description token; only public fields/properties/
     // methods are checked. Still Inspector-serializable either way.
     public float invisibilityDurationBonusPercent = 0.5f;
+    // "Percent" suffix at the END (not buried mid-name like dashHastePercentToCooldown would've been) so
+    // AugmentDescriptionFormatter's auto-*100 formatting actually fires. 0.5 = only 50% of Dash Haste counts
+    // toward this ability's cooldown reduction — nerfed 2026-10-08 from a full 1:1 fold-in (see
+    // RogueVanishAbilityPD.dashHasteContributionPercent's own doc comment).
+    public float dashHasteToCooldownPercent = 0.5f;
 
     protected override void OnApply()
     {
@@ -40,6 +46,6 @@ public class RogueVanishBlinkAugment : AugmentEffectPD<RogueVanishBlinkAugment.S
         if (vanish == null) return;
         vanish.blinkOnCast = true;
         vanish.invisibilityDurationBonusPercent += invisibilityDurationBonusPercent;
-        vanish.dashHasteAffectsCooldown = true;
+        vanish.dashHasteContributionPercent = dashHasteToCooldownPercent;
     }
 }

@@ -81,9 +81,9 @@ public class KnightBuffStunAbilityPD : PredictedIdentity<KnightBuffStunAbilityPD
         // directly.
         public Vector3 lastAoeCastPosition;
         public float lastAoeRadius;
-        // Same time-sensitivity as lastAoeRadius above — Stats.Size (bonusSizePercent) reflects this
-        // ability's own +50% Size grant while it's still applied; reading it later in UpdateView (after
-        // EndBuff has reverted it) would shrink the VFX's height lift back down incorrectly.
+        // Same time-sensitivity as lastAoeRadius above — Stats.Size reflects this ability's own +50% Size
+        // grant while it's still applied; reading it later in UpdateView (after EndBuff has reverted it)
+        // would shrink the VFX's height lift back down incorrectly.
         public float lastAoeCasterSize;
         // Monotonic, never reset (unlike aoeTriggered below) — incremented once per ACTUAL TriggerAoE() call,
         // regardless of how many times that is per cast. UpdateView compares this against its own
@@ -575,7 +575,7 @@ public class KnightBuffStunAbilityPD : PredictedIdentity<KnightBuffStunAbilityPD
         if (state.activeTimer > 0f && !forceEndOnDeath) return;
 
         // Fired BEFORE EndBuff, deliberately — TriggerAoE's own radius reads Stats.RangeScalingAoEBase, which
-        // now factors in bonusSizePercent (see that property's own doc comment), so the AoE needs to go off
+        // now factors in Size (see that property's own doc comment), so the AoE needs to go off
         // while the Size buff is still actually applied to get its full radius. Triggering it after EndBuff
         // would silently shrink the natural-end AoE back down before it even fires (2026-08-23 fix — the
         // recast path was never affected, since a recast always fires TriggerAoE while the buff is still

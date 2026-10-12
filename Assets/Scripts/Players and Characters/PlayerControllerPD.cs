@@ -85,18 +85,17 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // (DashEffectDoubleTriggerAugment) can retrigger the REWARD pair without also re-opening a stateful
     // movement-window listener's window (DashThroughInterruptAugment's sweep — see its own doc comment).
     private PredictedEvent _onDashMovementStarted;
-    private PredictedEvent _onDashMovementEnded;
-    // Fires ONLY from StartDash()/EndDash() themselves (2026-09-03) — never from NotifyDashStarted()/
-    // NotifyDashEnded(), which both ability-driven dash-like movement (RogueSpinAbilityPD's leap,
-    // BWBlinkAbilityPD) AND DashEffectDoubleTriggerAugment's own delayed retrigger call into. That augment
-    // used to listen to the very _onDashStarted/_onDashEnded pair its own retrigger fires, which both
-    // caused an infinite self-retrigger loop (fixed with a reentrancy guard) AND meant a quick RogueSpin/
-    // BWBlink cast within the retrigger window could stomp/drop a real dash's own pending retrigger (the
-    // guard didn't fix that part). This pair exists so that augment can listen to "a genuine real dash
-    // started/ended" specifically, completely decoupled from anything NotifyDashStarted/NotifyDashEnded
-    // ever fires into — eliminates both problems at the root instead of guarding around them.
-    private PredictedEvent _onRealDashStarted;
-    private PredictedEvent _onRealDashEnded;
+    // Carries whether this specific end was an interrupt (2026-10-10, replaces the old separate
+    // _onRealDashStarted/_onRealDashEnded pair) — DashEffectDoubleTriggerAugment was the ONLY listener of
+    // that pair anywhere in this codebase, and it only ever needed it to distinguish "a genuine real dash"
+    // from its own retrigger AND to skip retriggering an interrupted close. Both are solvable off THIS event
+    // directly: DashMovementStarted never had a self-loop risk in the first place (DoubleTrigger's own
+    // retrigger never fires it, only the plain Started/Ended pair), and this payload lets DoubleTrigger skip
+    // on interrupted == true instead of needing a whole separate narrower event to get that distinction.
+    // Every other listener (CharacterStatsPD.OnDashMovementEnded, DashThroughInterruptAugment/
+    // DashThroughHPScaledDamageAugment/PhantomBladeOnMovementAugment's own sweep-window closers) still just
+    // wants to know the window closed regardless of why, so they simply ignore the new parameter.
+    private PredictedEvent<bool> _onDashMovementEnded;
 
     public void AddDashStartedListener(System.Action listener) => _onDashStarted.AddListener(listener);
     public void RemoveDashStartedListener(System.Action listener) => _onDashStarted.RemoveListener(listener);
@@ -108,12 +107,8 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     public void RemoveSpecialMovementInterruptedListener(System.Action listener) => _onSpecialMovementInterrupted.RemoveListener(listener);
     public void AddDashMovementStartedListener(System.Action listener) => _onDashMovementStarted.AddListener(listener);
     public void RemoveDashMovementStartedListener(System.Action listener) => _onDashMovementStarted.RemoveListener(listener);
-    public void AddDashMovementEndedListener(System.Action listener) => _onDashMovementEnded.AddListener(listener);
-    public void RemoveDashMovementEndedListener(System.Action listener) => _onDashMovementEnded.RemoveListener(listener);
-    public void AddRealDashStartedListener(System.Action listener) => _onRealDashStarted.AddListener(listener);
-    public void RemoveRealDashStartedListener(System.Action listener) => _onRealDashStarted.RemoveListener(listener);
-    public void AddRealDashEndedListener(System.Action listener) => _onRealDashEnded.AddListener(listener);
-    public void RemoveRealDashEndedListener(System.Action listener) => _onRealDashEnded.RemoveListener(listener);
+    public void AddDashMovementEndedListener(System.Action<bool> listener) => _onDashMovementEnded.AddListener(listener);
+    public void RemoveDashMovementEndedListener(System.Action<bool> listener) => _onDashMovementEnded.RemoveListener(listener);
 
     // Lets an ability that functions like a dash (e.g. RogueSpinAbilityPD's leap) hook into the same
     // OnDashStarted/OnDashEnded listeners a real dash already fires (DashExplosionAugment, DashHealAugment,
@@ -127,14 +122,11 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // those for an ability-driven movement (RogueSpinAbilityPD, BWBlinkAbilityPD) fires these alongside them,
     // matching what the real dash's own StartDash/EndDash do automatically (see their own call sites).
     public void NotifyDashMovementStarted() => _onDashMovementStarted.Invoke();
-    public void NotifyDashMovementEnded() => _onDashMovementEnded.Invoke();
-    // Same "caller decides" contract — every ability-driven dash-like movement call site fires this
-    // alongside its own NotifyDashStarted/NotifyDashEnded (2026-09-03, RogueSpinAbilityPD/BWBlinkAbilityPD)
-    // so DashEffectDoubleTriggerAugment still treats an ability-driven dash-like action as a genuine trigger
-    // worth retriggering — see _onRealDashStarted's own field comment for why this is a separate pair
-    // rather than that augment listening to _onDashStarted/_onDashEnded directly.
-    public void NotifyRealDashStarted() => _onRealDashStarted.Invoke();
-    public void NotifyRealDashEnded() => _onRealDashEnded.Invoke();
+    // interrupted: see _onDashMovementEnded's own field comment. Every ability-driven teleport (BWBlink/
+    // RogueVanish) passes false — nothing mid-flight to interrupt, it's instant. The death-forced-halt path
+    // passes true (2026-10-10, explicit design) — not a real Interrupt() call, but it behaves like one for
+    // this purpose, and DoubleTrigger shouldn't retrigger a dash's reward off a caster that's already dead.
+    public void NotifyDashMovementEnded(bool interrupted) => _onDashMovementEnded.Invoke(interrupted);
 
     // Grants back one dash charge, clamped to the character's own current max — e.g.
     // DashThroughInterruptAugment refunding a charge on a successful interrupt. Doesn't touch
@@ -373,9 +365,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _onDashInterrupted = new PredictedEvent(predictionManager, this);
         _onSpecialMovementInterrupted = new PredictedEvent(predictionManager, this);
         _onDashMovementStarted = new PredictedEvent(predictionManager, this);
-        _onDashMovementEnded   = new PredictedEvent(predictionManager, this);
-        _onRealDashStarted = new PredictedEvent(predictionManager, this);
-        _onRealDashEnded   = new PredictedEvent(predictionManager, this);
+        _onDashMovementEnded   = new PredictedEvent<bool>(predictionManager, this);
 
         if (!isOwner) return;
         _input = new InputSystem_Actions();
@@ -656,7 +646,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
                 ResolveTeleportSafeLanding(state.dashStartPosition, state.dashVelocity);
                 state.isDashing = false;
                 _onDashEnded.Invoke();
-                _onDashMovementEnded.Invoke();
+                // true (2026-10-10, explicit design) — not a real Interrupt() call, but a dash cut short by
+                // the caster's own death behaves like one for DoubleTrigger's purposes: it shouldn't schedule
+                // a retrigger off a corpse's dash. See _onDashMovementEnded's own field comment.
+                _onDashMovementEnded.Invoke(true);
             }
             if (state.isSpecialMoving)
                 ResolveTeleportSafeLanding(state.specialMoveStartPosition, state.specialVelocity);
@@ -910,7 +903,6 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _rigidbody.velocity = Vector3.zero;
         _onDashStarted.Invoke();
         _onDashMovementStarted.Invoke();
-        _onRealDashStarted.Invoke();
     }
 
     // interrupted: false for the natural end (Simulate()'s own dashTimer<=0 check) — fires _onDashEnded as
@@ -1159,10 +1151,9 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         else
         {
             _onDashEnded.Invoke();
-            _onRealDashEnded.Invoke();
         }
         // Movement window closes regardless of why — see _onDashMovementEnded's own field comment.
-        _onDashMovementEnded.Invoke();
+        _onDashMovementEnded.Invoke(interrupted);
     }
 
     // ── Special movement helpers ─────────────────────────────────────────────

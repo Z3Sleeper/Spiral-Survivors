@@ -62,11 +62,11 @@ public class PlayerRangeIndicatorPD : MonoBehaviour
         // Compensate for the player's own Size scaling (AddSizePercent scales the root transform directly,
         // and this object is parented under that root) so the ring's WORLD-space radius always matches the
         // real reach exactly, regardless of any Size augments — otherwise the ring would balloon/shrink
-        // alongside unrelated Size bonuses instead of purely tracking weapon reach. Reads stats.
-        // bonusSizePercent directly rather than transform.parent.lossyScale.x — numerically identical since
-        // this object is a direct child of the player root (see ExeAxeThrowAbilityPD.spawnOffsetBase's own
-        // doc comment for the general reasoning), and stats is already right here.
-        float parentScale = stats.bonusSizePercent > 0f ? stats.bonusSizePercent : 1f;
+        // alongside unrelated Size bonuses instead of purely tracking weapon reach. Reads stats.Size directly
+        // rather than transform.parent.lossyScale.x — numerically identical since this object is a direct
+        // child of the player root (see ExeAxeThrowAbilityPD.spawnOffsetBase's own doc comment for the
+        // general reasoning), and stats is already right here.
+        float parentScale = stats.Size > 0f ? stats.Size : 1f;
         float shownRadius = radius / parentScale;
 
         // Only actually redraws when the radius has genuinely changed (a fluctuating weapon reach — augments,

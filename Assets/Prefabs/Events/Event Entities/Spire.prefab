@@ -537,6 +537,7 @@ MonoBehaviour:
   preferredRange: 0
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 5
   xpValue: 0
   pointsValue: 0
@@ -554,6 +555,7 @@ MonoBehaviour:
   - {fileID: 4666779549717083259}
   - {fileID: 6298340956023713506}
   invulnerableShell: {fileID: 484935195704614788}
+  _yAxisMovers: {fileID: 6705824777853674429}
 --- !u!54 &-6973549993052189348
 Rigidbody:
   m_ObjectHideFlags: 0
