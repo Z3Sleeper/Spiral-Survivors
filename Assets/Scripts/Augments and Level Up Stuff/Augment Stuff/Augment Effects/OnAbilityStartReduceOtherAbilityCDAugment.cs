@@ -15,7 +15,7 @@ using UnityEngine;
 // ability, or one mid-active-window with its own cooldown still frozen, is a harmless no-op — no extra check
 // needed here first.
 //
-// Not a damage/restore amount, so — matching OnStrikeReduceAbilityCDAugment's own identical reasoning — this
+// Not a damage/restore amount, so — matching OnHitReduceAbilityCDAugment's own identical reasoning — this
 // deliberately does NOT roll luck variance.
 public class OnAbilityStartReduceOtherAbilityCDAugment : AugmentEffectPD<OnAbilityStartReduceOtherAbilityCDAugment.State>
 {
@@ -24,7 +24,7 @@ public class OnAbilityStartReduceOtherAbilityCDAugment : AugmentEffectPD<OnAbili
     [SerializeField] private float reductionPercent = 0.3f;
 
     // Cached once — Ability1/Ability2 are permanent one-per-character fixtures for the whole match, same
-    // convention OnStrikeReduceAbilityCDAugment's own _abilities cache already uses.
+    // convention OnHitReduceAbilityCDAugment's own _abilities cache already uses.
     private IAbilityPD[] _abilities;
 
     // No single number to preview (the actual reduction depends on which ability was cast, applied to

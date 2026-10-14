@@ -147,7 +147,7 @@ MonoBehaviour:
   slot: 1
   tags: []
   activeSurgeBlock: 0
-  duration: 3
+  duration: 2
   moveSpeedPercent: 0.3
   blinkOnCast: 0
   invisibilityDurationBonusPercent: 0

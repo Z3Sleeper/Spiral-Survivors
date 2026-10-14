@@ -45,3 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RogueVanishBlinkAugment
   invisibilityDurationBonusPercent: 0.5
+  dashHasteToCooldownPercent: 0.5

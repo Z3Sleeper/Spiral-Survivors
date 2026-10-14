@@ -49,4 +49,4 @@ MonoBehaviour:
   healPerSecondFlat: 2
   healPerSecondRegenPercent: 2
   tickInterval: 0.25
-  invisibilityDurationBonusPercent: 0.5
+  durationBonusPercent: 0.25

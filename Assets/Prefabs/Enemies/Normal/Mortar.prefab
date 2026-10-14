@@ -443,7 +443,7 @@ MonoBehaviour:
   moveSpeed: 8
   attackSpeed: 1
   maxHealth: 75
-  preferredRange: 8
+  preferredRange: 6
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
   canStrafe: 1
@@ -462,7 +462,7 @@ MonoBehaviour:
   - {fileID: 8674883384031962313}
   - {fileID: 8591425792625447302}
   invulnerableShell: {fileID: 5797343280123201819}
-  minAttackRange: 8
+  minAttackRange: 3
   windupDuration: 1
   fireDuration: 0.1
   betweenStrikePause: 0.25

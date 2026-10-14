@@ -45,3 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BWBladeDanceDurationAugment
   durationBonusPercent: 1
+  energyGenerationBonusPercent: 1

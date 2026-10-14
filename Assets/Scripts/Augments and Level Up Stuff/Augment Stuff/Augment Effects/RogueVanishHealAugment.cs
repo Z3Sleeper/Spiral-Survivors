@@ -11,10 +11,13 @@ using UnityEngine;
 //     fired directly from the shared CharacterStatsPD._onAbilityStart event (AddAbilityStartListener,
 //     filtered by ability.Identity == RogueVanish), same safety class as RogueSpinHealShieldAugment's own
 //     identical one-shot (PredictedEvent handlers already guarantee exactly-once-per-real-event firing).
-//  2. While RogueVanishAbilityPD.IsActive specifically (its own 3s active window — NOT the possibly-LONGER
-//     invisibility duration RogueVanishBlinkAugment/RogueVanishHighrollAugment's own
-//     invisibilityDurationBonusPercent can extend; "during the ability active time" per Stuart's own
-//     framing): healPerSecondFlat + BonusHealthRegen * healPerSecondRegenPercent (5 + 500% default) PER
+//  2. While RogueVanishAbilityPD.IsActive specifically (its own active window — 2026-10-14 rework: this is
+//     now the SAME number durationBonusPercent extends, since that field was folded directly into the
+//     ability's real duration instead of only scaling the invisibility contribution separately — see
+//     durationBonusPercent's own doc comment on RogueVanishAbilityPD. So this heal-over-time genuinely runs
+//     longer too when Blink/Highroll/this augment's own duration bonus are picked, not just the original 3s
+//     baseline — explicit, intended consequence of unifying the number, not a bug): healPerSecondFlat +
+//     BonusHealthRegen * healPerSecondRegenPercent (5 + 500% default) PER
 //     SECOND, applied in discrete tickInterval (0.25s) chunks — each chunk is 1/4 of that amount, not a
 //     smooth per-frame trickle. Same exact chunked-heal-over-time shape KnightBerserkHealAugment already
 //     established: Simulate() only ever accumulates a monotonically-growing desiredTotalHealed into this
@@ -24,9 +27,11 @@ using UnityEngine;
 //     since last applied — see KnightBerserkHealAugment's own doc comment for the full "why" (a discrete
 //     one-shot Heal() call is NOT safe called repeatedly/directly from Simulate()).
 //
-// Also grants +invisibilityDurationBonusPercent (50% default) to the invisibility duration itself — same
-// shared field RogueVanishBlinkAugment/RogueVanishHighrollAugment already use, stacking additively with
-// both (all three now default to 50% each, so having all three stacks to +150% total).
+// Also grants +durationBonusPercent (50% default) to the ability's WHOLE duration (renamed from
+// invisibilityDurationBonusPercent, 2026-10-14 rework — see that field's own doc comment on
+// RogueVanishAbilityPD) — same shared field RogueVanishBlinkAugment/RogueVanishHighrollAugment already use,
+// stacking additively with both (all three now default to 50% each, so having all three stacks to +150%
+// total).
 public class RogueVanishHealAugment : AugmentEffectPD<RogueVanishHealAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -58,7 +63,7 @@ public class RogueVanishHealAugment : AugmentEffectPD<RogueVanishHealAugment.Sta
     [SerializeField] private float tickInterval = 0.25f;
 
     [Header("Duration")]
-    public float invisibilityDurationBonusPercent = 0.5f;
+    public float durationBonusPercent = 0.5f;
 
     // Baseline heal amounts at 100% HealPower (the crit/HealPower multiply itself isn't included since it
     // varies per-heal, not a stat to preview) for AugmentDescriptionFormatter's {LiveOnCastHealRatio}/
@@ -87,7 +92,7 @@ public class RogueVanishHealAugment : AugmentEffectPD<RogueVanishHealAugment.Sta
     protected override void OnApply()
     {
         Stats.AddAbilityStartListener(OnAbilityStart);
-        if (_vanish != null) _vanish.invisibilityDurationBonusPercent += invisibilityDurationBonusPercent;
+        if (_vanish != null) _vanish.durationBonusPercent += durationBonusPercent;
     }
 
     protected override void OnDestroy()

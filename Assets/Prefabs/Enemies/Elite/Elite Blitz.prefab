@@ -137,6 +137,10 @@ PrefabInstance:
       value: 0.75
       objectReference: {fileID: 0}
     - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
+      propertyPath: preferredRange
+      value: 6
+      objectReference: {fileID: 0}
+    - target: {fileID: 9088655918858587620, guid: 315445c771cafca478eef1ffff1c167f, type: 3}
       propertyPath: crowdControlResist
       value: 0.25
       objectReference: {fileID: 0}

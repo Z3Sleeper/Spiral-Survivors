@@ -2,7 +2,7 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Universal "all energy sources" percent bump — doubles passive Energy Regen AND every discrete energy
-// restore (OnAbilityStartRefillEnergyAugment, OnStrikeEnergyRegenAugment, OnDashStartedGainEnergyAugment)
+// restore (OnAbilityStartRefillEnergyAugment, OnHitEnergyRegenAugment, OnDashStartedGainEnergyAugment)
 // uniformly, via CharacterStatsPD.bonusEnergyGainPercent (folded into both EnergyRegen itself and
 // GainEnergy() directly — see that property's own doc comment for the full reasoning). Deliberately
 // separate from EnergyRegenAugment, which only ever scales the passive regen stat specifically — this one

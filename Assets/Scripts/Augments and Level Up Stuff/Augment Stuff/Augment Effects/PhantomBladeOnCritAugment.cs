@@ -5,9 +5,9 @@ using UnityEngine;
 // unrelated to actually landing a real crit) to a self-owned cooldown: baseTimer now ticks down over real
 // time same as before (still no AttackSpeed scaling), but a real Strike Crit ALSO shaves cooldownReductionOnCrit
 // off it directly — same "cooldown ticks naturally, a trigger event shaves more off it" shape every
-// ability/dash cooldown-reduction augment in this codebase already uses (OnStrikeHighrollReduceDashCDAugment/
-// OnDodgeReduceAbilityCDAugment/OnStrikeReduceAbilityCDAugment/etc.), just applied to this augment's own
-// internal timer instead of an ability's or dash's. Explicit design goal (user's own words): the old
+// ability/dash cooldown-reduction augment in this codebase already uses (OnDodgeReduceAbilityCDAugment/
+// OnHitReduceAbilityCDAugment/etc.), just applied to this augment's own internal timer instead of an
+// ability's or dash's. Explicit design goal (user's own words): the old
 // independent-roll trigger "worked as intended" but felt disconnected from actually landing crits — this
 // version summons faster the more you're actually critting, while still guaranteeing a baseline proc even
 // without one (the natural baseTimer decay), rather than being purely luck-of-the-tick. baseTimer bumped
@@ -36,10 +36,9 @@ public class PhantomBladeOnCritAugment : AugmentEffectPD<PhantomBladeOnCritAugme
     // was already retuned directly under this name and a rename would silently reset it back to whatever new
     // C# default replaced it.
     [SerializeField] private float baseTimer = 1f;
-    // Scaled by the crit's own onHitPower, same convention OnStrikeHighrollReduceDashCDAugment's identical
-    // reduction already uses — see its own doc comment for the full reasoning (onHitPower is usually a net
-    // penalty in practice, since WeaponCount/WeaponTracks/Multishot picks each halve it, so this scaling
-    // keeps the reduction proportional rather than a flat amount regardless of investment).
+    // Scaled by the crit's own onHitPower — onHitPower is usually a net PENALTY in practice, since
+    // WeaponCount/WeaponTracks/Multishot picks each halve it (see OnHitPower's own doc comment), so this
+    // scaling keeps the reduction proportional rather than a flat amount regardless of investment.
     public float cooldownReductionOnCrit = 0.5f;
     public int bladeCount = 3;
     public float strengthMultiplierPercent = 0.6f;

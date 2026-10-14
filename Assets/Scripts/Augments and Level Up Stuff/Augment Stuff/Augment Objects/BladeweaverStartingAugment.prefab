@@ -47,3 +47,4 @@ MonoBehaviour:
   bonusWeaponCountFlat: 2
   bonusWeaponRadiusFlat: 3
   weaponRangeScalingPenaltyPercent: 0.35
+  attackSpeedBonusPercent: 0.25

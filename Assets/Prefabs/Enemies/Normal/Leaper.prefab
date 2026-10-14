@@ -500,7 +500,7 @@ MonoBehaviour:
   moveSpeed: 8
   attackSpeed: 1
   maxHealth: 75
-  preferredRange: 5
+  preferredRange: 4
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
   canStrafe: 1

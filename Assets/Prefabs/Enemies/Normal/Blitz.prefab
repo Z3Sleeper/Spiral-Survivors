@@ -426,9 +426,10 @@ MonoBehaviour:
   moveSpeed: 8
   attackSpeed: 1
   maxHealth: 75
-  preferredRange: 5
+  preferredRange: 4
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
+  canStrafe: 1
   damage: 10
   xpValue: 5
   pointsValue: 10
@@ -447,7 +448,7 @@ MonoBehaviour:
   invulnerableShell: {fileID: 320830139079793025}
   windupDuration: 1
   postBlitzPause: 0.5
-  blitzDistance: 12
+  blitzDistance: 8
   blitzSpeedMultiplier: 2.25
   blitzesPerAttack: 1
   rotationRateDegPerSecond: 30

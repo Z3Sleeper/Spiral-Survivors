@@ -6,8 +6,8 @@ using UnityEngine;
 // PhantomBladeOnCritAugment's own identical change, see that file's own doc comment for the full "cooldown
 // ticks naturally, a trigger event shaves more off it" shape. baseTimer now ticks down over real time same
 // as before (still no AttackSpeed scaling), but a real Strike Highroll ALSO shaves
-// cooldownReductionOnHighroll off it directly, scaled by that hit's own onHitPower (same convention
-// OnStrikeHighrollReduceDashCDAugment's identical reduction already uses). No longer reacts to actual
+// cooldownReductionOnHighroll off it directly, scaled by that hit's own onHitPower (same "net penalty in
+// practice" scaling reasoning PhantomBladeOnCritAugment's own cooldownReductionOnCrit uses). No longer reacts to actual
 // weapon hits any other way. baseDamageMultiplier (renamed strengthMultiplierPercent, 2026-09-13, see
 // PhantomBladeRangeAugment's own sibling doc comment for the family-wide normalization) lowered 6f/600% ->
 // 0.6f/60% in the same pass (set directly
@@ -37,8 +37,8 @@ public class PhantomBladeOnHighrollAugment : AugmentEffectPD<PhantomBladeOnHighr
     // was already retuned directly under this name and a rename would silently reset it back to whatever new
     // C# default replaced it.
     [SerializeField] private float baseTimer = 1f;
-    // Scaled by the highrolling hit's own onHitPower, same convention OnStrikeHighrollReduceDashCDAugment's
-    // identical reduction already uses — see its own doc comment for the full reasoning.
+    // Scaled by the highrolling hit's own onHitPower — same "net penalty in practice" scaling reasoning
+    // PhantomBladeOnCritAugment's own cooldownReductionOnCrit uses, see that field's own doc comment.
     public float cooldownReductionOnHighroll = 2.5f;
     public int bladeCount = 3;
     public float strengthMultiplierPercent = 6f;

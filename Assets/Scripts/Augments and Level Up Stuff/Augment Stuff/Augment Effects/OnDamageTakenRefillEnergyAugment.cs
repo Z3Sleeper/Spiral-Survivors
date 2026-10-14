@@ -26,7 +26,7 @@ public class OnDamageTakenRefillEnergyAugment : AugmentEffectPD<OnDamageTakenRef
     public float energyPercent = 0.001f;
     // Same flat, unconditional +25 Max Energy every other Surge-family/energy-gain augment grants
     // (SurgeWeaponCountAugment/SurgeStackingAttackSpeedAugment/SurgeHealAugment/FullEnergyBerserkSurgeAugment/
-    // DeathPreventionBerserkAugment/OnDashStartedGainEnergyAugment/OnStrikeEnergyRegenAugment/
+    // DeathPreventionBerserkAugment/OnDashStartedGainEnergyAugment/OnHitEnergyRegenAugment/
     // OnAbilityStartRefillEnergyAugment) — 2026-09-30, granted once in OnApply(), same shape as those.
     public float bonusMaxEnergyFlat = 25f;
 

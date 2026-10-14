@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: RogueVanishHighrollAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FFFFFF>Vanish: Shady Luck</color>'
-  description: '<color=#FFFFFF>+{invisibilityDurationBonusPercent}% Vanish Duration</color>
+  description: '<color=#FFFFFF>+{durationBonusPercent}% Vanish Duration</color>
 
     <color=#00FF87>+{highrollChancePercent}%
     Total Highroll Chance</color> during <color=#FFFFFF>Vanish</color>.'

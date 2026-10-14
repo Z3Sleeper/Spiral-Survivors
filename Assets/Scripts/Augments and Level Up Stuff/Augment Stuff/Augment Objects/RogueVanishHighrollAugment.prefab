@@ -45,4 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RogueVanishHighrollAugment
   highrollChancePercent: 1
-  invisibilityDurationBonusPercent: 0.5
+  durationBonusPercent: 0.25

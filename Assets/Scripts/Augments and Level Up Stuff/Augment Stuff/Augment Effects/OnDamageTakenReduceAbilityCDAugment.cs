@@ -9,7 +9,7 @@ using UnityEngine;
 // shield/DamageReduction.
 //
 // reductionPercent is a percent of each ability's own BaseCooldownDuration PER POINT of pre-mitigation
-// damage taken, same "per-ability base" shape OnStrikeReduceAbilityCDAugment already uses (just scaled by
+// damage taken, same "per-ability base" shape OnHitReduceAbilityCDAugment already uses (just scaled by
 // raw damage instead of onHitPower). Default 0.005 (0.5%, nerfed 2026-08-31 from 0.01/1% after
 // playtesting — the old value fully reset both abilities off a single 100-damage hit) means taking 200
 // damage in one hit fully resets both abilities from their base cooldown (200 * 0.005 = 1.0 = 100% of
@@ -17,7 +17,7 @@ using UnityEngine;
 //
 // Reduces via IAbilityPD.ReduceCooldownFlat, not ReduceCooldownPercentRemaining/ReduceCooldownPercentTotal —
 // the percent here is of the ability's fixed BASE cooldown (a flat seconds amount once resolved), not of
-// however much cooldown currently remains — same convention OnStrikeReduceAbilityCDAugment's own doc comment
+// however much cooldown currently remains — same convention OnHitReduceAbilityCDAugment's own doc comment
 // explains. Every ability implementer already clamps its own cooldownTimer at 0, so calling this on an
 // ability that's already off cooldown (or one this character doesn't have equipped in that slot) is a
 // harmless no-op, no extra IsReady/CooldownRemaining check needed here first.
@@ -26,7 +26,7 @@ public class OnDamageTakenReduceAbilityCDAugment : AugmentEffectPD<OnDamageTaken
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
     // Public (not [SerializeField] private) so AugmentDescriptionFormatter's reflection can resolve
-    // {reductionPercent} directly in the description text — see OnStrikeReduceAbilityCDAugment's own doc
+    // {reductionPercent} directly in the description text — see OnHitReduceAbilityCDAugment's own doc
     // comment (only public fields/properties/methods are checked).
     public float reductionPercent = 0.005f;
 
@@ -34,7 +34,7 @@ public class OnDamageTakenReduceAbilityCDAugment : AugmentEffectPD<OnDamageTaken
     // damage taken, "Ability1|Ability2", for AugmentDescriptionFormatter's {LiveCooldownReduction} token —
     // same "per 1 point" baseline-coefficient convention PhantomBladeOnDamagedAugment.LiveBladeDamageRatio
     // uses, since the trigger's own per-event damage amount varies hit-to-hit and isn't known ahead of a real
-    // hit (unlike OnStrikeReduceAbilityCDAugment's own {LiveCooldownReduction}, which can assume a fixed 100%
+    // hit (unlike OnHitReduceAbilityCDAugment's own {LiveCooldownReduction}, which can assume a fixed 100%
     // OnHitPower baseline instead).
     public string LiveCooldownReduction(CharacterStatsPD stats)
     {
@@ -49,7 +49,7 @@ public class OnDamageTakenReduceAbilityCDAugment : AugmentEffectPD<OnDamageTaken
     }
 
     // Cached once — Ability1/Ability2 are permanent one-per-character fixtures for the whole match, same
-    // convention as OnStrikeReduceAbilityCDAugment's own _abilities field.
+    // convention as OnHitReduceAbilityCDAugment's own _abilities field.
     private IAbilityPD[] _abilities;
 
     protected override void OnApply()

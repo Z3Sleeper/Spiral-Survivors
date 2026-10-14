@@ -299,7 +299,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // per-difficulty growth so windup completion keeps pace with how fast players are getting.
     [SerializeField] private float difficultyDamageGrowthPerLevel      = 0.2f;
     [SerializeField] private float difficultyHealthGrowthPerLevel      = 1f;
-    [SerializeField] private float difficultyMoveSpeedGrowthPerLevel   = 0.1f;
+    // Halved 2026-10-12 (10%->5% per level, 50% at TL6->25% at TL6) alongside Stuart's own preemptive player
+    // move speed pass — explicit intent: a fully-upgraded player (base 10 + shop's own +2 cap = 12, +20%)
+    // now sits SLIGHTLY below a TL6-scaled enemy's own +25%, rather than comfortably ahead of it as the old
+    // 10%/level rate produced (+50% at TL6 vs the player's +20%, an even bigger gap). Deliberate, not a bug
+    // — revisit/revert if live testing says this edge feels bad, per Stuart's own framing.
+    [SerializeField] private float difficultyMoveSpeedGrowthPerLevel   = 0.05f;
     [SerializeField] private float difficultyAttackSpeedGrowthPerLevel = 0.1f;
 
     // Public passthroughs — same reasoning as MoveSpeedTierGrowth/DamageTierGrowth/HealthTierGrowth/

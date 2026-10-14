@@ -10,10 +10,12 @@ using PurrNet.Prediction;
 // duration less than a fully-powered one —
 // resets to the normal duration on the NEXT cast regardless of how much a previous instance got extended
 // (see RogueVanishAbilityPD.ExtendActiveTime's own doc comment for the full mechanism, including why it
-// also re-syncs the separate invisibility floor-timer). Deliberately does NOT also grant
-// invisibilityDurationBonusPercent like the other three Vanish augments — a flat +50% doesn't fit this
-// one's own "earn more uptime by landing hits" identity. Numbers are explicitly tentative, pending
-// playtesting (Stuart's own framing) — this is the kind of augment that'll need real tuning passes.
+// also re-syncs the separate invisibility floor-timer, and the hard cap — total extension across a whole
+// cast capped at 100% of _appliedDuration, 2026-10-14, this augment was wildly out of balance uncapped).
+// Deliberately does NOT also grant
+// durationBonusPercent like the other three Vanish augments — a flat +50% doesn't fit this one's own "earn
+// more uptime by landing hits" identity. Numbers are explicitly tentative, pending playtesting (Stuart's own
+// framing) — this is the kind of augment that'll need real tuning passes.
 //
 // Deliberately listens to the GENERIC CharacterStatsPD._onHit event (AddHitListener), NOT the "fires
 // exactly once per real strike" _onStrike — _onHit can fire TWICE for a single real connection if the

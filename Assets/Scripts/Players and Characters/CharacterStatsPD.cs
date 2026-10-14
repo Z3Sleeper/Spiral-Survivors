@@ -84,8 +84,8 @@ public struct AllyHealGrantedData
 // weaponDamage (that struct's own field is the raw pre-roll base stat) — kept as its own dedicated struct
 // rather than reusing WeaponHitData to avoid conflating the two different meanings. onHitPower is whatever
 // this specific hit's own onHitPower value was (ranged dropoff/axe handle penalty/etc. already applied,
-// same as WeaponHitData.onHitPower), added so a listener (e.g. OnStrikeHighrollReduceDashCDAugment) can
-// scale its own effect by it without needing a second, separately-correlated event.
+// same as WeaponHitData.onHitPower), added so a listener (e.g. PhantomBladeOnHighrollAugment) can scale
+// its own effect by it without needing a second, separately-correlated event.
 public struct StrikeHighrollData
 {
     public float damage;
@@ -740,7 +740,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // separate from totalEnergyRegenPercent above, which only ever scaled the passive EnergyRegen stat.
     // This one is folded into EnergyRegen itself (so passive regen doubles too) AND into GainEnergy()
     // directly (the shared choke point every discrete restore — OnAbilityStartRefillEnergyAugment,
-    // OnStrikeEnergyRegenAugment, OnDashStartedGainEnergyAugment — already funnels through), so a single
+    // OnHitEnergyRegenAugment, OnDashStartedGainEnergyAugment — already funnels through), so a single
     // stat covers every energy source uniformly rather than needing separate multipliers per source.
     public float bonusEnergyGainPercent => currentState.bonusEnergyGainPercent != 0f ? currentState.bonusEnergyGainPercent : 1f;
     public float bonusSurgeCostFlat => currentState.bonusSurgeCostFlat;
@@ -1931,8 +1931,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // feedback despawn-race fix this mirrors): a weapon can despawn (WeaponManagerPD.DespawnWeapons, e.g.
     // SurgeWeaponCountAugment ending) shortly after landing a hit, and a non-owner client only ever fires a
     // PredictedEvent once its tick verifies, which requires the OWNING identity to still exist to be
-    // resimulated — a despawned weapon can never satisfy that. First real subscriber (2026-08-19):
-    // OnStrikeHighrollReduceDashCDAugment — see StrikeHighrollData's own doc comment for the payload.
+    // resimulated — a despawned weapon can never satisfy that. First real subscriber (2026-08-19) was
+    // OnStrikeHighrollReduceDashCDAugment (removed 2026-10-14, infinite-dash balance pass); still used by
+    // PhantomBladeOnHighrollAugment — see StrikeHighrollData's own doc comment for the payload.
     //
     // Named Strike specifically (not a generic _onHighroll) — every current caller is a weapon/ability
     // STRIKE damage source (WeaponMeleePD/WeaponAxePD/WeaponRangedProjectilePD/RogueSpinAbilityPD/
@@ -2010,7 +2011,8 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // exactly like them, but deliberately never touched by anything that re-invokes _onHit/NotifyHit
     // (e.g. CritTriggerOnHitAugment calling Stats.NotifyHit again from its own crit listener). Effects that
     // must fire exactly once per genuine strike, not once-or-twice depending on other augments (e.g.
-    // OnStrikeEnergyRegenAugment), subscribe here instead of to _onHit.
+    // BWBladeDanceSlowAugment — see its own doc comment for why it specifically wants this, not _onHit),
+    // subscribe here instead of to _onHit.
     private PredictedEvent<WeaponHitData> _onStrike;
     // Fires whenever any of this player's weapons touches (not damages) an ally — called directly by each
     // weapon (same direct-call convention as _onHit/_onCritStrike/_onStrike, since "touched an ally"
@@ -4278,8 +4280,9 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     }
 
     // 0.6 = speed reduced to 60%, i.e. a 40% slow. Buffed again 2026-08-21 (was 30%/1s, before that 20%/1s).
+    // Duration nerfed 2026-10-14 (was 1.5s).
     private float threatLevel2SlowMultiplier = 0.6f;
-    private float threatLevel2SlowDuration = 1.5f;
+    private float threatLevel2SlowDuration = 1f;
 
     // Set exactly once, from PlayerDataPD.UpdateView()'s own one-time setup sequence (verified-state only,
     // never resimulated — see ActivateDifficultyModifiers' own doc comment), never mutated again for the
@@ -4543,7 +4546,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     //
     // forcedSurge blocks ALL gain outright (2026-09-03 — was three separate per-augment
     // "25% effectiveness while Surging" multipliers on OnAbilityStartRefillEnergyAugment/
-    // OnStrikeEnergyRegenAugment/OnDashStartedGainEnergyAugment, explicit design correction: reducing gain
+    // OnHitEnergyRegenAugment/OnDashStartedGainEnergyAugment, explicit design correction: reducing gain
     // during a NORMAL Surge was never the actual problem — a real Surge still drains energy the whole time
     // regardless, so any finite gain rate just changes how long it lasts, not whether it sustains forever.
     // Only Berserk (forced) Surge is genuinely un-endable without draining dry, so that's specifically what

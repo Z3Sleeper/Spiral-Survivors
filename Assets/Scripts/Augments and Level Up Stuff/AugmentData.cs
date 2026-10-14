@@ -64,10 +64,12 @@ public class AugmentData : ScriptableObject
     // available (the default, and what every existing augment keeps). SINGULAR, unlike tags/requiredTags/
     // incompatibleTags above, and drawn from a completely separate AugmentUnlockTagDatabase — see that
     // class's own doc comment for why it's a different pool from AbilityTagDatabase, and
-    // CharacterStatsPD.UnlockedAugmentTagMask for how a player's own unlocked set is checked against this
-    // at pick time (AugmentManagerPD.IsAugmentTagUnlocked). Not yet wired to any actual unlock TRIGGER as of
-    // this scaffolding pass — nothing grants a tag yet, so any augment given one here is effectively unpickable
-    // by anyone until a future system starts calling ProgressionManager.UnlockAugmentTag.
+    // CharacterStatsPD.UnlockedAugmentTagMask for how a player's own LIVE, per-run unlocked set is checked
+    // against this at pick time (AugmentManagerPD.IsAugmentTagUnlocked). Now wired up (2026-10-07,
+    // AugmentUnlockTagDatabase.unlockConditions) — e.g. "Phantom Blade"/"Ability"/"Dodge" gated behind
+    // Threat Level 3/4/5 respectively, granted via ProgressionManager.UnlockAugmentTag (PERSISTENT,
+    // save-backed — see ProgressionManager.IsAugmentTagUnlocked, the separate check AugmentEncyclopediaUI
+    // uses, since no live CharacterStatsPD exists in the Lobby scene it lives in).
     public string unlockTag;
 
     public bool IsAvailableForClass(CharacterClassID characterClass)

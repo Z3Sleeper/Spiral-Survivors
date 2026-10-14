@@ -141,9 +141,9 @@ public static class ProgressionManager
     private static readonly int[] ShieldRechargeTimeUnlockDifficulty =
         { 2, 0 };
     private static readonly int[] MoveSpeedCosts =
-        { 3000, 12000, 24000, 36000, 48000 };
+        { 2500, 10000, 20000, 30000 };
     private static readonly int[] MoveSpeedUnlockDifficulty =
-        { 2, 0, 0, 0, 0 };
+        { 2, 0, 0, 0 };
     private static readonly int[] DeathPreventionCosts =
         { 3000 };
     private static readonly int[] DeathPreventionUnlockDifficulty =
@@ -470,7 +470,7 @@ public static class ProgressionManager
     {
         StatType.Strength          => 5f,
         StatType.MaxHealth         => 10f,
-        StatType.MoveSpeed         => 1f,
+        StatType.MoveSpeed         => 0.5f,
         StatType.AttackSpeed       => 5f,
         StatType.HealthRegen       => 0.25f,
         // Fraction of MaxEnergy per second, not flat units (2026-08-23 rework — see
@@ -629,6 +629,13 @@ public static class ProgressionManager
     // existing level-up stat-pair entry at the wrong stat. Freely reorder this array instead — it has zero
     // effect on anything StatType's own numeric identity touches. Currently mirrors StatType's own
     // declaration order (today's tie-break behavior, unchanged) — reorder to taste.
+    //
+    // Deliberately excludes MoveSpeed/StrengthPerLevel/LevelUpStats (2026-10-14) — they live ONLY in
+    // AutoBuyAlwaysPriority now, not here too. Keeping them in both would be dead duplication, not a real
+    // fallback: AutoBuy checks AutoBuyAlwaysPriority first every single iteration, using the exact same
+    // CanUpgradeBaseStat affordability check this list's own search uses, so by the time this list is even
+    // consulted, all three have already failed that identical check moments earlier — they could never
+    // actually be selected from here.
     private static readonly StatType[] AutoBuyPriority =
     {
         StatType.DashCharges,
@@ -636,7 +643,6 @@ public static class ProgressionManager
         StatType.HealthRegen,
         StatType.MaxShield,
         StatType.ShieldRechargeTime,
-        StatType.MoveSpeed,
         StatType.Strength,
         StatType.AbilityHaste,
         StatType.Luck,
@@ -648,14 +654,26 @@ public static class ProgressionManager
         StatType.DashHaste,
         StatType.EnergyRegen,
         StatType.MaxEnergy,
-        StatType.RevivePower,
-        StatType.ReviveTimePenalty,
         StatType.RerollTokens,
         StatType.SurgeMoveSpeedPenaltyReduction,
-        StatType.StrengthPerLevel,
-        StatType.LevelUpStats,
         StatType.LevelUpOptions,
         StatType.RerollTokenLevelsPerGrant,
+        StatType.RevivePower,
+        StatType.ReviveTimePenalty,
+    };
+
+    // Always bought first, ahead of the normal cheapest-first competition below, the instant any of these
+    // are affordable+unlocked (2026-10-14, explicit request) — Strength Per Level, Move Speed, and Level Up
+    // Stats are disproportionately strong purchases relative to their cost compared to every other stat, so
+    // AutoBuy steers a new/unknowledgeable/lazy player onto them instead of letting them lose out to
+    // whatever's merely cheapest this instant. Deliberately NOT also listed in AutoBuyPriority below — see
+    // that list's own doc comment for why duplicating them there would be dead weight, never actually
+    // reachable from it.
+    private static readonly StatType[] AutoBuyAlwaysPriority =
+    {
+        StatType.StrengthPerLevel,
+        StatType.LevelUpStats,
+        StatType.MoveSpeed,
     };
 
     // Repeatedly buys whatever's currently affordable, one purchase at a time: among affordable+unlocked
@@ -663,44 +681,53 @@ public static class ProgressionManager
     // most-expensive-tied-tier second; flipped because the intended "buy these first" stats, being cheap,
     // kept losing out to pricier stats at the same low tier and ending up under-bought), and among stats
     // tied on cost, the LOWEST tier (so a stat genuinely behind on investment isn't skipped just because
-    // something else happens to cost the exact same right now). Ties on BOTH of those break by
-    // AutoBuyPriority's own order (see its own doc comment) — the strict `<`/`>` comparisons below mean
-    // whichever candidate is iterated first never gets replaced by an exact tie, so iterating AutoBuyPriority
-    // in order is what makes "first" mean "earlier in that list" rather than "whatever Enum.GetValues
-    // happened to return first." Re-evaluates from scratch after every single purchase, not just once up
-    // front — buying a stat's current tier advances it to its NEXT tier, whose own cost in that stat's
-    // costs[] array is typically different, so which stat is cheapest (and even which stats remain
-    // affordable at all) can genuinely change mid-run. Returns how many purchases were made, purely informational for a caller that wants to
-    // report/log it.
+    // something else happens to cost the exact same right now). Ties on BOTH of those break by whichever
+    // candidate list's own order (see AutoBuyPriority/AutoBuyAlwaysPriority's own doc comments) — the strict
+    // `<`/`>` comparisons below mean whichever candidate is iterated first never gets replaced by an exact
+    // tie, so iterating a list in order is what makes "first" mean "earlier in that list" rather than
+    // "whatever Enum.GetValues happened to return first." Re-evaluates from scratch after every single
+    // purchase, not just once up front — buying a stat's current tier advances it to its NEXT tier, whose
+    // own cost in that stat's costs[] array is typically different, so which stat is cheapest (and even
+    // which stats remain affordable at all) can genuinely change mid-run. Checks AutoBuyAlwaysPriority
+    // first every iteration, falling through to the full AutoBuyPriority list only once none of those three
+    // are currently purchasable — see AutoBuyAlwaysPriority's own doc comment for why. Returns how many
+    // purchases were made, purely informational for a caller that wants to report/log it.
     public static int AutoBuy()
     {
         int purchased = 0;
         while (true)
         {
-            StatType? best     = null;
-            long      bestCost = long.MaxValue;
-            int       bestTier = int.MaxValue;
-
-            foreach (StatType stat in AutoBuyPriority)
-            {
-                if (!IsStatUnlocked(stat) || !CanUpgradeBaseStat(stat)) continue;
-
-                long cost = GetBaseStatUpgradeCost(stat);
-                int  tier = GetBaseStatTier(stat);
-                if (cost > bestCost) continue;
-                if (cost < bestCost || tier < bestTier)
-                {
-                    best     = stat;
-                    bestCost = cost;
-                    bestTier = tier;
-                }
-            }
-
+            StatType? best = FindCheapestAffordable(AutoBuyAlwaysPriority) ?? FindCheapestAffordable(AutoBuyPriority);
             if (best == null) break;
             TryUpgradeBaseStat(best.Value);
             purchased++;
         }
         return purchased;
+    }
+
+    // Shared search body for AutoBuy's two passes (see its own doc comment) — same cheapest-cost-then-
+    // lowest-tier-then-list-order selection either way, just scoped to whichever candidate list is passed in.
+    private static StatType? FindCheapestAffordable(StatType[] candidates)
+    {
+        StatType? best     = null;
+        long      bestCost = long.MaxValue;
+        int       bestTier = int.MaxValue;
+
+        foreach (StatType stat in candidates)
+        {
+            if (!IsStatUnlocked(stat) || !CanUpgradeBaseStat(stat)) continue;
+
+            long cost = GetBaseStatUpgradeCost(stat);
+            int  tier = GetBaseStatTier(stat);
+            if (cost > bestCost) continue;
+            if (cost < bestCost || tier < bestTier)
+            {
+                best     = stat;
+                bestCost = cost;
+                bestTier = tier;
+            }
+        }
+        return best;
     }
 
     // Runtime-only (never persisted to the save file) — max one unlock message per stat PER LOBBY VISIT, not

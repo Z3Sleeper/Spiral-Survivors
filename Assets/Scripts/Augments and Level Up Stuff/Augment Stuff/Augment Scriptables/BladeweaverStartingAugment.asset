@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: BladeweaverStartingAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FFA000>Gyromancer</color>
+  displayName: <color=#FF5000>Gyromancer</color>
   description: '<color=#FFA000>+2 Weapons</color>
 
     <color=#FFA000>Weapons orbit

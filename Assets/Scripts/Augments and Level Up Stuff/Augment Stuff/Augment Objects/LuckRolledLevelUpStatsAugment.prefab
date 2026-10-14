@@ -46,4 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LuckRolledLevelUpStatsAugment
   highrollBonusScalePercent: 0.08
   levelUpOptionsBonus: 1
-  highrollChanceBonusPercent: 0.03
+  highrollChanceBonusPercent: 0.025

@@ -247,7 +247,7 @@ MonoBehaviour:
   moveSpeed: 6
   attackSpeed: 1
   maxHealth: 75
-  preferredRange: 0
+  preferredRange: 2
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
   canStrafe: 1

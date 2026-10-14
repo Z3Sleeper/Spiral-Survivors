@@ -6,7 +6,7 @@ using UnityEngine;
 // per explicit request at the time, but not ending in "Percent" meant AugmentDescriptionFormatter's *100
 // auto-scale never applied to its own description token, silently showing "0.1% Energy" instead of "10%
 // Energy"; the rename resets the Inspector value back to this field's own default, 0.1, matching the value
-// already set) — same "percent of MaxEnergy" shift OnAbilityStartRefillEnergyAugment/OnStrikeEnergyRegenAugment
+// already set) — same "percent of MaxEnergy" shift OnAbilityStartRefillEnergyAugment/OnHitEnergyRegenAugment
 // both went through. Subscribes directly to this player's own
 // PlayerControllerPD._onDashStarted (same per-owner-instance cross-player-safety reasoning as
 // DashHealAugment/PhantomBladeOnDashAugment's identical _controller caching, no shared/static channel for

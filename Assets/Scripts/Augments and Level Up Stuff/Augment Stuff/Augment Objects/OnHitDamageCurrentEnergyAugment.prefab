@@ -46,3 +46,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::OnHitDamageCurrentEnergyAugment
   onHitStrengthPercent: 0.15
   perEnergyPercent: 0.0015
+  bonusMaxEnergyFlat: 10

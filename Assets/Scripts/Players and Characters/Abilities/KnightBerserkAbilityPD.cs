@@ -45,7 +45,7 @@ using UnityEngine;
 // The ability-bar duration UI (LocalUIManagerPD) only ever renders ActiveTimeRemaining / ActiveTimeDuration
 // as a 0-1 fill ratio — never a raw "X seconds" number — so both properties are repurposed here to report
 // ENERGY instead of time (CurrentEnergy / MaxEnergy). This makes the bar track "how much energy is left"
-// live, refilling in place if energy refills mid-buff (e.g. via OnStrikeEnergyRegenAugment), with zero
+// live, refilling in place if energy refills mid-buff (e.g. via OnHitEnergyRegenAugment), with zero
 // separate UI code needed.
 //
 // A dead caster still needs an explicit check to force the buff off (Simulate()'s own death check below) —
@@ -98,7 +98,7 @@ public class KnightBerserkAbilityPD : PredictedIdentity<KnightBerserkAbilityPD.S
     // prefab should need hand-authoring it.
     [HideInInspector] public float moveSpeedPercent = 0f;
 
-    // 0f (no-op) until KnightBerserkLowHealthCDHastenAugment sets it — extra multiplier added on top of the
+    // 0f (no-op) until KnightBerserkLowHealthCDRateAugment sets it — extra multiplier added on top of the
     // normal 1x cooldown-tick rate while CurrentHealth/MaxHealth is below lowHealthThreshold (1f = twice as
     // fast overall). Checked directly in Simulate()'s own cooldown tick below — a plain cross-identity READ
     // of _stats.CurrentHealth/MaxHealth (same safety class as the _stats.IsDead read already in this file's
@@ -353,7 +353,7 @@ public class KnightBerserkAbilityPD : PredictedIdentity<KnightBerserkAbilityPD.S
 
         if (state.charges < effectiveMax)
         {
-            // Low-health cooldown haste (2026-10-02) — 0f/no-op until KnightBerserkLowHealthCDHastenAugment
+            // Low-health cooldown haste (2026-10-02) — 0f/no-op until KnightBerserkLowHealthCDRateAugment
             // sets lowHealthCooldownBonusMultiplier — see that field's own doc comment.
             float cooldownRate = 1f;
             if (lowHealthCooldownBonusMultiplier != 0f && _stats != null && _stats.MaxHealth > 0f &&

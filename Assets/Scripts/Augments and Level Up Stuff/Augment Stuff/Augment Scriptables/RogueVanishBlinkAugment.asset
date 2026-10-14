@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: RogueVanishBlinkAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FFFFFF>Vanish: Deceive</color>'
-  description: '<color=#FFFFFF>+{invisibilityDurationBonusPercent}% Vanish Duration</color>
+  description: '<color=#FFFFFF>+{durationBonusPercent}% Vanish Duration</color>
 
     <color=#FFFFFF>Vanish</color>
     now <color=#00FFFF>Blinks</color> to your cursor and its cooldown is affected

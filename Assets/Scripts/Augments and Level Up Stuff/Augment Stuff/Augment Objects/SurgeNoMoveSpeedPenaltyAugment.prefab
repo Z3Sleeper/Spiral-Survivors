@@ -44,3 +44,4 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8abd37720fad6e744937adbc66b17b58, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SurgeNoMoveSpeedPenaltyAugment
+  bonusMaxEnergyFlat: 10

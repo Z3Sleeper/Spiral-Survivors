@@ -47,5 +47,6 @@ MonoBehaviour:
   energySpentRequirement: 50
   moveSpeedPercent: 0.5
   buffDuration: 5
+  bonusMaxEnergyFlat: 10
   energyTrackerIcon: {fileID: 21300000, guid: 79d757aafe1d6784cac5dafec77c81cf, type: 3}
   buffIcon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}

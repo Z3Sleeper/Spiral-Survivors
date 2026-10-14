@@ -21,7 +21,10 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         public int   knownMaxCharges;
         // Guards FirstSuccessfulInterrupt (FSI) — reset once per fresh cast (Activate()), so a whole spin
         // fires FSI at most once, the first time any enemy is actually interrupted. Only ever touched while
-        // canInterrupt is on — see that field's own doc comment.
+        // canInterrupt is on — see that field's own doc comment. No longer read by RogueSpinInterruptAugment
+        // (2026-10-14 rework — that augment now credits ANY interrupt during the cast via the generic SI
+        // event, not just this ability's own self-interrupt signal, see its own class doc comment for why);
+        // kept here since FSI bookkeeping is still a real, used mechanic independent of that augment.
         public bool  interruptedThisCast;
         public void Dispose() { }
     }
@@ -206,6 +209,12 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     public AbilityIdentity Identity => AbilityIdentity.RogueSpin;
     public int CurrentCharges => currentState.charges;
     public int MaxCharges => EffectiveMaxCharges;
+    // Whether THIS cast (the most recently started one, win or still in progress) interrupted at least one
+    // enemy — see State.interruptedThisCast's own doc comment. RogueSpinInterruptAugment's own cooldown-
+    // reduction half reads this at the exact moment its own active window ends (2026-10-12 rework, replacing
+    // the old GLOBAL CharacterStatsPD.AddSuccessfulInterruptListener subscription, which fired on ANY
+    // interrupt source in the game, not just this ability's own — explicit request: self-triggers only).
+    public bool InterruptedThisCast => currentState.interruptedThisCast;
     // Live, not cached — see IAbilityPD.MaxCharges's own doc comment for why a mid-run bonus must be
     // reflected immediately. Reads whichever bonus matches this instance's own (Inspector-configurable)
     // Slot, not a hardcoded one.
@@ -600,10 +609,11 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         // pairing this with knockback needs the enemy already un-kinematic'd by Interrupt() before
         // AddKnockbackVelocity's own velocity assignment runs, or it gets silently eaten by that method's
         // own "not supported on a kinematic body" guard — see EnemyBasePD.Interrupt()'s own doc comment.
-        // Feeds the generic SI/FSI event pair — RogueSpinInterruptAugment's OWN passive half (reduce this
-        // ability's cooldown on ANY successful interrupt, not just this one) listens to SI directly on
-        // CharacterStatsPD, so it doesn't need anything from this call site specifically; FSI is unused by
-        // anything right now but kept for consistency with every other Interrupt() caller in this codebase.
+        // Feeds the generic SI/FSI event pair (every other Interrupt() caller in this codebase does the
+        // same, for consistency) — RogueSpinInterruptAugment's OWN passive half went back to listening to
+        // the global SI event directly (2026-10-14, see its own class doc comment for the
+        // DashThroughInterruptAugment overlap bug that motivated it), so interruptedThisCast below is pure
+        // FSI bookkeeping again, not also feeding that augment.
         if (canInterrupt && enemy.Interrupt())
             _stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast);
 

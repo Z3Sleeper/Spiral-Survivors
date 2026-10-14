@@ -651,12 +651,15 @@ public class CharacterSelectUI : MonoBehaviour
             int levelsAboveBase = difficulty - 1;
             int damagePercent    = levelsAboveBase * 20;
             int healthPercent    = levelsAboveBase * 100;
-            // Move Speed and Attack Speed share this one variable/line (2026-08-31) since
-            // difficultyMoveSpeedGrowthPerLevel and difficultyAttackSpeedGrowthPerLevel happen to both be 10%
-            // today — coincidental, not a true pairing (same reasoning EnemySpawnerPD's own two separate
-            // fields exist for). If they're ever retuned to diverge, split this back into two percentages/
-            // two lines instead of assuming they stay equal.
-            int moveSpeedPercent = levelsAboveBase * 10;
+            // Split back into two separate values (2026-10-12) — Move Speed and Attack Speed shared one
+            // variable/line from 2026-08-31 to 2026-10-12 since difficultyMoveSpeedGrowthPerLevel and
+            // difficultyAttackSpeedGrowthPerLevel happened to both be 10%/level, coincidentally, not a true
+            // pairing (same reasoning EnemySpawnerPD's own two separate fields exist for). They diverged
+            // 2026-10-12 (move speed halved to 5%/level alongside Stuart's own player move speed pass —
+            // see EnemySpawnerPD.difficultyMoveSpeedGrowthPerLevel's own doc comment), so this now matches
+            // EnemySpawnerPD's two fields exactly instead of assuming they stay equal.
+            int moveSpeedPercent = levelsAboveBase * 5;
+            int attackSpeedPercent = levelsAboveBase * 10;
             // Upgrade Points bonus — mirrors GameManagerPD.DifficultyPointMultiplier's own formula by VALUE,
             // not read live off GameManagerPD itself — same "hardcoded to match" convention every other line
             // in this block already uses, since this UI lives in a different scene from GameManagerPD.
@@ -678,7 +681,7 @@ public class CharacterSelectUI : MonoBehaviour
             // exactly difficulty >= 2 too. Hardcoded text, not read live off CharacterStatsPD's own fields —
             // same convention the three stat lines above already use (matches EnemySpawnerPD's formula by
             // value, not by reference), since this UI lives in a different scene from the player prefab.
-            string threatLevel2Line = difficulty >= 2 ? "\nLevel 2: Players are 40% Slowed for 1.5 seconds when they take unshielded damage." : "";
+            string threatLevel2Line = difficulty >= 2 ? "\nLevel 2: Players are 40% Slowed for 1 second when they take unshielded damage." : "";
             // Threat Level 3's own unique modifier (EnemySpawnerPD.threatLevel3EliteStatMultiplier) —
             // reworked 2026-08-26 from "Double Elite spawns" to "Double Elite Health/Damage", nerfed
             // 2026-10-07 from double (2f) to +50% (1.5f).
@@ -691,7 +694,7 @@ public class CharacterSelectUI : MonoBehaviour
             // Threat Level 6's own unique modifier (EnemySpawnerPD.threatLevel6BossCount).
             string threatLevel6Line = difficulty >= 6 ? "\nLevel 6: Double Boss spawns." : "";
             difficultyDescriptionText.text = levelsAboveBase > 0
-                ? $"{upgradePointsLine}{enemyTierLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed and Attack Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
+                ? $"{upgradePointsLine}{enemyTierLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed\n+{attackSpeedPercent}% Enemy Attack Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
                 : "";
         }
 

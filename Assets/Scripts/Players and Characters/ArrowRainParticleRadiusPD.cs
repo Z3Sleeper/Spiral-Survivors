@@ -71,6 +71,16 @@ public class ArrowRainParticleRadiusPD : MonoBehaviour
     {
         _ps = GetComponent<ParticleSystem>();
         _elapsedSinceStart = 0f;
+
+        // Hard stop+clear BEFORE touching shape/main below (2026-10-13 fix) — a pooled reuse can still be
+        // actively playing out its PREVIOUS cast when this fires (confirmed live: "Setting the duration
+        // while system is still playing is not supported"). Unity flatly refuses to change main.duration on
+        // a still-playing system, silently leaving it at whatever the previous cast's value was. Also
+        // clears any of that previous cast's still-falling particles, which would otherwise visually bleed
+        // into the new cast. StopEmittingAndClear (not the default Stop, which only stops emitting and lets
+        // existing particles finish their own lifetime) — this needs to be immediate, not a fade-out.
+        _ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
         if (radiusSource == null) return;
 
         var shape = _ps.shape;
@@ -108,6 +118,12 @@ public class ArrowRainParticleRadiusPD : MonoBehaviour
             gradient.SetKeys(new[] { new GradientColorKey(tint, 0f), new GradientColorKey(tint, 1f) }, alphaKeys);
             col.color = gradient;
         }
+
+        // Explicit restart (2026-10-13 fix) — playOnAwake only ever fires on this GameObject's first-ever
+        // Awake()/OnEnable(), never again on a pooled reuse (same class of gap the rest of this Init()
+        // rework already exists to close), and the Stop() call above just halted playback regardless. Without
+        // this, every cast after the very first would reconfigure correctly but never actually emit anything.
+        _ps.Play(true);
     }
 
     private void Update()

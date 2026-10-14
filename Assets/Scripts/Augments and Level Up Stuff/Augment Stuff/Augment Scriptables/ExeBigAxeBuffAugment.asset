@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: ExeBigAxeBuffAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: '<color=#FF8700>Execution Time: Upscaled</color>'
-  description: <color=#FF8700>Execution Time's</color> buffs are <color=#FFA000>{buffStrengthBonusPercent}%
+  description: <color=#FF8700>Execution Time's</color> effects are <color=#FFA000>{buffStrengthBonusPercent}%
     stronger</color>.
   icon: {fileID: 21300000, guid: 40fa89a1f0474a143bf77b5f5edf4333, type: 3}
   effectPrefab: {fileID: 7446718347387936242, guid: 161c433740624c94781b510d0a236851, type: 3}

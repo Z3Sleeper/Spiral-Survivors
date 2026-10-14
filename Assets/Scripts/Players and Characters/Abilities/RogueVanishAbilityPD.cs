@@ -20,6 +20,13 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         public float activeTimer;
         public bool  isActive;
         public float cooldownTimer;
+        // Running total of extension-seconds ACTUALLY applied to activeTimer so far this cast (via
+        // ExtendActiveTime below) — not the sum of every `seconds` ever passed in, only the portion that
+        // genuinely landed. Reset to 0 at Activate(). See ExtendActiveTime's own doc comment for why this
+        // exists (2026-10-14 rework, explicit request — distinct from the OLD "clamp activeTimer itself"
+        // approach, which capped the instantaneous stored value but let the ability's total real-world
+        // uptime run unbounded as long as hits kept refilling it before it decayed).
+        public float onHitExtensionApplied;
         // Ability charge system — see IAbilityPD.CurrentCharges/MaxCharges's own doc comment for the full
         // mechanism. knownMaxCharges tracks the last-computed MaxCharges so Simulate() can detect a mid-run
         // increase (a bonusAbility2Charges augment) and grant the newly-unlocked charge(s) immediately.
@@ -57,9 +64,16 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     // contract. [HideInInspector] — the augment owns this switch, nothing on this ability's own prefab
     // should need hand-authoring it (same reasoning as KnightBerserkAbilityPD's own augment-owned fields).
     [HideInInspector] public bool blinkOnCast = false;
-    // 0f (no-op) until RogueVanishBlinkAugment sets it — additive against 1f, scales ONLY this ability's
-    // own GrantInvisibility call below (the Move Speed buff/active window duration are untouched).
-    [HideInInspector] public float invisibilityDurationBonusPercent = 0f;
+    // 0f (no-op) until RogueVanishBlinkAugment/RogueVanishHighrollAugment/RogueVanishHealAugment sets it —
+    // additive against 1f (all three stack additively against this one shared field). Renamed from
+    // invisibilityDurationBonusPercent (2026-10-14 rework, explicit request) — used to scale ONLY the
+    // GrantInvisibility call, leaving the Move Speed buff/active window running at the shorter raw duration;
+    // now folded directly into _appliedDuration itself (see Activate()'s own use), so it's a real, permanent
+    // part of the whole ability's duration — a buff you've picked, not a per-cast recomputation layered onto
+    // one specific side effect. Knock-on effect worth knowing: RogueVanishHealAugment's own heal-over-time
+    // (scoped to "while this ability is active") now runs for this same longer duration too, not just the
+    // original 3s baseline — explicit, intended consequence of unifying the number, not a bug.
+    [HideInInspector] public float durationBonusPercent = 0f;
     // 0f (no-op) until RogueVanishHighrollAugment sets it — additive against CharacterStatsPD.
     // totalHighrollChancePercent's own 1f baseline (AddTotalHighrollChancePercent — see that property's
     // own doc comment for why +1f genuinely doubles HighrollChance), active only for the duration of this
@@ -258,12 +272,18 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         }
 
         // No AbilityPower scaling (removed 2026-08-23) — duration and moveSpeedPercent are both plain,
-        // fixed values now.
+        // fixed values now. durationBonusPercent folded directly in (2026-10-14 rework, was invisibility-
+        // only before — see durationBonusPercent's own doc comment) — a real, permanent part of this
+        // ability's own duration now, not a one-off recomputed-every-cast add-on layered just onto the
+        // invisibility floor contribution.
         _appliedMoveSpeedPercent = moveSpeedPercent;
-        _appliedDuration      = duration;
+        _appliedDuration      = duration * (1f + durationBonusPercent);
 
         currentState.activeTimer   = _appliedDuration;
         currentState.isActive      = true;
+        // Fresh per-cast budget — see ExtendActiveTime's own doc comment. Nothing carries over from a
+        // previous instance, same "resets fresh on the NEXT Activate()" convention activeTimer itself uses.
+        currentState.onHitExtensionApplied = 0f;
         // Charge system — spend 1, and only (re)arm the regen timer if it wasn't already running (i.e. this
         // cast came off a fully-topped-off state). A timer already mid-regen toward another charge keeps
         // ticking on its own schedule, untouched by this cast — see IAbilityPD.MaxCharges's own doc comment.
@@ -282,12 +302,12 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         // GrantInvisibility, not a raw on/off — contributes this ability's own duration as a floor rather
         // than unconditionally claiming the flag, so a DIFFERENT overlapping invisibility source (e.g.
         // DeathPreventionInvisibleAugment) never gets cut short by this ability's own end-of-buff turning it
-        // off early. See CharacterStatsPD.GrantInvisibility's own doc comment.
-        // invisibilityDurationBonusPercent (RogueVanishBlinkAugment, 0f/no-op default) extends ONLY this
-        // contributed duration — the Move Speed buff/this ability's own active window (_appliedDuration
-        // itself, used below) stay untouched, per Stuart's own "extends the duration of the invisibility"
-        // framing, not "extends the whole ability."
-        _stats.GrantInvisibility(_appliedDuration * (1f + invisibilityDurationBonusPercent));
+        // off early. See CharacterStatsPD.GrantInvisibility's own doc comment. _appliedDuration already has
+        // durationBonusPercent folded in above — no separate multiply needed here anymore (2026-10-14
+        // rework — used to be invisibility-only, now a real part of the whole ability's duration, so the
+        // Move Speed buff/active window below share the exact same boosted number instead of silently
+        // running shorter).
+        _stats.GrantInvisibility(_appliedDuration);
         _stats.AddMoveSpeedTotalPercent(_appliedMoveSpeedPercent);
         // 0f (no-op) until RogueVanishHighrollAugment bumps highrollChanceBonusPercent — see that field's
         // own doc comment.
@@ -311,6 +331,27 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     // activeTimer is reset fresh to _appliedDuration on the NEXT Activate() regardless of how much a
     // previous instance got extended, so nothing carries over.
     //
+    // Total extension across the WHOLE cast is capped at 100% of _appliedDuration (2026-10-14 rework,
+    // explicit request — replaces an earlier version that only clamped the instantaneous activeTimer value
+    // to _appliedDuration * 2f. That approach bounded the STORED value at any one moment, but not the
+    // ability's total real-world uptime: activeTimer decays every tick like any other countdown, so as long
+    // as hits kept landing fast enough to top it back toward that same ceiling before it ran out, Vanish
+    // could be kept alive far longer than +100%, in principle indefinitely). currentState.onHitExtensionApplied
+    // now tracks the running total of extension-seconds ACTUALLY applied so far this cast, reset fresh at
+    // Activate() — once it reaches _appliedDuration (100%), no further call can add anything more, no matter
+    // how much activeTimer has since decayed. `seconds` is clamped to whatever budget remains BEFORE being
+    // added to either activeTimer or the running total — the portion that would have overflowed the budget
+    // is discarded outright, same "tossed away, never counted" contract RogueSpinInterruptAugment-family
+    // once-per-activation guards use for their own excess (explicit request: a hit that lands while the
+    // budget is already exhausted must not inflate onHitExtensionApplied for the part that didn't actually
+    // land). activeTimer can therefore never exceed _appliedDuration + _appliedDuration (2x) by construction
+    // — no separate ceiling clamp needed on it directly.
+    //
+    // _appliedDuration already has durationBonusPercent folded in (2026-10-14 rework — see that field's own
+    // doc comment), so the 100% budget is measured against this ability's OWN already-applied, already-
+    // boosted cast-time snapshot (e.g. 6s baseline with Blink+Highroll -> up to 12s hard ceiling), the same
+    // number the Move Speed buff/active window/invisibility floor all share.
+    //
     // Also re-asserts GrantInvisibility(currentState.activeTimer) right alongside the extension — the
     // invisibility flag itself is a SEPARATE "longest contribution wins" floor-timer (see class doc
     // comment), set ONCE at Activate() time to a FIXED total, so it does NOT automatically track a later
@@ -324,7 +365,13 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
     public void ExtendActiveTime(float seconds)
     {
         if (!currentState.isActive) return;
-        currentState.activeTimer += seconds;
+
+        float remainingBudget = _appliedDuration - currentState.onHitExtensionApplied;
+        if (remainingBudget <= 0f) return;
+
+        float actualSeconds = Mathf.Min(seconds, remainingBudget);
+        currentState.onHitExtensionApplied += actualSeconds;
+        currentState.activeTimer += actualSeconds;
         _stats?.GrantInvisibility(currentState.activeTimer);
     }
 

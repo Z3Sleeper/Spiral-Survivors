@@ -15,7 +15,9 @@ MonoBehaviour:
   classDescription: 'Ranged
 
     Projectiles pierce but lose 25% Total Damage/On-Hit
-    Power each hit.'
+    Power each hit.
+
+    Projectiles travel 10% further than targeting range.'
   bonusMoveSpeedFlat: 0
   totalMoveSpeedPercent: 0
   totalMoveSpeedPenalty: 0

@@ -69,6 +69,13 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     [SerializeField] private float windupDuration       = 0.5f;
     [SerializeField] private float postBlitzPause       = 0.5f;
     [SerializeField] private float blitzDistance        = 12f;
+    // Scaled by size (2026-10-14 fix — was read raw everywhere, so an Elite/bigger variant's dash fell
+    // visibly short of its own windup indicator's footprint, same "model scales up via size, the reach it
+    // implies has to scale with it or it silently clips/undershoots" reasoning SpearGloomPD.stabRange and
+    // OrbiterGloomPD.EffectiveHoldOrbitRadius already establish). Single source of truth for every call site
+    // below (EnterBlitz's actual endpoint, LateSimulate's travel-progress math, UpdateView's indicator) so
+    // none of them can drift out of sync with each other.
+    private float EffectiveBlitzDistance => blitzDistance * size;
     [SerializeField] private float blitzSpeedMultiplier = 3.5f;
     // Tier1-authored, pristine read-only baseline forever (2026-09-22) — OnConfigureSpawn scales it into
     // State.scaledBlitzesPerAttack instead of mutating this in place, so no _authoredX snapshot/reset is
@@ -197,11 +204,12 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         if (GetBlitzState(ref state) == BlitzState.Blitzing)
         {
             Vector3 destination = state.b.dashDestination;
-            Vector3 origin = destination - state.blitzDirection * blitzDistance;
-            float traveled = blitzDistance > 0.0001f
+            float effectiveBlitzDistance = EffectiveBlitzDistance;
+            Vector3 origin = destination - state.blitzDirection * effectiveBlitzDistance;
+            float traveled = effectiveBlitzDistance > 0.0001f
                 ? Vector3.Dot(transform.position - origin, state.blitzDirection)
-                : blitzDistance;
-            state.blitzTravelProgress = Mathf.Clamp01(traveled / Mathf.Max(blitzDistance, 0.0001f));
+                : effectiveBlitzDistance;
+            state.blitzTravelProgress = Mathf.Clamp01(traveled / Mathf.Max(effectiveBlitzDistance, 0.0001f));
         }
     }
 
@@ -368,7 +376,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 
     private void EnterBlitz(ref State state)
     {
-        Vector3 endPoint = transform.position + state.blitzDirection * blitzDistance;
+        Vector3 endPoint = transform.position + state.blitzDirection * EffectiveBlitzDistance;
         SetBlitzState(ref state, BlitzState.Blitzing);
         state.blitzTravelProgress = 0f; // fresh dash, fresh progress — see its own doc comment on State
         // EffectiveMoveSpeed, not baseMoveSpeed (2026-08-13) — so this scales with Boss enrage stacking and
@@ -461,7 +469,9 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
 
         // Re-applied every frame, not just once at spawn — see SpearGloomPD/KingSpikePD's identical
         // reasoning: if blitzDistance is ever changed at runtime, the indicator's visual footprint should
-        // never silently drift out of sync with it.
+        // never silently drift out of sync with it. Reads EffectiveBlitzDistance (size-scaled), not
+        // blitzDistance directly, same reasoning as every other call site — see that property's own doc
+        // comment.
         //
         // Blitzing branch (2026-09-14) — "collapses in behind the body" as it travels: the shown rectangle's
         // near edge advances from the fixed dash origin toward the fixed destination as
@@ -486,16 +496,16 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
             if (ss == BlitzState.Blitzing)
             {
                 Vector3 destination = viewState.b.dashDestination;
-                Vector3 origin = destination - viewState.blitzDirection * blitzDistance;
+                Vector3 origin = destination - viewState.blitzDirection * EffectiveBlitzDistance;
                 float progress = Mathf.Clamp01(viewState.blitzTravelProgress);
                 Vector3 nearEdge = Vector3.Lerp(origin, destination, progress);
-                float remaining = blitzDistance * (1f - progress);
+                float remaining = EffectiveBlitzDistance * (1f - progress);
                 windupIndicator.transform.SetPositionAndRotation(nearEdge, Quaternion.LookRotation(viewState.blitzDirection));
                 windupFill.ShowRectangle(remaining, centerForwardOffset: remaining * 0.5f);
             }
             else
             {
-                windupFill.ShowRectangle(blitzDistance, centerForwardOffset: blitzDistance * 0.5f);
+                windupFill.ShowRectangle(EffectiveBlitzDistance, centerForwardOffset: EffectiveBlitzDistance * 0.5f);
             }
         }
 

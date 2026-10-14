@@ -353,7 +353,7 @@ MonoBehaviour:
   moveSpeed: 8
   attackSpeed: 1
   maxHealth: 75
-  preferredRange: 8
+  preferredRange: 6
   rangeToleranceFar: 0.3
   rangeToleranceClose: 0.3
   canStrafe: 1
@@ -372,7 +372,7 @@ MonoBehaviour:
   - {fileID: 7477497162605979100}
   - {fileID: 5808882785442931141}
   invulnerableShell: {fileID: 5797343280123201819}
-  minAttackRange: 8
+  minAttackRange: 3
   windupDuration: 1
   shootDuration: 0.1
   postShotPause: 0.5

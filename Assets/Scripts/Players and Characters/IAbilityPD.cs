@@ -174,7 +174,7 @@ public interface IAbilityPD
     Sprite Icon { get; }
 
     // Cooldown-reduction hooks — for augments that want to shave time off whatever's left on an ability's
-    // cooldown (e.g. OnStrikeReduceAbilityCDAugment) rather than granting a stat that only ever affects
+    // cooldown (e.g. OnHitReduceAbilityCDAugment) rather than granting a stat that only ever affects
     // FUTURE casts (EffectiveAbilityHaste). All three are safe to call on an ability that's already off
     // cooldown (CooldownRemaining == 0) — every implementer clamps its own cooldownTimer at 0, so calling
     // any of these on a ready ability is a harmless no-op rather than something callers need to guard for

@@ -7,6 +7,16 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     [SerializeField] private PredictedRigidbody _rigidbody;
     [SerializeField] private Transform _cameraTarget;
 
+    // 0f (no-op) until SurgeDashCDRateAugment sets it — extra multiplier added on top of the normal 1x
+    // dash-charge-regen tick rate while CharacterStatsPD.IsSurging is true (1f = twice as fast overall).
+    // Checked directly in Simulate()'s own charge-regen tick below — a plain cross-identity READ of
+    // _stats.IsSurging, same safety class as the dashCharges/IsDead reads already in this file's Simulate()
+    // — same shape as KnightBerserkAbilityPD.lowHealthCooldownBonusMultiplier (that ability's own
+    // low-health cooldown haste), just gated on IsSurging instead of a health threshold. [HideInInspector]
+    // — the augment owns both the initial value and all tuning; nothing on this component's own prefab
+    // should ever need hand-authoring it.
+    [HideInInspector] public float dashCooldownRateBonus = 0f;
+
     private CharacterStatsPD _stats;
     private Collider _physicsCollider;
     // Fetched via GetComponent in Awake() — same convention as BWBlinkAbilityPD's own identical field. Used
@@ -96,6 +106,15 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // DashThroughHPScaledDamageAugment/PhantomBladeOnMovementAugment's own sweep-window closers) still just
     // wants to know the window closed regardless of why, so they simply ignore the new parameter.
     private PredictedEvent<bool> _onDashMovementEnded;
+    // Fires once per charge actually gained — natural regen ticking over, the immediate top-up when
+    // dashCharges' own max increases mid-run, RefundDashCharge (unless its own notify param suppresses it),
+    // and each charge granted inside ReduceDashCooldown's overflow loop. DashChargeHighrollAugment is the
+    // only listener (2026-10-14) — its own bonus-granted charge deliberately does NOT re-fire this (see its
+    // own doc comment), so there's no chain risk despite listening to the same event it itself raises.
+    private PredictedEvent _onDashChargeGained;
+
+    public void AddDashChargeGainedListener(System.Action listener) => _onDashChargeGained.AddListener(listener);
+    public void RemoveDashChargeGainedListener(System.Action listener) => _onDashChargeGained.RemoveListener(listener);
 
     public void AddDashStartedListener(System.Action listener) => _onDashStarted.AddListener(listener);
     public void RemoveDashStartedListener(System.Action listener) => _onDashStarted.RemoveListener(listener);
@@ -132,14 +151,21 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
     // DashThroughInterruptAugment refunding a charge on a successful interrupt. Doesn't touch
     // chargeRegenTimer — the existing passive regen (see Simulate()'s own regen block) keeps counting toward
     // whatever charge it was already counting toward; this only adds one on top, up to the cap.
-    public void RefundDashCharge()
+    // notifyChargeGained defaults true (every other caller wants the normal "a charge was gained" signal);
+    // DashChargeHighrollAugment's own bonus grant passes false so its payout doesn't re-trigger its own
+    // listener — see that augment's own doc comment for the no-chaining design.
+    public void RefundDashCharge(bool notifyChargeGained = true)
     {
         if (_stats == null) return;
+        if (currentState.currentCharges >= _stats.dashCharges) return;
         currentState.currentCharges = Mathf.Min(currentState.currentCharges + 1, _stats.dashCharges);
+        if (notifyChargeGained) _onDashChargeGained.Invoke();
     }
 
-    // Shaves time off the currently-regenerating dash charge's chargeRegenTimer — e.g.
-    // OnAbilityStartReduceDashCDAugment. Unlike RefundDashCharge above (a flat +1, no timer interaction),
+    // Shaves time off the currently-regenerating dash charge's chargeRegenTimer — e.g. an on-event
+    // dash-cooldown-reduction augment (the last four of this shape were removed 2026-10-14, infinite-dash
+    // balance pass — this method itself is kept as a reusable primitive for a future, better-balanced one).
+    // Unlike RefundDashCharge above (a flat +1, no timer interaction),
     // this can OVERFLOW: if `seconds` exceeds what's left on the current charge's timer, that charge is
     // granted immediately and the remainder carries over to reduce the NEXT charge's own timer (freshly set
     // to DashCooldown, same value Simulate()'s own regen tick resets it to) — repeating until `seconds` is
@@ -166,6 +192,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
                 seconds -= currentState.chargeRegenTimer;
                 currentState.currentCharges++;
                 currentState.chargeRegenTimer = currentState.currentCharges < _stats.dashCharges ? _stats.DashCooldown : 0f;
+                _onDashChargeGained.Invoke();
             }
         }
     }
@@ -366,6 +393,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _onSpecialMovementInterrupted = new PredictedEvent(predictionManager, this);
         _onDashMovementStarted = new PredictedEvent(predictionManager, this);
         _onDashMovementEnded   = new PredictedEvent<bool>(predictionManager, this);
+        _onDashChargeGained    = new PredictedEvent(predictionManager, this);
 
         if (!isOwner) return;
         _input = new InputSystem_Actions();
@@ -589,8 +617,13 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // Grant the extra charge immediately when max charges increases, instead of only refilling via regen over time.
         if (_stats != null && _stats.dashCharges != state.lastKnownMaxCharges)
         {
-            state.currentCharges += _stats.dashCharges - state.lastKnownMaxCharges;
+            // Fire once per charge actually gained here (a single mid-run stat jump can grant more than
+            // one at once), same per-charge semantic every other _onDashChargeGained call site uses — see
+            // that field's own doc comment. A max DECREASE (negative delta) correctly fires zero times.
+            int gained = _stats.dashCharges - state.lastKnownMaxCharges;
+            state.currentCharges += gained;
             state.lastKnownMaxCharges = _stats.dashCharges;
+            for (int i = 0; i < gained; i++) _onDashChargeGained.Invoke();
         }
 
         // Charge regen runs even while dead so the player has dashes on revive. Paused while actually
@@ -599,16 +632,22 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // ticking normally). Plays nice with Interrupt() for free: EndDash(interrupted: true) sets isDashing
         // false immediately just like a natural end does, so regen resumes from wherever it was frozen
         // either way, no separate handling needed. ReduceDashCooldown() (other effects shaving time off the
-        // current charge, e.g. OnAbilityStartReduceDashCDAugment) is untouched by this gate — it mutates
-        // chargeRegenTimer directly, independent of this natural per-tick decrement, so it still applies
-        // normally even mid-dash.
+        // current charge) is untouched by this gate — it mutates chargeRegenTimer directly, independent of
+        // this natural per-tick decrement, so it still applies normally even mid-dash.
         if (_stats != null && state.currentCharges < _stats.dashCharges && !state.isDashing)
         {
-            state.chargeRegenTimer -= delta;
+            // Surge dash-cooldown haste (2026-10-12) — 0f/no-op until SurgeDashCDRateAugment sets
+            // dashCooldownRateBonus — see that field's own doc comment.
+            float dashCooldownRate = 1f;
+            if (dashCooldownRateBonus != 0f && _stats.IsSurging)
+                dashCooldownRate += dashCooldownRateBonus;
+
+            state.chargeRegenTimer -= delta * dashCooldownRate;
             if (state.chargeRegenTimer <= 0f)
             {
                 state.currentCharges++;
                 state.chargeRegenTimer = state.currentCharges < _stats.dashCharges ? _stats.DashCooldown : 0f;
+                _onDashChargeGained.Invoke();
             }
         }
 

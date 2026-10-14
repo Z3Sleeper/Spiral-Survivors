@@ -45,3 +45,4 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BWBladeDanceStunAugment
   stunDuration: 2
+  energyRefillPercent: 0.5
