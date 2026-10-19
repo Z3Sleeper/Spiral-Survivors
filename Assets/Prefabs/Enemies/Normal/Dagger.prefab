@@ -548,7 +548,7 @@ MonoBehaviour:
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 6661682229426028778}
@@ -557,6 +557,9 @@ MonoBehaviour:
   - {fileID: 8426117312075675647}
   - {fileID: 3745100427006563891}
   - {fileID: 4797036820485995745}
+  _otherRenderers:
+  - {fileID: 6837815553852305606}
+  - {fileID: 6106672016074009154}
   invulnerableShell: {fileID: 3453602238434079299}
   spinDamageMultiplier: 1
   spinRadius: 3
@@ -565,7 +568,7 @@ MonoBehaviour:
   betweenSpinPause: 0.25
   postSpinPause: 0.5
   attacksPerAttack: 1
-  dashSpeedMultiplier: 1.5
+  dashSpeedMultiplier: 1.75
   dashOffsetDistance: 2
   attackCooldown: 5
   attacksPerAttackTierGrowth: 0

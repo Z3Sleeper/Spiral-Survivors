@@ -16,7 +16,7 @@ MonoBehaviour:
   positionInterpolation:
     correctionRateMinMax: {x: 9.9, y: 30}
     correctionBlendMinMax: {x: 0, y: 4}
-    teleportThresholdMinMax: {x: 0.0025, y: 5}
+    teleportThresholdMinMax: {x: 0.05, y: 5}
   rotationInterpolation:
     correctionRateMinMax: {x: 9.9, y: 30}
     correctionBlendMinMax: {x: 0, y: 4}

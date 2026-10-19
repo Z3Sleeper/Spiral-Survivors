@@ -381,10 +381,13 @@ MonoBehaviour:
   crowdControlResist: 0.65
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 3922420654375244135}
+  _otherRenderers:
+  - {fileID: 4412482370457791877}
+  - {fileID: 8899883503470149065}
   invulnerableShell: {fileID: 6503409208411732999}
   pullDamageMultiplier: 1.5
   orbitDamageMultiplier: 0.5

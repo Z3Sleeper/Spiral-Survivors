@@ -269,7 +269,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
             _yAxisMoversRestPositionCaptured = true;
         }
 
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = attackCooldown;
         // Re-set again in OnRespawnReset() once leapsPerAttack is actually tier-scaled (that always runs
         // AFTER OnConfigureSpawn, on this life's first Simulate() tick) — this LateAwake() assignment is
         // only ever a placeholder until then.
@@ -310,7 +310,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         // field's own doc comment — Mathf.Pow, not a linear "1 - (tier-1)*growth" term). Re-set the
         // placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
         currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier * Mathf.Pow(attackCooldownTierGrowth, spawnTier - 1);
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
     }
 
     // Sets the WindupSpeed/LeapSpeed Animator float parameters so each clip's actual playback duration
@@ -616,7 +616,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         else
         {
             state.stateTimer          = postLeapPause;
-            state.attackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
+            state.attackCooldownTimer = state.scaledAttackCooldown;
             SetLeapState(ref state, LeapState.PostLeap);
         }
     }
@@ -644,7 +644,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.leapsRemaining      = 0;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
@@ -866,6 +866,35 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         }
     }
 
+    // Restores the windup indicator on a misprediction-revert — OnDeathStop() below is a one-way latch (see
+    // EnemyBasePD.OnHiddenStateChanged's own doc comment) that hides+unparents the indicator the instant
+    // isDead is predicted true, but nothing ever undoes that if the death turns out to be wrong. Unlike the
+    // render-hide/hurtbox/physicsCollider, which EnemyBasePD's own revert block already restores, nothing
+    // re-shows the indicator on its own here: the Leaper's own stateId never actually left Windup/Leaping
+    // (only the separate isDead flag mispredicted), so UpdateView's _lastVisualState edge-detect (line 796)
+    // never sees a state change and never re-enters the block that would normally SetActive(true) it.
+    // Confirmed live (2026-10-15): indicator stuck permanently missing after a mid-leap death misprediction
+    // that correctly reverted everything else. currentState, not a viewState param — this hook has none (see
+    // EnemyBasePD.OnHiddenStateChanged's own doc comment for why it can't, being declared on the shared
+    // non-generic base both EnemyBasePD and EnemyBasePD<TState> subclasses use) — same "read currentState
+    // directly" convention OnInterrupted()/CanBeInterrupted already use elsewhere in this exact file.
+    protected override void OnHiddenStateChanged(bool hidden)
+    {
+        base.OnHiddenStateChanged(hidden);
+        if (hidden || _windupIndicator == null) return;
+
+        var ss = GetLeapState(ref currentState);
+        if (ss != LeapState.Windup && ss != LeapState.Leaping) return;
+
+        if (ss == LeapState.Leaping)
+        {
+            _windupIndicator.transform.SetParent(null, true);
+            _windupIndicator.transform.position = new Vector3(_leapTargetSnapshot.x, 0.05f, _leapTargetSnapshot.z);
+        }
+        _windupIndicator.SetActive(true);
+        if (_windupFill != null) _windupFill.ShowCircle(landRadius * size);
+    }
+
     protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
@@ -887,7 +916,7 @@ public class LeaperGloomPD : EnemyBasePD<LeaperGloomPD.State>
         ApplyAnimatorClipSpeeds();
         currentState.stateId             = 0;
         currentState.leapsRemaining      = currentState.scaledLeapsPerAttack;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         currentState.stateTimer          = 0f;
         currentState.attackElapsed       = 0f;
         if (_yAxisMovers != null) _yAxisMovers.localPosition = _yAxisMoversRestPosition;

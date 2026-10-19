@@ -15,11 +15,12 @@ using UnityEngine;
 // While BWBlinkAbilityPD.IsActive specifically (its own Move Speed buff window): healPerSecondFlat +
 // BonusHealthRegen * healPerSecondRegenPercent (2 + 200% default) PER SECOND, applied in discrete
 // tickInterval (0.25s) chunks — same exact chunked-heal-over-time shape KnightBerserkHealAugment/
-// RogueVanishHealAugment already established: Simulate() only ever accumulates a monotonically-growing
+// RogueVanishHealAugment already established: Simulate() accumulates a monotonically-growing
 // desiredTotalHealed into this augment's OWN State (safe — a plain running total), including a pro-rated
-// FINAL partial chunk if the active window ends mid-tick. The actual Stats.Heal() call for THIS half only
-// ever fires from UpdateView(), off verified state, for the delta since last applied — a discrete one-shot
-// Heal() call is NOT safe called repeatedly/directly from Simulate().
+// FINAL partial chunk if the active window ends mid-tick. The actual Stats.Heal() call for THIS half ALSO
+// now fires from Simulate() (2026-10-16 — was deferred to UpdateView(); see KnightBerserkHealAugment's own
+// doc comment for the full "why" this moved, found the same day), guarded by comparing against
+// appliedAmount in State so it stays idempotent across an in-place double-call.
 public class BWBlinkHealShieldAugment : AugmentEffectPD<BWBlinkHealShieldAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -31,10 +32,12 @@ public class BWBlinkHealShieldAugment : AugmentEffectPD<BWBlinkHealShieldAugment
         // Previous tick's BWBlinkAbilityPD.IsActive — lets Simulate() detect the exact falling edge (the
         // active window just ended) to fire the partial-chunk flush exactly once.
         public bool  wasActive;
-        // Monotonically-growing total amount the OVER-TIME half has EARNED so far (never decreases) — the
-        // real Stats.Heal() application is deferred to UpdateView() instead of happening right where this
-        // grows. The ON-CAST half (OnAbilityStart) is a separate, direct one-shot and never touches this.
+        // Monotonically-growing total amount the OVER-TIME half has EARNED so far (never decreases). The
+        // ON-CAST half (OnAbilityStart) is a separate, direct one-shot and never touches this.
         public float desiredTotalHealed;
+        // How much of desiredTotalHealed has actually been granted via Stats.Heal() so far (2026-10-16,
+        // moved from a plain instance field into State) — see class doc comment.
+        public float appliedAmount;
         public void Dispose() { }
     }
 
@@ -64,9 +67,9 @@ public class BWBlinkHealShieldAugment : AugmentEffectPD<BWBlinkHealShieldAugment
             : "";
 
     private BWBlinkAbilityPD _blink;
-    // Tracks how much the OVER-TIME half has actually been granted via Stats.Heal so far — mutated only
-    // from UpdateView() off verified state, same role as KnightBerserkHealAugment's own _appliedAmount.
-    private float _appliedAmount;
+    // VFX-dedup only now (2026-10-16) — see KnightBerserkHealAugment's own _vfxFiredAmount doc comment; the
+    // actual heal-applied tracking moved into State.appliedAmount.
+    private float _vfxFiredAmount;
 
     protected override void LateAwake()
     {
@@ -123,6 +126,15 @@ public class BWBlinkHealShieldAugment : AugmentEffectPD<BWBlinkHealShieldAugment
         }
 
         state.wasActive = isActive;
+
+        // Applies the real heal the instant this tick's accumulation grows past what's already been
+        // granted — see class doc comment. Comparing against appliedAmount (State, not a plain field) keeps
+        // this idempotent across an in-place double-call of this same tick.
+        if (state.desiredTotalHealed > state.appliedAmount)
+        {
+            Stats.Heal(state.desiredTotalHealed - state.appliedAmount);
+            state.appliedAmount = state.desiredTotalHealed;
+        }
     }
 
     protected override void UpdateView(State viewState, State? verified)
@@ -131,14 +143,12 @@ public class BWBlinkHealShieldAugment : AugmentEffectPD<BWBlinkHealShieldAugment
 
         if (Stats == null || !verified.HasValue) return;
 
-        float desired = verified.Value.desiredTotalHealed;
-        if (Mathf.Approximately(desired, _appliedAmount)) return;
+        float applied = verified.Value.appliedAmount;
+        if (Mathf.Approximately(applied, _vfxFiredAmount)) return;
+        _vfxFiredAmount = applied;
 
-        Stats.Heal(desired - _appliedAmount);
-        _appliedAmount = desired;
-
-        // Heal VFX — see class doc comment / OnAbilityStart's own identical call for why this is safe
-        // called directly off this exact verified-state delta-apply.
+        // Heal VFX only now — the actual Stats.Heal() call moved into Simulate() above (see class doc
+        // comment). OnAbilityStart's own on-cast heal still calls PlayHealVfx directly, unaffected.
         VFXManager.instance?.PlayHealVfx(Stats.transform);
     }
 }

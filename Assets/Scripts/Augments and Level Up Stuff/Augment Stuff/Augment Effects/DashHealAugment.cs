@@ -34,7 +34,7 @@ public class DashHealAugment : AugmentEffectPD<DashHealAugment.State>
     // Flat floor added to the scaled portion below (2026-08-12, playtesting: this augment did literally
     // nothing for a build with zero HealthRegen investment) — guarantees a non-zero base even at zero
     // HealthRegen investment.
-    [SerializeField] private float baseHeal = 10f;
+    public float baseHeal = 10f;
     // Radius = Stats.RangeScalingAoEBase * radiusMultiplier — see class doc
     // comment. 1 is the neutral default; tune per-augment feel without touching the WeaponRange/AreaEffectSize
     // scaling itself. Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection

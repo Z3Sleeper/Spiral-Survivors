@@ -115,7 +115,7 @@ public static class AreaEffectCastHelper
 
                 if (dealDamage)
                 {
-                    bool isCrit = forcedCrit ?? (GameRandom.instance.NextFloat() < owner.CritChance);
+                    bool isCrit = forcedCrit ?? (owner.NextFloat() < owner.CritChance);
 
                     float baseDamage = owner.Strength * damagePercent;
                     bool dmgHighroll;
@@ -123,11 +123,11 @@ public static class AreaEffectCastHelper
                     if (forcedHighroll.HasValue)
                     {
                         dmgHighroll = forcedHighroll.Value;
-                        rolledDamage = WeaponDamageMath.RollDamageInherited(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, dmgHighroll);
+                        rolledDamage = WeaponDamageMath.RollDamageInherited(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, dmgHighroll, owner.NextFloat);
                     }
                     else
                     {
-                        rolledDamage = WeaponDamageMath.RollDamage(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, owner.Highroll, out dmgHighroll);
+                        rolledDamage = WeaponDamageMath.RollDamage(baseDamage, owner.LuckChance, owner.LuckFloor, owner.LuckCeiling, owner.Highroll, owner.NextFloat, out dmgHighroll);
                     }
                     rolledDamage = WeaponDamageMath.ApplyCritAndHighroll(rolledDamage, dmgHighroll, isCrit, owner.HighrollBonus, owner.CritDamage);
 

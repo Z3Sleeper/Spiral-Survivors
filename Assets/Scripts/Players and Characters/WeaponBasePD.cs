@@ -117,8 +117,19 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     [System.NonSerialized] public float designOrbit; // unused here — kept only so any stray external read compiles; NominalOrbitRadius uses hitboxTip directly.
     public float   RangeValue { get; set; }
     public Vector3 RootScale  { get; set; } = Vector3.one;
-    public int     SlotIndex  { get; set; }
-    public bool    IsOuterTrack { get; set; }
+    // Virtual, not a plain auto-property (2026-10-16 fix) — see WeaponManagerPD.RegisterWeapon's own doc
+    // comment for the full mechanism. Both are now REPLICATED (each concrete weapon class overrides these
+    // to redirect to its own currentState.slotIndex/isOuterTrack) rather than plain, per-machine-local
+    // values: SpawnOuterWeapons() (and therefore the classification RegisterWeapon assigns here) only ever
+    // actually runs on the server, so a plain property left every OTHER machine (any non-host client,
+    // including the owning player's own client if they're not the host) permanently misclassifying their
+    // own outer-track weapon as a second main-track one — confirmed live: wrong orbit radius (overlapping
+    // the main track instead of past it), wrong rotation direction (clockwise instead of counter), visually
+    // indistinguishable from "+1 main weapon" to that specific client, even though the host's own correct
+    // simulation (and therefore actual damage output) was never affected. Default plain-field-backed
+    // implementation kept here as a safe fallback for any weapon type that doesn't override it.
+    public virtual int  SlotIndex    { get; set; }
+    public virtual bool IsOuterTrack { get; set; }
 
     public float EffectiveWeaponRange => _stats.EffectiveWeaponRange;
     public float EffectiveRangeMultiplier => _stats.weaponRangeScalingBonusPercent * _stats.weaponRangeScalingPenalty;
@@ -355,7 +366,7 @@ public abstract class WeaponBasePD<TState> : PredictedIdentity<TState>, IWeaponP
     }
 
     protected float RollDamage(float damage, out bool isHighroll) =>
-        WeaponDamageMath.RollDamage(damage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out isHighroll);
+        WeaponDamageMath.RollDamage(damage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, _stats.NextFloat, out isHighroll);
 
     protected void NotifyHitFeedback(HitFeedbackData data) => _stats.NotifyHitFeedback(data);
 

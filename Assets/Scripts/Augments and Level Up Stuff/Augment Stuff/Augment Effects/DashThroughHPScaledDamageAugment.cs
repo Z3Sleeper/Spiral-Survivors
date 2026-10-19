@@ -11,19 +11,16 @@ using UnityEngine;
 // Deals (strengthPercent * Stats.Strength + bonusHealthPercent * Stats.BonusHealth) damage — ONE combined
 // luck roll on the summed total, same "roll the whole pre-roll value once" convention every other damage
 // source in this codebase uses (not two separate rolls per term). Rolls its own independent crit per enemy
-// (GameRandom.instance.NextFloat() < Stats.CritChance) — same "direct damage source" category as
+// (Stats.NextFloat() < Stats.CritChance, off this player's own dedicated RNG stream — was GameRandom.instance
+// until 2026-10-16) — same "direct damage source" category as
 // DashExplosionAugment/PhantomBladePD, not an onhit-reactive effect, so it deliberately does NOT call
 // Stats.NotifyCritStrike (would feed back into CritTriggerOnHitAugment's own "crit triggers another onhit"
 // chain) — matches OnHitDamageAugment's identical reasoning. isPriority: true on the damage number (full-
 // size text, not onhit-noise-sized) — this is a primary damage source, not an onhit-triggered proc.
 //
-// Also fires Stats.NotifyHit at onHitPower Stats.OnHitPower — this isn't a literal weapon strike (see
-// CharacterStatsPD.WeaponStrength's own doc comment for which 4 classes are), so it reads the same undivided
-// value strengthPercent's own Stats.Strength already uses above, not scaled down just because the player is
-// running more weapons. Passed through as-is, not further luck-rolled or AreaEffectPower-scaled the way
-// DashExplosionAugment's own onHitPower figure is — onhit-triggered augments (OnHitDamageAugment,
-// CritTriggerOnHitAugment, etc.) roll their own luck off whatever onHitPower they receive, same as they
-// would off a real weapon hit's own onHitPower.
+// No longer calls Stats.NotifyHit (removed 2026-10-18, per explicit instruction) — this augment no longer
+// triggers onhit-reactive augments (OnHitDamageAugment, CritTriggerOnHitAugment, etc.) at all, matching
+// ShieldBreakBurstAugment's own "no onhit trigger" spec.
 public class DashThroughHPScaledDamageAugment : AugmentEffectPD<DashThroughHPScaledDamageAugment.State>
 {
     public struct State : IPredictedData<State>, IDuplicate<State>
@@ -155,15 +152,13 @@ public class DashThroughHPScaledDamageAugment : AugmentEffectPD<DashThroughHPSca
 
     private void DealDamage(IEnemyPD enemy)
     {
-        bool isCrit = GameRandom.instance.NextFloat() < Stats.CritChance;
+        bool isCrit = Stats.NextFloat() < Stats.CritChance;
 
         float baseDamage = Stats.Strength * strengthPercent + Stats.BonusHealth * bonusHealthPercent;
-        float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, out bool isHighroll);
+        float rolled = WeaponDamageMath.RollDamage(baseDamage, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, Stats.Highroll, Stats.NextFloat, out bool isHighroll);
         rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, isCrit, Stats.HighrollBonus, Stats.CritDamage);
 
         enemy.TakeDamage(rolled, isCrit, Stats.owner ?? default, isHighroll, Stats.executeThreshold, Stats.critExecuteThreshold);
         Stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = rolled, isCrit = isCrit, isHighroll = isHighroll, attacker = Stats, isPriority = true });
-
-        Stats.NotifyHit(new WeaponHitData { target = enemy.ObjectId, weaponDamage = rolled, onHitPower = Stats.OnHitPower, isCrit = isCrit, isHighroll = isHighroll });
     }
 }

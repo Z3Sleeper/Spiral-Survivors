@@ -97,7 +97,7 @@ public class PerimeterPatrolEventPD : EventBasePD<PerimeterPatrolEventPD.State>
             const int maxPlacementAttempts = 30;
             for (int attempt = 0; attempt < maxPlacementAttempts; attempt++)
             {
-                startArc = GameRandom.instance.NextFloat(0f, totalLength);
+                startArc = EventRandom.instance.NextFloat(0f, totalLength);
                 if (!avoidPlayersOnPlacement || AllSpawnPointsClearPlayers(perimeter, startArc, totalLength))
                     break;
             }

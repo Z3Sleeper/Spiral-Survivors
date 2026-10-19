@@ -26,6 +26,15 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         public float attackCooldownTimer;
         // Capacity 3, index doubles as the windupIndicators slot — see UpdateView's own use of the index.
         public DisposableList<PredictedObjectID> heldPlebs;
+        // Snapshotted IEnemyPD.SpawnGeneration for each heldPlebs entry, at the exact tick it's grabbed
+        // (2026-10-16 fix) — same mechanism as KingOrbiterPD.persistentHeldGeneration's own doc comment: a
+        // raw PredictedObjectID alone can't tell any of the many hierarchy.GetGameObject(heldPlebs[i]) call
+        // sites below whether they're still resolving to the SAME pleb originally grabbed, versus a
+        // pooled-reuse or PredictedHierarchy instance-ID-collision victim now silently wearing that id
+        // (client-only — only non-host clients ever resimulate, which is when the collision bug fires).
+        // Without this, DispatchPull/BeginOrbiting/RefreshHeldDamageOverrides/ReleaseAllHeld could all act on
+        // a completely unrelated enemy that happens to occupy the same id now.
+        public DisposableList<int>               heldPlebGeneration;
         // How many of heldPlebs have had DispatchPull() called on them so far during the CURRENT Pulling
         // phase — see DispatchPull's own doc comment for the one-at-a-time sequencing this drives. Reset to
         // 0 wherever Pulling begins (Moving's own TryStartGrab success branch).
@@ -40,6 +49,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             b.contactCooldowns.Dispose();
             b.killLaunchHitIds.Dispose();
             heldPlebs.Dispose();
+            heldPlebGeneration.Dispose();
         }
 
         public State Duplicate()
@@ -47,6 +57,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             var copy = this;
             copy.b = b.Duplicate();
             copy.heldPlebs = heldPlebs.Duplicate();
+            copy.heldPlebGeneration = heldPlebGeneration.Duplicate();
             return copy;
         }
     }
@@ -127,20 +138,41 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     // post-release interrupt-stun loop still has something to iterate. See OnInterrupted's own doc comment.
     private static readonly List<PredictedObjectID> _interruptStunScratch = new();
 
+    // Snapshot of exactly who Die() just released — see OnHiddenStateChanged's own doc comment for why this
+    // exists (2026-10-16). Per-instance, not static scratch — unlike _interruptStunScratch above, this needs
+    // to survive across multiple real frames (until the verified-revert check in OnHiddenStateChanged either
+    // confirms the death or reclaims these plebs), not just within one method call.
+    private readonly List<PredictedObjectID> _pendingReclaimPlebs = new();
+    // Snapshotted alongside _pendingReclaimPlebs (2026-10-16 fix) — same "verify, don't just trust the id"
+    // reasoning as heldPlebGeneration's own doc comment, applied to the reclaim path too.
+    private readonly List<int> _pendingReclaimPlebGeneration = new();
+
+    // Resolves heldPlebs[i] to its IEnemyPD, verifying it's still the SAME logical pleb originally grabbed
+    // by TryStartGrab — not a pooled-reuse or PredictedHierarchy instance-ID-collision victim now wearing
+    // its id (see heldPlebGeneration's own doc comment). A mismatch is treated exactly like every other
+    // "target gone/invalid" case in this class.
+    private bool TryResolveHeldPleb(ref State state, int i, out IEnemyPD enemy)
+    {
+        enemy = null;
+        var go = hierarchy.GetGameObject(state.heldPlebs[i]);
+        if (go == null || !go.TryGetComponent(out IEnemyPD candidate)) return false;
+        if (candidate.SpawnGeneration != state.heldPlebGeneration[i]) return false;
+        enemy = candidate;
+        return true;
+    }
+
     private OrbiterState GetPhase(ref State s) => (OrbiterState)s.phaseId;
 
     protected override void LateAwake()
     {
         base.LateAwake();
 
-        // Guaranteed at least one full cooldown before the first grab attempt, plus a randomized extra so
-        // multiple Orbiters don't all attack in lockstep — same pattern every other timed-attack enemy in
-        // this codebase uses (e.g. SpearGloomPD.spearAttackCooldownTimer). This was a real gap (2026-08-12
+        // Guaranteed at least one full cooldown before the first grab attempt. This was a real gap (2026-08-12
         // fix): nothing here or in GetInitialState() ever set an initial value at all, so attackCooldownTimer
         // defaulted to 0 and a freshly-spawned/pooled-reused Orbiter was immediately grab-ready the instant
         // it spawned. Re-runs on every pooled reuse since LateAwake() itself does (see the indicator-pool
         // guard right below for that same reasoning).
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = attackCooldown;
 
         // Indicator pool build moved to OnConfigureSpawn() (2026-08-19) — see EnsureIndicatorPoolCapacity's
         // own doc comment for why: maxGrabCount may end up per-tier-scaled there in the future, and
@@ -202,7 +234,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
         currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
     }
 
     protected override State GetInitialState()
@@ -211,6 +243,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         s.scaledMaxGrabCount = maxGrabCount;
         s.scaledAttackCooldown = attackCooldown;
         s.heldPlebs = DisposableList<PredictedObjectID>.Create(maxGrabCount);
+        s.heldPlebGeneration = DisposableList<int>.Create(maxGrabCount);
         return s;
     }
 
@@ -247,8 +280,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         bool ownerFrozen = IsTrueStunned && isStunnable;
         for (int i = 0; i < state.heldPlebs.Count; i++)
         {
-            var go = hierarchy.GetGameObject(state.heldPlebs[i]);
-            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+            if (!TryResolveHeldPleb(ref state, i, out var enemy) || enemy._isDead) continue;
             bool isPulling = enemy.IsPulling;
             float multiplier = isPulling ? pullDamageMultiplier : orbitDamageMultiplier;
             enemy.SetDamageOverride(true, damage * multiplier);
@@ -332,7 +364,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                 // starts actually chasing with its now-orbiting plebs — only isStunnable (below) stays off
                 // through Holding, per explicit design: a genuine "hit it with an interrupt to stop it"
                 // counter-play window, not a full invincibility window like Pulling was.
-                if (count > 0 && state.pullSequenceIndex >= count && AllArrivedAtOrbitSlot(state.heldPlebs))
+                if (count > 0 && state.pullSequenceIndex >= count && AllArrivedAtOrbitSlot(ref state))
                 {
                     SetHurtboxDisabled(false);
                     // No longer sets the orbit damage override here (2026-09-16 — RefreshHeldDamageOverrides
@@ -344,11 +376,8 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                     // EnemyOrbitPhase's own doc comment).
                     for (int i = 0; i < count; i++)
                     {
-                        var go = hierarchy.GetGameObject(state.heldPlebs[i]);
-                        if (go != null && go.TryGetComponent(out IEnemyPD enemy))
-                        {
+                        if (TryResolveHeldPleb(ref state, i, out var enemy))
                             enemy.BeginOrbiting();
-                        }
                     }
                     state.phaseId    = (int)OrbiterState.Holding;
                     state.phaseTimer = holdDuration;
@@ -440,11 +469,13 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
         });
 
         state.heldPlebs.Clear();
+        state.heldPlebGeneration.Clear();
         int grabCount = Mathf.Min(state.scaledMaxGrabCount, _grabCandidates.Count);
         for (int i = 0; i < grabCount; i++)
         {
             var chosen = _grabCandidates[i];
             state.heldPlebs.Add(chosen.ObjectId);
+            state.heldPlebGeneration.Add(chosen.SpawnGeneration);
             // Frozen the instant it's selected — not deferred to BeginPull (windup end) — per explicit
             // design: a targeted pleb shouldn't keep wandering during the whole windup delay. ClaimForOrbit
             // also flips IsBeingHeld true immediately, so a second Orbiter's own grab-scan (the foreach
@@ -483,13 +514,14 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     private void DispatchPull(ref State state, int i)
     {
         int count = state.heldPlebs.Count;
-        var go = hierarchy.GetGameObject(state.heldPlebs[i]);
-        // Dead-target guard — a claimed pleb can still go away mid-sequence (e.g. EnemySpawnerPD's
-        // pre-boss WipeAllEnemies doesn't check invulnerability). Left in heldPlebs/still counted toward
-        // SlotAngleDeg's spacing either way (removing it here would mean re-spacing everyone else
-        // mid-sequence for a vanishingly rare case) — just skipped so it doesn't error trying to orbit
-        // something that no longer resolves.
-        if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
+        // Dead-target/generation guard — a claimed pleb can still go away mid-sequence (e.g. EnemySpawnerPD's
+        // pre-boss WipeAllEnemies doesn't check invulnerability), or this id can end up silently repointed at
+        // an unrelated pooled-reuse/instance-ID-collision occupant (see heldPlebGeneration's own doc comment).
+        // Left in heldPlebs/still counted toward SlotAngleDeg's spacing either way (removing it here would
+        // mean re-spacing everyone else mid-sequence for a vanishingly rare case) — just skipped so it
+        // doesn't error (or orbit the wrong enemy) trying to act on something that no longer resolves to the
+        // original pleb.
+        if (TryResolveHeldPleb(ref state, i, out var enemy) && !enemy._isDead)
             enemy.OrbitTarget(ObjectId, transform.position, EffectiveHoldOrbitRadius, pullSpeed, holdOrbitAngularSpeed, SlotAngleDeg(i, count));
     }
 
@@ -497,12 +529,11 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     // KingOrbiterPD.AllArrivedAtOrbitSlot's own identical doc comment for the full reasoning (queries each
     // pleb's own IsWaitingToOrbit directly instead of estimating from a parallel time formula; a dead/
     // unresolvable member is treated as non-blocking rather than stalling release forever).
-    private bool AllArrivedAtOrbitSlot(DisposableList<PredictedObjectID> held)
+    private bool AllArrivedAtOrbitSlot(ref State state)
     {
-        for (int i = 0; i < held.Count; i++)
+        for (int i = 0; i < state.heldPlebs.Count; i++)
         {
-            var go = hierarchy.GetGameObject(held[i]);
-            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+            if (!TryResolveHeldPleb(ref state, i, out var enemy) || enemy._isDead) continue;
             if (!enemy.IsWaitingToOrbit) return false;
         }
         return true;
@@ -515,8 +546,7 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
     {
         for (int i = 0; i < state.heldPlebs.Count; i++)
         {
-            var go = hierarchy.GetGameObject(state.heldPlebs[i]);
-            if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+            if (TryResolveHeldPleb(ref state, i, out var enemy))
             {
                 enemy.StopOrbiting();
                 enemy.SetKinematic(false);
@@ -529,15 +559,84 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
             }
         }
         state.heldPlebs.Clear();
+        state.heldPlebGeneration.Clear();
     }
 
     // "Immediately release" requires this to happen in the SAME call as B.isDead flipping true, not deferred
     // to eventual corpse teardown (Destroyed() could fire many ticks later if any death-hold effect is
     // active) — see Die()'s own base doc comment for why deathHoldCount can delay that.
+    //
+    // Snapshotted into _pendingReclaimPlebs BEFORE releasing (2026-10-16) — unlike the generic hide/render
+    // system, ReleaseAllHeld() is a real, cross-identity predicted-state mutation (StopOrbiting() on each
+    // held pleb), not a view-layer action, and it had no revert path at all: a misprediction-then-correction
+    // cycle (same confirmed pattern as every other death-hide flicker fixed this session) genuinely released
+    // held Spikies, then nothing ever reclaimed them when the death turned out wrong, leaving them either
+    // stuck released or caught in a rapid held/released flicker as Die() re-fired for the real kill shortly
+    // after. See OnHiddenStateChanged's own doc comment for the reclaim half of this fix.
     protected override void Die()
     {
         base.Die();
+        _pendingReclaimPlebs.Clear();
+        _pendingReclaimPlebGeneration.Clear();
+        for (int i = 0; i < currentState.heldPlebs.Count; i++)
+        {
+            _pendingReclaimPlebs.Add(currentState.heldPlebs[i]);
+            _pendingReclaimPlebGeneration.Add(currentState.heldPlebGeneration[i]);
+        }
         ReleaseAllHeld(ref currentState);
+    }
+
+    // Same release call as Die() above, for the difficulty-pacing wipe path (2026-10-16 fix) — see
+    // EnemyBasePD.OnSilentDespawn's own doc comment. No _pendingReclaimPlebs snapshot here — that exists
+    // purely to support OnHiddenStateChanged's misprediction-revert path, which a wipe (deterministic
+    // difficulty pacing, not a speculative prediction) never undergoes — nothing to reclaim, only something
+    // to release.
+    protected override void OnSilentDespawn()
+    {
+        base.OnSilentDespawn();
+        ReleaseAllHeld(ref currentState);
+    }
+
+    // Reclaims whichever snapshotted plebs are still valid once a misprediction-revert is confirmed (see
+    // Die()'s own doc comment for why this snapshot exists). Only fires on the revert direction (hidden ==
+    // false) — the release itself already happened instantly from Die(), unchanged. Re-runs the exact same
+    // claim sequence TryStartGrab uses rather than trying to restore each pleb's exact prior sub-phase/angle
+    // (not worth the complexity for what's normally a sub-0.2s window) — this means a reclaimed pleb
+    // restarts from a fresh Pulling phase, a brief visible re-approach rather than a seamless resume, but
+    // that's a minor cosmetic approximation next to the alternative (staying released, or flickering,
+    // forever/repeatedly). A pleb that's died or already been claimed by someone else in the meantime is
+    // simply skipped, not force-reclaimed.
+    protected override void OnHiddenStateChanged(bool hidden)
+    {
+        base.OnHiddenStateChanged(hidden);
+        if (hidden || _pendingReclaimPlebs.Count == 0) return;
+
+        int snapshotCount = _pendingReclaimPlebs.Count;
+        currentState.heldPlebs.Clear();
+        currentState.heldPlebGeneration.Clear();
+        int slot = 0;
+        for (int i = 0; i < snapshotCount; i++)
+        {
+            var id = _pendingReclaimPlebs[i];
+            var go = hierarchy.GetGameObject(id);
+            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead || enemy.IsBeingHeld) continue;
+            // Verifies this id still resolves to the SAME pleb originally snapshotted, not a pooled-reuse/
+            // instance-ID-collision victim now wearing it — see heldPlebGeneration's own doc comment.
+            if (enemy.SpawnGeneration != _pendingReclaimPlebGeneration[i]) continue;
+
+            currentState.heldPlebs.Add(id);
+            currentState.heldPlebGeneration.Add(enemy.SpawnGeneration);
+            enemy.SetKinematic(true);
+            enemy.SetMovementDisabled(true);
+            enemy.SetPhysicsColliderDisabled(true);
+            enemy.SetHurtboxDisabled(true);
+            enemy.SetDamageOverride(true, damage * pullDamageMultiplier);
+            enemy.ClaimForOrbit(ObjectId);
+            enemy.OrbitTarget(ObjectId, transform.position, EffectiveHoldOrbitRadius, pullSpeed, holdOrbitAngularSpeed, SlotAngleDeg(slot, snapshotCount));
+            slot++;
+        }
+        _pendingReclaimPlebs.Clear();
+        _pendingReclaimPlebGeneration.Clear();
     }
 
     // Exactly the states that are both !isStunnable (see isStunnable's own per-tick assignment above) and
@@ -629,8 +728,11 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                 // IsPulling (2026-09-16, was !enemy.IsWaitingToOrbit — same bug/fix as
                 // KingOrbiterPD.UpdatePullLineIndicators, see IEnemyPD.IsPulling's own doc comment) — a pleb
                 // whose orbitPhase has moved PAST WaitingToOrbit into Orbiting used to read IsWaitingToOrbit as
-                // false again, silently re-admitting it here.
-                slotFilled = go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead && enemy.IsPulling;
+                // false again, silently re-admitting it here. Generation-checked too (2026-10-16 fix) — see
+                // heldPlebGeneration's own doc comment; without it this indicator could point at an unrelated
+                // enemy's live position instead of correctly reading as empty.
+                slotFilled = go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead
+                    && enemy.SpawnGeneration == viewState.heldPlebGeneration[i] && enemy.IsPulling;
                 if (slotFilled) spikyPos = go.transform.position;
             }
 
@@ -681,5 +783,16 @@ public class OrbiterGloomPD : EnemyBasePD<OrbiterGloomPD.State>
                 fill.SetProgress(Mathf.Clamp01(localElapsed / windupDuration));
             }
         }
+    }
+
+    // _pendingReclaimPlebs is a plain field, not State — survives pooled reuse otherwise, which would let a
+    // fresh life's own OnHiddenStateChanged(false) try to reclaim stale ObjectIds left over from a PREVIOUS
+    // life's own (correctly-confirmed, never-reverted) death. Cleared explicitly here so a reused instance
+    // always starts with an empty snapshot.
+    protected override void OnRespawnReset()
+    {
+        base.OnRespawnReset();
+        _pendingReclaimPlebs.Clear();
+        _pendingReclaimPlebGeneration.Clear();
     }
 }

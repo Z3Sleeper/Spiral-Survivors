@@ -109,7 +109,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         // real scaled values into State.scaledAttacksPerAttack/scaledAttackCooldown. Re-set again in
         // OnRespawnReset() once those are actually tier-scaled (runs AFTER OnConfigureSpawn, on this life's
         // first Simulate() tick — see its own comment for the BlitzGloomPD precedent).
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = attackCooldown;
         currentState.attacksRemaining    = attacksPerAttack;
     }
 
@@ -126,7 +126,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         // field's own doc comment — Mathf.Pow, not a linear "1 - (tier-1)*growth" term). Re-set the
         // placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
         currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier * Mathf.Pow(attackCooldownTierGrowth, spawnTier - 1);
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
     }
 
     // Sets WindupSpeed/SpinSpeed (and caches _postSpinClipLength, re-derived fresh from postSpinPause/
@@ -346,7 +346,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     private void EnterPostSpin(ref State state)
     {
         state.stateTimer          = postSpinPause;
-        state.attackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
+        state.attackCooldownTimer = state.scaledAttackCooldown;
         SetDaggerState(ref state, DaggerState.PostSpin);
     }
 
@@ -387,7 +387,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.attacksRemaining    = 0;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
@@ -409,6 +409,15 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         base.UpdateView(viewState, verified);
 
         if (!gameObject.activeInHierarchy) return;
+
+        // Added 2026-10-15 — same guard Blitz/Leaper/KingSpike/KingOrbiter/Spear already have: death is
+        // handled by base.UpdateView() above (OnDeathStop() + hierarchy.Delete()), but without this,
+        // execution continued into the rest of this method on the same frame a PredictedHierarchy
+        // reconciliation rebuilds this instance after it died mid-Windup — the fresh _lastVisualState
+        // default no longer matches the still-Windup stateId, so the gated block below would re-run as if
+        // entering Windup for the first time, immediately re-enabling the very indicator OnDeathStop() just
+        // hid.
+        if (viewState.b.isDead) return;
 
         // Re-applied every frame — same reasoning as every other indicator in this rebuild: if spinRadius
         // changes at runtime, the indicator should never silently drift out of sync with it. Radial
@@ -463,6 +472,20 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         }
     }
 
+    // Restores the windup indicator on a misprediction-revert — same class of bug as LeaperGloomPD's own
+    // identical fix (see its OnHiddenStateChanged doc comment for the full mechanism). OnDeathStop() below
+    // is a one-way latch; nothing else re-shows the indicator since stateId never actually left Windup
+    // (only the separate isDead flag mispredicted), so UpdateView's _lastVisualState edge-detect never
+    // re-fires. No reparenting involved here — _windupIndicator is never unparented for this enemy, so a
+    // plain SetActive(true) is enough.
+    protected override void OnHiddenStateChanged(bool hidden)
+    {
+        base.OnHiddenStateChanged(hidden);
+        if (hidden || _windupIndicator == null) return;
+        if ((DaggerState)currentState.stateId == DaggerState.Windup)
+            _windupIndicator.SetActive(true);
+    }
+
     protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
@@ -478,7 +501,7 @@ public class DaggerGloomPD : EnemyBasePD<DaggerGloomPD.State>
         ApplyAnimatorClipSpeeds();
         currentState.stateId             = 0;
         currentState.attacksRemaining    = currentState.scaledAttacksPerAttack;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         currentState.stateTimer          = 0f;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.Hide();

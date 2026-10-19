@@ -334,12 +334,15 @@ MonoBehaviour:
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 1581269346829594206}
   - {fileID: 2450497001650675926}
   - {fileID: 3067836175327041456}
+  _otherRenderers:
+  - {fileID: 9078235262873843488}
+  - {fileID: 4916173324159952936}
   invulnerableShell: {fileID: 3937824197483385527}
   stabDamageMultiplier: 1.5
   stabRange: 4.5
@@ -349,7 +352,7 @@ MonoBehaviour:
   betweenStabPause: 0.25
   postStabPause: 0.5
   attacksPerAttack: 1
-  dashSpeedMultiplier: 1.5
+  dashSpeedMultiplier: 1.75
   dashOffsetDistance: 2
   attackCooldown: 5
   attacksPerAttackTierGrowth: 1
@@ -1195,7 +1198,7 @@ GameObject:
   - component: {fileID: 9248562320134942}
   - component: {fileID: 1581269346829594206}
   m_Layer: 0
-  m_Name: Cube
+  m_Name: Face Spike
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

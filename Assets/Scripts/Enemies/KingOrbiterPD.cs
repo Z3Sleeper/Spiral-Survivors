@@ -110,6 +110,16 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         public DisposableList<PredictedObjectID> innerHeld;
         public DisposableList<PredictedObjectID> middleHeld;
         public DisposableList<PredictedObjectID> outerHeld;
+        // Snapshotted IEnemyPD.SpawnGeneration for each ring-held entry, at the exact tick TryGrabRing grabs
+        // it (2026-10-16 fix) — same mechanism as persistentHeldGeneration/shootTrackedPlebGeneration's own
+        // doc comments: a raw PredictedObjectID alone can't tell any of the many
+        // hierarchy.GetGameObject(RingHeldList(...)[i]) call sites below whether they're still resolving to
+        // the SAME pleb originally grabbed, versus a pooled-reuse or PredictedHierarchy instance-ID-collision
+        // victim now silently wearing that id (client-only — only non-host clients ever resimulate, which is
+        // when the collision bug fires). See RingHeldGenerationList/TryResolveRingMember below.
+        public DisposableList<int>               innerHeldGeneration;
+        public DisposableList<int>               middleHeldGeneration;
+        public DisposableList<int>               outerHeldGeneration;
         // Last ring's chosen shot target — excluded from the next ring's random pick when possible ("unique
         // from the last target if possible"). Default(PlayerID) on a fresh spawn just means "nothing to
         // exclude yet", same as every other unguarded default-sentinel PlayerID field in this codebase (e.g.
@@ -138,6 +148,14 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         //
         // shootTrackedPleb: the actual key — which held pleb (PredictedObjectID) this entry belongs to.
         public DisposableList<PredictedObjectID> shootTrackedPleb;
+        // Snapshotted IEnemyPD.SpawnGeneration for each shootTrackedPleb entry, at the exact tick it opens
+        // (2026-10-16 fix) — same mechanism/reasoning as persistentHeldGeneration's own doc comment
+        // (KingOrbiterPD's Persistent Volley system): a raw PredictedObjectID alone can't tell
+        // DespawnFinishedShootIndicators or the view-layer shrink read whether it's still resolving to the
+        // SAME pleb that opened this entry, versus a pooled-reuse or PredictedHierarchy instance-ID-collision
+        // victim now silently wearing that id (client-only — only non-host clients ever resimulate, which is
+        // when the collision bug fires).
+        public DisposableList<int>               shootTrackedPlebGeneration;
         // shootTrackedBearing: this pleb's own tracked aim DIRECTION (unit Vector3, not a raw angle — see the
         // 2026-08-24 doc history below for why a Vector3, kept verbatim since it's still exactly why this
         // stays a Vector3 post-rework). Vector3.zero means "not yet seeded" (this entry was JUST added this
@@ -188,6 +206,20 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // comment for the full grab/windup/fire/release flow. Vector3 direction, same 2026-08-24
         // wraparound-jitter fix as shootBearingDir above — see its own doc comment.
         public DisposableList<PredictedObjectID> persistentHeld;
+        // Snapshotted IEnemyPD.SpawnGeneration for each persistentHeld entry, at the exact tick it's grabbed
+        // (2026-10-16 fix) — a raw PredictedObjectID alone can't tell you whether the enemy it originally
+        // pointed at is still the SAME one (see IEnemyPD.SpawnGeneration's own doc comment): pooled reuse
+        // silently hands that same id to a different spawn, and separately, PredictedHierarchy has a
+        // confirmed, package-level instance-ID collision bug during client-side rollback resim (see
+        // project_spikeshield_instance_id_collision_bug memory) that can ALSO silently repoint an existing id
+        // at an unrelated object. Both failure modes look identical from here: hierarchy.GetGameObject(id)
+        // keeps resolving successfully, just to the wrong thing. Confirmed live, client-only (never seen in
+        // solo — consistent with rollback resim being the trigger): a held pleb's indicator snapped from deep
+        // in the tree line to right behind the player within under a second, shortly after a wipe freed a
+        // batch of ids at once. UpdatePersistentBearingTracking/FirePersistentVolley both check this against
+        // the resolved GameObject's own current SpawnGeneration before trusting it, treating a mismatch the
+        // same as the existing "target truly gone" fallback.
+        public DisposableList<int>               persistentHeldGeneration;
         public DisposableList<PlayerID>          persistentTargetId;
         public DisposableList<Vector3>           persistentBearingDir;
         // Same role as shootTrackedIndicator above, just for the persistent-volley pool — parallel to
@@ -234,12 +266,17 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             innerHeld.Dispose();
             middleHeld.Dispose();
             outerHeld.Dispose();
+            innerHeldGeneration.Dispose();
+            middleHeldGeneration.Dispose();
+            outerHeldGeneration.Dispose();
             shootTrackedPleb.Dispose();
+            shootTrackedPlebGeneration.Dispose();
             shootTrackedBearing.Dispose();
             shootTrackedIndicator.Dispose();
             shootTrackedFired.Dispose();
             shootTrackedWindupStart.Dispose();
             persistentHeld.Dispose();
+            persistentHeldGeneration.Dispose();
             persistentTargetId.Dispose();
             persistentBearingDir.Dispose();
             persistentIndicatorId.Dispose();
@@ -253,12 +290,17 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             copy.innerHeld = innerHeld.Duplicate();
             copy.middleHeld = middleHeld.Duplicate();
             copy.outerHeld = outerHeld.Duplicate();
+            copy.innerHeldGeneration = innerHeldGeneration.Duplicate();
+            copy.middleHeldGeneration = middleHeldGeneration.Duplicate();
+            copy.outerHeldGeneration = outerHeldGeneration.Duplicate();
             copy.shootTrackedPleb = shootTrackedPleb.Duplicate();
+            copy.shootTrackedPlebGeneration = shootTrackedPlebGeneration.Duplicate();
             copy.shootTrackedBearing = shootTrackedBearing.Duplicate();
             copy.shootTrackedIndicator = shootTrackedIndicator.Duplicate();
             copy.shootTrackedFired = shootTrackedFired.Duplicate();
             copy.shootTrackedWindupStart = shootTrackedWindupStart.Duplicate();
             copy.persistentHeld = persistentHeld.Duplicate();
+            copy.persistentHeldGeneration = persistentHeldGeneration.Duplicate();
             copy.persistentTargetId = persistentTargetId.Duplicate();
             copy.persistentBearingDir = persistentBearingDir.Duplicate();
             copy.persistentIndicatorId = persistentIndicatorId.Duplicate();
@@ -557,6 +599,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         s.scaledAttackCooldown = attackCooldown;
         s.scaledPersistentShotInterval = persistentShotInterval;
         s.shootTrackedPleb = DisposableList<PredictedObjectID>.Create(0);
+        s.shootTrackedPlebGeneration = DisposableList<int>.Create(0);
         s.shootTrackedBearing = DisposableList<Vector3>.Create(0);
         s.shootTrackedIndicator = DisposableList<PredictedObjectID>.Create(0);
         s.shootTrackedFired = DisposableList<bool>.Create(0);
@@ -564,7 +607,11 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         s.innerHeld  = DisposableList<PredictedObjectID>.Create(innerCount);
         s.middleHeld = DisposableList<PredictedObjectID>.Create(middleCount);
         s.outerHeld  = DisposableList<PredictedObjectID>.Create(outerCount);
+        s.innerHeldGeneration  = DisposableList<int>.Create(innerCount);
+        s.middleHeldGeneration = DisposableList<int>.Create(middleCount);
+        s.outerHeldGeneration  = DisposableList<int>.Create(outerCount);
         s.persistentHeld = DisposableList<PredictedObjectID>.Create(0);
+        s.persistentHeldGeneration = DisposableList<int>.Create(0);
         s.persistentTargetId = DisposableList<PlayerID>.Create(0);
         s.persistentBearingDir = DisposableList<Vector3>.Create(0);
         s.persistentIndicatorId = DisposableList<PredictedObjectID>.Create(0);
@@ -599,6 +646,33 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             case 1:  return ref state.middleHeld;
             default: return ref state.outerHeld;
         }
+    }
+
+    // Generation-list counterpart to RingHeldList above — same indexing, always kept in lockstep (every Add/
+    // Clear on one has a matching call on the other, same convention OrbiterGloomPD.heldPlebGeneration uses).
+    private static ref DisposableList<int> RingHeldGenerationList(ref State state, int ring)
+    {
+        switch (ring)
+        {
+            case 0:  return ref state.innerHeldGeneration;
+            case 1:  return ref state.middleHeldGeneration;
+            default: return ref state.outerHeldGeneration;
+        }
+    }
+
+    // Resolves RingHeldList(ring)[i] to its IEnemyPD, verifying it's still the SAME logical pleb originally
+    // grabbed by TryGrabRing — not a pooled-reuse or PredictedHierarchy instance-ID-collision victim now
+    // wearing its id (see innerHeldGeneration's own doc comment). A mismatch is treated exactly like every
+    // other "target gone/invalid" case in this class. The single chokepoint every per-ring held-pleb
+    // resolution in this file should go through.
+    private bool TryResolveRingMember(ref State state, int ring, int i, out IEnemyPD enemy)
+    {
+        enemy = null;
+        var go = hierarchy.GetGameObject(RingHeldList(ref state, ring)[i]);
+        if (go == null || !go.TryGetComponent(out IEnemyPD candidate)) return false;
+        if (candidate.SpawnGeneration != RingHeldGenerationList(ref state, ring)[i]) return false;
+        enemy = candidate;
+        return true;
     }
 
     // Evenly-spaced slot angle for held-index i out of `count` — same formula/purpose as
@@ -711,7 +785,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                         continue;
                     }
 
-                    if (!AllArrivedAtOrbitSlot(held)) break;
+                    if (!AllArrivedAtOrbitSlot(ref state, ring)) break;
 
                     EndPullingRing(ref state);
                     state.pullRingIndex++;
@@ -804,7 +878,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                         || state.shootRingLocalIndex >= held.Count;
                     if (!dispatchDoneForThisRing) break;
 
-                    if (!AllFinishedLaunching(held)) break;
+                    if (!AllFinishedLaunching(ref state, physicalRing)) break;
 
                     EndShotRing(ref state);
                     state.shootRingIndex++;
@@ -896,7 +970,9 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     private bool TryGrabRing(ref State state, int ring)
     {
         ref var held = ref RingHeldList(ref state, ring);
+        ref var heldGen = ref RingHeldGenerationList(ref state, ring);
         held.Clear();
+        heldGen.Clear();
         if (EnemySpawnerPD.instance == null) return false;
 
         _grabCandidates.Clear();
@@ -932,6 +1008,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         {
             var chosen = _grabCandidates[i];
             held.Add(chosen.ObjectId);
+            heldGen.Add(chosen.SpawnGeneration);
             chosen.SetKinematic(true);
             chosen.SetMovementDisabled(true);
             chosen.SetPhysicsColliderDisabled(true);
@@ -961,11 +1038,9 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // already sorted it into (furthest-first).
     private void BeginPull(ref State state, int ring, int i)
     {
-        var held  = RingHeldList(ref state, ring);
-        int count = held.Count;
+        int count = RingHeldList(ref state, ring).Count;
 
-        var go = hierarchy.GetGameObject(held[i]);
-        if (go != null && go.TryGetComponent(out IEnemyPD enemy) && !enemy._isDead)
+        if (TryResolveRingMember(ref state, ring, i, out var enemy) && !enemy._isDead)
             enemy.OrbitTarget(ObjectId, transform.position, RingRadius(ring), pullSpeed, RingAngularSpeed(ring), SlotAngleDeg(i, count));
     }
 
@@ -976,12 +1051,12 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // wiped early-return means it simply stops moving toward its slot), so it's treated as non-blocking
     // instead of stalling the ring's release forever — same reasoning a missing/unresolvable GameObject
     // gets.
-    private bool AllArrivedAtOrbitSlot(DisposableList<PredictedObjectID> held)
+    private bool AllArrivedAtOrbitSlot(ref State state, int ring)
     {
-        for (int i = 0; i < held.Count; i++)
+        int count = RingHeldList(ref state, ring).Count;
+        for (int i = 0; i < count; i++)
         {
-            var go = hierarchy.GetGameObject(held[i]);
-            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+            if (!TryResolveRingMember(ref state, ring, i, out var enemy) || enemy._isDead) continue;
             if (!enemy.IsWaitingToOrbit) return false;
         }
         return true;
@@ -1010,11 +1085,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // all in this SAME tick is what keeps their angular spacing exactly even instead of drifting (see
         // EnemyOrbitPhase's own doc comment). Only this ring's own plebs — inner/middle/outer each get
         // released independently, on their own ring's own schedule, not gated behind the other two rings.
-        var held = RingHeldList(ref state, ring);
-        for (int i = 0; i < held.Count; i++)
+        int count = RingHeldList(ref state, ring).Count;
+        for (int i = 0; i < count; i++)
         {
-            var go = hierarchy.GetGameObject(held[i]);
-            if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+            if (TryResolveRingMember(ref state, ring, i, out var enemy))
                 enemy.BeginOrbiting();
         }
     }
@@ -1055,17 +1129,17 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
     private void SetHeldRingsAngularSpeed(ref State state, float speed)
     {
-        ApplyAngularSpeed(state.innerHeld, speed);
-        ApplyAngularSpeed(state.middleHeld, speed);
-        ApplyAngularSpeed(state.outerHeld, speed);
+        ApplyAngularSpeed(ref state, 0, speed);
+        ApplyAngularSpeed(ref state, 1, speed);
+        ApplyAngularSpeed(ref state, 2, speed);
     }
 
-    private void ApplyAngularSpeed(DisposableList<PredictedObjectID> list, float speed)
+    private void ApplyAngularSpeed(ref State state, int ring, float speed)
     {
-        for (int i = 0; i < list.Count; i++)
+        int count = RingHeldList(ref state, ring).Count;
+        for (int i = 0; i < count; i++)
         {
-            var go = hierarchy.GetGameObject(list[i]);
-            if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+            if (TryResolveRingMember(ref state, ring, i, out var enemy))
                 enemy.SetOrbitAngularSpeed(speed);
         }
     }
@@ -1199,12 +1273,14 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     private static void RemoveTrackedShootEntryAt(ref State state, int i)
     {
         int last = state.shootTrackedPleb.Count - 1;
-        state.shootTrackedPleb[i]        = state.shootTrackedPleb[last];
-        state.shootTrackedBearing[i]     = state.shootTrackedBearing[last];
-        state.shootTrackedIndicator[i]   = state.shootTrackedIndicator[last];
-        state.shootTrackedFired[i]       = state.shootTrackedFired[last];
-        state.shootTrackedWindupStart[i] = state.shootTrackedWindupStart[last];
+        state.shootTrackedPleb[i]           = state.shootTrackedPleb[last];
+        state.shootTrackedPlebGeneration[i] = state.shootTrackedPlebGeneration[last];
+        state.shootTrackedBearing[i]        = state.shootTrackedBearing[last];
+        state.shootTrackedIndicator[i]      = state.shootTrackedIndicator[last];
+        state.shootTrackedFired[i]          = state.shootTrackedFired[last];
+        state.shootTrackedWindupStart[i]    = state.shootTrackedWindupStart[last];
         state.shootTrackedPleb.RemoveAt(last);
+        state.shootTrackedPlebGeneration.RemoveAt(last);
         state.shootTrackedBearing.RemoveAt(last);
         state.shootTrackedIndicator.RemoveAt(last);
         state.shootTrackedFired.RemoveAt(last);
@@ -1225,6 +1301,11 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         {
             var go = hierarchy.GetGameObject(state.shootTrackedPleb[i]);
             bool finished = go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead
+                // Generation mismatch means this id no longer resolves to the SAME pleb that opened this
+                // entry (pooled reuse or PredictedHierarchy instance-ID collision — see
+                // shootTrackedPlebGeneration's own doc comment) — treated as finished/invalid, same as every
+                // other case here.
+                || enemy.SpawnGeneration != state.shootTrackedPlebGeneration[i]
                 || (state.shootTrackedFired[i] && !enemy.IsLaunching);
             if (!finished) continue;
 
@@ -1288,17 +1369,19 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             if (localElapsed < 0f || localElapsed >= shotWindupDuration) continue; // not this pleb's window yet, or already past it (about to dispatch this same tick)
 
             var pebId = held[i];
-            var go = hierarchy.GetGameObject(pebId);
-            if (go == null) continue;
+            // Generation-checked (2026-10-16 fix) — see innerHeldGeneration's own doc comment.
+            if (!TryResolveRingMember(ref state, physicalDispatchRing, i, out var pebEnemy)) continue;
 
             int idx = FindTrackedShootIndex(ref state, pebId);
             if (idx < 0)
             {
                 // Freshly opened window — append a new entry. windupStart derived from localElapsed so this
                 // works correctly even if this tick's delta jumped partway INTO the window rather than
-                // landing exactly on its opening instant.
+                // landing exactly on its opening instant. SpawnGeneration snapshotted here too (2026-10-16
+                // fix) — see shootTrackedPlebGeneration's own doc comment.
                 idx = state.shootTrackedPleb.Count;
                 state.shootTrackedPleb.Add(pebId);
+                state.shootTrackedPlebGeneration.Add(pebEnemy.SpawnGeneration);
                 state.shootTrackedBearing.Add(Vector3.zero);
                 state.shootTrackedIndicator.Add(default);
                 state.shootTrackedFired.Add(false);
@@ -1311,7 +1394,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             // EnemyBasePD.LateSimulate now skips recomputing a held pleb's position entirely once its orbit
             // angular speed hits 0, so this read is already stable without any caching here, same shape as
             // UpdatePersistentBearingTracking's own equivalent read.
-            Vector3 toTarget = targetPos - go.transform.position;
+            Vector3 toTarget = targetPos - pebEnemy.transform.position;
             toTarget.y = 0f;
             if (toTarget.sqrMagnitude < 0.0001f) continue;
             Vector3 targetDir = toTarget.normalized;
@@ -1333,7 +1416,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             // aim directly here, in Simulate — once per tick, off the same tick-fresh bearing FireShotRing
             // itself reads (2026-08-22 fix, see ResolveOrSpawnLineIndicator's own doc comment for why this
             // needs a real spawned object rather than a pooled Instantiate() clone).
-            var indicator = ResolveOrSpawnLineIndicator(state.shootTrackedIndicator[idx], go.transform.position,
+            var indicator = ResolveOrSpawnLineIndicator(state.shootTrackedIndicator[idx], pebEnemy.transform.position,
                 state.shootTrackedBearing[idx], shootingRange, out var resolvedId);
             state.shootTrackedIndicator[idx] = resolvedId;
             indicator?.SetAim(state.shootTrackedBearing[idx]);
@@ -1430,11 +1513,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
     private void ApplyDamageOverrideToRing(ref State state, int ring, float dmg)
     {
-        var list = RingHeldList(ref state, ring);
-        for (int i = 0; i < list.Count; i++)
+        int count = RingHeldList(ref state, ring).Count;
+        for (int i = 0; i < count; i++)
         {
-            var go = hierarchy.GetGameObject(list[i]);
-            if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+            if (TryResolveRingMember(ref state, ring, i, out var enemy))
                 enemy.SetDamageOverride(true, dmg);
         }
     }
@@ -1461,9 +1543,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // flips back false (flight complete) or the pleb becomes invalid — see that method's own doc comment.
     private void FireShotRing(ref State state, int ring, int i)
     {
-        var list = RingHeldList(ref state, ring);
-        var pebId = list[i];
-        var go = hierarchy.GetGameObject(pebId);
+        var pebId = RingHeldList(ref state, ring)[i];
+        // Generation-checked (2026-10-16 fix) — see innerHeldGeneration's own doc comment. A mismatch here is
+        // treated as "unresolvable", same as the pre-existing go==null fallback.
+        bool resolved = TryResolveRingMember(ref state, ring, i, out var enemy);
 
         int idx = FindTrackedShootIndex(ref state, pebId);
 
@@ -1479,7 +1562,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             // UpdateShootBearingTracking uses, so this rare "never tracked" edge case doesn't follow a dead
             // target's transform or aim at the boss's own position when there's no real target.
             Vector3 targetPos = _shotTargetSnapshot != null ? _shotTargetLastKnownPosition : lastKnownTargetPosition;
-            Vector3 toTarget = go != null ? targetPos - go.transform.position : Vector3.zero;
+            Vector3 toTarget = resolved ? targetPos - enemy.transform.position : Vector3.zero;
             toTarget.y = 0f;
             dir = toTarget.sqrMagnitude > 0.0001f ? toTarget.normalized : transform.forward;
         }
@@ -1489,7 +1572,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         // unconditionally, independent of this flag.
         if (idx >= 0) state.shootTrackedFired[idx] = true;
 
-        if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) return;
+        if (!resolved || enemy._isDead) return;
 
         // * EffectiveAttackSpeed (2026-08-31) — bakes this boss's CURRENT attack speed into the launch, once,
         // at the moment it actually fires (same "snapshot, not live" shape MortarHazardPD's own
@@ -1507,12 +1590,12 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     // comment) — a ring only releases once every currently-held member has genuinely finished its own
     // LaunchAlong flight (IsLaunching false), not once "enough time should have passed" per a
     // shootingRange/shotSpeed estimate. Dead/unresolvable members are non-blocking, same reasoning.
-    private bool AllFinishedLaunching(DisposableList<PredictedObjectID> held)
+    private bool AllFinishedLaunching(ref State state, int ring)
     {
-        for (int i = 0; i < held.Count; i++)
+        int count = RingHeldList(ref state, ring).Count;
+        for (int i = 0; i < count; i++)
         {
-            var go = hierarchy.GetGameObject(held[i]);
-            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+            if (!TryResolveRingMember(ref state, ring, i, out var enemy) || enemy._isDead) continue;
             if (enemy.IsLaunching) return false;
         }
         return true;
@@ -1534,11 +1617,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
     private void ReleaseRing(ref State state, int ring)
     {
-        ref var held = ref RingHeldList(ref state, ring);
-        for (int i = 0; i < held.Count; i++)
+        int count = RingHeldList(ref state, ring).Count;
+        for (int i = 0; i < count; i++)
         {
-            var go = hierarchy.GetGameObject(held[i]);
-            if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+            if (TryResolveRingMember(ref state, ring, i, out var enemy))
             {
                 enemy.StopOrbiting();
                 enemy.SetKinematic(false);
@@ -1548,7 +1630,8 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                 enemy.SetDamageOverride(false);
             }
         }
-        held.Clear();
+        RingHeldList(ref state, ring).Clear();
+        RingHeldGenerationList(ref state, ring).Clear();
     }
 
     private void ReleaseAllHeld(ref State state)
@@ -1558,14 +1641,193 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         ReleaseRing(ref state, 2);
     }
 
+    // Snapshot of exactly who each ring held at the moment of the MOST RECENT Die() call — see
+    // OnHiddenStateChanged's own doc comment for the full reasoning (same fix/mechanism as
+    // OrbiterGloomPD._pendingReclaimPlebs, generalized per-ring here). Indexed 0/1/2 matching
+    // inner/middle/outer, same as RingHeldList/RingRadius/RingAngularSpeed.
+    //
+    private readonly List<PredictedObjectID>[] _pendingReclaimRings =
+        { new(), new(), new() };
+    // Snapshotted alongside _pendingReclaimRings (2026-10-16 fix) — same "verify, don't just trust the id"
+    // reasoning as innerHeldGeneration's own doc comment, applied to the reclaim path too.
+    private readonly List<int>[] _pendingReclaimRingsGeneration =
+        { new(), new(), new() };
+
+    // Persistent Pleb Shots snapshot — see OnHiddenStateChanged's own doc comment for the reclaim half.
+    // Parallel lists, same indexing as the real persistentHeld/persistentTargetId/persistentBearingDir/
+    // persistentLastKnownPosition State fields. persistentIndicatorId is deliberately NOT snapshotted —
+    // ReleasePersistentHeld already despawned those objects, so a reclaimed slot just gets a fresh one
+    // lazily spawned by the next UpdatePersistentBearingTracking tick, same as any newly-grabbed slot.
+    private readonly List<PredictedObjectID> _pendingReclaimPersistentHeld = new();
+    // Snapshotted alongside _pendingReclaimPersistentHeld (2026-10-16 fix) — same "verify, don't just trust
+    // the id" reasoning as persistentHeldGeneration's own doc comment, applied to the reclaim path too: the
+    // id alone can't tell the reclaim loop whether it's still pointing at the same pleb that was originally
+    // held.
+    private readonly List<int> _pendingReclaimPersistentGeneration = new();
+    private readonly List<PlayerID> _pendingReclaimPersistentTargetId = new();
+    private readonly List<Vector3> _pendingReclaimPersistentBearingDir = new();
+    private readonly List<Vector3> _pendingReclaimPersistentLastKnownPosition = new();
+    // Whether the snapshotted volley had already fired (LaunchAlong already called) at release time — if so,
+    // deliberately NOT reclaimed at all (see OnHiddenStateChanged's own doc comment for why: a pleb mid-flight
+    // has its own independent launchActive motion that ReleasePersistentHeld doesn't touch, so briefly losing
+    // its disabled-collision/kinematic state for the ~0.15s revert-confirmation window is a far smaller,
+    // more tolerable cosmetic blip than trying to fully reconstruct in-flight state).
+    private bool _pendingReclaimPersistentAlreadyFired;
+
     // "Immediately release" requires this to happen in the SAME call as B.isDead flipping true — see
     // OrbiterGloomPD.Die()'s own identical override/reasoning.
     protected override void Die()
     {
         base.Die();
+        for (int ring = 0; ring < 3; ring++)
+        {
+            var snapshot = _pendingReclaimRings[ring];
+            var snapshotGen = _pendingReclaimRingsGeneration[ring];
+            snapshot.Clear();
+            snapshotGen.Clear();
+            var held = RingHeldList(ref currentState, ring);
+            var heldGen = RingHeldGenerationList(ref currentState, ring);
+            for (int i = 0; i < held.Count; i++)
+            {
+                snapshot.Add(held[i]);
+                snapshotGen.Add(heldGen[i]);
+            }
+        }
+
+        _pendingReclaimPersistentHeld.Clear();
+        _pendingReclaimPersistentGeneration.Clear();
+        _pendingReclaimPersistentTargetId.Clear();
+        _pendingReclaimPersistentBearingDir.Clear();
+        _pendingReclaimPersistentLastKnownPosition.Clear();
+        _pendingReclaimPersistentAlreadyFired = currentState.persistentShotFired;
+        for (int i = 0; i < currentState.persistentHeld.Count; i++)
+        {
+            _pendingReclaimPersistentHeld.Add(currentState.persistentHeld[i]);
+            _pendingReclaimPersistentGeneration.Add(currentState.persistentHeldGeneration[i]);
+            _pendingReclaimPersistentTargetId.Add(currentState.persistentTargetId[i]);
+            _pendingReclaimPersistentBearingDir.Add(currentState.persistentBearingDir[i]);
+            _pendingReclaimPersistentLastKnownPosition.Add(currentState.persistentLastKnownPosition[i]);
+        }
+
         ReleaseAllHeld(ref currentState);
         ReleasePersistentHeld(ref currentState); // also despawns every persistent-volley indicator
         DespawnAllShootIndicators(ref currentState);
+    }
+
+    // Same release/despawn calls as Die() above, for the difficulty-pacing wipe path (2026-10-16 fix) —
+    // see EnemyBasePD.OnSilentDespawn's own doc comment. No reclaim-snapshot bookkeeping here, unlike Die()
+    // above: that machinery exists purely to support OnHiddenStateChanged's misprediction-revert path, which
+    // only ever fires for a real predicted death, never a wipe (wipe has no revert concept at all — see
+    // SilentDespawn's own doc comment, this is a deterministic difficulty-pacing event, not a
+    // speculative/correctable prediction) — so there's nothing to reclaim here even in principle, only
+    // something to release.
+    protected override void OnSilentDespawn()
+    {
+        base.OnSilentDespawn();
+        ReleaseAllHeld(ref currentState);
+        ReleasePersistentHeld(ref currentState);
+        DespawnAllShootIndicators(ref currentState);
+    }
+
+    // Reclaims whichever snapshotted ring members are still valid once a misprediction-revert is confirmed
+    // — see _pendingReclaimRings' own doc comment for the full mechanism/reasoning (same fix as
+    // OrbiterGloomPD.OnHiddenStateChanged). Re-runs TryGrabRing's own claim sequence per ring rather than
+    // restoring each pleb's exact prior sub-phase — a brief visible re-approach (fresh Pulling phase) instead
+    // of a seamless resume, same accepted approximation as the OrbiterGloomPD fix.
+    protected override void OnHiddenStateChanged(bool hidden)
+    {
+        base.OnHiddenStateChanged(hidden);
+        // Merged with the knockbackIndicator restore below (2026-10-16 compile fix — a class can only have
+        // one override of this method; these were accidentally added as two separate ones in the same pass).
+        if (!hidden && knockbackIndicator != null && GetPhase(ref currentState) == KingOrbiterPhase.KnockbackWindup)
+            knockbackIndicator.SetActive(true);
+        if (hidden) return;
+
+        for (int ring = 0; ring < 3; ring++)
+        {
+            var snapshot = _pendingReclaimRings[ring];
+            if (snapshot.Count == 0) continue;
+
+            var snapshotGen = _pendingReclaimRingsGeneration[ring];
+            int snapshotCount = snapshot.Count;
+            ref var held = ref RingHeldList(ref currentState, ring);
+            ref var heldGen = ref RingHeldGenerationList(ref currentState, ring);
+            held.Clear();
+            heldGen.Clear();
+            int slot = 0;
+            for (int i = 0; i < snapshotCount; i++)
+            {
+                var id = snapshot[i];
+                var go = hierarchy.GetGameObject(id);
+                if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead || enemy.IsBeingHeld) continue;
+                // Verifies this id still resolves to the SAME pleb originally snapshotted, not a pooled-reuse/
+                // instance-ID-collision victim now wearing it — see innerHeldGeneration's own doc comment.
+                if (enemy.SpawnGeneration != snapshotGen[i]) continue;
+
+                held.Add(id);
+                heldGen.Add(enemy.SpawnGeneration);
+                enemy.SetKinematic(true);
+                enemy.SetMovementDisabled(true);
+                enemy.SetPhysicsColliderDisabled(true);
+                enemy.SetHurtboxDisabled(true);
+                enemy.SetDamageOverride(true, damage * pullDamageMultiplier * EnrageDamageMultiplier);
+                enemy.ClaimForOrbit(ObjectId);
+                enemy.OrbitTarget(ObjectId, transform.position, RingRadius(ring), pullSpeed, RingAngularSpeed(ring), SlotAngleDeg(slot, snapshotCount));
+                slot++;
+            }
+            snapshot.Clear();
+            snapshotGen.Clear();
+        }
+
+        // Persistent Pleb Shots reclaim — see _pendingReclaimPersistentHeld's own doc comment. Skipped
+        // entirely if the volley had already fired (mid-flight plebs aren't reclaimed, see
+        // _pendingReclaimPersistentAlreadyFired's own doc comment). persistentVolleyActive/
+        // persistentShotFired/persistentVolleyTimer are never touched by Die()/ReleasePersistentHeld in the
+        // first place (confirmed — only the five per-slot lists get cleared), so they're already exactly
+        // where they need to be for this reclaim to resume into; nothing to restore there.
+        if (!_pendingReclaimPersistentAlreadyFired && _pendingReclaimPersistentHeld.Count > 0)
+        {
+            currentState.persistentHeld.Clear();
+            currentState.persistentHeldGeneration.Clear();
+            currentState.persistentTargetId.Clear();
+            currentState.persistentBearingDir.Clear();
+            currentState.persistentIndicatorId.Clear();
+            currentState.persistentLastKnownPosition.Clear();
+
+            int persistentCount = _pendingReclaimPersistentHeld.Count;
+            for (int i = 0; i < persistentCount; i++)
+            {
+                var id = _pendingReclaimPersistentHeld[i];
+                var go = hierarchy.GetGameObject(id);
+                if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead || enemy.IsBeingHeld) continue;
+                // Verifies this id still resolves to the SAME pleb that was originally snapshotted, not a
+                // pooled-reuse/instance-ID-collision victim now wearing it — see persistentHeldGeneration's
+                // own doc comment. A fresh occupant here would otherwise get wrongly claimed/held.
+                if (enemy.SpawnGeneration != _pendingReclaimPersistentGeneration[i]) continue;
+
+                enemy.SetKinematic(true);
+                enemy.SetMovementDisabled(true);
+                enemy.SetPhysicsColliderDisabled(true);
+                enemy.SetHurtboxDisabled(true);
+                enemy.SetDamageOverride(true, damage * shootingDamageMultiplier * EnrageDamageMultiplier);
+                enemy.ClaimForOrbit(ObjectId);
+
+                currentState.persistentHeld.Add(id);
+                currentState.persistentHeldGeneration.Add(enemy.SpawnGeneration);
+                currentState.persistentTargetId.Add(_pendingReclaimPersistentTargetId[i]);
+                currentState.persistentBearingDir.Add(_pendingReclaimPersistentBearingDir[i]);
+                // Default, not the snapshotted ID — that object was already despawned by
+                // ReleasePersistentHeld; a fresh one gets lazily spawned on the next
+                // UpdatePersistentBearingTracking tick, same as any newly-grabbed slot.
+                currentState.persistentIndicatorId.Add(default);
+                currentState.persistentLastKnownPosition.Add(_pendingReclaimPersistentLastKnownPosition[i]);
+            }
+        }
+        _pendingReclaimPersistentHeld.Clear();
+        _pendingReclaimPersistentGeneration.Clear();
+        _pendingReclaimPersistentTargetId.Clear();
+        _pendingReclaimPersistentBearingDir.Clear();
+        _pendingReclaimPersistentLastKnownPosition.Clear();
     }
 
     // Force-despawns every currently-spawned shoot indicator immediately on death, and clears all 5
@@ -1577,6 +1839,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         for (int i = 0; i < state.shootTrackedIndicator.Count; i++)
             DespawnLineIndicator(state.shootTrackedIndicator[i]);
         state.shootTrackedPleb.Clear();
+        state.shootTrackedPlebGeneration.Clear();
         state.shootTrackedBearing.Clear();
         state.shootTrackedIndicator.Clear();
         state.shootTrackedFired.Clear();
@@ -1629,11 +1892,10 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         bool ownerFrozen = IsTrueStunned && isStunnable;
         for (int ring = 0; ring <= 2; ring++)
         {
-            var held = RingHeldList(ref state, ring);
-            for (int i = 0; i < held.Count; i++)
+            int count = RingHeldList(ref state, ring).Count;
+            for (int i = 0; i < count; i++)
             {
-                var go = hierarchy.GetGameObject(held[i]);
-                if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+                if (!TryResolveRingMember(ref state, ring, i, out var enemy) || enemy._isDead) continue;
                 bool isPulling = enemy.IsPulling;
                 float multiplier = isPulling ? pullDamageMultiplier : orbitDamageMultiplier;
                 enemy.SetDamageOverride(true, damage * multiplier * EnrageDamageMultiplier);
@@ -1692,6 +1954,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     private void StartPersistentVolley(ref State state)
     {
         state.persistentHeld.Clear();
+        state.persistentHeldGeneration.Clear();
         state.persistentTargetId.Clear();
         state.persistentBearingDir.Clear();
         state.persistentIndicatorId.Clear();
@@ -1719,6 +1982,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             chosen.ClaimForOrbit(ObjectId);
 
             state.persistentHeld.Add(chosen.ObjectId);
+            state.persistentHeldGeneration.Add(chosen.SpawnGeneration);
             state.persistentTargetId.Add(kvp.Key);
 
             Vector3 toTarget = p.transform.position - chosen.transform.position;
@@ -1771,6 +2035,21 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         return best;
     }
 
+    // Resolves persistentHeld[i] to its IEnemyPD, verifying it's still the SAME logical pleb originally
+    // grabbed by StartPersistentVolley — not a pooled-reuse or PredictedHierarchy instance-ID-collision
+    // victim now wearing its id (see persistentHeldGeneration's own doc comment for the full "why", and the
+    // live-confirmed symptom this fixes). A mismatch is treated exactly like every other "target truly gone"
+    // case in this class — null return, caller skips/no-ops for this slot.
+    private bool TryResolveHeldPleb(ref State state, int i, out IEnemyPD enemy)
+    {
+        enemy = null;
+        var go = hierarchy.GetGameObject(state.persistentHeld[i]);
+        if (go == null || !go.TryGetComponent(out IEnemyPD candidate)) return false;
+        if (candidate.SpawnGeneration != state.persistentHeldGeneration[i]) return false;
+        enemy = candidate;
+        return true;
+    }
+
     // Rate-capped bearing tracking toward each slot's OWN assigned target player — same Vector3.RotateTowards
     // shape as UpdateShootBearingTracking above (see its own doc comment for why this is a Vector3, not a raw
     // degree float), just against a fixed per-slot PlayerID instead of the Shooting Phase's one shared
@@ -1791,13 +2070,13 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             // invisible still have a real last-known position to keep tracking, see doc comment above.
             if (!CharacterStatsPD.All.TryGetValue(state.persistentTargetId[i], out var target)) continue;
 
-            var go = hierarchy.GetGameObject(state.persistentHeld[i]);
-            if (go == null) continue;
+            if (!TryResolveHeldPleb(ref state, i, out var heldPleb)) continue;
+            Transform go = heldPleb.transform;
 
             if (!target.IsDead && (!target.IsInvisible || target.IsTaunting))
                 state.persistentLastKnownPosition[i] = target.transform.position;
 
-            Vector3 toTarget = state.persistentLastKnownPosition[i] - go.transform.position;
+            Vector3 toTarget = state.persistentLastKnownPosition[i] - go.position;
             toTarget.y = 0f;
             if (toTarget.sqrMagnitude < 0.0001f) continue;
             Vector3 targetDir = toTarget.normalized;
@@ -1813,7 +2092,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             // BeginOrbiting" comment) — stationary for their whole windup, same as ShootFlight's held plebs.
             if (i < state.persistentIndicatorId.Count)
             {
-                var indicator = ResolveOrSpawnLineIndicator(state.persistentIndicatorId[i], go.transform.position,
+                var indicator = ResolveOrSpawnLineIndicator(state.persistentIndicatorId[i], go.position,
                     state.persistentBearingDir[i], shootingRange, out var resolvedId);
                 state.persistentIndicatorId[i] = resolvedId;
                 indicator?.SetAim(state.persistentBearingDir[i]);
@@ -1876,8 +2155,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     {
         for (int i = 0; i < state.persistentHeld.Count; i++)
         {
-            var go = hierarchy.GetGameObject(state.persistentHeld[i]);
-            if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead) continue;
+            if (!TryResolveHeldPleb(ref state, i, out var enemy) || enemy._isDead) continue;
 
             // * EffectiveAttackSpeed — see FireShotRing's own identical 2026-08-31 doc comment.
             enemy.LaunchAlong(state.persistentBearingDir[i], shootingRange, shotSpeed * EffectiveAttackSpeed);
@@ -1927,8 +2205,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     {
         for (int i = 0; i < state.persistentHeld.Count; i++)
         {
-            var go = hierarchy.GetGameObject(state.persistentHeld[i]);
-            if (go != null && go.TryGetComponent(out IEnemyPD enemy))
+            if (TryResolveHeldPleb(ref state, i, out var enemy))
             {
                 enemy.StopOrbiting();
                 enemy.SetKinematic(false);
@@ -1944,6 +2221,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         for (int i = 0; i < state.persistentIndicatorId.Count; i++)
             DespawnLineIndicator(state.persistentIndicatorId[i]);
         state.persistentHeld.Clear();
+        state.persistentHeldGeneration.Clear();
         state.persistentTargetId.Clear();
         state.persistentBearingDir.Clear();
         state.persistentIndicatorId.Clear();
@@ -1958,6 +2236,15 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
     {
         base.UpdateView(viewState, verified);
         if (!gameObject.activeInHierarchy) return;
+
+        // Added 2026-10-15 — same guard Blitz/Leaper/KingSpike already have (this class was missing it, same
+        // gap KingSpikePD had): death is handled by base.UpdateView() above (OnDeathStop() +
+        // hierarchy.Delete()), but without this, execution continued into the rest of this method on the
+        // same frame a PredictedHierarchy reconciliation rebuilds this instance after it died mid-
+        // KnockbackWindup — the fresh _lastVisualState default no longer matches the still-KnockbackWindup
+        // phase, so the gated block below would re-run as if entering KnockbackWindup for the first time,
+        // immediately re-enabling the very indicator OnDeathStop() just hid.
+        if (viewState.b.isDead) return;
 
         // centerForwardOffset left at its 0 default — knockbackIndicator's own current position (WindupFillPD's
         // own transform) already IS the center.
@@ -2043,15 +2330,16 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                     float localElapsed = viewState.phaseTimer - (ringGlobalStart + j) * viewState.scaledPullSequentialDelay;
                     if (localElapsed < 0f) continue; // not this pleb's own turn yet
 
-                    var go = hierarchy.GetGameObject(held[j]);
                     // !IsPulling (2026-09-16, was `enemy.IsWaitingToOrbit` — a real bug, see IEnemyPD.IsPulling's
                     // own doc comment) — this pleb's indicator job is done the instant its own orbitPhase moves
                     // PAST Pulling (WaitingToOrbit OR Orbiting), not just while it sits in the specific
                     // WaitingToOrbit window. A ring's own release (EndPullingRing -> BeginOrbiting) can flip a
                     // pleb straight past that check while OTHER rings keep this whole block running, which used
                     // to silently re-show a stale-looking indicator tracking an already-orbiting pleb's live
-                    // position for however long those other rings took to finish.
-                    if (go == null || !go.TryGetComponent(out IEnemyPD enemy) || enemy._isDead || !enemy.IsPulling)
+                    // position for however long those other rings took to finish. Generation-checked too
+                    // (2026-10-16 fix) — see innerHeldGeneration's own doc comment; without it this indicator
+                    // could point at an unrelated enemy's live position instead of correctly reading as empty.
+                    if (!TryResolveRingMember(ref viewState, ring, j, out var enemy) || enemy._isDead || !enemy.IsPulling)
                         continue;
 
                     float   rad = SlotAngleDeg(j, heldCount) * Mathf.Deg2Rad;
@@ -2059,7 +2347,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                     Vector3 slotPos = transform.position + dir * RingRadius(ring);
 
                     _activePullNearEdge.Add(slotPos);
-                    _activePullPlebPos.Add(go.transform.position);
+                    _activePullPlebPos.Add(enemy.transform.position);
                     _activePullLocalElapsed.Add(localElapsed);
                 }
             }
@@ -2154,7 +2442,12 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             // finished (IsLaunching flips false) but before the entry was actually removed; a live distance
             // read has no such gate — the pleb's own final landed position naturally reads as fully traveled.
             var pebGo = hierarchy.GetGameObject(viewState.shootTrackedPleb[i]);
-            float traveled = pebGo != null ? Vector3.Distance(indicator.transform.position, pebGo.transform.position) : 0f;
+            // Generation-checked (2026-10-16 fix) — same reasoning as DespawnFinishedShootIndicators' own
+            // check; without it, a hijacked id here would shrink the indicator toward an unrelated object's
+            // position instead of reading 0f same as the already-handled "pleb truly gone" case.
+            bool pebStillValid = pebGo != null && pebGo.TryGetComponent(out IEnemyPD pebEnemyView)
+                && pebEnemyView.SpawnGeneration == viewState.shootTrackedPlebGeneration[i];
+            float traveled = pebStillValid ? Vector3.Distance(indicator.transform.position, pebGo.transform.position) : 0f;
             indicator.SetTraveled(traveled);
 
             float localElapsed = viewState.phaseTimer - viewState.shootTrackedWindupStart[i];
@@ -2195,6 +2488,18 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         }
     }
 
+    // Restores knockbackIndicator on a misprediction-revert — same class of bug as LeaperGloomPD/
+    // BlitzGloomPD/KingSpikePD's own identical fix (see LeaperGloomPD.OnHiddenStateChanged's own doc
+    // comment for the full mechanism). OnDeathStop() below is a one-way latch; nothing else re-shows it
+    // since phase never actually left KnockbackWindup (only the separate isDead flag mispredicted), so
+    // UpdateView's _lastVisualState edge-detect never re-fires. No reparenting involved here (unlike the
+    // other three) — knockbackIndicator is never unparented at all, so a plain SetActive(true) is enough.
+    // _pullLineIndicators/the Shoot/Persistent systems don't need an equivalent fix — see OnDeathStop's own
+    // comment for why those are driven by per-frame-recomputed live state instead of an edge-gated latch,
+    // so they already self-correct on their own the very next frame regardless.
+    // (Merged into the single OnHiddenStateChanged override above alongside the ring-reclaim logic — a
+    // class can only have one override of a given method.)
+
     protected override void OnDeathStop()
     {
         // ShootFlight/Persistent Volley indicators need no hiding here — Die()'s own Simulate-side
@@ -2215,6 +2520,21 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
 
     protected override void OnRespawnReset()
     {
+        // _pendingReclaimRings/_pendingReclaimPersistent* are plain fields, not State — see their own doc
+        // comments. Cleared here so a reused instance never tries to reclaim stale ObjectIds left over from
+        // a previous life's own correctly-confirmed (never-reverted) death.
+        for (int ring = 0; ring < 3; ring++)
+        {
+            _pendingReclaimRings[ring].Clear();
+            _pendingReclaimRingsGeneration[ring].Clear();
+        }
+        _pendingReclaimPersistentHeld.Clear();
+        _pendingReclaimPersistentGeneration.Clear();
+        _pendingReclaimPersistentTargetId.Clear();
+        _pendingReclaimPersistentBearingDir.Clear();
+        _pendingReclaimPersistentLastKnownPosition.Clear();
+        _pendingReclaimPersistentAlreadyFired = false;
+
         currentState.phaseId             = 0;
         currentState.phaseTimer          = 0f;
         // Full cooldown, matching LateAwake()'s own reasoning — same "field needs time to repopulate" logic
@@ -2237,10 +2557,14 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         currentState.innerHeld.Clear();
         currentState.middleHeld.Clear();
         currentState.outerHeld.Clear();
+        currentState.innerHeldGeneration.Clear();
+        currentState.middleHeldGeneration.Clear();
+        currentState.outerHeldGeneration.Clear();
         // Defensive clear, no despawn attempt — Die()'s own DespawnAllShootIndicators already despawned
         // anything actually spawned (and cleared these same lists) before this pooled reuse could happen,
         // same "already released" reasoning as persistentHeld/persistentTargetId/persistentBearingDir below.
         currentState.shootTrackedPleb.Clear();
+        currentState.shootTrackedPlebGeneration.Clear();
         currentState.shootTrackedBearing.Clear();
         currentState.shootTrackedIndicator.Clear();
         currentState.shootTrackedFired.Clear();
@@ -2254,6 +2578,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         currentState.persistentShotFired     = false;
         currentState.persistentVolleyTimer   = 0f;
         currentState.persistentHeld.Clear();
+        currentState.persistentHeldGeneration.Clear();
         currentState.persistentTargetId.Clear();
         currentState.persistentBearingDir.Clear();
         currentState.persistentIndicatorId.Clear();

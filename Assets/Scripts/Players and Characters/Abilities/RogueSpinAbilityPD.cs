@@ -77,6 +77,10 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // to move the player, never the actual tuned value). 50 matches DashSpeed's own default, so the leap
     // covers the same ground a real dash of the same duration would.
     [SerializeField] private float dashSpeed = 50f;
+    // Distinct from PlayerControllerPD.dashSfx (plain default-dash sound) — this leap fires the shared
+    // OnDashStarted listeners a real dash does (see NotifyDashStarted below), but only PlayerControllerPD's
+    // own literal Dash input plays THAT sound, so this ability needs its own, played directly here.
+    [SerializeField] private AudioClip dashSfx;
 
     [Header("Visuals")]
     // The whole-body child raised in Y for the leap arc — same sine-arc formula as LeaperGloomPD's own
@@ -102,12 +106,22 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // damage each). Hits land evenly spaced across the whole duration — one at t=0 (cast), one at t=duration
     // (ability end), the rest spread between. See HitTime()'s own doc comment for the exact spacing.
     public int hitCountPerWeapon = 6;
-    // Flat multiplier on each hit's damage — base damage per hit is Strength * AttackSpeed * this (see
-    // BaseDamage()'s own doc comment). "Percent" suffix at the END (2026-10-09, renamed from
-    // spinAbilityDamageMultiplier) so AugmentDescriptionFormatter's auto-*100 formatting actually fires for
-    // the {spinAbilityDamageMultiplierPercent} token — Stuart had been typing "75% Weapon Damage" as plain
-    // hardcoded text in this ability's own description before now.
-    public float spinAbilityDamageMultiplierPercent = 1f;
+    // Dedicated scalar on JUST the WeaponStrength term of BaseDamage()/OnHitPowerForEffects() (2026-10-16,
+    // replaces the old spinAbilityDamageMultiplierPercent — see attackSpeedRatioPercent's own doc comment for
+    // why a single whole-formula multiplier got split into two independent per-stat ratios instead). "Percent"
+    // suffix at the END so AugmentDescriptionFormatter's auto-*100 formatting fires for the
+    // {strengthRatioPercent} token. 0.75f (75%) is the tentative starting tune — Strength's own contribution
+    // to this ability's damage counts for less than its raw stat value, independently of whatever
+    // attackSpeedRatioPercent is doing to the AttackSpeed term.
+    public float strengthRatioPercent = 0.75f;
+    // Dedicated scalar on JUST the AttackSpeed term of BaseDamage()/OnHitPowerForEffects() (2026-10-16) — was
+    // previously raw _stats.AttackSpeed with no ratio of its own. Together with strengthRatioPercent above,
+    // these fully replace the old spinAbilityDamageMultiplierPercent (a single multiplier on the WHOLE
+    // formula, which — now that both live stat inputs have their own independent ratio — had nothing left to
+    // exclusively control and was removed). "Percent" suffix at the END for the same
+    // AugmentDescriptionFormatter {attackSpeedRatioPercent} token reason. 1.25f (125%) is the tentative
+    // starting tune — Attack Speed investment counts for MORE than its raw stat value here.
+    public float attackSpeedRatioPercent = 1.25f;
 
     // Total damage across the whole burst at current stats — hitCountPerWeapon * current TotalWeaponCount
     // (mirrors _effectiveHitCount's own Activate()-time formula, just read live off CURRENT weapon count
@@ -119,7 +133,7 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // Multishot).
     public string LiveDamageRatio(CharacterStatsPD stats) =>
         AugmentDescriptionFormatter.ShowLiveValues && stats != null
-            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * stats.WeaponStrength * stats.AttackSpeed * spinAbilityDamageMultiplierPercent)} "
+            ? $"{AugmentDescriptionFormatter.FormatLiveNumber(hitCountPerWeapon * Mathf.Max(1, stats.TotalWeaponCount) * (stats.WeaponStrength * strengthRatioPercent) * (stats.AttackSpeed * attackSpeedRatioPercent))} "
             : "";
 
     private CharacterStatsPD    _stats;
@@ -388,6 +402,13 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
         // This leap functions like a dash — fires the same OnDashStarted listeners a real dash would
         // (DashExplosionAugment, DashHealAugment, etc.), matched by NotifyDashEnded below.
         _controller?.NotifyDashStarted();
+
+        // Owner-only (same convention as EnemyBasePD.TriggerHitFeedback's own attacker.isOwner-gated hit SFX)
+        // and isReplaying-guarded (this whole block runs once per real cast, in deterministic Activate()
+        // context called from Simulate() — see this method's own doc comment above — so without the guard a
+        // corrected replay of that same tick would fire it a second time).
+        if (isOwner && !predictionManager.isReplaying && SFXManager.instance != null)
+            SFXManager.instance.Play(dashSfx, transform.position);
         // Also opens the movement-window pair (DashThroughInterruptAugment's sweep consumes this, not
         // Started/Ended) — matched by NotifyDashMovementEnded in EndActiveWindow below, on EVERY end path
         // including an interrupted one (unlike NotifyDashEnded, which an interrupt skips). Also what
@@ -587,17 +608,19 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
     // is the opposite deliberate choice for a different augment). This ability already independently scales
     // its own HIT COUNT with weapon count (hitCountPerWeapon/_effectiveHitCount) — pairing that with
     // WeaponStrength's own divide is exactly what a real multi-weapon setup already does (more instances,
-    // each smaller, total roughly constant), not a double-penalty. Times the LIVE AttackSpeed (unrelated to
-    // spinRate, which is a flat, AttackSpeed-independent value now) times spinAbilityDamageMultiplierPercent.
-    // Deliberately reads WeaponStrength/AttackSpeed live, not snapshotted at cast time — unlike
+    // each smaller, total roughly constant), not a double-penalty. WeaponStrength itself scaled by
+    // strengthRatioPercent, times the LIVE AttackSpeed (unrelated to spinRate, which is a flat,
+    // AttackSpeed-independent value now) scaled by attackSpeedRatioPercent (2026-10-16 — see each field's own
+    // doc comment; together they replace the old single spinAbilityDamageMultiplierPercent). Deliberately
+    // reads WeaponStrength/AttackSpeed live, not snapshotted at cast time — unlike
     // _facingYaw/_damageReach/_weaponCountAtcast above, neither needs to stay fixed for the whole active
     // window.
-    private float BaseDamage() => _stats.WeaponStrength * _stats.AttackSpeed * spinAbilityDamageMultiplierPercent;
+    private float BaseDamage() => (_stats.WeaponStrength * strengthRatioPercent) * (_stats.AttackSpeed * attackSpeedRatioPercent);
 
     // Same shape as BaseDamage() (same reasoning/exception), but WeaponOnHitPower instead of WeaponStrength
     // — the onHitPower this hit reports to onhit-triggered effects (via WeaponHitData/AllyStrikeData below),
     // not the damage the hit itself deals.
-    private float OnHitPowerForEffects() => _stats.WeaponOnHitPower * _stats.AttackSpeed * spinAbilityDamageMultiplierPercent;
+    private float OnHitPowerForEffects() => (_stats.WeaponOnHitPower * strengthRatioPercent) * (_stats.AttackSpeed * attackSpeedRatioPercent);
 
     // Mirrors WeaponMeleePD.Hit() exactly, baseDamage swapped from Strength to BaseDamage().
     private void HitEnemy(IEnemyPD enemy)
@@ -618,8 +641,8 @@ public class RogueSpinAbilityPD : PredictedIdentity<RogueSpinAbilityPD.State>, I
             _stats.NotifyInterrupted(enemy, ref currentState.interruptedThisCast);
 
         float baseDamage = BaseDamage();
-        float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
-        bool  isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
+        float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, _stats.NextFloat, out bool isHighroll);
+        bool  isCrit = _stats.NextFloat() < _stats.CritChance;
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, OnHitPowerForEffects());
         var hitData = new WeaponHitData { target = enemy.ObjectId, weaponDamage = baseDamage, onHitPower = OnHitPowerForEffects(), isCrit = isCrit, isHighroll = isHighroll, hitDistance = Vector3.Distance(_stats.transform.position, enemy.transform.position) };

@@ -14,15 +14,27 @@ using UnityEngine;
 // fires one full 2.5% chunk at 0.25s, then a 2% chunk — 0.20s/0.25s of a chunk — the instant it ends at
 // 0.45s) rather than losing that leftover sliver or rounding it up to a full extra chunk.
 //
-// Per AugmentEffectPD's own doc comment, a discrete one-shot Stats.Heal() call is NOT safe directly from
-// Simulate() (risks double-firing during the client's own resimulation/reconciliation pass). So this follows
-// SurgeHealAugment's exact established shape: Simulate() only ever accumulates a monotonically-growing
-// desiredTotalHealed total into this augment's OWN predicted State (safe — same as SurgeInterruptAoEAugment's
-// own currentState.stackCount), reading KnightBerserkAbilityPD's IsActive each tick (a plain cross-identity
-// property read, same safety class as every other *.EffectiveX read elsewhere in this codebase). The actual
-// Stats.Heal() call only ever fires from UpdateView(), off verified state, for just the DELTA since last
-// applied — and the heal VFX (SurgeHealAugment's own 2026-09-26 precedent) piggybacks on that exact same
-// verified-state call, so it's exactly as safe as the Heal() call it sits next to.
+// Simulate() accumulates a monotonically-growing desiredTotalHealed total into this augment's OWN predicted
+// State (safe — same as SurgeInterruptAoEAugment's own currentState.stackCount), reading
+// KnightBerserkAbilityPD's IsActive each tick (a plain cross-identity property read, same safety class as
+// every other *.EffectiveX read elsewhere in this codebase).
+//
+// The actual Stats.Heal() call now ALSO fires from Simulate() (2026-10-16 — was deferred to UpdateView(),
+// off verified state, for just the delta since last applied). That deferral was originally there because a
+// discrete one-shot += is not safe called UNGUARDED/unconditionally from Simulate() (risks double-firing
+// during PurrDiction's own in-place/jump resimulation pass, which can re-run one tick's Simulate() a second
+// time against the same not-yet-rolled-back state — see PredictionManager.OnPostTick's RollbackToFrame ->
+// SimulateFrameInPlace -> SimulateFrame(sameTick,true) sequence). But Heal() also rolls GameRandom
+// (RollHealMultiplier, whenever CritHealPower != 1f) and fires the _onHeal PredictedEvent — both of which
+// NEED to run deterministically, tick-ordered, through Simulate(), not from UpdateView()'s own per-machine
+// render-cadence timing (see CharacterStatsPD.RaiseOnEnemyDeathDeterministic's doc comment for the fuller
+// "why" of this exact bug class, found the same day). The double-fire risk is avoided here the same way
+// Die()'s own deathDeterministicReactionsFired guard avoids it: appliedAmount lives in predicted State
+// alongside desiredTotalHealed, so comparing them and applying only the delta is naturally idempotent across
+// an in-place double-call (the second call sees them already equal and does nothing) and correctly rolls
+// back together if an earlier tick's accumulation turns out to be a misprediction. UpdateView() now only
+// fires the heal VFX, off verified.appliedAmount change-detection (same shape it always had, just no longer
+// also calling Heal() itself).
 public class KnightBerserkHealAugment : AugmentEffectPD<KnightBerserkHealAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -35,9 +47,13 @@ public class KnightBerserkHealAugment : AugmentEffectPD<KnightBerserkHealAugment
         // ended) to fire the partial-chunk flush exactly once, rather than every tick while inactive.
         public bool  wasActive;
         // Monotonically-growing total amount this augment has EARNED so far (never decreases) — same role as
-        // SurgeHealAugment's own desiredTotalHealed. The real Stats.Heal() application is deferred to
-        // UpdateView() instead of happening right where this grows.
+        // SurgeHealAugment's own desiredTotalHealed.
         public float desiredTotalHealed;
+        // How much of desiredTotalHealed has actually been granted via Stats.Heal() so far (2026-10-16,
+        // moved from a plain instance field into State) — comparing this against desiredTotalHealed every
+        // Simulate() tick is what makes the real Heal() application idempotent across an in-place double-
+        // call; see class doc comment.
+        public float appliedAmount;
         public void Dispose() { }
     }
 
@@ -55,9 +71,11 @@ public class KnightBerserkHealAugment : AugmentEffectPD<KnightBerserkHealAugment
     public float bonusMaxEnergyFlat = 50f;
 
     private KnightBerserkAbilityPD _berserk;
-    // Tracks how much has actually been granted via Stats.Heal so far — mutated only from UpdateView() off
-    // verified state, same role as SurgeHealAugment's own _appliedAmount.
-    private float _appliedAmount;
+    // VFX-dedup only now (2026-10-16) — tracks the last value of verified.appliedAmount the heal VFX fired
+    // for, so it doesn't re-fire every frame while verified sits on an already-handled value. The actual
+    // heal-applied tracking moved into State.appliedAmount (see its own doc comment); this is purely a
+    // render-layer "did I already play the VFX for this" check, same safety class as _wasDeadLastFrame.
+    private float _vfxFiredAmount;
 
     protected override void LateAwake()
     {
@@ -96,6 +114,17 @@ public class KnightBerserkHealAugment : AugmentEffectPD<KnightBerserkHealAugment
         }
 
         state.wasActive = isActive;
+
+        // Applies the real heal the instant this tick's accumulation grows past what's already been
+        // granted — deterministic, tick-ordered (see class doc comment). Comparing against appliedAmount
+        // (in State, not a plain field) is what makes this safe to call unconditionally every tick: once
+        // applied, the two are equal and this is a no-op, including on an in-place double-call of this same
+        // tick.
+        if (state.desiredTotalHealed > state.appliedAmount)
+        {
+            Stats.Heal(state.desiredTotalHealed - state.appliedAmount);
+            state.appliedAmount = state.desiredTotalHealed;
+        }
     }
 
     // seconds * healPerSecondPercent * MaxHealth — a full tickInterval chunk and the final partial chunk
@@ -110,13 +139,11 @@ public class KnightBerserkHealAugment : AugmentEffectPD<KnightBerserkHealAugment
 
         if (Stats == null || !verified.HasValue) return;
 
-        float desired = verified.Value.desiredTotalHealed;
-        if (Mathf.Approximately(desired, _appliedAmount)) return;
+        float applied = verified.Value.appliedAmount;
+        if (Mathf.Approximately(applied, _vfxFiredAmount)) return;
+        _vfxFiredAmount = applied;
 
-        Stats.Heal(desired - _appliedAmount);
-        _appliedAmount = desired;
-
-        // Heal VFX — see class doc comment for why this piggybacks on this exact verified-state delta-apply.
+        // Heal VFX only now — the actual Stats.Heal() call moved to Simulate() (see class doc comment).
         VFXManager.instance?.PlayHealVfx(Stats.transform);
     }
 }

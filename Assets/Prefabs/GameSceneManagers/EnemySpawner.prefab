@@ -157,10 +157,10 @@ MonoBehaviour:
   tier3NamePrefix: Despair
   tier4NamePrefix: Dread
   spawnPoints: []
-  spawnIntervalQ1: 4
-  spawnIntervalQ2: 3
-  spawnIntervalQ3: 2
-  spawnIntervalQ4: 1
+  spawnIntervalQ1: 5
+  spawnIntervalQ2: 4
+  spawnIntervalQ3: 3
+  spawnIntervalQ4: 2
   cycleInterval: 180
   eventDuration: 90
   eliteSpawnTimeFirstPercent: 0.25

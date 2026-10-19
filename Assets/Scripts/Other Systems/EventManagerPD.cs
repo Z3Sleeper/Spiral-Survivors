@@ -55,9 +55,14 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
         // sequence always gives the same result), just unavoidable drift for any draw sitting downstream of
         // other conditional draws in the same tick. Confirmed live: a client briefly spawned/showed an entirely
         // wrong event (including its own spawned entities, e.g. DPSCheck's hazard) before a later resimulation
-        // corrected it to match the host. Deciding the WHOLE sequence once, at match start (when GameRandom's
-        // stream position is still trivially synced — almost nothing has run yet), means StartEvent() is later
-        // just an index lookup into already-agreed, already-replicated data — nothing left to mispredict.
+        // corrected it to match the host. Deciding the WHOLE sequence once, at match start (when the stream's
+        // position is still trivially synced — almost nothing has run yet), means StartEvent() is later just
+        // an index lookup into already-agreed, already-replicated data — nothing left to mispredict.
+        // (2026-10-16: this whole system's draws moved off the shared GameRandom onto its own dedicated
+        // EventRandom — see that class's own doc comment, written to close a DIFFERENT live-confirmed case
+        // of this same bug class: event-entity SPAWN POSITIONS, rolled live at trigger time rather than
+        // precomputable like this sequence is. Precomputing stays in place regardless — it's free, and
+        // removes the question entirely for event SELECTION specifically.)
         public DisposableList<int> eventSequence;
         // How many entries of eventSequence have been consumed so far (StartEvent() calls) — same "running
         // cursor into a State-backed list" shape EnemySpawnerPD's own currentSetIndices/previousSetIndices
@@ -119,7 +124,7 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
         for (int i = 0; i < indices.Length; i++) indices[i] = i;
         for (int i = indices.Length - 1; i > 0; i--)
         {
-            int j = GameRandom.instance.Next(i + 1);
+            int j = EventRandom.instance.Next(i + 1);
             (indices[i], indices[j]) = (indices[j], indices[i]);
         }
 
@@ -152,15 +157,15 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
         ResolveEvent();
 
         // Reads the NEXT entry off the sequence GenerateEventSequence already predetermined at match start —
-        // see State.eventSequence's own doc comment for why this, not a live GameRandom draw here, is what
-        // actually fixes the misprediction. Wraps via modulo purely as a defensive fallback (never the
-        // expected case today) if this is ever called more times than eventSequence has entries — repeats
-        // rather than throwing. The GameRandom.Next fallback below only matters if eventSequence somehow
-        // never got generated at all (eventPrefabs empty at match start, then populated later — not a normal
-        // scenario).
+        // see State.eventSequence's own doc comment for why this, not a live draw here, is what actually
+        // fixes the misprediction. Wraps via modulo purely as a defensive fallback (never the expected case
+        // today) if this is ever called more times than eventSequence has entries — repeats rather than
+        // throwing. The EventRandom.Next fallback below (own dedicated stream, 2026-10-16 — was
+        // GameRandom.instance) only matters if eventSequence somehow never got generated at all (eventPrefabs
+        // empty at match start, then populated later — not a normal scenario).
         int sequenceIndex = currentState.eventSequence.Count > 0
             ? currentState.eventSequence[currentState.nextEventSequenceIndex % currentState.eventSequence.Count]
-            : GameRandom.instance.Next(eventPrefabs.Length);
+            : EventRandom.instance.Next(eventPrefabs.Length);
         currentState.nextEventSequenceIndex++;
 
         var prefab = eventPrefabs[sequenceIndex];
@@ -245,7 +250,7 @@ public class EventManagerPD : PredictedIdentity<EventManagerPD.State>
 
         for (int i = _eventSpawnPointOrderScratch.Length - 1; i > 0; i--)
         {
-            int j = GameRandom.instance.Next(i + 1);
+            int j = EventRandom.instance.Next(i + 1);
             (_eventSpawnPointOrderScratch[i], _eventSpawnPointOrderScratch[j]) = (_eventSpawnPointOrderScratch[j], _eventSpawnPointOrderScratch[i]);
         }
 

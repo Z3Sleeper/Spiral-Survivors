@@ -372,7 +372,7 @@ MonoBehaviour:
   crowdControlResist: 0.65
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 5173062577797930298}
@@ -381,6 +381,9 @@ MonoBehaviour:
   - {fileID: 6371288759870050912}
   - {fileID: 5427267374445519469}
   - {fileID: 1191430190877834793}
+  _otherRenderers:
+  - {fileID: 2754051248617644756}
+  - {fileID: 3233751845802347445}
   invulnerableShell: {fileID: 6798967740665866865}
   chargeDamageMultiplier: 1.5
   spikeBurstDamageMultiplier: 3
@@ -394,7 +397,7 @@ MonoBehaviour:
   chargeWindupFill: {fileID: 7368767810012824487}
   rotationRateDegPerSecond: 30
   postChargeDashOffsetDistance: 5
-  postChargeDashSpeedMultiplier: 1.5
+  postChargeDashSpeedMultiplier: 1.75
   spikeBurstChargeTime: 1.5
   spikeBurstRadius: 10
   spikeBurstIndicator: {fileID: 4686410381492106149}

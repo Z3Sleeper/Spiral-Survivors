@@ -289,11 +289,11 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 2847634420549902229}
   - {fileID: 1223438665833396019}
   - {fileID: 7760759272047401292}
   - {fileID: 160373389716103170}
   - {fileID: 7691121775517504164}
-  - {fileID: 2847634420549902229}
   m_Father: {fileID: 620848357675469830}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1597157536724350220
@@ -366,11 +366,14 @@ MonoBehaviour:
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 7477497162605979100}
   - {fileID: 5808882785442931141}
+  _otherRenderers:
+  - {fileID: 4713848845522760080}
+  - {fileID: 4485775811232936309}
   invulnerableShell: {fileID: 5797343280123201819}
   minAttackRange: 3
   windupDuration: 1

@@ -112,7 +112,7 @@ public class OnHitDamageDistanceAugment : AugmentEffectPD<OnHitDamageDistanceAug
         float distanceBonus = Mathf.Max(0f, perUnitDistancePercent * normalizedDistance);
         float strengthPercent = onHitStrengthPercent + distanceBonus;
         float preRoll = Stats.Strength * strengthPercent * data.onHitPower * tipMultiplier;
-        float rolled = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll);
+        float rolled = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll, Stats.NextFloat);
         rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, data.isHighroll, data.isCrit, Stats.HighrollBonus, Stats.CritDamage);
 
         enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default, data.isHighroll, Stats.executeThreshold, Stats.critExecuteThreshold);

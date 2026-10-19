@@ -199,7 +199,12 @@ public static class WeaponDamageMath
     // highroll: landing in the top (1 - highroll) fraction of this roll's own [min, max] window snaps the
     // result up to max and flags it — a true max roll is otherwise a measure-zero event off continuous
     // random sampling, practically unreachable, which is the whole reason this exists.
-    public static float RollDamage(float damage, float luckChance, float luckFloor, float luckCeiling, float highroll, out bool isHighroll)
+    //
+    // rollRange: the random source, passed in rather than hardcoded (2026-10-16, same shape
+    // RollLuckMultiplier below already established) — every real call site now passes the ATTACKING
+    // player's own CharacterStatsPD.NextFloat (their dedicated per-player stream, see that class's own
+    // State.playerRandom doc comment for why), never the shared GameRandom.instance directly.
+    public static float RollDamage(float damage, float luckChance, float luckFloor, float luckCeiling, float highroll, System.Func<float, float, float> rollRange, out bool isHighroll)
     {
         float max = damage * luckCeiling;
         float rawMin = damage * luckFloor;
@@ -212,7 +217,7 @@ public static class WeaponDamageMath
         float highrollThreshold = Mathf.Lerp(rawMin, max, highroll);
 
         float min = Mathf.Lerp(rawMin, max, luckChance);
-        float roll = GameRandom.instance.NextFloat(min, max);
+        float roll = rollRange(min, max);
 
         isHighroll = roll >= highrollThreshold;
         return isHighroll ? max : roll;
@@ -227,14 +232,15 @@ public static class WeaponDamageMath
     // extended to highroll (2026-09-14). Magnitude for the non-highroll case still rolls normally within
     // [min, max) via luckChance — only the highroll SNAP-TO-MAX is forced rather than independently rolled, so
     // this doesn't remove damage variance entirely, just the highroll coin-flip specifically.
-    public static float RollDamageInherited(float damage, float luckChance, float luckFloor, float luckCeiling, bool isHighroll)
+    // rollRange: see RollDamage's own doc comment above — same reasoning, same convention.
+    public static float RollDamageInherited(float damage, float luckChance, float luckFloor, float luckCeiling, bool isHighroll, System.Func<float, float, float> rollRange)
     {
         float max = damage * luckCeiling;
         if (isHighroll) return max;
 
         float rawMin = damage * luckFloor;
         float min = Mathf.Lerp(rawMin, max, luckChance);
-        return GameRandom.instance.NextFloat(min, max);
+        return rollRange(min, max);
     }
 
     // Same luck-roll shape as RollDamage above, but with damage fixed at 1 (so the result is a plain

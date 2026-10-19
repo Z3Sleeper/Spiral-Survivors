@@ -149,7 +149,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         // OnConfigureSpawn() (always runs AFTER LateAwake(), once hierarchy.Create() returns) writes the
         // real scaled values into State. Re-set again in OnRespawnReset() once those are actually
         // tier-scaled (runs AFTER OnConfigureSpawn, on this life's first Simulate() tick).
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = attackCooldown;
         currentState.strikesRemaining    = strikesPerAttack;
     }
 
@@ -170,7 +170,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         // field's own doc comment — Mathf.Pow, not a linear "1 - (tier-1)*growth" term). Re-set the
         // placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
         currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier * Mathf.Pow(attackCooldownTierGrowth, spawnTier - 1);
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
     }
 
     // See ShooterGloomPD.ApplyAnimatorClipSpeeds's own doc comment for why this lives here (not LateAwake())
@@ -325,7 +325,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     private void EnterPostFire(ref State state)
     {
         state.mortarStateTimer   = postFireDuration;
-        state.attackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
+        state.attackCooldownTimer = state.scaledAttackCooldown;
         SetMortarState(ref state, MortarState.PostFire);
     }
 
@@ -365,7 +365,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     {
         CancelPendingHazardIfWindingUp();
         currentState.strikesRemaining    = 0;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         EnterMoving(ref currentState);
     }
 
@@ -391,6 +391,16 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
     protected override void Die()
     {
         base.Die();
+        CancelPendingHazardIfWindingUp();
+    }
+
+    // Same reasoning as Die()'s own call above, for the difficulty-pacing wipe path instead of a real death
+    // (2026-10-16 fix) — SilentDespawn() previously had no hook at all, so a Mortar wiped mid-Windup left its
+    // independently-living hazard indicator filling and firing a projectile from empty space. See
+    // EnemyBasePD.OnSilentDespawn's own doc comment.
+    protected override void OnSilentDespawn()
+    {
+        base.OnSilentDespawn();
         CancelPendingHazardIfWindingUp();
     }
 
@@ -490,7 +500,7 @@ public class MortarGloomPD : EnemyBasePD<MortarGloomPD.State>
         currentState.mortarStateId       = 0;
         currentState.mortarStateTimer    = 0f;
         currentState.strikesRemaining    = currentState.scaledStrikesPerAttack;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         // In case death happened mid-Windup/Fire, while kinematic was on — HandleActiveState would correct
         // this on the next tick anyway (mortarStateId resets to Moving above), but resetting explicitly here
         // avoids even a one-tick window where a freshly-reused instance reads as kinematic.

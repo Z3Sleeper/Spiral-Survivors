@@ -89,7 +89,7 @@ public class ExeBigAxeBleedAugment : AugmentEffectPD<ExeBigAxeBleedAugment.State
         // amps this augment's bleed rate, adding cross-augment synergy within the BigAxe family. 1f neutral
         // default (every BigAxe throw without the Buff augment), so this is a true no-op without it.
         float preRoll = Stats.Strength * bleedPerSecondPercent * data.onHitPower * _bigAxe.buffStrengthMultiplier;
-        float rolledPerSecond = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll);
+        float rolledPerSecond = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll, Stats.NextFloat);
         rolledPerSecond = WeaponDamageMath.ApplyCritAndHighroll(rolledPerSecond, data.isHighroll, data.isCrit, Stats.HighrollBonus, Stats.CritDamage);
         // Extra flat doubling on top of the normal crit multiplier above — Stuart's own explicit spec.
         if (data.isCrit) rolledPerSecond *= 2f;

@@ -1,0 +1,123 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &6460236203311256532
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 143672338913701573}
+  - component: {fileID: 5057805624301057675}
+  m_Layer: 0
+  m_Name: LocalUIManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &143672338913701573
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6460236203311256532}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5057805624301057675
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6460236203311256532}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 90ee7e5c6ee290a4c9da438f52d82ce0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LocalUIManagerPD
+  healthBar: {fileID: 0}
+  healthBarFillImage: {fileID: 0}
+  invincibleHealthBarColor: {r: 0.8627451, g: 0.8627451, b: 0.8627451, a: 1}
+  shieldBar: {fileID: 0}
+  shieldRegenBar: {fileID: 0}
+  healthText: {fileID: 0}
+  healthRegenText: {fileID: 0}
+  damageReductionText: {fileID: 0}
+  dashChargeCooldownImage: {fileID: 0}
+  dashChargesText: {fileID: 0}
+  energyImage: {fileID: 0}
+  energyText: {fileID: 0}
+  statsUI: {fileID: 0}
+  statsWordsText: {fileID: 0}
+  statsNumbersText: {fileID: 0}
+  controlsUI: {fileID: 0}
+  expandedPlayerUI: {fileID: 0}
+  playerUIBackground: {fileID: 0}
+  buffBar: {fileID: 0}
+  xpBar: {fileID: 0}
+  xpText: {fileID: 0}
+  timerText: {fileID: 0}
+  bossTimerText: {fileID: 0}
+  upgradePointsText: {fileID: 0}
+  difficultyText: {fileID: 0}
+  invisibleTintOverlay: {fileID: 0}
+  ability1CDFill: {fileID: 0}
+  ability1OnCooldownBG: {fileID: 0}
+  ability1Icon: {fileID: 0}
+  ability1CooldownText: {fileID: 0}
+  ability1DurationUI: {fileID: 0}
+  ability1DurationBar: {fileID: 0}
+  ability1ChargeUI: {fileID: 0}
+  ability1ChargeCount: {fileID: 0}
+  ability1ChargeFill: {fileID: 0}
+  ability1TooltipPanel: {fileID: 0}
+  ability1DescriptionText: {fileID: 0}
+  ability2CDFill: {fileID: 0}
+  ability2OnCooldownBG: {fileID: 0}
+  ability2Icon: {fileID: 0}
+  ability2CooldownText: {fileID: 0}
+  ability2DurationUI: {fileID: 0}
+  ability2DurationBar: {fileID: 0}
+  ability2ChargeUI: {fileID: 0}
+  ability2ChargeCount: {fileID: 0}
+  ability2ChargeFill: {fileID: 0}
+  ability2TooltipPanel: {fileID: 0}
+  ability2DescriptionText: {fileID: 0}
+  deathPreventionUI: {fileID: 0}
+  deathPreventionCDOverlay: {fileID: 0}
+  deathPreventionTimerText: {fileID: 0}
+  bossBarTemplate: {fileID: 4244652478594230333, guid: e0a5a9b313bd56643b62b9dfe94a504a, type: 3}
+  bossBarContainer: {fileID: 0}
+  tintScreenOverlay: {fileID: 0}
+  multiplayerTimerText: {fileID: 0}
+  levelUpScreen: {fileID: 0}
+  cardPrefab: {fileID: 8199019286478274000, guid: d5eaed85276e64e4fbb066b6ff8cb558, type: 3}
+  cardContainer: {fileID: 0}
+  rerollButton: {fileID: 0}
+  rerollCountText: {fileID: 0}
+  rerollSfx: {fileID: 8300000, guid: 46c7129edbae410419e8c572ca74f505, type: 3}
+  rerollClickLockoutDuration: 0.1
+  augmentListUI: {fileID: 0}
+  settingsPanel: {fileID: 0}
+  eventPanel: {fileID: 0}
+  eventDescriptionText: {fileID: 0}
+  eventBorderImage: {fileID: 0}
+  pauseScreen: {fileID: 0}
+  singlePlayerResumePanel: {fileID: 0}
+  multiplayerPausePanel: {fileID: 0}
+  pauseReadyCountText: {fileID: 0}
+  pauseReadyButtonText: {fileID: 0}
+  returnToLobbyButton: {fileID: 0}
+  endScreenPanel: {fileID: 0}
+  endScreenTitleText: {fileID: 0}
+  endScreenReadyCountText: {fileID: 0}
+  pickLockoutDuration: 1

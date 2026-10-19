@@ -15,10 +15,10 @@ MonoBehaviour:
   displayName: '<color=#FFFFFF>Vanish: Cloak and Dagger</color>'
   description: '<color=#FFFFFF>Vanish''s</color> duration is extended by <color=#FFA000>{onHitDurationBonus}
     seconds On Hit</color>, increased to <color=#FFA000>{onHitHighrollDurationBonus}
-    On Hit</color> <color=#00FF87>Highroll</color>.
+    seconds On Hit</color> <color=#00FF87>Highroll</color>.
 
-    <color=#FFBE50>Can increase
-    the duration to a maximum of +100%</color>'
+    <color=#FFBE50>Can
+    increase the duration to a maximum of +100%</color>'
   icon: {fileID: 21300000, guid: 1713abf5e3ace8d4998edbdeadefb57c, type: 3}
   effectPrefab: {fileID: 1896237904257808097, guid: 87e6da1b1a4af674bb58cce1619e58f4, type: 3}
   multiplayerOnly: 0

@@ -547,13 +547,16 @@ MonoBehaviour:
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 5173062577797930298}
   - {fileID: 4915765862012716736}
   - {fileID: 354897101790281580}
   - {fileID: 6371288759870050912}
+  _otherRenderers:
+  - {fileID: 6837815553852305606}
+  - {fileID: 4980864840992855514}
   invulnerableShell: {fileID: 484935195704614788}
 --- !u!54 &-6973549993052189348
 Rigidbody:

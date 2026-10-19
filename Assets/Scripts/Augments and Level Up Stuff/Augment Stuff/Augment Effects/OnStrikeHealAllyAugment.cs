@@ -21,7 +21,7 @@ public class OnStrikeHealAllyAugment : AugmentEffectPD<OnStrikeHealAllyAugment.S
     // nothing for a build with zero HealthRegen investment) — added BEFORE the onHitPower multiply (see
     // OnAllyStrike()), so it still scales with onHitPower same as the rest of the heal, just guarantees a
     // non-zero base even at zero HealthRegen investment.
-    [SerializeField] private float baseHeal = 2f;
+    public float baseHeal = 2f;
 
     // Baseline heal at 100% OnHitPower (varies hit-to-hit, so not baked into the preview — see
     // OnHitDamageHealthAugment.LiveBonusHealthRatio's own doc comment for the full convention) for

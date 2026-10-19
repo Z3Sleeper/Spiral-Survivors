@@ -2,12 +2,15 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Ported from _OldSystemArchive/Augment Effects/DashExplosionAugment.cs — On Dash End, deals unpenalized-
-// weapon-damage-scaled AOE damage to nearby enemies and triggers onhit listeners (OnHitDamageAugment,
-// CritTriggerOnHitAugment, etc.) on each one via Stats.NotifyHit — same non-weapon-hit-source pattern
-// PhantomBladePD uses. Rolls luck variance independently for both the damage and the onhit-power figure
-// (both "*" annotated), same as every other damage effect. Deviates from old here: this is a direct damage
+// weapon-damage-scaled AOE damage to nearby enemies. No longer triggers onhit listeners (OnHitDamageAugment,
+// CritTriggerOnHitAugment, etc.) — notifyOnHit: false (2026-10-18, per explicit instruction, matching
+// ShieldBreakBurstAugment's own "no onhit trigger" spec); onHitPowerPercent is now inert, kept only because
+// the live description text still references {onHitPowerPercent} (needs a manual asset-text update if that's
+// ever cleaned up). Rolls luck variance independently for the damage figure, same as every other damage
+// effect. Deviates from old here: this is a direct damage
 // source (same category as PhantomBladePD), so it rolls its own independent crit per enemy
-// (GameRandom.instance.NextFloat() < Stats.CritChance), same as PhantomBladeSummonHelper.SummonAtTarget —
+// (Stats.NextFloat() < Stats.CritChance, off this player's own stream — was GameRandom.instance until
+// 2026-10-16), same as PhantomBladeSummonHelper.SummonAtTarget —
 // old never crit, but every other direct-damage source in the new system does. No longer grants a flat
 // dashHaste bonus (removed per the "no training wheels" balance pass). Subscribes directly to this player's
 // own PlayerControllerPD._onDashEnded, same per-owner-instance cross-player-safety reasoning as
@@ -90,7 +93,7 @@ public class DashExplosionAugment : AugmentEffectPD<DashExplosionAugment.State>
         // "unpenalized" convention ShieldBreakBurstAugment's own knockback uses.
         if (go != null && go.TryGetComponent(out AreaEffectPD chain))
             chain.Launch(Stats, castPosition, radius, null,
-                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, hasKnockback: true, knockback: knockback, vfxPerCast: true);
+                damagePercent: damagePercent, onHitPowerPercent: onHitPowerPercent, notifyOnHit: false, hasKnockback: true, knockback: knockback, vfxPerCast: true);
 
         // Shockwave VFX opt-in (2026-09-26, user-curated, replaces the old flat-cylinder radiusVFXPrefab
         // stand-in) — safe unconditionally: this callback only ever runs once per real dash end, off

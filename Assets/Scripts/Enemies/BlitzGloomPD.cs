@@ -137,11 +137,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
             _windupIndicatorLocalRot = windupIndicator.transform.localRotation;
             _windupIndicatorLocalPoseCaptured = true;
         }
-        // Randomized initial cooldown (1x-2x attackCooldown), matching old BlitzGloom.OnSpawned — spreads
-        // out multiple simultaneously-spawned Blitzers so they don't all windup in lockstep. GameRandom,
-        // not UnityEngine.Random, for determinism (old system's UnityEngine.Random.Range wasn't
-        // replay-safe, but ran on a NetworkBehaviour without PD's resimulation concerns).
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = attackCooldown;
         // Set again in OnConfigureSpawn() once blitzesPerAttack is actually tier-scaled — this LateAwake()
         // assignment runs BEFORE that scaling lands, so it's only ever a placeholder for the brief window
         // in between.
@@ -174,7 +170,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         // attackCooldownTimer LateAwake() already assigned above, using the now-scaled value, same
         // "set again once the real scaling lands" reasoning as blitzesRemaining above.
         currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
     }
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -464,6 +460,17 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         // actually active, instead of leaving stale indicator state from a previous pooled life.
         if (!gameObject.activeInHierarchy) return;
 
+        // Death is handled by base.UpdateView() above (OnDeathStop() + hierarchy.Delete()) — but that
+        // doesn't stop execution from continuing into the rest of THIS method afterward. Confirmed live
+        // (2026-10-14, client-only): if a PredictedHierarchy reconciliation rebuilds this instance AFTER it
+        // died mid-Blitzing, the fresh _lastVisualState default no longer matches the current (still
+        // Blitzing) stateId, so the transition block below re-runs as if entering Blitzing for the first
+        // time — its own windupIndicator.SetActive(isWindupOrBlitzing) call would immediately re-enable the
+        // very indicator OnDeathStop() just hid, moments earlier in this same call. Bailing here preserves
+        // whatever OnDeathStop() already did. Same fix/reasoning as LeaperGloomPD.UpdateView's own identical
+        // guard.
+        if (viewState.b.isDead) return;
+
         var ss = (BlitzState)viewState.stateId;
         bool isWindupOrBlitzing = ss == BlitzState.Windup || ss == BlitzState.Blitzing;
 
@@ -552,6 +559,29 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
         if (windupFill != null && !isWindupOrBlitzing) windupFill.Hide();
     }
 
+    // Restores the windup indicator on a misprediction-revert — same class of bug as LeaperGloomPD's own
+    // identical fix (see its OnHiddenStateChanged doc comment for the full mechanism): OnDeathStop() below
+    // is a one-way latch that hides+unparents the indicator the instant isDead is predicted true, and
+    // nothing else re-shows it on a revert since stateId never actually left Windup/Blitzing (only the
+    // separate isDead flag mispredicted), so UpdateView's _lastVisualState edge-detect never re-fires. No
+    // explicit position/rotation write needed here, even for Blitzing — this fires from WITHIN
+    // base.UpdateView(), called before this override's own "live every frame" block further down runs in
+    // this SAME UpdateView() call, which already re-derives the correct world position every frame it's
+    // Blitzing; unparenting here is enough for that block to then write it correctly moments later, same
+    // frame.
+    protected override void OnHiddenStateChanged(bool hidden)
+    {
+        base.OnHiddenStateChanged(hidden);
+        if (hidden || windupIndicator == null) return;
+
+        var ss = (BlitzState)currentState.stateId;
+        if (ss != BlitzState.Windup && ss != BlitzState.Blitzing) return;
+
+        if (ss == BlitzState.Blitzing)
+            windupIndicator.transform.SetParent(null, true);
+        windupIndicator.SetActive(true);
+    }
+
     protected override void OnDeathStop()
     {
         if (windupIndicator != null) windupIndicator.SetActive(false);
@@ -568,7 +598,7 @@ public class BlitzGloomPD : EnemyBasePD<BlitzGloomPD.State>
     {
         currentState.stateId             = 0;
         currentState.stateTimer          = 0f;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         currentState.blitzesRemaining    = currentState.scaledBlitzesPerAttack;
         if (windupIndicator != null) windupIndicator.SetActive(false);
         if (windupFill != null)      windupFill.Hide();

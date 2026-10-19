@@ -406,8 +406,8 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         //
         // Anything that deals damage rolls luck variance — no exceptions.
         float baseDamage = _stats.Strength * _strengthPercent;
-        float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
-        bool isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
+        float damage = WeaponDamageMath.RollDamage(baseDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, _stats.NextFloat, out bool isHighroll);
+        bool isCrit = _stats.NextFloat() < _stats.CritChance;
         // critDamageMultiplier only ever scales the CRIT contribution (this weapon's own extra crit-damage
         // tuning knob), never the Highroll one — folded into the critDamage argument passed to
         // ApplyCritAndHighroll so it still only affects the crit half of an additive highroll+crit stack.

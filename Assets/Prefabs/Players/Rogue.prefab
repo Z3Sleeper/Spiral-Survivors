@@ -104,8 +104,11 @@ MonoBehaviour:
     <color=#00FFFF>Somersault</color>
     <color=#FFA000>Invincibly</color> forward, <color=#FFA000>Striking</color> with
     your <color=#FFA000>Weapons</color> <color=#FFA000>5 times each</color>, dealing
-    a total of <color=#FFA000>{LiveDamageRatio}</color><color=#FFA000>({spinAbilityDamageMultiplierPercent}%
-    Weapon Damage x <color=#FF0050>Attack Speed</color>)</color>.'
+    a total of <color=#FFA000>{LiveDamageRatio}</color><color=#FFA000>({strengthRatioPercent}%
+    Weapon Damage x <color=#FF0050>{attackSpeedRatioPercent}% Attack Speed</color>)</color>.
+
+    <color=#FFBE50>Triggers
+    Weapon Strike effects</color>'
   cooldown: 8
   authoredChargeCount: 1
   cooldownStartsOnCast: 0
@@ -121,7 +124,8 @@ MonoBehaviour:
   damageRadiusSizeMultiplier: 1.5
   spinRate: 1080
   hitCountPerWeapon: 5
-  spinAbilityDamageMultiplierPercent: 0.75
+  strengthRatioPercent: 0.75
+  attackSpeedRatioPercent: 1.25
 --- !u!114 &-4890662838761607972
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -150,6 +154,6 @@ MonoBehaviour:
   duration: 2
   moveSpeedPercent: 0.3
   blinkOnCast: 0
-  invisibilityDurationBonusPercent: 0
+  durationBonusPercent: 0
   highrollChanceBonusPercent: 0
   dashHasteContributionPercent: 0

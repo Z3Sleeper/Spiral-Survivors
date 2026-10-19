@@ -7,6 +7,14 @@ using UnityEngine;
 // button disabled (LocalUIManagerPD.instance doesn't exist in the lobby scene, so a real pick can't happen
 // here anyway). Pools its instantiated cards like AugmentListUIPD does, so re-opening the panel doesn't
 // re-instantiate from scratch.
+//
+// Populated exactly once, in Start() (2026-10-18) — the panel itself is now shown/hidden via CanvasGroup
+// (LobbySceneController.SetEncyclopediaVisible), not SetActive, specifically so repeat opens never re-enable
+// ~140 cards' worth of GameObjects and pay Unity's own Canvas/layout rebuild cost for them. A full Lobby
+// scene load (LoadSceneMode.Single, confirmed in ReturnToLobbyManager) happens every time the player returns
+// from a match, which destroys and recreates this component fresh — so Start() firing once per instance is
+// exactly once per lobby visit, same timing GrantQualifyingUnlocks() already relied on to catch a just-won
+// unlock before this change.
 public class AugmentEncyclopediaUI : MonoBehaviour
 {
     [SerializeField] private AugmentDatabase augmentDatabase;
@@ -19,7 +27,7 @@ public class AugmentEncyclopediaUI : MonoBehaviour
 
     private readonly List<AugmentCardUI> _pool = new();
 
-    private void OnEnable() => Populate();
+    private void Start() => Populate();
 
     private void Populate()
     {
@@ -48,7 +56,14 @@ public class AugmentEncyclopediaUI : MonoBehaviour
         // Empty/null unlockTag (every augment by default) always passes, same "no restriction" convention
         // unlockTag's own doc comment on AugmentData establishes.
         sorted.RemoveAll(a => a == null || (!string.IsNullOrEmpty(a.unlockTag) && !ProgressionManager.IsAugmentTagUnlocked(a.unlockTag)));
-        sorted.Sort((a, b) => string.Compare(StripRichText(a.displayName), StripRichText(b.displayName), System.StringComparison.OrdinalIgnoreCase));
+
+        // Sort key computed once per augment up front (2026-10-18 perf fix) rather than inside the
+        // comparator — List<T>.Sort calls its comparator O(n log n) times, so stripping rich text there
+        // meant ~1000 regex passes for ~140 augments instead of the ~140 actually needed. Same sort result,
+        // just without the redundant repeat work.
+        var sortKeys = new Dictionary<AugmentData, string>(sorted.Count);
+        foreach (var a in sorted) sortKeys[a] = StripRichText(a.displayName);
+        sorted.Sort((a, b) => string.Compare(sortKeys[a], sortKeys[b], System.StringComparison.OrdinalIgnoreCase));
 
         for (int i = 0; i < sorted.Count; i++)
         {

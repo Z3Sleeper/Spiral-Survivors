@@ -1,0 +1,68 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &1431713534819941975
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 5588443946686884817}
+  - component: {fileID: 4752635366440379328}
+  m_Layer: 0
+  m_Name: XPOrbManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &5588443946686884817
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1431713534819941975}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &4752635366440379328
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1431713534819941975}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2fa0b9b49fe85da44b0cbd906cf866a4, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::XPOrbManagerPD
+  tier1:
+    pleb: {fileID: 476323272898777100, guid: 407489e301dbd3047a4bf4a3608d5c61, type: 3}
+    normal: {fileID: 367739414525045843, guid: 63233d577cfca1243886b9e37de376a1, type: 3}
+    elite: {fileID: 367739414525045843, guid: 63233d577cfca1243886b9e37de376a1, type: 3}
+    boss: {fileID: 6926881607162196772, guid: 0d221d011b863b14e8a578e6e5b00d27, type: 3}
+  tier2:
+    pleb: {fileID: 367739414525045843, guid: 63233d577cfca1243886b9e37de376a1, type: 3}
+    normal: {fileID: 6926881607162196772, guid: 0d221d011b863b14e8a578e6e5b00d27, type: 3}
+    elite: {fileID: 6926881607162196772, guid: 0d221d011b863b14e8a578e6e5b00d27, type: 3}
+    boss: {fileID: 2845189970182134515, guid: ea404ebd9877643448a627d8175327d7, type: 3}
+  tier3:
+    pleb: {fileID: 6926881607162196772, guid: 0d221d011b863b14e8a578e6e5b00d27, type: 3}
+    normal: {fileID: 2845189970182134515, guid: ea404ebd9877643448a627d8175327d7, type: 3}
+    elite: {fileID: 2845189970182134515, guid: ea404ebd9877643448a627d8175327d7, type: 3}
+    boss: {fileID: 3124182798681716878, guid: e3bd546243993394e90aaf4e9bc68161, type: 3}
+  tier4:
+    pleb: {fileID: 2845189970182134515, guid: ea404ebd9877643448a627d8175327d7, type: 3}
+    normal: {fileID: 3124182798681716878, guid: e3bd546243993394e90aaf4e9bc68161, type: 3}
+    elite: {fileID: 3124182798681716878, guid: e3bd546243993394e90aaf4e9bc68161, type: 3}
+    boss: {fileID: 1024037519198458873, guid: b1724a146b5db254898397d6b41584ce, type: 3}
+  eliteOrbCount: 5
+  bossOrbCount: 20

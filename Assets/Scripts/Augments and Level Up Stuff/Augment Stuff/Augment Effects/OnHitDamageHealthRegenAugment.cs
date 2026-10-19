@@ -50,7 +50,7 @@ public class OnHitDamageHealthRegenAugment : AugmentEffectPD<OnHitDamageHealthRe
 
         // Anything that deals damage rolls luck variance — no exceptions.
         float preRoll = (Stats.HealthRegen * onHitHealthRegenPercent + Stats.Strength * onHitStrengthPercent) * data.onHitPower;
-        float rolled = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll);
+        float rolled = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll, Stats.NextFloat);
         rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, data.isHighroll, data.isCrit, Stats.HighrollBonus, Stats.CritDamage);
 
         enemy.TakeDamage(rolled, data.isCrit, Stats.owner ?? default, data.isHighroll, Stats.executeThreshold, Stats.critExecuteThreshold);

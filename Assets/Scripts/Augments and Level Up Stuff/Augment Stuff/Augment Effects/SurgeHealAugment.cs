@@ -18,17 +18,20 @@ using UnityEngine;
 // variance, since heals never do (2026-08-12 reversal, see feedback_all_damage_rolls_luck memory). Callers
 // pass the RAW per-chunk amount; Heal() itself applies the multiplier.
 //
-// Per AugmentEffectPD's own doc comment, a discrete one-shot Stats.Heal() call is NOT safe directly from
-// Simulate() or from a PredictedEvent handler that only mutates cross-identity state (risks double-firing
-// during the client's own resimulation/reconciliation pass — same reasoning SurgeStackingAttackSpeedAugment's
-// own doc comment gives for why IT defers Stats.AddAttackSpeedFlat to UpdateView() instead of calling it from
-// Simulate()). So this augment only ever accumulates a monotonically-growing desiredTotalHealed total in its
-// OWN predicted State (safe — the _onEnergySpent handler may freely mutate this augment's own currentState,
-// exactly like SurgeInterruptAoEAugment's own currentState.stackCount already does) — the actual
-// Stats.Heal() call only ever fires from UpdateView(), off verified state, for just the DELTA since last
-// applied, same "recompute fully, apply only the delta" shape HealthToHealthRegenAugment already uses. The
-// heal VFX (2026-09-26, user-curated per-augment, non-persistent heals only) piggybacks on that exact same
-// verified-state UpdateView() call, so it's exactly as safe as the Heal() call it sits next to.
+// OnEnergySpent (a PredictedEvent handler, Simulate()-context) only ever accumulates a monotonically-growing
+// desiredTotalHealed total in this augment's OWN predicted State (safe — exactly like
+// SurgeInterruptAoEAugment's own currentState.stackCount). The actual Stats.Heal() call now fires from this
+// augment's own Simulate() (2026-10-16 — was deferred to UpdateView(), off verified state, for just the
+// delta since last applied). That deferral was there because a discrete one-shot += is not safe called
+// UNGUARDED from Simulate() (risks double-firing during PurrDiction's own in-place/jump resimulation pass —
+// see KnightBerserkHealAugment's class doc comment for the full mechanism). But Heal() also rolls GameRandom
+// (RollHealMultiplier, whenever CritHealPower != 1f) and fires the _onHeal PredictedEvent, both of which need
+// to run deterministically through Simulate(), not from UpdateView()'s per-machine render-cadence timing —
+// see CharacterStatsPD.RaiseOnEnemyDeathDeterministic's doc comment for the fuller "why", found the same day.
+// Avoided here the same way: appliedAmount lives in predicted State alongside desiredTotalHealed, so
+// comparing them is naturally idempotent across an in-place double-call. UpdateView() now only fires the
+// heal VFX (2026-09-26, user-curated per-augment, non-persistent heals only), off verified.appliedAmount
+// change-detection.
 public class SurgeHealAugment : AugmentEffectPD<SurgeHealAugment.State>
 {
     public struct State : IPredictedData<State>
@@ -42,13 +45,15 @@ public class SurgeHealAugment : AugmentEffectPD<SurgeHealAugment.State>
         public float energySpentSinceLastHeal;
         // Monotonically-growing total amount this augment has EARNED so far (never decreases) — grows by one
         // HealAmount() every time energySpentSinceLastHeal crosses energySpentPerHeal (possibly more than
-        // once per single large spend). See class doc comment for why the real Stats.Heal() application is
-        // deferred to UpdateView() instead of happening right where this grows.
+        // once per single large spend).
         public float desiredTotalHealed;
+        // How much of desiredTotalHealed has actually been granted via Stats.Heal() so far (2026-10-16,
+        // moved from a plain instance field into State) — see class doc comment.
+        public float appliedAmount;
         public void Dispose() { }
     }
 
-    [SerializeField] private float healBase = 0.4f;
+    public float healBase = 0.4f;
     // 2f = 200% (this codebase's percent fields store the fraction). Scales off Stats.BonusHealthRegen
     // (2026-09-14, was Stats.HealthRegen, the full/total stat) — see that property's own doc comment. Renamed
     // from healthRegenPercent to bonusHealthRegenPercent for family-wide naming consistency with every other
@@ -73,10 +78,9 @@ public class SurgeHealAugment : AugmentEffectPD<SurgeHealAugment.State>
             ? $"{AugmentDescriptionFormatter.FormatLiveNumber(healBase + stats.BonusHealthRegen * bonusHealthRegenPercent)} "
             : "";
 
-    // Tracks how much has actually been granted via Stats.Heal so far — mutated only from UpdateView() off
-    // verified state, so the delta applied each time is always correct regardless of how many times a given
-    // tick gets resimulated. Same role as HealthToHealthRegenAugment's own _appliedAmount.
-    private float _appliedAmount;
+    // VFX-dedup only now (2026-10-16) — see KnightBerserkHealAugment's own _vfxFiredAmount doc comment for
+    // the full reasoning; the actual heal-applied tracking moved into State.appliedAmount.
+    private float _vfxFiredAmount;
 
     protected override void OnApply()
     {
@@ -105,21 +109,33 @@ public class SurgeHealAugment : AugmentEffectPD<SurgeHealAugment.State>
 
     private float HealAmount() => healBase + Stats.BonusHealthRegen * bonusHealthRegenPercent;
 
+    // New override (2026-10-16) — this augment's accumulation happens via the OnEnergySpent event handler
+    // above, not a per-tick poll, but the actual Heal() application still needs its own per-tick Simulate()
+    // presence so it runs deterministically every tick regardless of whether THIS tick happened to spend any
+    // energy. See class doc comment.
+    protected override void Simulate(ref State state, float delta)
+    {
+        if (Stats == null) return;
+        if (state.desiredTotalHealed > state.appliedAmount)
+        {
+            Stats.Heal(state.desiredTotalHealed - state.appliedAmount);
+            state.appliedAmount = state.desiredTotalHealed;
+        }
+    }
+
     protected override void UpdateView(State viewState, State? verified)
     {
         base.UpdateView(viewState, verified);
 
         if (Stats == null || !verified.HasValue) return;
 
-        float desired = verified.Value.desiredTotalHealed;
-        if (Mathf.Approximately(desired, _appliedAmount)) return;
+        float applied = verified.Value.appliedAmount;
+        if (Mathf.Approximately(applied, _vfxFiredAmount)) return;
+        _vfxFiredAmount = applied;
 
-        Stats.Heal(desired - _appliedAmount);
-        _appliedAmount = desired;
-
-        // Heal VFX opt-in (2026-09-26, user-curated per-augment, non-persistent heals only) — piggybacks on
-        // this exact same verified-state delta-apply, so it's exactly as safe as the Heal() call above (see
-        // VFXManager.PlayHealVfx's own per-target cooldown for the anti-spam side of this).
+        // Heal VFX opt-in (2026-09-26, user-curated per-augment, non-persistent heals only) — the actual
+        // Stats.Heal() call moved to Simulate() (see class doc comment); VFXManager.PlayHealVfx has its own
+        // per-target cooldown for the anti-spam side of this.
         VFXManager.instance?.PlayHealVfx(Stats.transform);
     }
 }

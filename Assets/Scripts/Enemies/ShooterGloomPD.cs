@@ -177,7 +177,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         // Placeholder only — attackCooldown is the pristine tier1 baseline until OnConfigureSpawn() (always
         // runs AFTER LateAwake(), once hierarchy.Create() returns) writes the real scaled value into
         // State.scaledAttackCooldown.
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = attackCooldown;
         currentState.shotsRemaining      = shotsPerAttack;
     }
 
@@ -192,7 +192,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         // Threat Level 5 — halves attackCooldown (see EnemyBasePD.ConfigureSpawn's own doc comment). Re-set
         // the placeholder attackCooldownTimer LateAwake() already assigned above, using the now-scaled value.
         currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
     }
 
     // Sets the WindupSpeed/ShootSpeed/PostShotSpeed Animator float parameters so each clip's actual
@@ -490,7 +490,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     private void EnterPostShot(ref State state)
     {
         state.shooterStateTimer   = postShotPause;
-        state.attackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
+        state.attackCooldownTimer = state.scaledAttackCooldown;
         SetShooterState(ref state, ShooterState.PostShot);
     }
 
@@ -526,7 +526,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.shotsRemaining      = 0;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         EnterMoving(ref currentState);
     }
 
@@ -631,7 +631,7 @@ public class ShooterGloomPD : EnemyBasePD<ShooterGloomPD.State>
         currentState.shooterStateTimer   = 0f;
         currentState.shotsRemaining      = shotsPerAttack;
         currentState.burstLocked         = false;
-        currentState.attackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.attackCooldownTimer = currentState.scaledAttackCooldown;
         // In case death happened mid-Windup/Shooting, while kinematic was on — HandleActiveState would
         // correct this on the next tick anyway (shooterStateId resets to Moving above), but resetting
         // explicitly here avoids even a one-tick window where a freshly-reused instance reads as kinematic.

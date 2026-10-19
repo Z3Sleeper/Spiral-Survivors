@@ -260,14 +260,17 @@ MonoBehaviour:
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 6832987554094739008}
+  _otherRenderers:
+  - {fileID: 168578666623945036}
+  - {fileID: 1799349913645081539}
   invulnerableShell: {fileID: 3093178901737976177}
   shieldPrefab: {fileID: 104351452379949711, guid: c3e2e5e625c4f434cacd43fbb31463dd, type: 3}
   orbitRadius: 0.75
-  rotationRateDegPerSecond: 20
+  rotationRateDegPerSecond: 30
   windupRotationRateMultiplier: 0.5
   attackRange: 4
   attackWidth: 1.4

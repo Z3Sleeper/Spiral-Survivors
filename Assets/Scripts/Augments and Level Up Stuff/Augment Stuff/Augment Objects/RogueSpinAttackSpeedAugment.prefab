@@ -44,6 +44,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: c350f81eaaaae09408f6cc9e007a8185, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RogueSpinAttackSpeedAugment
-  attackSpeedBonusPercent: 0.3
-  duration: 6
+  attackSpeedBonusPercent: 0.15
+  duration: 10
   buffIcon: {fileID: 21300000, guid: 7339a5299b8cc9b499fa6feacf41ae6b, type: 3}

@@ -170,6 +170,29 @@ public class ShielderGloomPD : EnemyBasePD
         _shield?.CancelWindup();
     }
 
+    // Same CancelWindup() call as Die() above, for the difficulty-pacing wipe path (2026-10-16 fix) — see
+    // EnemyBasePD.OnSilentDespawn's own doc comment. This is the time-sensitive "stop an in-progress
+    // charge/windup from completing" call, same urgency as Die()'s own copy — distinct from Destroyed()'s
+    // cleanup below, which already fires for either path but only much later, at actual verified deletion,
+    // too late to stop a wipe-mid-windup Shield from still finishing its charge and detonating in the
+    // meantime.
+    protected override void OnSilentDespawn()
+    {
+        base.OnSilentDespawn();
+        _shield?.CancelWindup();
+    }
+
+    // Hides/reveals the Shield's own renderers in lockstep with this body's predicted hide/verified-revert —
+    // see EnemyBasePD.OnHiddenStateChanged's own doc comment. Without this, the body (this class's own
+    // _renderers/_accentRenderers) would hide instantly on death while the Shield — a fully separate
+    // PredictedIdentity, invisible to the base class's own hide system — kept rendering and (until the
+    // LateSimulate()-side _owner._isDead fix) kept dealing contact damage (2026-10-15 fix).
+    protected override void OnHiddenStateChanged(bool hidden)
+    {
+        base.OnHiddenStateChanged(hidden);
+        _shield?.SetHidden(hidden);
+    }
+
     // Destroyed() fires on every removal path this identity can go through (real death via UpdateView's
     // verified-isDead delete, SilentDespawn/wipe, or scene teardown) — hooking Shield cleanup here instead
     // of some death-specific callback guarantees it never orphans regardless of WHY the Shielder went away.

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: OnHitReduceAbilityCDAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
   displayName: <color=#FFB4FF>Hastening Strikes</color>
-  description: <color=#FFA000>On Strike:</color> <color=#FFA000>Reduce</color> <color=#FFB4FF>Ability</color>
+  description: <color=#FFA000>On Hit:</color> <color=#FFA000>Reduce</color> <color=#FFB4FF>Ability</color>
     <color=#FFA000>cooldowns</color> by <color=#FFB4FF>{LiveCooldownReduction}</color>
     <color=#FFA000>seconds</color> <color=#FFA000>(<color=#FFB4FF>{reductionPercent}%</color>
     of each <color=#FFB4FF>Ability's</color> base cooldown)</color>.

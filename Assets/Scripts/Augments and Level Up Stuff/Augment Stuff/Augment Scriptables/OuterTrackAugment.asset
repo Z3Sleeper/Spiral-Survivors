@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: OuterTrackAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FFA000>Bladeweaving</color>
+  displayName: <color=#FFA000>Gyromancing</color>
   description: 'Gain a <color=#FFA000>Second Blade Track</color> outside your first
     that spins in the opposite direction.
 

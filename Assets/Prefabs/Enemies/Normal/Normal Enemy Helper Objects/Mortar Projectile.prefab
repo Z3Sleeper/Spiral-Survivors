@@ -136,8 +136,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3effdde820a8ba744afec55d32254935, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MortarProjectileVFXPD
-  _renderers:
+  _accentRenderers:
   - {fileID: 1449855805636538248}
+  _otherRenderers:
+  - {fileID: 6062080489678354905}
+  - {fileID: 8286588633164938279}
+  - {fileID: 7066093620590113482}
+  - {fileID: 2641008257831927282}
   _visuals: {fileID: 976488254101132171}
 --- !u!114 &4665046614308339557
 MonoBehaviour:

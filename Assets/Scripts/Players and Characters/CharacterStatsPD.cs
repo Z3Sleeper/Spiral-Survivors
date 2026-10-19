@@ -211,6 +211,17 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     public static event Action<CharacterStatsPD, IEnemyPD> OnEnemyDeath;
     public static void RaiseOnEnemyDeath(CharacterStatsPD killer, IEnemyPD enemy) => OnEnemyDeath?.Invoke(killer, enemy);
 
+    // Deterministic counterpart to OnEnemyDeath above (2026-10-16) — fired from EnemyBasePD.Die() itself
+    // (Simulate()-context, deterministic tick-ordered), NOT from UpdateView(). Exists specifically for
+    // reactions that draw from the shared GameRandom stream (damage/crit rolls) — see Die()'s own doc
+    // comment on deathDeterministicReactionsFired for the full "why GameRandom needs this, plain counters
+    // don't" reasoning. Any OnEnemyDeath subscriber whose reaction is just an order-independent accumulator
+    // (no GameRandom, no other global-ordering-sensitive side effect) should stay on the plain OnEnemyDeath
+    // above instead — only move a subscriber here if it actually rolls GameRandom (directly, or
+    // transitively through Heal()/RollDamage-family calls).
+    public static event Action<CharacterStatsPD, IEnemyPD> OnEnemyDeathDeterministic;
+    public static void RaiseOnEnemyDeathDeterministic(CharacterStatsPD killer, IEnemyPD enemy) => OnEnemyDeathDeterministic?.Invoke(killer, enemy);
+
     public enum CharacterClass { Knight, Rogue, Archer, Bladeweaver, Executioner }
     public CharacterClass characterClass;
 
@@ -1440,6 +1451,19 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
     // ── State ──────────────────────────────────────────────────────────────
     public struct State : IPredictedData<State>
     {
+        // Dedicated per-player deterministic RNG stream (2026-10-16) — same shape/precedent as
+        // AugmentRandom (Assets/Augments and Level Up Stuff/AugmentRandom.cs), just scoped to ONE player
+        // instead of one global singleton. GameRandom is one shared, global, order-sensitive stream drawn
+        // from by every enemy and every player every tick — a client mispredicting WHICH TICK a hit lands
+        // on (ordinary, expected correction) only reproduces the exact same roll on replay if nothing else
+        // in the whole match drew from GameRandom in the gap, which is false almost constantly with many
+        // enemies active. Embedding this directly in CharacterStatsPD's own State means every one of THIS
+        // player's own combat rolls (weapon crit/damage, heals, dash/ability rolls) draws from a stream
+        // nothing outside this player's own actions can ever shift the position of — see NextFloat()/Next()
+        // below for the public accessors call sites actually use. Enemies deliberately keep using the
+        // shared GameRandom (their own rolls don't decide life-or-death outcomes and don't need this
+        // isolation) — see project_gamerandom_updateview_desync_fix memory for the fuller history.
+        public PredictedRandom playerRandom;
         public float health;
         public float energy;
         public float shield;
@@ -1780,6 +1804,13 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
 
     protected override State GetInitialState() => new()
     {
+        // XOR'd with this player's own PlayerID so every player's stream starts from a different seed
+        // (otherwise every character would draw an IDENTICAL sequence, same bug class this field exists to
+        // avoid, just between players instead of between systems) — owner/predictionManager are both
+        // already set by the time GetInitialState() runs for a fresh spawn (confirmed via
+        // PredictedIdentityStatefull.Setup(): base.Setup() runs first). owner can't be null in practice for
+        // a real player's CharacterStatsPD, but the ?? 0 keeps this safe/deterministic either way.
+        playerRandom = PredictedRandom.Create(predictionManager.sessionSeed ^ (uint)(owner?.id.value ?? 0)),
         // _authoredMaxHealth, NOT the baseMaxHealth property — currentState isn't assigned to the State
         // object being built here yet (this whole method just constructs and returns one), so reading the
         // property here would read the OLD currentState (still default(State) from before this call), not
@@ -1919,6 +1950,18 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         dashCharges = 1,
         levelUpOptions = 2
     };
+
+    // ── Random (dedicated per-player stream) ──────────────────────────────────
+    // Public accessors mirroring PredictedRandomSystem's own API shape (GameRandom.instance.NextFloat(),
+    // etc.) so every call site this replaces reads the same way, just rooted on the owning player's own
+    // Stats reference instead of a global singleton — see State.playerRandom's own doc comment for the
+    // full "why". Only ever safe to call from Simulate()/LateSimulate()-context, same rule as GameRandom
+    // itself (see feedback_purrdiction_isreplaying_flag / project_gamerandom_updateview_desync_fix memory).
+    public uint  Next() => currentState.playerRandom.Next();
+    public int   Next(int min, int max) => currentState.playerRandom.Next(min, max);
+    public int   Next(int max) => currentState.playerRandom.Next(max);
+    public float NextFloat() => currentState.playerRandom.NextFloat();
+    public float NextFloat(float min, float max) => currentState.playerRandom.NextFloat(min, max);
 
     // ── Events ─────────────────────────────────────────────────────────────
     // Per-instance (not static): each character's events are its own, not a shared global channel.
@@ -4343,7 +4386,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
         // window, or a second one before a fresh dash ever resets that guard. Deliberately NOT gated on
         // isPleb/isPassiveContact (explicit user request) unlike the dash-dodge path above — this should
         // trigger on ANY damage-taken instance, Pleb/passive-contact included.
-        if (currentState.dodgeOnHighrollEnabled && GameRandom.instance.NextFloat() < Mathf.Min(HighrollChance * 2f, 1f))
+        if (currentState.dodgeOnHighrollEnabled && NextFloat() < Mathf.Min(HighrollChance * 2f, 1f))
         {
             _onDodge.Invoke();
             return;
@@ -4495,7 +4538,7 @@ public class CharacterStatsPD : PredictedIdentity<CharacterStatsPD.State>, IFrie
             return HealPower;
         }
 
-        isCrit = GameRandom.instance.NextFloat() < CritChance;
+        isCrit = NextFloat() < CritChance;
         return isCrit ? (HealPower + CritHealPower - 1f) : HealPower;
     }
 

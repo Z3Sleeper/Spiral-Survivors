@@ -833,6 +833,8 @@ MonoBehaviour:
   _extrapolateInput: 1
   _rigidbody: {fileID: 2030771590138127021}
   _cameraTarget: {fileID: 7508126291795954218}
+  dashSfx: {fileID: 8300000, guid: 082f66f5f40b0e84db563957af9010eb, type: 3}
+  dashCooldownRateBonus: 0
 --- !u!114 &-182972361784634336
 MonoBehaviour:
   m_ObjectHideFlags: 0

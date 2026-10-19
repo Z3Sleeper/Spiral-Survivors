@@ -10,9 +10,13 @@ using UnityEngine;
 // EnemyBasePD.HandleKillLaunch simply replicates that same pre-baked damage/isCrit/isHighroll for every enemy
 // the corpse subsequently touches, never re-rolling per hit.
 //
-// Subscribes to the general CharacterStatsPD.OnEnemyDeath (fires on every machine for every enemy death,
-// carrying the killer) and filters killer == Stats itself, rather than anything killer-local-machine-only —
-// the corpse's own launch state lives on the ENEMY (a shared/deterministic entity every machine simulates
+// Subscribes to CharacterStatsPD.OnEnemyDeathDeterministic (2026-10-16, was the plain OnEnemyDeath — moved
+// because this reaction rolls GameRandom via RollDamageInherited below, and OnEnemyDeath fires from
+// EnemyBasePD.UpdateView() at each machine's own render-cadence-dependent timing, which could land two
+// different enemies' kill-launch rolls in a different relative order on different machines and permanently
+// desync the shared GameRandom stream from that point on — see RaiseOnEnemyDeathDeterministic's own doc
+// comment) and filters killer == Stats itself, rather than anything killer-local-machine-only — the
+// corpse's own launch state lives on the ENEMY (a shared/deterministic entity every machine simulates
 // identically), so the reaction that sets it up has to run identically everywhere too, not just on the
 // killing player's own client.
 //
@@ -40,13 +44,13 @@ public class OnKillLaunchEnemiesAugment : AugmentEffectPD<OnKillLaunchEnemiesAug
         // CharacterStatsPD.killEventCount's own doc comment for why this is counted rather than a bool
         // flag toggled during OnEnemyDeath dispatch (that raced against deletion).
         Stats.AddKillEventCount();
-        CharacterStatsPD.OnEnemyDeath += OnEnemyDeath;
+        CharacterStatsPD.OnEnemyDeathDeterministic += OnEnemyDeath;
     }
 
     protected override void OnDestroy()
     {
         base.OnDestroy();
-        CharacterStatsPD.OnEnemyDeath -= OnEnemyDeath;
+        CharacterStatsPD.OnEnemyDeathDeterministic -= OnEnemyDeath;
     }
 
     private void OnEnemyDeath(CharacterStatsPD killer, IEnemyPD enemy)
@@ -65,7 +69,7 @@ public class OnKillLaunchEnemiesAugment : AugmentEffectPD<OnKillLaunchEnemiesAug
         // per enemy the launched corpse later touches — same "whether it crits/highrolls is a property of
         // the whole flight" reasoning PhantomBladeSummonHelper.SummonAtTarget uses, just with both statuses
         // inherited from the killing blow instead of independently rolled/determined.
-        float rolled = WeaponDamageMath.RollDamageInherited(damagePercent, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, isHighroll);
+        float rolled = WeaponDamageMath.RollDamageInherited(damagePercent, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, isHighroll, Stats.NextFloat);
         rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, isCrit, Stats.HighrollBonus, Stats.CritDamage);
         float damage = rolled * Stats.Strength;
 

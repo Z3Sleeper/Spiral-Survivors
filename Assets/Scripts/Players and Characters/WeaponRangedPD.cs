@@ -24,11 +24,19 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         // doc comment for the full reasoning (continuous rate-weighted accumulator, re-read fresh every tick).
         public float fireProgress;
         public DisposableList<HitCooldownEntry> hitCooldowns;
+        // Replicated backing for IsOuterTrack/SlotIndex (2026-10-16) — see WeaponBasePD.IsOuterTrack's own
+        // doc comment for the full "why".
+        public bool isOuterTrack;
+        public int  slotIndex;
         public void Dispose()
         {
             hitCooldowns.Dispose();
         }
     }
+
+    // See WeaponBasePD.IsOuterTrack/SlotIndex's own doc comment.
+    public override bool IsOuterTrack { get => currentState.isOuterTrack; set => currentState.isOuterTrack = value; }
+    public override int  SlotIndex    { get => currentState.slotIndex;    set => currentState.slotIndex    = value; }
 
     public override bool IsMelee => false;
 
@@ -72,6 +80,9 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         if (!CharacterStatsPD.All.TryGetValue(owner.Value, out var stats)) return;
         var mgr = stats.GetComponent<WeaponManagerPD>();
         if (mgr == null) return;
+        // Not ready yet — see WeaponManagerPD.IsInitialized's own doc comment (same race WeaponMeleePD's
+        // identical TryInit() hit, confirmed live as a NullReferenceException in SetupWeaponRange).
+        if (!mgr.IsInitialized) return;
         _manager = mgr;
         _initialized = true;
         mgr.RegisterWeapon(this);
@@ -82,9 +93,14 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
         if (_manager != null) _manager.UnregisterWeapon(this);
     }
 
+    // isOuterTrack/slotIndex explicitly carried forward (2026-10-16 fix) — see WeaponMeleePD.GetInitialState's
+    // own doc comment for the full "why" (fresh-spawn LateAwake->RegisterWeapon runs before this assignment,
+    // which would otherwise silently wipe RegisterWeapon's own classification back to false/0).
     protected override State GetInitialState() => new()
     {
         hitCooldowns = DisposableList<HitCooldownEntry>.Create(4),
+        isOuterTrack = currentState.isOuterTrack,
+        slotIndex = currentState.slotIndex,
     };
 
     protected override void UpdateView(State viewState, State? verified)
@@ -269,11 +285,11 @@ public class WeaponRangedPD : WeaponBasePD<WeaponRangedPD.State>
 
         float rawRicochet = _stats.Ricochet;
         int ricochet = (int)rawRicochet;
-        if (GameRandom.instance.NextFloat() < rawRicochet - ricochet) ricochet++;
+        if (_stats.NextFloat() < rawRicochet - ricochet) ricochet++;
 
         float rawMultishot = _stats.Multishot;
         int bonusShots = (int)rawMultishot;
-        if (GameRandom.instance.NextFloat() < rawMultishot - bonusShots) bonusShots++;
+        if (_stats.NextFloat() < rawMultishot - bonusShots) bonusShots++;
 
         Transform muzzle = hitboxTarget != null ? hitboxTarget : orbitPivot;
         Vector3 origin = muzzle.position;

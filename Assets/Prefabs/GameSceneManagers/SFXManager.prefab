@@ -46,3 +46,5 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::SFXManager
   sfxGroup: {fileID: -3687982621319482177, guid: 0f8a092caa0b11148a04e048e5bfd7ad, type: 2}
   poolSize: 256
+  defaultButtonClickClip: {fileID: 8300000, guid: f831e9f89c7b67f4c8d9579fb370bdac, type: 3}
+  defaultButtonHoverClip: {fileID: 8300000, guid: f831e9f89c7b67f4c8d9579fb370bdac, type: 3}

@@ -30,8 +30,11 @@ using UnityEngine;
 // Plain MonoBehaviour, not PredictedIdentity: this is fixed, author-time level-layout config, identical on
 // every machine and never changes at runtime — same category as EnemySpawnerPD's own plain spawnPoints/
 // spawnMinDistance/spawnMaxDistance tunables, nothing here needs to be predicted State. RandomPoint() below
-// still draws from GameRandom.instance (not UnityEngine.Random), since it gets called from
-// EventManagerPD.StartEvent() — Simulate()-context, so it has to stay deterministic across every machine.
+// draws from EventRandom.instance (2026-10-16, was GameRandom.instance — see that class's own doc comment:
+// this method's rejection-sampling loop can draw a variable, potentially large number of values per call,
+// which made it unusually sensitive to shared-stream drift, confirmed live) rather than UnityEngine.Random,
+// since it gets called from EventManagerPD.StartEvent() — Simulate()-context, so it has to stay deterministic
+// across every machine.
 public class PlayableAreaPD : MonoBehaviour
 {
     public static PlayableAreaPD instance;
@@ -142,8 +145,8 @@ public class PlayableAreaPD : MonoBehaviour
         float minCenterDistSq = minCenterDistance * minCenterDistance;
         for (int attempt = 0; attempt < maxAttempts && validFound < wantedSamples; attempt++)
         {
-            float x = GameRandom.instance.NextFloat(minX, maxX);
-            float z = GameRandom.instance.NextFloat(minZ, maxZ);
+            float x = EventRandom.instance.NextFloat(minX, maxX);
+            float z = EventRandom.instance.NextFloat(minZ, maxZ);
             var candidate = new Vector2(x, z);
 
             float distSq = (candidate - center).sqrMagnitude;

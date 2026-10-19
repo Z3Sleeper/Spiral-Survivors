@@ -667,14 +667,6 @@ public class CharacterSelectUI : MonoBehaviour
             // DifficultyPointMultiplier's own doc comment) — retune both together if it ever changes.
             int upgradePointsPercent = levelsAboveBase * 100;
             string upgradePointsLine = levelsAboveBase > 0 ? $"<color=green>+{upgradePointsPercent}% increased Upgrade Points</color>\n" : "";
-            // Pure text, describes the tier-count consequence of the shortened TL1-3 win condition (see
-            // project_threat_level_shorter_early_wins memory / EnemySpawnerPD.GetBossesToDefeatForWin) — NOT
-            // a gameplay change, GetCurrentTierNumber itself is untouched. TL1 sees only tier1 enemies (its
-            // 1-boss run ends before any tier-up), TL2 sees tiers 1-2, TL3 sees tiers 1-3, TL4+ sees the full
-            // 1-4 range same as before. Capped at 3 (matches "levelsAboveBase" cap shape every other line
-            // here already uses) so this doesn't keep climbing past TL4.
-            int enemyTierBonus = Mathf.Min(levelsAboveBase, 3);
-            string enemyTierLine = enemyTierBonus > 0 ? $"<color=red>+{enemyTierBonus} Enemy Tier{(enemyTierBonus > 1 ? "s" : "")}</color>\n" : "";
             // Threat Level 2's own unique modifier (CharacterStatsPD.ActivateDifficultyModifiers,
             // threatLevel2SlowMultiplier/Duration) — same "levelsAboveBase > 0" gate as the stat lines above
             // since Threat Level 1 has no unique modifier of its own, and this one's threshold happens to be
@@ -694,7 +686,7 @@ public class CharacterSelectUI : MonoBehaviour
             // Threat Level 6's own unique modifier (EnemySpawnerPD.threatLevel6BossCount).
             string threatLevel6Line = difficulty >= 6 ? "\nLevel 6: Double Boss spawns." : "";
             difficultyDescriptionText.text = levelsAboveBase > 0
-                ? $"{upgradePointsLine}{enemyTierLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed\n+{attackSpeedPercent}% Enemy Attack Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
+                ? $"{upgradePointsLine}+{damagePercent}% Enemy Damage\n+{healthPercent}% Enemy Health\n+{moveSpeedPercent}% Enemy Move Speed\n+{attackSpeedPercent}% Enemy Attack Speed{threatLevel2Line}{threatLevel3Line}{threatLevel4Line}{threatLevel5Line}{threatLevel6Line}"
                 : "";
         }
 

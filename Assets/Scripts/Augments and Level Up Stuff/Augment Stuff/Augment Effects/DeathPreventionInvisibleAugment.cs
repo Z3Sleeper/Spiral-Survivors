@@ -45,16 +45,16 @@ public class DeathPreventionInvisibleAugment : AugmentEffectPD<DeathPreventionIn
     // AddAttackSpeedFlat takes an intuitive fraction of baseAttackSpeed (e.g. 0.2 for +20%), despite the
     // "Flat" name — see that method's own doc comment. Not a Total-tier multiplier. Granted unconditionally,
     // permanently, the instant this augment is picked.
-    [SerializeField] private float baseAttackSpeedFlat           = 0.2f;
+    public float baseAttackSpeedFlat           = 0.2f;
     // The TOTAL desired Attack Speed bonus while invisible (not an additional stack on top of the baseline
     // above) — ExtraAttackSpeedWhileInvisible derives the actual incremental grant from the difference
     // between this and baseAttackSpeedFlat, so retuning either field independently keeps composing correctly.
-    [SerializeField] private float attackSpeedFlatWhileInvisible = 0.6f;
+    public float attackSpeedFlatWhileInvisible = 0.6f;
     // Public, not [SerializeField] private — so AugmentDescriptionFormatter's reflection can resolve
     // {onSaveMoveSpeedPercent} directly as a description token; only public fields/properties/methods are
     // checked. Still Inspector-serializable either way.
     public float onSaveMoveSpeedPercent = 0.30f;
-    [SerializeField] private float onSaveDuration                       = 3f;
+    public float onSaveDuration                       = 3f;
 
     // The actual amount granted/reverted by OnInvisibleChanged — see attackSpeedFlatWhileInvisible's own doc
     // comment for why this is a difference, not the raw field.

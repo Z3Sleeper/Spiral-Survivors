@@ -83,6 +83,13 @@ public static class IndicatorMath
 public interface IEnemyPD
 {
     bool _isDead { get; }
+    // Instant-predicted render-hide state (renderers/hurtbox/physicsCollider disabled) — distinct from
+    // _isDead itself, which goes true immediately while a kill-launch (or any future death-hold effect)
+    // still keeps the corpse visibly held for deathHoldCount's own duration. Added (2026-10-16) so
+    // EnemyUIPD's own worldspace health bar can hide in lockstep with the model instead of staying visible
+    // forever (confirmed live: nothing was ever hiding it at all, only ever hidden once the whole GameObject
+    // finally got pooled/deleted, much later, verified-gated).
+    bool IsHiddenOnDeath { get; }
     float CurrentHealth { get; }
     float MaxHealth { get; }
     // Trivial passthrough of the enemy's own xpValue field (post-ConfigureSpawn, so already reflects any
@@ -481,6 +488,20 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // construction (Stun() sets both from the same resisted duration via Mathf.Max, AddKnockbackVelocity's
     // ApplyStun call never touches this one) — see ApplyStun's own isTrueStun param.
     public float trueStunTimer;
+    // Counts down from AddKnockbackVelocity's own derived stunDuration (2026-10-15) — drives the client-side
+    // "force an instant render snap instead of smoothed catch-up" decision in Simulate() below, replacing a
+    // raw _rigidbody.velocity.sqrMagnitude > fixed-threshold check. That check was fragile against anything
+    // that changes the knockback decay curve — confirmed live: Elite/Boss crowdControlResist (0.25/0.65)
+    // reduces AddKnockbackVelocity's own effectiveSpeed, which can leave the actual post-impulse speed
+    // hovering close enough to a fixed magnitude threshold (compounded by the ongoing per-tick movement
+    // AddForce never being suppressed during knockback, fighting the natural drag decay) to flicker in and
+    // out of "snap" mode tick to tick — visible jitter, worse the higher crowdControlResist is, but NOT
+    // actually about that stat specifically; any future thing that scales effectiveSpeed would hit the same
+    // class of bug. A deterministic duration — the exact time AddKnockbackVelocity itself already computes
+    // for how long this knockback's velocity stays above its own decay threshold — is immune to this: it's a
+    // clean monotonic countdown, never an instantaneous physics-noise comparison, so it can't flicker
+    // regardless of what effectiveSpeed ends up being for any given hit.
+    public float knockbackVisualHoldTimer;
     // Independent of stunTimer above — a slow reduces move speed rather than stopping it outright, so it
     // ticks down on its own timer regardless of whether the enemy is also currently stunned. 1 = full speed
     // (no slow); lower means slower, e.g. 0.5 = half speed — only meaningful while slowTimer > 0 (see
@@ -625,6 +646,30 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public bool killedByCrit;
     // Same as killedByCrit above, for highroll (2026-09-14, extended to match).
     public bool killedByHighroll;
+    // Edge-guard for Die()'s CharacterStatsPD.RaiseOnEnemyDeathDeterministic call (2026-10-16) — ensures
+    // GameRandom-touching OnEnemyDeath reactions (kill-launch damage roll, on-death heal crit roll) fire
+    // exactly once for this life's real death, even though Die() itself can run again in-place against the
+    // same not-yet-rolled-back state during PurrDiction's own jump/in-place resimulation pass (see
+    // feedback_purrdiction_isreplaying_flag memory and this field's sibling reasoning on knockbackVisualHoldTimer
+    // for the general shape). Rolls back to false correctly alongside isDead if this death is itself later
+    // found to be a misprediction, since it lives in the same rollback-safe TState. Never reset explicitly on
+    // respawn — GetInitialState()/ResetState() already re-zeroes it for a fresh pooled life, same as
+    // killedByCrit/killedByHighroll above.
+    public bool deathDeterministicReactionsFired;
+    // Edge-guard for the pause-entry ResetInterpolation() call in Simulate() (2026-10-16 fix) — lets the
+    // view-layer smoothing system's own accumulated position error (PredictedTransform.ModifyRollbackViewState)
+    // get wiped instantly the moment pause begins, instead of visibly working off whatever backlog had built
+    // up from the enemy's own last few ticks of pre-pause movement. Without this, a steadily-moving enemy
+    // visibly jerked once pause hit — the hard `_rigidbody.velocity = Vector3.zero` below stops the TRUE
+    // simulated position immediately and identically on every machine (this is Simulate()-context, fully
+    // deterministic — not a cross-machine prediction gap), but the separate, render-rate interpolation layer
+    // had no idea anything changed and kept trying to smooth toward where the enemy WOULD have ended up,
+    // producing a visible correction once the true position stopped advancing out from under it. In State
+    // (not a plain field) for the same reason knockbackVisualHoldTimer's own edge-guard is — pause itself is
+    // PausePD's own replicated predicted State (PausePD.State.isPaused), so it can be mispredicted by a tick
+    // or two like anything else; this needs to roll back correctly if an earlier predicted pause-entry tick
+    // turns out wrong, so a later, truly-correct tick still gets its own fresh edge and reset.
+    public bool pausedForInterpolation;
     public bool initialized;
     // Difficulty-pacing wipe — deliberately separate from isDead, never set alongside it. See
     // IEnemyPD.SilentDespawn's own doc comment for the full reasoning (no XP, no death effects/holds, no
@@ -1102,6 +1147,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // CanBeInterrupted overrides) is a concrete, situated decision rather than a cross-cutting bool.
     public float EffectiveAttackSpeed => B.scaledAttackSpeed * (B.slowTimer > 0f ? B.slowMultiplier : 1f);
     public bool _isDead => B.isDead;
+    public bool IsHiddenOnDeath => _hiddenOnDeath;
     public bool WasKilledByCrit => B.killedByCrit;
     public bool WasKilledByHighroll => B.killedByHighroll;
 
@@ -1216,13 +1262,22 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     // The enemy's black body parts — hit-flash/stun-tint target ONLY (see CacheRenderers/TriggerFlash
     // below). Never touched by ApplyTierMaterials — the black body stays black across every tier, only the
-    // accent/shell colors below change.
-    [SerializeField] private Renderer[] _renderers;
+    // accent/shell colors below change. Renamed from _renderers (2026-10-16) to actually say what it is, now
+    // that a third, non-tinted renderer bucket exists alongside it (_otherRenderers below).
+    [SerializeField] private Renderer[] _modelRenderers;
     // The enemy's colored accent parts — the actual per-tier color identity (red/blue/yellow/purple for
     // tier1-4). ApplyTierMaterials writes each tier's accentMaterial here at spawn. Deliberately separate
-    // from _renderers above (not hit-flash/stun-tint targets — no _originalColors tracking needed for these,
+    // from _modelRenderers above (not hit-flash/stun-tint targets — no _originalColors tracking needed for these,
     // ApplyTierMaterials just assigns the material once per life and leaves it alone otherwise).
     [SerializeField] private Renderer[] _accentRenderers;
+    // Anything else that should hide/show in lockstep with the hide-on-death system but should NEVER get
+    // flash-hit/stun-tint/red-death-paint treatment — e.g. a per-enemy ground sprite circle (2026-10-16).
+    // Deliberately a third, separate array rather than folding into _modelRenderers/_accentRenderers: both
+    // of those are color-tint targets (_modelRenderers for flash/stun, _accentRenderers via
+    // ApplyTierMaterials), and this bucket explicitly must not be — no _originalColors tracking exists for
+    // it, and nothing here ever writes .material.color on it. Only ever toggled via .enabled, same as the
+    // other two, in the exact same hide-latch/verified-revert blocks below.
+    [SerializeField] private Renderer[] _otherRenderers;
     // Optional per-prefab visual shown while IsInvulnerable — same shape/precedent as CharacterStatsPD's own
     // _invincibilityShell. Left unassigned on prefabs that don't need one (nothing breaks — see UpdateView's
     // own null-guarded toggle).
@@ -1262,6 +1317,26 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // Edge-detected the same way _hiddenOnDeath is, just for OnDeathStop() instead — see that method's own
     // doc comment for why it fires earlier (immediately on death) and independently of _hiddenOnDeath.
     private bool  _deathStopped;
+    // The LOCAL tick at which this life's predicted death first latched (set once, in the
+    // _physicsDisabledOnDeath block below — the earliest/broadest of the three death-latches, since it has
+    // no deathHoldCount gate). NOT the same thing as "verified has a value" — lastVerifiedTick advances
+    // continuously, always trailing the local prediction by roughly one round-trip, so verified almost
+    // always describes a tick from BEFORE this kill was even predicted (correctly showing isDead=false for
+    // that earlier, pre-kill tick). Comparing verified against THIS stamp — only trusting a disagreement
+    // once lastVerifiedTick has actually reached or passed the tick the kill was predicted at — is what
+    // keeps the revert from firing on every single kill during the normal round-trip window, which would
+    // have undone the predicted hide almost immediately, every time, not just on genuine mispredictions.
+    private ulong? _predictedDeathTick;
+    // Stamped the instant a misprediction-revert fires (same tick as _predictedDeathTick being cleared) —
+    // TriggerHitFeedback's own debounce reads this to suppress a second damage-number/SFX pop for what's
+    // really the same logical kill. See TriggerHitFeedback's own doc comment for why this is needed even
+    // though the hide/hurtbox system itself is already correctly fixed: a genuine misprediction-then-
+    // correct-kill cycle (confirmed live, 2026-10-15 — "client wrong by a frame or two, server pops it back
+    // alive, then validates the real death a frame later") is TWO distinct real predicted-hit events from
+    // this client's own owner-instant-feedback perspective, not a replay of one — so the existing
+    // PredictedEvent replay-suppression (safe against same-tick duplication) never applied here in the first
+    // place, and suppressing it needs this explicit short debounce instead.
+    private ulong? _lastDeathRevertTick;
     private float _verifiedHealth;
     private float _verifiedEnrageCountdown;
     // Edge-detected the same way _hiddenOnDeath is — drives "stay red for as long as this enemy is dead"
@@ -1296,6 +1371,26 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
     // Shorthand for accessing base fields on currentState
     protected ref EnemyBaseState B => ref GetBase(ref currentState);
+
+    // Detects a "zombied" instance — confirmed live via two separate multiplayer-test incidents (22 days
+    // apart, most recently 2026-10-16), both matching the exact same PurrDiction PredictedHierarchy bug: a
+    // rollback-driven instance-ID collision between two unrelated spawned objects (first incident: an
+    // existing Spike Shield vs. a newly-spawned XP orb; second: an existing Spike vs. a newly-spawned Spike
+    // Shield — different objects each time, same package-level root cause). PredictedHierarchy's own
+    // CreateInsertedWithID silently overwrites its _instanceMap entry on a collision rather than properly
+    // tearing down the orphaned loser, so that identity's DisposableList fields get disposed (as part of a
+    // failed/incomplete removal) while PredictionManager keeps calling Simulate()/LateSimulate() on it every
+    // tick forever — each call then throws ObjectDisposedException trying to touch contactCooldowns/
+    // killLaunchHitIds. The exception itself doesn't crash the process (Unity swallows it per-frame), but
+    // confirmed live: continuous exception spam, every tick, for the rest of the session, is enough to
+    // degrade the game to unplayable. Root cause lives in PredictedHierarchy.cs, which is package-cache code
+    // (dev.purrnet.purrdiction, NOT the vendored Assets/PurrNet core), so a durable fix there isn't available
+    // without forking the whole package — this guard is the containment available from our own side: once
+    // an instance is detected as zombied, every entry point that could otherwise throw bails out immediately
+    // instead, so the worst case reverts to the original, much milder symptom (one inert enemy, silently
+    // doing nothing) rather than a session-wide exception storm. Checked at the top of Simulate(),
+    // LateSimulate(), and OnContactTrigger() — the three entry points confirmed to touch either list.
+    private static bool IsZombied(ref EnemyBaseState b) => b.contactCooldowns.isDisposed || b.killLaunchHitIds.isDisposed;
 
     public float CurrentHealth => _verifiedHealth;
 
@@ -1400,10 +1495,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // think this life is already flashing red and skip re-painting it on the very next hit, even though
         // the color was just reset to _originalColors right above.
         _isFlashing = false;
-        if (_renderers == null) return;
+        if (_modelRenderers == null) return;
         foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
-        for (int i = 0; i < _renderers.Length; i++)
-            if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+        for (int i = 0; i < _modelRenderers.Length; i++)
+            if (_modelRenderers[i] != null && _modelRenderers[i].material != null) _modelRenderers[i].material.color = _originalColors[i];
     }
 
     protected override void LateAwake()
@@ -1509,6 +1604,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (!CanContactDamage) return;
         if (IsStunned) return;
         ref var b = ref B;
+        // See IsZombied's own doc comment (defined near GetBase/B above) for the full mechanism — this is a
+        // physics callback, a separate entry point from Simulate()/LateSimulate(), and was confirmed to
+        // reach the same disposed contactCooldowns list independently of either.
+        if (IsZombied(ref b)) return;
         if (b.isDead) return;
         // Held-orbit freeze (see IEnemyPD.SetOrbitFrozen's own doc comment) — separate from IsStunned above,
         // since this enemy's OWN stunTimer is untouched here; it's a derived freeze off the OWNER's stun.
@@ -1561,9 +1660,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected override void Simulate(ref TState state, float delta)
     {
         _currentDelta = delta;
+        ref var b = ref GetBase(ref state);
 
         if (PausePD.instance != null && PausePD.instance.IsPaused)
         {
+            // Edge-triggered ResetInterpolation() the instant pause begins (2026-10-16 fix) — see
+            // EnemyBaseState.pausedForInterpolation's own doc comment for the full "why". !isReplaying,
+            // same convention as the knockback fix this mirrors (see feedback_purrdiction_isreplaying_flag
+            // memory) — pause-entry itself can be mispredicted by a tick or two like anything else, and
+            // without this guard a corrected replay of an already-reset tick could force a second,
+            // out-of-sync snap.
+            if (!b.pausedForInterpolation && (predictionManager == null || !predictionManager.isReplaying))
+                _predictedTransform?.ResetInterpolation();
+            b.pausedForInterpolation = true;
+
             // DoPhysicsPass() isn't gated by IsPaused — it keeps integrating whatever velocity the
             // Rigidbody already has every tick regardless of the visual pause. Without this, an enemy
             // mid-knockback or mid-dash-to-target when pause hits would keep sliding from residual
@@ -1578,7 +1688,29 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             }
             return;
         }
-        ref var b = ref GetBase(ref state);
+        b.pausedForInterpolation = false;
+
+        // Zombie guard (2026-10-16) — see IsZombied's own doc comment for the full mechanism (a
+        // PredictedHierarchy instance-ID collision, package-level, confirmed live via two separate incidents
+        // 22 days apart). Without this, every tick for the rest of the session throws
+        // ObjectDisposedException here and is silently swallowed by Unity's own per-frame exception handling
+        // — individually harmless, but confirmed capable of degrading an entire session to unplayable when
+        // it piles up continuously. This doesn't fix the rare underlying collision (that's package code,
+        // not safely patchable from here), but it stops a zombied instance from doing anything at all once
+        // detected, which is the most this class can safely do about it.
+        if (IsZombied(ref b)) return;
+
+        // Client-side jank fix (2026-10-14, confirmed live; reworked 2026-10-15, reworked AGAIN 2026-10-16 —
+        // see knockbackVisualHoldTimer's own doc comment for the full history). The continuous "every tick
+        // while knockbackVisualHoldTimer > 0" version that used to live here was removed — confirmed live:
+        // forcing an instant teleport-style snap on EVERY tick of an active knockback, not just its start,
+        // meant a SECOND hit landing mid-flight (re-triggering AddKnockbackVelocity, a genuine mid-flight
+        // redirect) also got rendered as a hard instant snap instead of a smooth blend, since there was never
+        // any smoothing buffer left to redirect through. ResetInterpolation() is now called exactly once, at
+        // the moment a knockback actually starts (see AddKnockbackVelocity's own call site) — this still
+        // fixes the original problem (the correction-rate-capped smoother can't keep up with the sudden jump
+        // from standing-still to full knockback speed), while leaving the REST of the knockback's own decay,
+        // including any mid-flight redirect from a second hit, to the normal smoothing system.
 
         // Pooled reuse never calls OnRemovedFromPool() (PredictedHierarchy's pool path re-registers
         // with reset:false), so first-tick setup has to be driven off State instead, since
@@ -1658,8 +1790,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             b.killLaunchHitIds.Clear();
 
             foreach (var r in GetComponentsInChildren<Renderer>()) r.enabled = true;
-            for (int i = 0; i < _renderers.Length; i++)
-                if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+            for (int i = 0; i < _modelRenderers.Length; i++)
+                if (_modelRenderers[i] != null && _modelRenderers[i].material != null) _modelRenderers[i].material.color = _originalColors[i];
 
             if (_hurtbox != null) _hurtbox.enabled = true;
             if (_physicsCollider != null) _physicsCollider.enabled = true;
@@ -1757,6 +1889,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 b.bleedCritExecuteThresholdPercent = 0f;
             }
         }
+
+        // Unconditional, not nested inside the stunTimer block below — see knockbackVisualHoldTimer's own
+        // doc comment. Deliberately independent of stunTimer's own gating (isStunnable freeze, etc.), since
+        // this only ever drives a view-layer rendering decision, never gameplay.
+        if (b.knockbackVisualHoldTimer > 0f) b.knockbackVisualHoldTimer -= delta;
 
         if (b.stunTimer > 0f)
         {
@@ -1908,6 +2045,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected override void LateSimulate(ref TState state, float delta)
     {
         ref var b = ref GetBase(ref state);
+        // See IsZombied's own doc comment (defined near GetBase/B above) for the full mechanism.
+        if (IsZombied(ref b)) return;
         // wiped added alongside isDead — see Simulate()'s own identical addition/doc comment; a wiped enemy
         // shouldn't keep orbiting/launching either.
         if (b.isDead || b.wiped) return;
@@ -2038,19 +2177,119 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             UpdateAnimator(viewState);
         }
 
-        // Instant, predicted hide/unhide — doesn't wait for server verification, unlike the state-critical
+        // Instant, predicted HIDE — doesn't wait for server verification, unlike the state-critical
         // one-shot side effects below. Same fix as PhantomBladePD/WeaponRangedProjectilePD: viewState is
         // this machine's own already-simulated prediction (identical deterministic simulation runs on
         // every machine), available immediately, whereas verified only populates for non-owner clients
         // after a network round-trip — that round-trip was the visible "corpse lingers, still visible and
-        // still hittable, after it should already be dead" delay. A TWO-WAY sync against viewB.isDead, not
-        // a one-way latch — was previously one-way on the (documented, since-disproven) assumption that
-        // isDead reverting to false was never a real scenario. It is: a mispredicted-lethal hit (isDead
-        // true for one predicted frame, then corrected back to false once the real, non-lethal server
-        // state resolves) used to leave the enemy permanently hidden/uncollidable despite still being
-        // alive — the "invisible enemy" bug. Edge-detected both ways now so a correction actually restores
-        // visibility instead of leaving a ghost.
+        // still hittable, after it should already be dead" delay.
+        //
+        // The REVERT direction (un-hide, because this was a misprediction and the enemy is actually still
+        // alive) deliberately does NOT use this same instant viewState signal — it used to (a continuous
+        // two-way sync, re-deriving hidden/not every single frame from raw viewB.isDead), which fixed an
+        // earlier "invisible enemy" bug (a mispredicted-lethal hit left the enemy permanently hidden once
+        // isDead reverted false) but caused a worse one: viewB.isDead keeps genuinely flickering false
+        // for as long as the server's own correction cycle hasn't yet agreed the kill happened (NOT a
+        // one-frame blip — this can recur every tick while unresolved), and each flicker was re-enabling
+        // the hurtbox/physics collider, letting an attacking weapon still overlapping the corpse detect a
+        // "live" target again and land a genuinely fresh Hit() — the repeated damage-number/SFX-per-frame
+        // bug on a kill. Per the trust-the-prediction design intent (hide should stay instant/predicted;
+        // mispredictions should be rare enough that gating only the RARE revert path on verification costs
+        // nothing in practice), the revert is now edge-detected off `verified` only, same convention
+        // already used below for ActiveCount/OnEnemyDeath/deletion ("Death is state-critical — only act on
+        // server-confirmed dead"). Hide can still fire every tick isDead predicts true (one-way latch, no
+        // cost to re-asserting), it just never un-fires from viewState noise anymore.
         ref var viewB = ref GetBase(ref viewState);
+
+        // Checked against physicsDisabled/deathStopped too, not just _hiddenOnDeath — physicsDisabled and
+        // deathStopped both latch on isDead ALONE (no deathHoldCount gate), so a misprediction that gets
+        // corrected while still inside a kill-launch hold window (isDead true, deathHoldCount > 0,
+        // _hiddenOnDeath never having latched at all yet) would otherwise leave those two stuck disabled
+        // forever with nothing left to ever revert them.
+        //
+        // Gated on lastVerifiedTick having reached _predictedDeathTick, NOT just on verified.HasValue —
+        // see _predictedDeathTick's own doc comment. Without this, verified almost always has SOME value
+        // (it's just describing an earlier, pre-kill tick for the entire round-trip-length window after
+        // every kill), so checking verified.HasValue alone would read that earlier "not dead yet" state as
+        // a disagreement and revert the hide almost instantly on every single kill, not just mispredicted
+        // ones.
+        //
+        // RevertConfirmationTicks margin added (2026-10-16, confirmed live as a frequent — not just rare —
+        // "pop back alive for one frame, then re-die immediately after" flicker). The original >= check
+        // reverted the INSTANT lastVerifiedTick first reached _predictedDeathTick — but lastVerifiedTick
+        // keeps advancing every tick regardless, and the confirmed-common case is the client guessing the
+        // kill a tick or two early: AT the exact predicted tick, verified correctly still disagrees (the
+        // real kill genuinely hadn't happened yet from the server's own perspective), so the old check
+        // reverted immediately, clearing _predictedDeathTick — meaning when the real kill confirmed just a
+        // tick later, there was nothing left to gate against, forcing a full fresh predict-and-relatch cycle
+        // (the visible pop). Waiting for verified to advance a bit further PAST the predicted tick first
+        // gives the real kill (landing shortly after, per the confirmed pattern) a chance to actually become
+        // verified and flip isDead true BEFORE this check ever runs — avoiding the revert entirely in that
+        // case, rather than reverting and having to re-predict moments later. Same magnitude as
+        // DeathFeedbackDebounceSeconds (0.15s) — same underlying "how early could the client plausibly have
+        // guessed" justification, expressed as real time and converted via this machine's own tickDelta so
+        // it stays correct at any configured tick rate. A genuine miss (enemy truly still alive) just takes
+        // this same short extra window to correctly revert — nowhere near "permanent" (which would
+        // reintroduce the already-disproven invisible-enemy bug this whole revert mechanism exists to fix).
+        // Also requires !viewB.isDead — not just verified disagreeing (2026-10-16, confirmed live as a
+        // residual "flickers back for exactly one frame, then re-hides" case even with the margin above).
+        // The margin only gates WHEN the revert is allowed to look at verified; it never checked whether
+        // this client's own CURRENT prediction had, by that point, already independently caught up and
+        // re-confirmed the kill on its own (verified is a trailing snapshot — by the time it finally
+        // advances past the margin, the client's own ongoing resimulation may already agree the enemy is
+        // dead again, even though verified's own older snapshot still shows the brief pre-kill gap). Without
+        // this, the revert would fire anyway (un-hiding for one frame), and the very next UpdateView call
+        // would see viewB.isDead still true and immediately re-latch hidden — the one-frame flicker. Only
+        // reverting when BOTH verified AND this client's own current belief agree avoids ever un-hiding in
+        // the first place for a prediction the client has already moved past.
+        bool revertFromMisprediction = false;
+        if ((_hiddenOnDeath || _physicsDisabledOnDeath || _deathStopped)
+            && !viewB.isDead
+            && _predictedDeathTick.HasValue && lastVerifiedTick.HasValue
+            && verified.HasValue && predictionManager != null)
+        {
+            ulong marginTicks = (ulong)Mathf.CeilToInt(DeathFeedbackDebounceSeconds / predictionManager.tickDelta);
+            if (lastVerifiedTick.Value >= _predictedDeathTick.Value + marginTicks)
+            {
+                var v = verified.Value;
+                ref var vb = ref GetBase(ref v);
+                revertFromMisprediction = !vb.isDead;
+            }
+        }
+        if (revertFromMisprediction)
+        {
+            _hiddenOnDeath          = false;
+            _physicsDisabledOnDeath = false;
+            _deathStopped           = false;
+            _lastDeathRevertTick    = predictionManager != null ? predictionManager.localTick : (ulong?)null;
+            _predictedDeathTick     = null;
+            if (_modelRenderers != null)
+                foreach (var r in _modelRenderers)
+                    if (r != null) r.enabled = true;
+            // Accent renderers hidden alongside the body below — previously missed entirely (only
+            // _modelRenderers, the black-body set, was ever toggled here), so a corpse's colored accent parts
+            // stayed fully visible through the whole predicted-hide window. Confirmed live on Shielder
+            // (2026-10-15).
+            if (_accentRenderers != null)
+                foreach (var r in _accentRenderers)
+                    if (r != null) r.enabled = true;
+            // See _otherRenderers' own field doc comment — toggled alongside the other two, never tinted.
+            if (_otherRenderers != null)
+                foreach (var r in _otherRenderers)
+                    if (r != null) r.enabled = true;
+            if (_hurtbox != null) _hurtbox.enabled = true;
+            if (_contactDamageCollider != null) _contactDamageCollider.enabled = contactColliderEnabled;
+            if (_physicsCollider != null) _physicsCollider.enabled = true;
+            gameObject.layer = _originalLayer;
+            if (_modelRenderers != null && _originalColors != null)
+                for (int i = 0; i < _modelRenderers.Length; i++)
+                    if (_modelRenderers[i] != null && _modelRenderers[i].material != null) _modelRenderers[i].material.color = _originalColors[i];
+            _wasDeadForColorLastFrame = false;
+            // Cross-identity hook — any enemy-owned sub-object (e.g. ShielderGloomPD's SpikeShieldPD) that
+            // needs to hide/show in lockstep with this body gets told here. See the hide-latch block below
+            // for the paired hidden=true call.
+            OnHiddenStateChanged(false);
+        }
 
         // Self-healing tier material/name-prefix application — see _lastAppliedTier's own doc comment for
         // why this can't just be the one ConfigureSpawn()-time call it used to be alone.
@@ -2067,16 +2306,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         // PhysicsCollider + layer are gated on isDead ALONE (not deathHoldCount) — a dead body's physical
         // presence (can't be re-hit, doesn't collide) should end immediately regardless of whether the
-        // render-hide below is being held up for an on-death effect (kill-launch, etc.) — moved here from
-        // Die() (which used to set these as a one-shot, unrecoverable side effect) so the same misprediction
-        // correction above also restores these instead of leaving the corpse visually alive but permanently
-        // untargetable/wrong-layer.
+        // render-hide below is being held up for an on-death effect (kill-launch, etc.). One-way latch —
+        // turning this back on is exclusively the verified-revert block's job now (see its own comment).
         bool viewDead = viewB.isDead;
-        if (viewDead != _physicsDisabledOnDeath)
+        if (viewDead && !_physicsDisabledOnDeath)
         {
-            _physicsDisabledOnDeath = viewDead;
-            if (_physicsCollider != null) _physicsCollider.enabled = !viewDead;
-            gameObject.layer = viewDead ? _noneLayer : _originalLayer;
+            _physicsDisabledOnDeath = true;
+            // Earliest of the three death-latches to fire (no deathHoldCount gate), so this is where
+            // _predictedDeathTick gets stamped — see its own doc comment.
+            _predictedDeathTick = predictionManager != null ? predictionManager.localTick : (ulong?)null;
+            if (_physicsCollider != null) _physicsCollider.enabled = false;
+            gameObject.layer = _noneLayer;
         }
 
         // Stops attack telegraphs immediately on death OR wipe — see OnDeathStop's own doc comment for why
@@ -2104,18 +2344,28 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             OnDeathStop();
         }
 
+        // One-way latch — once hidden, stays hidden until the verified-revert block above explicitly
+        // restores it (never from viewState dropping shouldHide back to false on its own, which is exactly
+        // the continuous resimulation noise that used to re-enable _hurtbox and let a still-overlapping
+        // weapon land a genuinely fresh Hit() on what should already be a corpse).
         bool shouldHide = viewB.isDead && viewB.deathHoldCount <= 0;
-        if (shouldHide != _hiddenOnDeath)
+        if (shouldHide && !_hiddenOnDeath)
         {
-            _hiddenOnDeath = shouldHide;
-            if (_renderers != null)
-                foreach (var r in _renderers)
-                    if (r != null) r.enabled = !shouldHide;
-            if (_hurtbox != null) _hurtbox.enabled = !shouldHide;
-            // Not a flat !shouldHide like _hurtbox — contactColliderEnabled is a per-enemy authored toggle
-            // (some enemies never deal contact damage at all), so restoring on an un-hide has to respect it
-            // rather than forcing this back on unconditionally.
-            if (_contactDamageCollider != null) _contactDamageCollider.enabled = shouldHide ? false : contactColliderEnabled;
+            _hiddenOnDeath = true;
+            if (_modelRenderers != null)
+                foreach (var r in _modelRenderers)
+                    if (r != null) r.enabled = false;
+            // See the verified-revert block's own comment — previously missing entirely.
+            if (_accentRenderers != null)
+                foreach (var r in _accentRenderers)
+                    if (r != null) r.enabled = false;
+            // See _otherRenderers' own field doc comment — toggled alongside the other two, never tinted.
+            if (_otherRenderers != null)
+                foreach (var r in _otherRenderers)
+                    if (r != null) r.enabled = false;
+            if (_hurtbox != null) _hurtbox.enabled = false;
+            if (_contactDamageCollider != null) _contactDamageCollider.enabled = false;
+            OnHiddenStateChanged(true);
         }
 
         // Same instant/predicted hide as the isDead block above, for SilentDespawn — no deathHoldCount
@@ -2124,8 +2374,18 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         if (viewB.wiped != _hiddenOnWipe)
         {
             _hiddenOnWipe = viewB.wiped;
-            if (_renderers != null)
-                foreach (var r in _renderers)
+            if (_modelRenderers != null)
+                foreach (var r in _modelRenderers)
+                    if (r != null) r.enabled = !viewB.wiped;
+            // Accent/other renderers added (2026-10-16) — same gap the main death-hide block had before its
+            // own 2026-10-15 fix (only _modelRenderers was ever toggled here), so a wiped enemy kept showing
+            // its tier accent color and any _otherRenderers content (e.g. the ground sprite circle) despite
+            // the body itself correctly vanishing.
+            if (_accentRenderers != null)
+                foreach (var r in _accentRenderers)
+                    if (r != null) r.enabled = !viewB.wiped;
+            if (_otherRenderers != null)
+                foreach (var r in _otherRenderers)
                     if (r != null) r.enabled = !viewB.wiped;
             if (_hurtbox != null) _hurtbox.enabled = !viewB.wiped;
             if (_contactDamageCollider != null) _contactDamageCollider.enabled = viewB.wiped ? false : contactColliderEnabled;
@@ -2147,8 +2407,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // else contends for this enemy's color while it's alive.
         if (viewB.isDead)
         {
-            if (_renderers != null)
-                foreach (var r in _renderers)
+            if (_modelRenderers != null)
+                foreach (var r in _modelRenderers)
                     if (r != null && r.material != null) r.material.color = Color.red;
         }
         // !_isFlashing here too — without it, a brand new hit landing on the exact same frame a death
@@ -2157,10 +2417,10 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // attacking weapon's LateSimulate; this runs later, in this enemy's own UpdateView). If a flash is
         // already active, it already owns the color and will revert itself correctly on its own schedule
         // (its own revert check now correctly sees !viewB.isDead once this fires) — so just leave it alone.
-        else if (_wasDeadForColorLastFrame && !_isFlashing && _renderers != null)
+        else if (_wasDeadForColorLastFrame && !_isFlashing && _modelRenderers != null)
         {
-            for (int i = 0; i < _renderers.Length; i++)
-                if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+            for (int i = 0; i < _modelRenderers.Length; i++)
+                if (_modelRenderers[i] != null && _modelRenderers[i].material != null) _modelRenderers[i].material.color = _originalColors[i];
         }
         _wasDeadForColorLastFrame = viewB.isDead;
 
@@ -2189,9 +2449,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 // even if this guard were somehow wrong the mistake would self-correct next frame anyway,
                 // but this avoids the flicker outright. Reads viewB (not B, which the old separate Update()
                 // used) to match every other isDead check in this same method.
-                if (!viewB.isDead && _renderers != null)
-                    for (int i = 0; i < _renderers.Length; i++)
-                        if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+                if (!viewB.isDead && _modelRenderers != null)
+                    for (int i = 0; i < _modelRenderers.Length; i++)
+                        if (_modelRenderers[i] != null && _modelRenderers[i].material != null) _modelRenderers[i].material.color = _originalColors[i];
             }
         }
 
@@ -2207,16 +2467,16 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         bool wantStunTint = !viewB.isDead && !_isFlashing && (viewB.trueStunTimer > 0f || viewB.orbitFrozen);
         if (wantStunTint)
         {
-            if (_renderers != null)
-                foreach (var r in _renderers)
+            if (_modelRenderers != null)
+                foreach (var r in _modelRenderers)
                     if (r != null && r.material != null) r.material.color = Color.yellow;
         }
         // Only reverts once the enemy is neither dead nor flashing — if either of those just started this
         // same frame, that block already owns the color (red) and this must not stomp it back to original.
-        else if (_wasStunTintedLastFrame && !viewB.isDead && !_isFlashing && _renderers != null)
+        else if (_wasStunTintedLastFrame && !viewB.isDead && !_isFlashing && _modelRenderers != null)
         {
-            for (int i = 0; i < _renderers.Length; i++)
-                if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = _originalColors[i];
+            for (int i = 0; i < _modelRenderers.Length; i++)
+                if (_modelRenderers[i] != null && _modelRenderers[i].material != null) _modelRenderers[i].material.color = _originalColors[i];
         }
         _wasStunTintedLastFrame = wantStunTint;
 
@@ -2235,6 +2495,9 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
                 ActiveCount--;
                 AdjustCategoryCount(spawnCategory, -1);
 
+                // RaiseOnEnemyDeath (plain, fired from here) is for order-independent accumulator reactions
+                // only (OnEnemyDeathHealthStackingAugment, etc.) — anything that rolls GameRandom belongs on
+                // Die()'s own RaiseOnEnemyDeathDeterministic instead; see that call's doc comment for why.
                 CharacterStatsPD.All.TryGetValue(vb.killerOwner, out var killer);
                 CharacterStatsPD.RaiseOnEnemyDeath(killer, this);
                 if (GameManagerPD.instance != null) GameManagerPD.instance.AwardUpgradePoints(vb.scaledPointsValue);
@@ -2472,6 +2735,20 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             _rigidbody.MoveRotation(Quaternion.Slerp(transform.rotation, targetRotation, 10f * delta));
         }
 
+        // Suppressed while an active knockback is in progress (2026-10-16) — this continuous per-tick
+        // approach/strafe force was never gated on knockback at all, so it kept fighting the knockback
+        // velocity's own natural decay the whole time it played out. Both machines compute this tug-of-war
+        // identically (not a cross-machine divergence), but the NET result was an unpredictable blend of
+        // "how far the knockback impulse alone would carry this enemy" and "how hard it's still trying to
+        // walk back toward its target that same instant" — worse the SMALLER the knockback (more easily
+        // overridden by the same, unchanged walking force), which is exactly why Elites/Bosses
+        // (crowdControlResist-reduced effectiveSpeed) looked jankier than Normal enemies even after the
+        // render-side fix. Rotation/facing above is untouched — still visibly tracks the target while
+        // airborne, only the actual movement push is skipped, so the knockback's own decay curve now plays
+        // out cleanly and the travelled distance actually matches what AddKnockbackVelocity's own math
+        // intends.
+        if (b.knockbackVisualHoldTimer > 0f) return;
+
         float distToTarget = Vector3.Distance(transform.position, _target.position);
 
         // Bounds-restriction/strafe system removed entirely (2026-08-28) — the general-purpose "always find
@@ -2575,6 +2852,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // and is actively moving through the area; only this enemy's own reaction is suppressed, same
         // asymmetry precedent as IsBeingHeld/other partial exemptions elsewhere in this file.
         if (_rigidbody == null || _rigidbody.isKinematic || _target == null) return;
+        // See HandleMovement's own identical knockback-suppression comment — same reasoning, same signal.
+        if (b.knockbackVisualHoldTimer > 0f) return;
 
         b.separationCheckTimer--;
         if (b.separationCheckTimer <= 0)
@@ -3063,6 +3342,14 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // jumps this hit's damage number to the front of DamageNumberManager's queue for this enemy+attacker
     // ahead of whatever's already waiting, so real weapon damage always reads first regardless of how many
     // onhit effects also fired off the same hit.
+    // How soon after a misprediction-revert (_lastDeathRevertTick) a lethal hit's feedback gets suppressed —
+    // see TriggerHitFeedback's own doc comment for the full mechanism. Expressed as real time, not a fixed
+    // tick count, converted against this machine's own tickDelta so it stays correct regardless of the
+    // configured tick rate. Deliberately short — only needs to cover "client guessed the kill tick a frame
+    // or two early," nowhere near long enough to risk swallowing a genuinely separate later hit (HitCooldown
+    // between real swings is comfortably longer than this for any sane WeaponSpeed).
+    private const float DeathFeedbackDebounceSeconds = 0.15f;
+
     public void TriggerHitFeedback(float damage, bool isCrit, bool isHighroll, CharacterStatsPD attacker, bool isPriority = false, bool overrideSfx = false, AudioClip sfxOverride = null)
     {
         // PD weapons (WeaponMeleePD, WeaponRangedProjectilePD) queue hit feedback in Simulate()/
@@ -3070,6 +3357,22 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // fires, this pooled enemy instance can already have been reused for a new spawn (isDead reset to
         // false) while transiently still inactive, same as the respawn-reset/animator cases elsewhere in
         // this class.
+        //
+        // Debounced against a just-happened misprediction-revert (2026-10-15 fix) — the hide/hurtbox system
+        // itself is already correctly instant+self-correcting (see UpdateView's own revert block), but that
+        // doesn't stop a SECOND, genuinely distinct predicted-hit event from firing its own feedback a
+        // frame or two later: the owner's own instant-feedback PredictedEvent fires on every NEW forward
+        // tick, not just once per real occurrence, so "guess the kill a frame early, get corrected, guess
+        // again almost immediately and this time it's right" produces two real feedback calls for what reads
+        // to the player as one single kill. Confirmed live. Scoped to B.isDead only — a genuinely alive
+        // enemy taking a normal (non-lethal) hit right after some earlier, unrelated revert is never
+        // affected, since this only suppresses feedback for a hit landing while this enemy is CURRENTLY
+        // predicted dead.
+        if (B.isDead && _lastDeathRevertTick.HasValue && predictionManager != null)
+        {
+            float elapsed = (predictionManager.localTick - _lastDeathRevertTick.Value) * predictionManager.tickDelta;
+            if (elapsed < DeathFeedbackDebounceSeconds) return;
+        }
         //
         // The damage number/SFX calls below are gated on !_hiddenOnDeath, not !B.isDead — a held corpse
         // (kill-launch or any future similar on-death-delay effect) is still dead (isDead is already true
@@ -3135,6 +3438,30 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         if (XPOrbManagerPD.instance != null)
             XPOrbManagerPD.instance.SpawnOrbs(hierarchy, transform.position, B.scaledXpValue, spawnCategory, spawnTier);
+
+        // Deterministic counterpart to UpdateView's own RaiseOnEnemyDeath (see that call's doc comment) —
+        // for reactions that draw from the shared GameRandom stream (OnKillLaunchEnemiesAugment's damage
+        // roll, OnEnemyDeathHealthRegenAugment's crit-heal roll), NOT for plain static counters. GameRandom's
+        // own internal counter is real rollback-safe TState, unlike ActiveCount/AdjustCategoryCount, so it's
+        // actually safer called from here than deferred to UpdateView(): firing from UpdateView() means the
+        // draw happens at each machine's own render-cadence-dependent moment, decoupled from the deterministic,
+        // objectId-sorted Simulate() dispatch every OTHER GameRandom draw in the game goes through — two
+        // enemies' deaths settling in a different relative real-frame order on different machines (ordinary
+        // per-connection round-trip variance, not a bug) would permanently swap which draw each one's roll
+        // consumes from the shared stream. Firing here instead means the draw happens at THIS enemy's own
+        // fixed position in the deterministic tick dispatch, same as every other combat roll.
+        // Guarded by deathDeterministicReactionsFired, not just called unconditionally, because Die() itself
+        // can run again in-place against this same un-rolled-back state during PurrDiction's own jump/
+        // in-place resimulation pass (confirmed via PredictionManager.OnPostTick's RollbackToFrame ->
+        // SimulateFrameInPlace -> SimulateFrame(sameTick, true) sequence) — without the guard, a kill landing
+        // on a jump-reconciled tick could roll a second, spurious draw for the same real death. The guard
+        // itself is safe: it lives in the same TState as isDead, so it rolls back together if this death
+        // later turns out to be a misprediction, and a genuinely later, real death re-fires fresh.
+        if (!B.deathDeterministicReactionsFired)
+        {
+            B.deathDeterministicReactionsFired = true;
+            CharacterStatsPD.RaiseOnEnemyDeathDeterministic(foundKiller ? killerStats : null, this);
+        }
     }
 
     // Difficulty-pacing wipe (EnemySpawnerPD, right before a boss spawns) — deliberately NOT a real death:
@@ -3151,7 +3478,17 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     {
         if (B.isDead || B.wiped) return;
         B.wiped = true;
+        OnSilentDespawn();
     }
+
+    // Hook for a subclass with its own independently-living, Windup-committed telegraph/hazard (e.g.
+    // MortarGloomPD's own MortarHazardPD — see that class's own CancelPendingHazardIfWindingUp(), already
+    // wired to OnInterrupted()/Die() for the identical reason) that also needs cancelling on a wipe, not
+    // just a real death. Added 2026-10-16 — a wiped Mortar mid-Windup left its hazard indicator filling and
+    // firing a projectile from empty space, since nothing here called the equivalent of Die()'s own cleanup
+    // for this path. Called AFTER B.wiped is set, same ordering Die() already uses for its own
+    // CancelPendingHazardIfWindingUp() call.
+    protected virtual void OnSilentDespawn() { }
 
     // ── Death hold ─────────────────────────────────────────────────────────
     // Generic "don't hide/delete yet" API — any number of independent scripts can each request their own
@@ -3212,6 +3549,21 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
 
         if (_rigidbody != null) _rigidbody.MovePosition(newPos);
         else transform.position = newPos;
+
+        // Client-side jank fix (2026-10-14, confirmed live) — a sustained kill-launch moves at
+        // killLaunchSpeed, which is well above what PredictedTransform's own correction-blend system can
+        // visually track in real time (its own max correction rate, TransformInterpolationSettings.
+        // positionInterpolation.correctionRateMinMax, tops out around 10 units/sec regardless of how far
+        // behind it's fallen) — the rendered position progressively lags the whole launch, then jerks/snaps
+        // trying to catch up once it ends or crosses the teleport threshold mid-flight. Calling this EVERY
+        // tick for the launch's whole duration (not just once at the start) keeps the render pinned exactly
+        // to the true position throughout, bypassing the smoothing system entirely rather than trying to
+        // out-race its fixed speed ceiling — same primitive BWBlink/RogueVanish/ResolveTeleportSafeLanding
+        // already use for their own instant teleports, just re-applied every tick instead of once, since this
+        // is a sustained fast movement rather than a one-frame jump. Hands back to normal smoothing cleanly
+        // the instant killLaunchActive goes false (HandleKillLaunch stops being called, nothing left pinning
+        // it).
+        _predictedTransform?.ResetInterpolation();
 
         b.killLaunchRemainingDistance -= step;
 
@@ -3655,17 +4007,64 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // supported") if attempted on an already-kinematic body. The stun below still applies regardless —
         // this method's own isStunnable guard above already decided whether this knockback (and the derived
         // micro-stun it produces) should apply at all, independent of whether the physical push could happen.
-        if (!_rigidbody.isKinematic)
-        {
-            // Zeroed first rather than added to, so knockback doesn't have to fight whatever velocity the
-            // enemy's own movement AddForce was already carrying that tick.
-            _rigidbody.velocity = impulse.normalized * effectiveSpeed;
-        }
+        //
+        // Also skipped while IsTrueStunned (2026-10-14, explicit design convention change) — an enemy that's
+        // genuinely stunned or mid-Interrupt() shouldn't ALSO get physically shoved around by a separate
+        // knockback-granting hit landing in the same window; the whole point of interrupting/stunning
+        // something is to create a stationary "free damage" opening, which a knockback push would otherwise
+        // ruin by displacing it out from under follow-up attacks (cleaves/AoEs especially). Deliberately
+        // checks IsTrueStunned, not isStunnable — those are different gates: isStunnable decides whether
+        // THIS enemy's own attack-sequence/Simulate() gets frozen, independent of knockback entirely, while
+        // IsTrueStunned (B.trueStunTimer > 0f) is specifically "a real Stun()/InterruptTrueStun() landed and
+        // hasn't worn off yet" — exactly the window this should suppress pushes during, on ANY enemy,
+        // regardless of what its own isStunnable formula happens to be at the time. Naturally excludes a
+        // knockback-derived micro-stun itself (which never touches trueStunTimer, only stunTimer — see that
+        // field's own doc comment) — THIS hit's own push still applies normally; only a push arriving while
+        // an EARLIER true stun is still active gets skipped.
+        // Computed before the physical-push guard below (2026-10-15) — knockbackVisualHoldTimer needs this
+        // same duration regardless of whether the push itself could apply (it's purely about how long the
+        // RENDER should force-snap instead of smoothed-blend, which should start counting down from the
+        // moment this hit registers either way).
         const float drag      = 9f;
         const float threshold = 1f;
         float stunDuration = effectiveSpeed > threshold
             ? Mathf.Log(effectiveSpeed / threshold) / drag
             : 0f;
+        if (!_rigidbody.isKinematic && !IsTrueStunned)
+        {
+            // Only reset interpolation when this enemy WASN'T already mid-knockback (2026-10-16) — i.e. the
+            // transition INTO an active knockback, not every tick for its whole duration (see Simulate()'s
+            // own doc comment for the full "why" — continuous resets were causing a bad hard-snap on a
+            // second hit's own mid-flight redirect). A genuinely fresh knockback (starting from rest) still
+            // gets its instant snap, since that initial velocity jump is the actual case the correction-rate
+            // cap can't keep up with; a second hit landing on an already-moving target lets the normal
+            // smoothing system blend the redirect instead.
+            //
+            // ALSO gated on !isReplaying (2026-10-16, same day — Stuart correctly flagged the edge check
+            // alone still wasn't enough): this method runs inside Simulate(), so it executes both for a
+            // genuinely new live forward tick AND for every tick PurrDiction replays while catching up after
+            // a correction (confirmed from source: PredictionManager.isReplaying is true only for the
+            // OnPostTick rollback/resimulate burst, never during ordinary per-tick forward simulation). If
+            // the hit that grants this knockback was itself mispredicted by a tick or two (the attacker's own
+            // position/timing corrects, same class of uncertainty as every other misprediction fixed this
+            // session), the corrected replay re-enters this method with knockbackVisualHoldTimer rolled back
+            // to 0 and would retrigger the edge check — but on a LATER real frame than the client's own
+            // original guess, producing a second, out-of-sync instant snap instead of one clean one. Requiring
+            // !isReplaying means the instant snap only ever fires from this client's own live, first-time
+            // guess; a correction arriving later is left to the normal continuous smoothing system to blend
+            // in, same "trigger direction is instant, correction direction is never forced" convention as the
+            // death-hide revert path (see [[project_predicted_hide_oneway_verified_revert_shape]]).
+            if (B.knockbackVisualHoldTimer <= 0f && (predictionManager == null || !predictionManager.isReplaying))
+                _predictedTransform?.ResetInterpolation();
+
+            // Zeroed first rather than added to, so knockback doesn't have to fight whatever velocity the
+            // enemy's own movement AddForce was already carrying that tick.
+            _rigidbody.velocity = impulse.normalized * effectiveSpeed;
+            // Overwritten, not accumulated (same "reset, not added to" reasoning as the velocity assignment
+            // right above) — see the field's own doc comment for why this replaces a raw velocity-magnitude
+            // threshold check in Simulate().
+            B.knockbackVisualHoldTimer = stunDuration;
+        }
         // ApplyStun, not Stun — this duration is already derived from effectiveSpeed above (itself already
         // reduced by crowdControlResist), so routing it back through Stun()'s own resist multiplier would
         // apply the same resistance twice against the same knockback hit.
@@ -3682,6 +4081,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // physicsCollider disable), which still waits for deathHoldCount <= 0 — the model and healthbar are
     // meant to stay visible for the whole hold, only attack telegraphs stop early.
     protected virtual void OnDeathStop() { }
+    // Fires both directions in lockstep with the render-hide latch above (viewB.isDead && deathHoldCount<=0
+    // going true, or the verified-revert block undoing a misprediction) — unlike OnDeathStop(), which is
+    // one-way/no-revert, this one's paired so a subclass can safely toggle its own owned sub-object's
+    // visuals/colliders without leaking a permanently-hidden state across a misprediction correction. Added
+    // for ShielderGloomPD's SpikeShieldPD (2026-10-15) — a body-only hide left the Shield (separate
+    // PredictedIdentity, not a child renderer this class can see) fully visible and still functioning.
+    protected virtual void OnHiddenStateChanged(bool hidden) { }
     protected virtual void UpdateAnimator(TState viewState) { }
 
     // Called once per (re)spawn, from within the guaranteed-reliable respawn block in Simulate().
@@ -3722,13 +4128,13 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         _flashTimer = FlashDuration;
         if (_isFlashing) return;
         _isFlashing = true;
-        for (int i = 0; i < _renderers.Length; i++)
-            if (_renderers[i] != null && _renderers[i].material != null) _renderers[i].material.color = Color.red;
+        for (int i = 0; i < _modelRenderers.Length; i++)
+            if (_modelRenderers[i] != null && _modelRenderers[i].material != null) _modelRenderers[i].material.color = Color.red;
     }
 
     // Assigns this life's tier-appropriate materials (EnemySpawnerPD.GetTierMaterials) to the two generic
     // per-tier-colored renderer slots every enemy exposes — _accentRenderers and _invulnerableShellRenderer.
-    // Deliberately does NOT touch _renderers (the black body) at all — that stays black across every tier,
+    // Deliberately does NOT touch _modelRenderers (the black body) at all — that stays black across every tier,
     // only flash/stun-tinted, never tier-recolored (see its own field comment). A tier with either material
     // left unset (TierMaterials' own doc comment — scaffolding, filled in incrementally) simply leaves that
     // slot's current material untouched. No-op entirely if EnemySpawnerPD.instance is null (an enemy placed
@@ -3769,18 +4175,18 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected Material TierAccentMaterial =>
         EnemySpawnerPD.instance != null ? EnemySpawnerPD.instance.GetTierMaterials(spawnTier).accentMaterial : null;
 
-    // Guards against both a null/empty _renderers array and individual entries lacking a material —
+    // Guards against both a null/empty _modelRenderers array and individual entries lacking a material —
     // .material returns null (not a thrown exception, just a silent null) for a Renderer with no materials
     // assigned, which previously caused a NullReferenceException here and, more importantly, wherever
     // _originalColors[i] later got read against a color that never got cached (EnemyBasePD.Simulate's
     // pooled-reuse init block, FlashCoroutine above).
     private void CacheRenderers()
     {
-        _renderers ??= Array.Empty<Renderer>();
-        _originalColors = new Color[_renderers.Length];
-        for (int i = 0; i < _renderers.Length; i++)
-            _originalColors[i] = _renderers[i] != null && _renderers[i].material != null
-                ? _renderers[i].material.color
+        _modelRenderers ??= Array.Empty<Renderer>();
+        _originalColors = new Color[_modelRenderers.Length];
+        for (int i = 0; i < _modelRenderers.Length; i++)
+            _originalColors[i] = _modelRenderers[i] != null && _modelRenderers[i].material != null
+                ? _modelRenderers[i].material.color
                 : Color.white;
     }
 

@@ -1,7 +1,7 @@
 using PurrNet.Prediction;
 using UnityEngine;
 
-// Reduces Dash Cooldown by 30% — a "capstone"-style flat percent cut meant to synergize WITH Dash Haste
+// Reduces Dash Cooldown by 15% — a "capstone"-style flat percent cut meant to synergize WITH Dash Haste
 // (DashHasteAugment), not compete with it: routes through CharacterStatsPD's own dashCooldownReductionPercent
 // tier, a SEPARATE multiplier layered on top of the Haste-derived cooldown, not folded into dashHaste's own
 // diminishing-returns curve — see DashCooldown's own doc comment for the full reasoning. Multiplicative
@@ -13,7 +13,7 @@ public class DashCooldownReductionAugment : AugmentEffectPD<DashCooldownReductio
 {
     public struct State : IPredictedData<State> { public void Dispose() { } }
 
-    [SerializeField] private float dashCooldownPercentReduction = 0.3f;
+    public float dashCooldownReductionPercent = 0.15f;
 
-    protected override void OnApply() => Stats.AddDashCooldownReductionPercent(dashCooldownPercentReduction);
+    protected override void OnApply() => Stats.AddDashCooldownReductionPercent(dashCooldownReductionPercent);
 }

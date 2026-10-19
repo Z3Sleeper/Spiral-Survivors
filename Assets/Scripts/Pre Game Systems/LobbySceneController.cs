@@ -19,7 +19,13 @@ public class LobbySceneController : MonoBehaviour
     [SerializeField] private GameObject settingsPanel;
     [SerializeField] private GameObject upgradePanel;
     [SerializeField] private GameObject creditsPanel;
-    [SerializeField] private GameObject encyclopediaPanel;
+    // CanvasGroup, not GameObject+SetActive (2026-10-18 perf fix) — SetActive(true) on this panel
+    // re-enables ~140 augment cards at once, forcing Unity's own Canvas/layout rebuild for all of them on
+    // every open regardless of whether anything changed. A CanvasGroup-driven hide keeps every child
+    // genuinely active the whole time, so showing it again is just flipping alpha/interactable/
+    // blocksRaycasts — no rebuild cascade. See AugmentEncyclopediaUI's own doc comment for the matching
+    // Start()-based populate-once change this pairs with.
+    [SerializeField] private CanvasGroup encyclopediaPanel;
     [SerializeField] private GameObject[] upgradeButtons;
 
     // Replaces PurrLobby's own ViewManager/Views (MainMenuView/BrowseView/CreatingRoomView/LobbyView) —
@@ -149,6 +155,11 @@ public class LobbySceneController : MonoBehaviour
         // own doc comment for why the shop-unlock-message dedup is scoped to one lobby visit, not the whole
         // app lifetime.
         ProgressionManager.ResetAnnouncedUnlocks();
+
+        // A fresh CanvasGroup defaults to visible/interactable — asserted hidden here unconditionally,
+        // same "fresh state every lobby visit" reasoning as everything else in this method, since the panel
+        // GameObject itself now stays active the whole time (see encyclopediaPanel's own doc comment).
+        SetEncyclopediaVisible(false);
 
         // PausePD.UpdateView() drives Time.timeScale (and/or predictionManager.time.timeScale) to 0 every
         // frame while paused, and only ReturnToLobbyManager.ReturnToLobby() ever resets it back to 1 — a
@@ -593,12 +604,20 @@ public class LobbySceneController : MonoBehaviour
         if (LoadingScreen.instance != null && LoadingScreen.instance.IsShowing) return;
         if (characterSelectPanel.activeInHierarchy)
             lobbyManager.SetIsReady(GameStartData.LocalUserId, false);
-        encyclopediaPanel.SetActive(true);
+        SetEncyclopediaVisible(true);
     }
 
     public void OnEncyclopediaBackClicked()
     {
-        encyclopediaPanel.SetActive(false);
+        SetEncyclopediaVisible(false);
+    }
+
+    private void SetEncyclopediaVisible(bool visible)
+    {
+        if (encyclopediaPanel == null) return;
+        encyclopediaPanel.alpha = visible ? 1f : 0f;
+        encyclopediaPanel.interactable = visible;
+        encyclopediaPanel.blocksRaycasts = visible;
     }
 
     public void OnCreditsClicked()

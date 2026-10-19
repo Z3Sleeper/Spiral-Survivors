@@ -44,5 +44,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6944100088fea624abdb5ec46676b0d8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RogueVanishBlinkAugment
-  invisibilityDurationBonusPercent: 0.5
-  dashHasteToCooldownPercent: 0.5
+  durationBonusPercent: 0.5
+  dashHasteToCooldownPercent: 0.25

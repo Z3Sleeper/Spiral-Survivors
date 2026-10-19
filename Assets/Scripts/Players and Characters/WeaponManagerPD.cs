@@ -15,6 +15,14 @@ public class WeaponManagerPD : MonoBehaviour
     // separate count keeps the two rings' own angular spacing from interfering with each other.
     public int        OuterWeaponCount  => _outerWeapons.Count;
     public Transform  VisualsRoot       => _visualsRoot;
+    // WeaponMeleePD.TryInit()'s own readiness check — Init() itself now runs from CharacterStatsPD.Simulate()
+    // (moved there 2026-10-10, see _weaponManagerInitialized's own doc comment there), not LateAwake(), so a
+    // weapon whose own LateAwake/UpdateView happens to run before this character's Simulate() has reached
+    // that point this tick would otherwise find this component (GetComponent<WeaponManagerPD>() != null) and
+    // immediately call RegisterWeapon() -> SetupWeaponRange() against a still-null _stats — a real, confirmed
+    // NullReferenceException (SetupWeaponRange reading _stats.EffectiveWeaponRange), seen live as a non-owned
+    // remote player's weapon never finishing setup for an observing client (2026-10-15).
+    public bool       IsInitialized     => _stats != null;
 
     private CharacterStatsPD          _stats;
     private readonly List<IWeaponPD> _weapons = new();
@@ -88,7 +96,20 @@ public class WeaponManagerPD : MonoBehaviour
     {
         if (_weapons.Contains(weapon) || _outerWeapons.Contains(weapon)) return;
 
-        if (_spawningOuter)
+        // isOuter is DECIDED on the server (_spawningOuter is only ever meaningful on whichever machine is
+        // actually inside the SpawnOuterWeapons() call that created THIS specific instance — i.e. only the
+        // server, since that's the only machine that ever calls it) and WRITTEN into the weapon's own
+        // replicated State by the assignment below (see WeaponBasePD.IsOuterTrack's own doc comment for why
+        // that's now State-backed, not a plain property). Every OTHER machine — including the owning
+        // player's own client whenever they're not the host — reads that already-replicated value instead
+        // of trying to decide it locally, since _spawningOuter would otherwise always read false there,
+        // permanently misclassifying a real outer-track weapon as a second main-track one (confirmed live,
+        // 2026-10-16: wrong orbit radius, wrong rotation direction, no visible difference from "+1 main
+        // weapon" to that specific client, even though the host's own correct simulation — and therefore
+        // actual damage output — was never affected).
+        bool isOuter = _stats.isServer ? _spawningOuter : weapon.IsOuterTrack;
+
+        if (isOuter)
         {
             weapon.IsOuterTrack = true;
             weapon.SlotIndex = _outerWeapons.Count;

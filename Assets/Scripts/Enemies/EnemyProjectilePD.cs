@@ -39,6 +39,14 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
     // Plain view-layer bookkeeping, not predicted state — same instant-predicted-hide pattern as
     // WeaponRangedProjectilePD/PhantomBladePD.
     private bool _hiddenOnExpire;
+    // Tick this life's hide last latched at — see UpdateView's own revert-block doc comment (same shape as
+    // EnemyBasePD._predictedDeathTick, added 2026-10-16 after confirming this class had the identical
+    // one-way-latch-no-revert gap the enemy death-hide system used to have, just worse here since a
+    // mispredicted hit left this projectile invisible AND still flying/able to hit players unseen, forever).
+    private ulong? _predictedExpireTick;
+    // Same magnitude/reasoning as EnemyBasePD.DeathFeedbackDebounceSeconds — "how early could the client
+    // plausibly have guessed the hit landed," not an arbitrary number.
+    private const float RevertConfirmationSeconds = 0.15f;
 
     private readonly RaycastHit[] _sweepResults = new RaycastHit[8];
 
@@ -62,6 +70,7 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
         // A pooled instance's previous life ends hidden (see UpdateView()'s predicted-hide below) — a
         // fresh launch needs to be visible again.
         _hiddenOnExpire = false;
+        _predictedExpireTick = null;
         SetRenderersEnabled(true);
     }
 
@@ -126,11 +135,30 @@ public class EnemyProjectilePD : PredictedIdentity<EnemyProjectilePD.State>
 
     protected override void UpdateView(State viewState, State? verified)
     {
-        // Instant, predicted hide — same reasoning as WeaponRangedProjectilePD's own UpdateView.
+        // Instant, predicted hide — same reasoning as WeaponRangedProjectilePD's own UpdateView. Revert
+        // direction added 2026-10-16 (see _predictedExpireTick's own doc comment) — gated on lastVerifiedTick
+        // having advanced past this life's own predicted-expire tick by RevertConfirmationSeconds, same
+        // tick-margin shape and reasoning as EnemyBasePD's own death-hide revert: without the margin, a
+        // client guessing the hit landed a tick or two early would revert the INSTANT verified first reaches
+        // that tick (which correctly still shows "not hit yet" at that exact point), clearing the latch right
+        // before the real hit confirms moments later — forcing a fresh hide/show flicker instead of never
+        // reverting at all in the common case.
         if (viewState.expired && !_hiddenOnExpire)
         {
             _hiddenOnExpire = true;
+            _predictedExpireTick = predictionManager != null ? predictionManager.localTick : (ulong?)null;
             SetRenderersEnabled(false);
+        }
+        else if (_hiddenOnExpire && _predictedExpireTick.HasValue && lastVerifiedTick.HasValue
+                 && verified.HasValue && predictionManager != null)
+        {
+            ulong marginTicks = (ulong)Mathf.CeilToInt(RevertConfirmationSeconds / predictionManager.tickDelta);
+            if (lastVerifiedTick.Value >= _predictedExpireTick.Value + marginTicks && !verified.Value.expired)
+            {
+                _hiddenOnExpire = false;
+                _predictedExpireTick = null;
+                SetRenderersEnabled(true);
+            }
         }
 
         // State-critical — only act on server-confirmed expiry, same reasoning as every other spawned

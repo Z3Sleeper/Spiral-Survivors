@@ -51,7 +51,7 @@ public class DashChargeHighrollAugment : AugmentEffectPD<DashChargeHighrollAugme
     private void OnDashChargeGained()
     {
         if (_controller == null || Stats == null || Stats.IsDead) return;
-        if (GameRandom.instance.NextFloat() >= Stats.HighrollChance) return;
+        if (Stats.NextFloat() >= Stats.HighrollChance) return;
 
         _controller.RefundDashCharge(notifyChargeGained: false);
         VFXManager.instance?.PlayDashRestoreVfx(Stats.transform);

@@ -513,11 +513,14 @@ MonoBehaviour:
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 2526343947311888610}
   - {fileID: 7943450121013660069}
+  _otherRenderers:
+  - {fileID: 1324499848193571694}
+  - {fileID: 8300006464910543562}
   invulnerableShell: {fileID: 7331312534044633561}
   landDamageMultiplier: 1
   landRadius: 3.5

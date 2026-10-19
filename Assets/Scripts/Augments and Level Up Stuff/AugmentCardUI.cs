@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,11 +12,55 @@ public class AugmentCardUI : MonoBehaviour
     [SerializeField] private Sprite statAugmentSprite;
     [SerializeField] private AudioClip pickSound;
 
+    [Header("Category Tint")]
+    // The card's own background panel Image — left unassigned to opt a given card prefab out of tinting
+    // entirely (ApplyCategoryTint no-ops if this is null).
+    [SerializeField] private Image cardBackground;
+    // How strongly the parsed/supplied category color blends into cardBackground's own authored color —
+    // 0 disables tinting visually without unassigning cardBackground, 1 replaces the authored color
+    // outright. Kept well under 1 by default since RichTextColorPalette's colors are fully saturated and
+    // meant to pop as small text accents, not as a full-card fill.
+    [SerializeField, Range(0f, 1f)] private float categoryTintStrength = 0.35f;
+    // The icon/title/description sub-panel backdrops — each independently optional, same "unassigned
+    // opts out" convention as cardBackground above.
+    [SerializeField] private Image iconBackground;
+    [SerializeField] private Image titleBackground;
+    [SerializeField] private Image descriptionBackground;
+    // Deliberately a separate, much weaker knob from categoryTintStrength — these are small dark panel
+    // backdrops sitting on top of the already-tinted card background, not the card's own main surface, so
+    // they only need the faintest hint of color to read as "part of this card" without competing with it.
+    [SerializeField, Range(0f, 1f)] private float subPanelTintStrength = 0.1f;
+
     private int _cardIndex;
     private float _effectiveValueA;
     private float _effectiveValueB;
     private float _luckMultiplierA = 1f;
     private float _luckMultiplierB = 1f;
+    private Color _baseCardBackgroundColor;
+    private Color _baseIconBackgroundColor;
+    private Color _baseTitleBackgroundColor;
+    private Color _baseDescriptionBackgroundColor;
+    private bool _baseColorsCaptured;
+
+    // Lazy, not Awake() — a card populated while still inactive-in-hierarchy (e.g. Character Select
+    // auto-selecting a default character before its own panel is shown) calls AugmentSetup/ApplyCategoryTint
+    // BEFORE Unity ever runs Awake() on it (Awake is deferred on inactive objects, but a direct method call
+    // isn't). Capturing in Awake() in that case meant _baseCardBackgroundColor was read at its C# default,
+    // (0,0,0,0) — alpha 0 — tinting against that, then Awake() (once it DID eventually fire) captured the
+    // already-tinted color as the new "base," permanently baking the corruption in for that pooled
+    // instance's whole lifetime (confirmed live: observed alpha exactly matched categoryTintStrength/
+    // subPanelTintStrength themselves, i.e. Lerp(0, categoryColor, strength) — the Awake-timing signature).
+    // Capturing here instead, right before the first real tint, guarantees the true authored color is
+    // whatever ApplyCategoryTint sees it as on its very first call, regardless of Unity lifecycle ordering.
+    private void CaptureBaseColorsIfNeeded()
+    {
+        if (_baseColorsCaptured) return;
+        _baseColorsCaptured = true;
+        if (cardBackground != null) _baseCardBackgroundColor = cardBackground.color;
+        if (iconBackground != null) _baseIconBackgroundColor = iconBackground.color;
+        if (titleBackground != null) _baseTitleBackgroundColor = titleBackground.color;
+        if (descriptionBackground != null) _baseDescriptionBackgroundColor = descriptionBackground.color;
+    }
 
     // stats is optional (same convention as AugmentSetup) — pass the picking player's own live
     // CharacterStatsPD so LuckRolledLevelUpStatsAugment can be detected; leave null for display-only
@@ -67,6 +112,8 @@ public class AugmentCardUI : MonoBehaviour
         augmentImage.sprite = statAugmentSprite;
         titleText.text = $"{luckPrefix}{pair.statA.ColoredName} & {pair.statB.ColoredName}";
         descriptionText.text = $"{pair.statA.Colored($"{pair.statA.prependText}{AugmentDescriptionFormatter.FormatLiveNumber(_effectiveValueA)}{pair.statA.appendText} {pair.statA.displayName}")}\n{pair.statB.Colored($"{pair.statB.prependText}{AugmentDescriptionFormatter.FormatLiveNumber(_effectiveValueB)}{pair.statB.appendText} {pair.statB.displayName}")}";
+        // Two stats, two colors — blend them 50/50 rather than picking one arbitrarily.
+        ApplyCategoryTint(Color.Lerp(pair.statA.color, pair.statB.color, 0.5f));
 
         pickButton.onClick.RemoveAllListeners();
         pickButton.onClick.AddListener(OnPicked);
@@ -84,9 +131,45 @@ public class AugmentCardUI : MonoBehaviour
         augmentImage.sprite = augment.icon;
         titleText.text = augment.displayName;
         descriptionText.text = AugmentDescriptionFormatter.Format(augment, stats);
+        ApplyCategoryTint(TryGetFirstRichTextColor(augment.displayName, out var categoryColor) ? categoryColor : (Color?)null);
 
         pickButton.onClick.RemoveAllListeners();
         pickButton.onClick.AddListener(OnPicked);
+    }
+
+    // Blends a parsed/supplied category color into cardBackground (at categoryTintStrength) and the
+    // icon/title/description sub-panels (at the much weaker subPanelTintStrength) — null resets every
+    // assigned Image back to its own authored color untinted (e.g. a card whose name carried no
+    // parseable color at all). Each Image independently no-ops if it was never assigned.
+    private void ApplyCategoryTint(Color? categoryColor)
+    {
+        CaptureBaseColorsIfNeeded();
+        TintImage(cardBackground, _baseCardBackgroundColor, categoryColor, categoryTintStrength);
+        TintImage(iconBackground, _baseIconBackgroundColor, categoryColor, subPanelTintStrength);
+        TintImage(titleBackground, _baseTitleBackgroundColor, categoryColor, subPanelTintStrength);
+        TintImage(descriptionBackground, _baseDescriptionBackgroundColor, categoryColor, subPanelTintStrength);
+    }
+
+    private static void TintImage(Image image, Color baseColor, Color? categoryColor, float strength)
+    {
+        if (image == null) return;
+        image.color = categoryColor.HasValue ? Color.Lerp(baseColor, categoryColor.Value, strength) : baseColor;
+    }
+
+    private static readonly Regex ColorTagRegex = new(@"<color=#([0-9A-Fa-f]{6,8})>", RegexOptions.Compiled);
+
+    // Augment/ability display names bake their RichTextColorPalette category color directly into the
+    // string as one or more <color=#RRGGBB> tags. Takes the FIRST tag — deliberate, not just "simplest":
+    // the Phantom Blade augment family wraps a shared grey "Phantom" prefix in its own tag before the
+    // word that names its individual effect, and that shared grey is exactly what's meant to tint EVERY
+    // Phantom Blade card alike, so players learn to recognize the set by color at a glance.
+    private static bool TryGetFirstRichTextColor(string richText, out Color color)
+    {
+        color = default;
+        if (string.IsNullOrEmpty(richText)) return false;
+        var match = ColorTagRegex.Match(richText);
+        if (!match.Success) return false;
+        return ColorUtility.TryParseHtmlString("#" + match.Groups[1].Value, out color);
     }
 
     private void OnPicked()
@@ -114,5 +197,6 @@ public class AugmentCardUI : MonoBehaviour
         augmentImage.sprite = icon;
         titleText.text = title;
         descriptionText.text = AugmentDescriptionFormatter.Format(ability.Description, ability, stats);
+        ApplyCategoryTint(TryGetFirstRichTextColor(title, out var categoryColor) ? categoryColor : (Color?)null);
     }
 }

@@ -291,7 +291,15 @@ public class DamageNumber : MonoBehaviour
     {
         while (true)
         {
-            if (!DamageNumberManager.IsDestroyed(_target) && _target.SpawnGeneration == _targetGeneration)
+            // !_target.IsHiddenOnDeath added (2026-10-16) — without it, a number still locked/accumulating
+            // when the enemy predicts its own death keeps tracking Visuals.position every frame, which the
+            // server doesn't (yet) agree is dead, so it keeps moving normally — visibly dragging the number
+            // around after an invisible, still-wandering enemy. Freezing in place instead (simply skipping
+            // the position write this frame, same as the existing "target destroyed" fallback right below
+            // already does) is consistent with how this already handles a target that's gone entirely. Since
+            // this re-checks every frame, a later misprediction-revert (enemy turns out still alive, un-hides)
+            // naturally resumes following again on its own — no extra state needed.
+            if (!DamageNumberManager.IsDestroyed(_target) && _target.SpawnGeneration == _targetGeneration && !_target.IsHiddenOnDeath)
                 transform.position = _target.Visuals.position + _followOffset + Vector3.up * _lockedHeight;
             // Player Damage — _target/_playerTarget are mutually exclusive (see _playerTarget's own doc
             // comment), so this only ever runs for a player-damage number.

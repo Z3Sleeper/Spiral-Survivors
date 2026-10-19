@@ -456,11 +456,14 @@ MonoBehaviour:
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 8674883384031962313}
   - {fileID: 8591425792625447302}
+  _otherRenderers:
+  - {fileID: 4713848845522760080}
+  - {fileID: 228455962876149619}
   invulnerableShell: {fileID: 5797343280123201819}
   minAttackRange: 3
   windupDuration: 1

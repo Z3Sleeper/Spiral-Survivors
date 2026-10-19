@@ -116,11 +116,11 @@ public static class PhantomBladeSummonHelper
         // own tradeoff only touches the DAMAGE penalty, not this one). Same shape as the damage calc below.
         float size = (1f + stats.phantomBladeSizeBonus) * stats.phantomBladeSizeBonusPercent * stats.phantomBladeSizePenalty;
 
-        float rolled = WeaponDamageMath.RollDamage(baseDamageMultiplier, stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, out bool isHighroll);
+        float rolled = WeaponDamageMath.RollDamage(baseDamageMultiplier, stats.LuckChance, stats.LuckFloor, stats.LuckCeiling, stats.Highroll, stats.NextFloat, out bool isHighroll);
         // Blades crit same as any other damage source — rolled once here (not per-enemy in ProcessHit),
         // since a blade's damage is itself only ever rolled once and reused for every enemy it passes
         // through, so whether it crits is a property of the blade for its whole flight, not a per-hit roll.
-        bool isCrit = GameRandom.instance.NextFloat() < stats.CritChance;
+        bool isCrit = stats.NextFloat() < stats.CritChance;
         rolled = WeaponDamageMath.ApplyCritAndHighroll(rolled, isHighroll, isCrit, stats.HighrollBonus, stats.CritDamage);
         // Every non-size Phantom Blade augment's own +damage% sums additively into phantomBladeDamageBonus
         // first, then phantomBladeDamageBonusPercent (PhantomBladeSizeAugment's own bonus) scales that
@@ -157,15 +157,17 @@ public static class PhantomBladeSummonHelper
     }
 
     // Fixed-radius, random-angle offset around the target — matches old (Random.insideUnitCircle.normalized
-    // * spawnRadius, a uniform random angle at a fixed distance), ported to GameRandom for determinism, same
-    // convention as KingSpikePD's remote-burst offset. Shared by both the primary and copy paths, so every
-    // call (including a Carnival copy of the same primary summon) independently rolls its own fresh angle.
+    // * spawnRadius, a uniform random angle at a fixed distance), ported to a deterministic roll off the
+    // casting player's own stream (stats.NextFloat — see CharacterStatsPD.State.playerRandom's own doc
+    // comment; was GameRandom.instance until 2026-10-16). Shared by both the primary and copy paths, so
+    // every call (including a Carnival copy of the same primary summon) independently rolls its own fresh
+    // angle.
     private static void SpawnBlade(PredictedHierarchy hierarchy, GameObject phantomBladePrefab,
         CharacterStatsPD stats, IEnemyPD target, float damage, float size, bool isCrit, bool isHighroll,
         float baseDamageMultiplier)
     {
         float radius = PhantomBladePD.BaseSpawnRadius * size;
-        float angle     = GameRandom.instance.NextFloat(0f, 360f) * Mathf.Deg2Rad;
+        float angle     = stats.NextFloat(0f, 360f) * Mathf.Deg2Rad;
         Vector3 offset  = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * radius;
         Vector3 spawnPos = target.transform.position + offset;
         Vector3 forward  = (target.transform.position - spawnPos).normalized;

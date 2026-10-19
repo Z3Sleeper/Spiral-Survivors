@@ -1,0 +1,105 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &31359679821574708
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4109043848986094998}
+  - component: {fileID: 5948715332995695652}
+  m_Layer: 0
+  m_Name: DamageNumberManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4109043848986094998
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 31359679821574708}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &5948715332995695652
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 31359679821574708}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0257b531067fab549a31d7ae637c18b8, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::DamageNumberManager
+  _prefab: {fileID: 3582064587514324191, guid: dc94e52f7c701be448b617894e87135f, type: 3}
+  _poolSize: 2000
+  _sizeScalingRate: 0.5
+  _spawnYOffset: 1
+  _minSpawnXJitter: 1
+  _maxSpawnXJitter: 2
+  _stackWindow: 0.25
+  _stackHeightStep: 1
+  _normalDamageColor: {r: 0.8627451, g: 0.8627451, b: 0.8627451, a: 1}
+  _critDamageColor: {r: 1, g: 0.5294118, b: 0, a: 1}
+  _highrollDamageColor: {r: 0, g: 1, b: 0.5294118, a: 1}
+  _critHighrollDamageColor: {r: 1, g: 0.5294118, b: 1, a: 1}
+  _playerSpawnYOffset: 3
+  _shieldDamageColor: {r: 1, g: 0, b: 1, a: 1}
+  _healthDamageColor: {r: 1, g: 0, b: 0, a: 1}
+  _healColor: {r: 0.49019608, g: 1, b: 0, a: 1}
+  _healStackWindowMultiplier: 2
+  _statusSpawnYOffset: 2
+  _playerStatusSpawnYOffset: 4
+  _statusMinSpawnXJitter: 0
+  _statusMaxSpawnXJitter: 1
+  _statusMaxSpawnZRot: 25
+  _statusShowtimeDuration: 0.25
+  _berserkStatusMessage: Berserk!
+  _berserkStatusColor: {r: 1, g: 0.85, b: 0.1, a: 1}
+  _deathStatusMessages:
+  - Help Me!
+  - I've fallen and I can't get up...
+  - Revive pls
+  - Youch!
+  - Ouch!
+  - Oof!
+  - oof
+  - ouch
+  - :(
+  - I died :(
+  - I'll just watch...
+  - Not my best work...
+  - Unlucky
+  - I'll get 'em next time
+  _deathStatusColor: {r: 1, g: 0.627451, b: 0, a: 1}
+  _deathPreventedStatusMessage: Death Prevented!
+  _deathPreventedStatusColor: {r: 0.8627451, g: 0.8627451, b: 0.8627451, a: 1}
+  _invisibleStartedStatusMessage: Invisible
+  _invisibleStartedStatusColor: {r: 0.8627451, g: 0.8627451, b: 0.8627451, a: 1}
+  _invisibleEndedStatusMessage: Revealed
+  _invisibleEndedStatusColor: {r: 0.8627451, g: 0.8627451, b: 0.8627451, a: 1}
+  _tauntStatusMessage: Taunting
+  _tauntStatusColor: {r: 1, g: 0.627451, b: 0, a: 1}
+  _stunStatusMessage: Stunned
+  _stunStatusColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  _interruptedStatusMessage: Interrupted!
+  _interruptedStatusColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
+  _slowedStatusMessage: Slowed
+  _slowedStatusColor: {r: 0, g: 1, b: 1, a: 1}
+  _executedStatusMessage: Executed!
+  _executedStatusColor: {r: 1, g: 0.627451, b: 0, a: 1}
+  _dodgedStatusMessage: Dodged!
+  _dodgedStatusColor: {r: 1, g: 1, b: 1, a: 1}

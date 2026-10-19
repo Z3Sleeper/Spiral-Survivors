@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using PurrNet.Packing;
+using PurrNet.Pooling;
 using PurrNet.Prediction;
 using UnityEngine;
 
@@ -59,12 +60,21 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         public float scaledRotationRateDegPerSecond;
         public float scaledAttackCooldown;
         public float scaledPersistentBurstInterval;
-        public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); }
+        // Every currently-active (not yet naturally expired) RemoteSpikeBurstPD this boss has spawned, from
+        // EITHER the attack-cycle wave (SpawnRemoteBurstWave) or the independent persistent timer
+        // (SpawnPersistentRemoteBurst) — both funnel through the shared SpawnRemoteBurstFor, which is where
+        // entries get added. Pruned every tick in Simulate() (see its own doc comment) as each tracked burst
+        // naturally finishes, so this never grows unbounded. Added 2026-10-16 so Die() can instantly Cancel()
+        // every still-active burst instead of the previous "lives fully independently of its firer forever"
+        // behavior — see RemoteSpikeBurstPD's own class doc comment for the design change this is part of.
+        public DisposableList<PredictedObjectID> activeRemoteBursts;
+        public void Dispose() { b.contactCooldowns.Dispose(); b.killLaunchHitIds.Dispose(); activeRemoteBursts.Dispose(); }
 
         public State Duplicate()
         {
             var copy = this;
             copy.b = b.Duplicate();
+            copy.activeRemoteBursts = activeRemoteBursts.Duplicate();
             return copy;
         }
     }
@@ -75,6 +85,19 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
     private void SetSpikeState(ref State s, KingSpikeState st) => s.stateId = (int)st;
 
     protected override ref EnemyBaseState GetBase(ref State state) => ref state.b;
+
+    // activeRemoteBursts needs its own explicit allocation — unlike b.contactCooldowns/killLaunchHitIds
+    // (handled generically by EnemyBasePD's own lazy first-tick init), this field is specific to this
+    // subclass's own State, so nothing else initializes it. GetInitialState() is "the one thing reliably
+    // re-run on every reuse" (see EnemyBasePD's own doc comment on why pooled reuse can't rely on
+    // OnRemovedFromPool) — same reasoning/pattern OrbiterGloomPD.GetInitialState() already uses for its own
+    // subclass-specific heldPlebs.
+    protected override State GetInitialState()
+    {
+        var s = base.GetInitialState();
+        s.activeRemoteBursts = DisposableList<PredictedObjectID>.Create(4);
+        return s;
+    }
 
     // Deliberately INDEPENDENT of CanContactDamage (which this class never overrides, so it stays the base
     // default `true` — contact damage is always possible, in every state) — this boss's Charge is its actual
@@ -261,6 +284,18 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // stuck windup indicator, just manifesting as an ongoing side effect instead of a stuck visual.
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
         if (B.isDead || B.wiped) return;
+
+        // Prunes activeRemoteBursts of anything that's naturally finished on its own (IsExpired) or no
+        // longer resolves (pooled/deleted) — see that field's own doc comment for why this is needed every
+        // tick to keep the list from growing unbounded. Backwards iteration so RemoveAt doesn't skip the
+        // next entry. Deliberately simple/linear — activeRemoteBursts is always small (a handful of bursts
+        // at most), so this is cheap even every tick.
+        for (int i = state.activeRemoteBursts.Count - 1; i >= 0; i--)
+        {
+            var go = hierarchy.GetGameObject(state.activeRemoteBursts[i]);
+            if (go == null || !go.TryGetComponent(out RemoteSpikeBurstPD existingBurst) || existingBurst.IsExpired)
+                state.activeRemoteBursts.RemoveAt(i);
+        }
 
         // Drives the charge windup indicator's own "collapse in behind the body as it travels" shrink
         // (2026-09-14) — see UpdateView's own doc comment for the full visual reasoning, and
@@ -813,12 +848,16 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
         var go = hierarchy.GetGameObject(id.Value);
         if (go != null && go.TryGetComponent(out RemoteSpikeBurstPD burst))
+        {
             // EnrageDamageMultiplier multiplied in explicitly — same "reads B.scaledDamage directly"
             // reasoning as FireSpikeBurst's own dmg local above. EffectiveAttackSpeed passed as a one-time
             // snapshot (2026-09-14) so this hazard's own charge-then-detonate timer speeds up/slows down in
             // step with King Spike's own attack speed (including an active Slow) — see RemoteSpikeBurstPD's
             // own _chargeAttackSpeed doc comment for why it's snapshotted rather than read live.
             burst.Launch(remoteChargeTime, remoteBurstRadius, B.scaledDamage * remoteBurstDamageMultiplier * EnrageDamageMultiplier, EffectiveAttackSpeed);
+            // Tracked so Die() can instantly Cancel() this — see activeRemoteBursts' own doc comment.
+            currentState.activeRemoteBursts.Add(id.Value);
+        }
     }
 
     // ── Persistent Remote Spike Bursts ──────────────────────────────────────────
@@ -861,6 +900,16 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         // inactive during replay; bail before recording _lastVisualState so the transition retries once
         // actually active, instead of leaving stale indicator state from a previous pooled life.
         if (!gameObject.activeInHierarchy) return;
+
+        // Added 2026-10-15 — this class was missing the same guard Blitz/Leaper/Dagger already have: death
+        // is handled by base.UpdateView() above (OnDeathStop() + hierarchy.Delete()), but without this,
+        // execution continued into the rest of this method on the same frame a PredictedHierarchy
+        // reconciliation rebuilds this instance after it died mid-Charging — the fresh _lastVisualState
+        // default no longer matches the still-Charging stateId, so the transition block below would re-run
+        // as if entering Charging for the first time, immediately re-enabling the very indicator
+        // OnDeathStop() just hid. Bailing here preserves whatever OnDeathStop() already did. Same fix/
+        // reasoning as LeaperGloomPD/BlitzGloomPD's own identical guard.
+        if (viewState.b.isDead) return;
 
         // Re-applied every frame, not just once at spawn — if spikeBurstRadius is ever changed at runtime (a
         // live balance tweak, a future enrage/scaling hook, etc.), the indicator's visual footprint should
@@ -971,6 +1020,91 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
         if (spikeBurstFill != null && ss != KingSpikeState.SpikeBurstWindup) spikeBurstFill.Hide();
     }
 
+    // Restores both windup indicators on a misprediction-revert — same class of bug as LeaperGloomPD/
+    // BlitzGloomPD's own identical fix (see LeaperGloomPD.OnHiddenStateChanged's own doc comment for the
+    // full mechanism). OnDeathStop() below is a one-way latch for both chargeWindupIndicator and
+    // spikeBurstIndicator; nothing else re-shows either since stateId never actually left
+    // Charging/ChargeWindup/SpikeBurstWindup (only the separate isDead flag mispredicted), so UpdateView's
+    // _lastVisualState edge-detect never re-fires for either one. chargeWindupIndicator needs the same
+    // reparent-if-Charging handling Blitz's own fix does; spikeBurstIndicator never gets unparented at all
+    // (see UpdateView's own SpikeBurstWindup branch — no SetParent call exists for it), so a plain
+    // SetActive(true) is enough there.
+    protected override void OnHiddenStateChanged(bool hidden)
+    {
+        base.OnHiddenStateChanged(hidden);
+        if (hidden) return;
+
+        var ss = (KingSpikeState)currentState.stateId;
+
+        if (chargeWindupIndicator != null && (ss == KingSpikeState.ChargeWindup || ss == KingSpikeState.Charging))
+        {
+            if (ss == KingSpikeState.Charging)
+                chargeWindupIndicator.transform.SetParent(null, true);
+            chargeWindupIndicator.SetActive(true);
+        }
+
+        if (spikeBurstIndicator != null && ss == KingSpikeState.SpikeBurstWindup)
+            spikeBurstIndicator.SetActive(true);
+
+        // Uncancels whichever snapshotted Remote Spike Bursts are still valid — see _pendingReclaimBursts'
+        // own doc comment / Die()'s own doc comment for the full mechanism (same fix as OrbiterGloomPD/
+        // KingOrbiterPD's own held-pleb reclaims, adapted for a standalone spawned effect instead of a held
+        // enemy). A burst that's already been deleted (hierarchy.GetGameObject returns null — verified
+        // caught up and confirmed the cancel before this reverted) is simply skipped, not re-spawned.
+        for (int i = 0; i < _pendingReclaimBursts.Count; i++)
+        {
+            var id = _pendingReclaimBursts[i];
+            var go = hierarchy.GetGameObject(id);
+            if (go == null || !go.TryGetComponent(out RemoteSpikeBurstPD burst)) continue;
+            burst.Uncancel();
+            currentState.activeRemoteBursts.Add(id);
+        }
+        _pendingReclaimBursts.Clear();
+    }
+
+    // Snapshot of exactly which bursts Die() just cancelled — see its own doc comment for the full
+    // mechanism. Plain field, not State — survives across the real-time window between Die() and the
+    // verified-revert check in OnHiddenStateChanged, same as OrbiterGloomPD._pendingReclaimPlebs.
+    private readonly List<PredictedObjectID> _pendingReclaimBursts = new();
+
+    // Instantly cancels every currently-tracked Remote Spike Burst the moment death is predicted — see
+    // RemoteSpikeBurstPD's own class doc comment for the design change this implements (previously these
+    // lived fully independently of their firer). Snapshotted into _pendingReclaimBursts BEFORE cancelling,
+    // same "real cross-identity predicted-state mutation needs an explicit revert path" reasoning as
+    // OrbiterGloomPD.Die()'s own identical pattern — Cancel() has no auto-revert of its own, so without this
+    // a misprediction-then-correction cycle would either leave a still-very-much-alive boss's burst
+    // permanently cancelled, or (same as the held-pleb case) flicker cancelled/active as Die() re-fires.
+    protected override void Die()
+    {
+        base.Die();
+        _pendingReclaimBursts.Clear();
+        for (int i = 0; i < currentState.activeRemoteBursts.Count; i++)
+        {
+            var id = currentState.activeRemoteBursts[i];
+            _pendingReclaimBursts.Add(id);
+            var go = hierarchy.GetGameObject(id);
+            if (go != null && go.TryGetComponent(out RemoteSpikeBurstPD burst))
+                burst.Cancel();
+        }
+        currentState.activeRemoteBursts.Clear();
+    }
+
+    // Same burst-cancel loop as Die() above, for the difficulty-pacing wipe path (2026-10-16 fix) — see
+    // EnemyBasePD.OnSilentDespawn's own doc comment. No _pendingReclaimBursts snapshot here — that exists
+    // purely to support a misprediction-revert, which a wipe (deterministic difficulty pacing, not a
+    // speculative prediction) never undergoes — nothing to reclaim, only something to cancel.
+    protected override void OnSilentDespawn()
+    {
+        base.OnSilentDespawn();
+        for (int i = 0; i < currentState.activeRemoteBursts.Count; i++)
+        {
+            var go = hierarchy.GetGameObject(currentState.activeRemoteBursts[i]);
+            if (go != null && go.TryGetComponent(out RemoteSpikeBurstPD burst))
+                burst.Cancel();
+        }
+        currentState.activeRemoteBursts.Clear();
+    }
+
     protected override void OnDeathStop()
     {
         if (chargeWindupIndicator != null) chargeWindupIndicator.SetActive(false);
@@ -987,6 +1121,11 @@ public class KingSpikePD : EnemyBasePD<KingSpikePD.State>
 
     protected override void OnRespawnReset()
     {
+        // Plain field, not State — see its own doc comment. Cleared here so a reused instance never tries
+        // to Uncancel() a stale burst ObjectId left over from a previous life's own correctly-confirmed
+        // (never-reverted) death.
+        _pendingReclaimBursts.Clear();
+
         currentState.stateId              = 0;
         currentState.stateTimer           = 0f;
         currentState.attackCooldownTimer  = currentState.scaledAttackCooldown; // full grace, matching LateAwake()'s own fix

@@ -16,12 +16,21 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         public bool prevSet;
         public DisposableList<HitCooldownEntry> hitCooldowns;
         public DisposableList<AllyHitCooldownEntry> allyHitCooldowns;
+        // Replicated backing for IsOuterTrack/SlotIndex (2026-10-16) — see WeaponBasePD.IsOuterTrack's own
+        // doc comment for the full "why" (only the server ever decides this, so it has to replicate rather
+        // than be a plain per-machine field).
+        public bool isOuterTrack;
+        public int  slotIndex;
         public void Dispose()
         {
             hitCooldowns.Dispose();
             allyHitCooldowns.Dispose();
         }
     }
+
+    // See WeaponBasePD.IsOuterTrack/SlotIndex's own doc comment.
+    public override bool IsOuterTrack { get => currentState.isOuterTrack; set => currentState.isOuterTrack = value; }
+    public override int  SlotIndex    { get => currentState.slotIndex;    set => currentState.slotIndex    = value; }
 
     [SerializeField] private Vector3 meleeHalfExtents = new(0.1f, 0.1f, 0.5f);
 
@@ -75,6 +84,11 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         if (!CharacterStatsPD.All.TryGetValue(owner.Value, out var stats)) return;
         var mgr = stats.GetComponent<WeaponManagerPD>();
         if (mgr == null) return;
+        // Not ready yet — mgr.Init() runs from CharacterStatsPD.Simulate(), which may not have reached this
+        // character yet this tick (see WeaponManagerPD.IsInitialized's own doc comment). Leave _initialized
+        // false so UpdateView()'s retry picks this back up next frame instead of committing to a half-set-up
+        // RegisterWeapon() call.
+        if (!mgr.IsInitialized) return;
         _manager = mgr;
         _initialized = true;
         mgr.RegisterWeapon(this);
@@ -85,10 +99,23 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
         if (_manager != null) _manager.UnregisterWeapon(this);
     }
 
+    // isOuterTrack/slotIndex explicitly carried forward (2026-10-16 fix) — for a FRESH spawn,
+    // PredictedIdentityStatefull.Setup() calls LateAwake() (which runs TryInit() -> RegisterWeapon(),
+    // setting IsOuterTrack/SlotIndex on currentState) BEFORE assigning fullPredictedState.state =
+    // GetInitialState() — so an initializer that doesn't explicitly preserve them silently wipes whatever
+    // RegisterWeapon() just set back to false/0, since `new() { ... }` zeroes every field not listed.
+    // Reading currentState here still sees RegisterWeapon()'s own write, since the overwriting assignment
+    // hasn't happened yet (GetInitialState()'s return value is computed before it's assigned) — confirmed
+    // live: an outer-track weapon landed perfectly overlapping the main-track one, same rotation direction,
+    // because IsOuterTrack read back false the instant it started simulating. Pooled reuse was never
+    // affected (GetInitialState() runs BEFORE LateAwake() in that path), which is why this stayed invisible
+    // until a genuinely fresh OuterTrackAugment spawn.
     protected override State GetInitialState() => new()
     {
         hitCooldowns = DisposableList<HitCooldownEntry>.Create(4),
         allyHitCooldowns = DisposableList<AllyHitCooldownEntry>.Create(4),
+        isOuterTrack = currentState.isOuterTrack,
+        slotIndex = currentState.slotIndex,
     };
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -278,7 +305,7 @@ public class WeaponMeleePD : WeaponBasePD<WeaponMeleePD.State>
     {
         if (enemy._isDead) return;
         float damage = RollDamage(_stats.WeaponStrength, out bool isHighroll);
-        bool isCrit = GameRandom.instance.NextFloat() < _stats.CritChance;
+        bool isCrit = _stats.NextFloat() < _stats.CritChance;
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, _stats.WeaponOnHitPower);
         float weaponRadius = IsOuterTrack ? _stats.WeaponRadius + _stats.EffectiveWeaponRange : _stats.WeaponRadius;

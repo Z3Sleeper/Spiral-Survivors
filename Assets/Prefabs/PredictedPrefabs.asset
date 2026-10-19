@@ -823,3 +823,39 @@ MonoBehaviour:
     pooling:
       usePooling: 0
       initialSize: 0
+  - prefab: {fileID: 1597157536724350220, guid: 430d06e52d9e7c54698fe3f783dac8a8, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 3154012130216419278, guid: f6103bcc92ce1cf4bba45581b34ae558, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 8102385279676187871, guid: 7c55a966d308639489f91ab1dbd7203f, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 3498238635931837811, guid: 9b99406e2f9a09b47b4e6498b4d00997, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 3563881774934638168, guid: 83b419587effad54dbe9b79a70e40517, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 4621147997693962000, guid: 695790ef751deb74eaa12d27e7f527c4, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 6023681387594900517, guid: e23ae338cf9da874284b9742ee28dbc7, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 6478570450451478705, guid: e9c4ae9d571e8df47987d40849934fae, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0
+  - prefab: {fileID: 6292324995314999722, guid: a43d484fd4cbcad4e9361f122557c39b, type: 3}
+    pooling:
+      usePooling: 0
+      initialSize: 0

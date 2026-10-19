@@ -37,12 +37,20 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         public bool prevSet;
         public DisposableList<HitCooldownEntry>     hitCooldowns;
         public DisposableList<AllyHitCooldownEntry> allyHitCooldowns;
+        // Replicated backing for IsOuterTrack/SlotIndex (2026-10-16) — see WeaponBasePD.IsOuterTrack's own
+        // doc comment for the full "why".
+        public bool isOuterTrack;
+        public int  slotIndex;
         public void Dispose()
         {
             hitCooldowns.Dispose();
             allyHitCooldowns.Dispose();
         }
     }
+
+    // See WeaponBasePD.IsOuterTrack/SlotIndex's own doc comment.
+    public override bool IsOuterTrack { get => currentState.isOuterTrack; set => currentState.isOuterTrack = value; }
+    public override int  SlotIndex    { get => currentState.slotIndex;    set => currentState.slotIndex    = value; }
 
     [SerializeField] private Vector3 meleeHalfExtents = new(0.1f, 0.1f, 0.5f);
 
@@ -118,6 +126,9 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         if (!CharacterStatsPD.All.TryGetValue(owner.Value, out var stats)) return;
         var mgr = stats.GetComponent<WeaponManagerPD>();
         if (mgr == null) return;
+        // Not ready yet — see WeaponManagerPD.IsInitialized's own doc comment (same race WeaponMeleePD's
+        // identical TryInit() hit, confirmed live as a NullReferenceException in SetupWeaponRange).
+        if (!mgr.IsInitialized) return;
         _manager = mgr;
         _initialized = true;
         mgr.RegisterWeapon(this);
@@ -128,10 +139,15 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         if (_manager != null) _manager.UnregisterWeapon(this);
     }
 
+    // isOuterTrack/slotIndex explicitly carried forward (2026-10-16 fix) — see WeaponMeleePD.GetInitialState's
+    // own doc comment for the full "why" (fresh-spawn LateAwake->RegisterWeapon runs before this assignment,
+    // which would otherwise silently wipe RegisterWeapon's own classification back to false/0).
     protected override State GetInitialState() => new()
     {
         hitCooldowns = DisposableList<HitCooldownEntry>.Create(4),
         allyHitCooldowns = DisposableList<AllyHitCooldownEntry>.Create(4),
+        isOuterTrack = currentState.isOuterTrack,
+        slotIndex = currentState.slotIndex,
     };
 
     // ── Simulation ────────────────────────────────────────────────────────────
@@ -369,7 +385,7 @@ public class WeaponAxePD : WeaponBasePD<WeaponAxePD.State>
         if (enemy._isDead) return;
         float baseDamage = isOuter ? _stats.WeaponStrength : _stats.WeaponStrength * innerDamageMultiplier;
         float damage = RollDamage(baseDamage, out bool isHighroll);
-        bool  isCrit = isOuter && GameRandom.instance.NextFloat() < _stats.CritChance;
+        bool  isCrit = isOuter && _stats.NextFloat() < _stats.CritChance;
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _stats.CritDamage);
         float onHitPower = isOuter ? _stats.WeaponOnHitPower : _stats.WeaponOnHitPower * innerOnHitPowerMultiplier;
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, onHitPower);

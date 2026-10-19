@@ -48,7 +48,16 @@ public class EnemyUIPD : MonoBehaviour
         // object (confirmed in the prefab), so disabling IT would also stop this very Update() from ever
         // running again, permanently stuck hidden even once the pooled slot is reused as a category that
         // should show a bar.
-        bool shouldShow = _enemy.SpawnCategory != EnemySpawnCategory.Boss && _enemy.SpawnCategory != EnemySpawnCategory.Pleb;
+        // IsHiddenOnDeath added (2026-10-16) — the category check alone never hid this on death at all;
+        // the bar previously stayed visible until the whole enemy GameObject finally got pooled/deleted
+        // (verified-gated, much later), floating over an already-invisible corpse the whole time in between.
+        // Deliberately checked here, not via an _isDead early-return above — IsHiddenOnDeath stays false for
+        // the whole duration of a kill-launch (or any future death-hold effect), matching the model's own
+        // timing exactly: the bar keeps updating/showing (correctly settling to 0/max, per this method's own
+        // top comment) for as long as the corpse itself is still visibly held, then hides in the same frame
+        // the model does, not before and not after.
+        bool shouldShow = _enemy.SpawnCategory != EnemySpawnCategory.Boss && _enemy.SpawnCategory != EnemySpawnCategory.Pleb
+            && !_enemy.IsHiddenOnDeath;
         if (shouldShow != _lastShouldShow)
         {
             _lastShouldShow = shouldShow;

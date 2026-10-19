@@ -6,6 +6,11 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
 {
     [SerializeField] private PredictedRigidbody _rigidbody;
     [SerializeField] private Transform _cameraTarget;
+    // Scoped to the literal Dash input only (played directly in StartDash() below, not off the shared
+    // _onDashStarted event) — RogueSpinAbilityPD's leap and BWBlinkAbilityPD's teleport also fire that same
+    // event (see its own doc comment), so listening there instead would also sound for those. RogueSpin
+    // plays its own distinct SFX directly at its own trigger site instead; Blink has none yet.
+    [SerializeField] private AudioClip dashSfx;
 
     // 0f (no-op) until SurgeDashCDRateAugment sets it — extra multiplier added on top of the normal 1x
     // dash-charge-regen tick rate while CharacterStatsPD.IsSurging is true (1f = twice as fast overall).
@@ -942,6 +947,15 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         _rigidbody.velocity = Vector3.zero;
         _onDashStarted.Invoke();
         _onDashMovementStarted.Invoke();
+
+        // Owner-only, same convention as EnemyBasePD.TriggerHitFeedback's own attacker.isOwner-gated hit SFX
+        // — every machine runs this same Simulate() code, but only the dashing player's own client should
+        // hear it. isReplaying-guarded too (same as every other one-shot cosmetic side effect fired directly
+        // from Simulate() in this codebase, e.g. EnemyBasePD's pause-entry ResetInterpolation()) — StartDash()
+        // itself only ever runs once per real dash, but a corrected replay of that same tick would otherwise
+        // call this a second time.
+        if (isOwner && !predictionManager.isReplaying && SFXManager.instance != null)
+            SFXManager.instance.Play(dashSfx, transform.position);
     }
 
     // interrupted: false for the natural end (Simulate()'s own dashTimer<=0 check) — fires _onDashEnded as

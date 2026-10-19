@@ -103,6 +103,10 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
 
     private PredictedRigidbody _rigidbody;
     private Collider _contactDamageCollider;
+    // Every renderer on this object, not just readyMaterialRenderers/permanentReadyMaterialRenderers (those
+    // two are tint-purpose subsets, not guaranteed to cover every mesh) — the set SetHidden() below actually
+    // needs to hide/show everything when the owning ShielderGloomPD's own body hides/reveals.
+    private Renderer[] _allRenderers;
 
     // Plain, not State — this Shield is a 1:1, whole-life companion to exactly one ShielderGloomPD instance,
     // same "spawned effect stores its owner as a plain reference, not a re-resolved PredictedObjectID"
@@ -165,6 +169,8 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // convention EnemyBasePD.Awake() uses for its own ContactDamageCollider carries over here.
         var contactChild = transform.Find("ContactDamageCollider");
         if (contactChild != null) _contactDamageCollider = contactChild.GetComponent<Collider>();
+
+        _allRenderers = GetComponentsInChildren<Renderer>(true);
 
         // Captured exactly once per real GameObject instance (Awake(), not LateAwake()/Configure(), neither
         // of which are guaranteed to run before any pooled reuse might already have swapped these to a
@@ -255,11 +261,8 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         currentState.phaseTimer = 0f;
         // Guaranteed at least one full cooldown before the first attack (2026-08-12 fix — this used to be
         // GameRandom.instance.NextFloat(0f, attackCooldown) alone, which could roll near-zero and attack
-        // almost immediately, despite the comment here claiming it matched SpearGloomPD's own pattern; it
-        // didn't, it was missing the base attackCooldown term), plus a randomized extra so multiple Shielders
-        // don't all attack in lockstep — actually matches SpearGloomPD.LateAwake()'s own
-        // spearAttackCooldownTimer pattern now.
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        // almost immediately).
+        currentState.attackCooldownTimer = attackCooldown;
         // Reset, not left alone — this instance may be a pooled reuse carrying a previous life's stale
         // per-player cooldown entries (see GetInitialState()'s own comment).
         currentState.contactCooldowns.Clear();
@@ -344,8 +347,17 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         // (falls right out of this same check, no separate handling needed for the "interrupted mid-attack"
         // case). Only FreeRotating (genuinely idle/searching) ever actually freezes on a stun.
         bool stunFrozen = _owner.IsTrueStunned && phase == ShieldPhase.FreeRotating;
-        if (_contactDamageCollider != null && _contactDamageCollider.enabled == stunFrozen)
-            _contactDamageCollider.enabled = !stunFrozen;
+        // ownerDead added (2026-10-15) — this Shield has no death/isDead concept of its own (class doc
+        // comment), so without this it kept dealing contact damage from a Shielder body that's already
+        // predicted-dead and hidden, right up until the much-later verified-isDead deletion in
+        // Destroyed() actually ran. Reading _owner._isDead here is deterministic/safe the same way
+        // _owner.IsTrueStunned one line above already is — this runs in Simulate-context, reading another
+        // identity's replicated State field, not a view-layer/per-machine value (see
+        // feedback_no_race_conditions_or_outside_simulation_state).
+        bool ownerDead = _owner._isDead;
+        bool wantDisabled = stunFrozen || ownerDead;
+        if (_contactDamageCollider != null && _contactDamageCollider.enabled == wantDisabled)
+            _contactDamageCollider.enabled = !wantDisabled;
 
         float effectiveAngle;
 
@@ -644,6 +656,22 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
         ApplyPermanentReadyMaterial();
     }
 
+    // Called by ShielderGloomPD.OnHiddenStateChanged() — toggles every renderer on this Shield in lockstep
+    // with the owning body's own predicted hide/verified-revert (2026-10-15 fix: a body-only hide left the
+    // Shield, a separate PredictedIdentity the base hide system can't see, fully visible on a "dead"
+    // Shielder). View-layer only, renderers alone — NOT the windup indicator (Die()->CancelWindup() already
+    // hides that deterministically the instant the Shielder actually dies, in Simulate-context) and NOT the
+    // contact-damage collider (LateSimulate()'s own _owner._isDead check handles that safely in
+    // Simulate-context instead — toggling a Simulate-driven collider from here, a view-layer call, would
+    // just get fought/overwritten the very next deterministic tick, same class of bug as
+    // feedback_onawake_kinematic_lock_insufficient).
+    public void SetHidden(bool hidden)
+    {
+        if (_allRenderers == null) return;
+        foreach (var r in _allRenderers)
+            if (r != null) r.enabled = !hidden;
+    }
+
     // Called by ShielderGloomPD.OnConfigureSpawn() (2026-08-20), same reasoning/timing as SetReadyMaterial
     // above — Configure() already ran (from LateAwake(), before spawnTier was finalized) with the UN-scaled
     // baseline, so the actual tier-scaled values get pushed here afterward instead. _size is NOT reapplied
@@ -663,7 +691,7 @@ public class SpikeShieldPD : PredictedIdentity<SpikeShieldPD.State>
     public void SetAttackCooldown(float attackCooldown)
     {
         currentState.scaledAttackCooldown = attackCooldown;
-        currentState.attackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.attackCooldownTimer = attackCooldown;
     }
 
     private void ApplyPermanentReadyMaterial()

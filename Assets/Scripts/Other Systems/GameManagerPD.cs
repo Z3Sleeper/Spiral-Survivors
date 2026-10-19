@@ -108,16 +108,25 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     [SerializeField] private int xpLevelStepInterval = 5;
 
     [Header("Co-op Difficulty")]
-    // The single shared "how much harder is co-op" knob — read via CoopToughnessScalar below by
-    // EnemySpawnerPD/EventTargetScalingPD, scales health (every category) and points (every category) up
-    // with player count. Deliberately does NOT touch XP anywhere anymore (2026-09-03 fix — see AwardXP's
-    // own doc comment for why the old "multiply XP value by this, then divide back out on pickup" pairing
-    // was removed): XP-per-orb needs to be genuinely player-count-invariant now that total enemy count no
-    // longer scales with player count either (see EnemySpawnerPD's own coopScale doc comment for that
-    // history) — multiplying then dividing by the same factor was already a mathematical no-op for XP
-    // specifically, just needlessly round-tripped through two separately-tuned formulas that could in
-    // principle drift out of sync, so both sides were deleted outright rather than left as dead ceremony.
+    // The shared "how much harder is co-op" knob for every NON-boss category — read via
+    // CoopToughnessScalar below by EnemySpawnerPD (normal/pleb/elite)/EventTargetScalingPD, scales health
+    // (every non-boss category) and points (every category, bosses included — see BossCoopToughnessScalar's
+    // own doc comment for why points didn't need its own split) up with player count. Deliberately does
+    // NOT touch XP anywhere anymore (2026-09-03 fix — see AwardXP's own doc comment for why the old
+    // "multiply XP value by this, then divide back out on pickup" pairing was removed): XP-per-orb needs to
+    // be genuinely player-count-invariant now that total enemy count no longer scales with player count
+    // either (see EnemySpawnerPD's own coopScale doc comment for that history) — multiplying then dividing
+    // by the same factor was already a mathematical no-op for XP specifically, just needlessly round-tripped
+    // through two separately-tuned formulas that could in principle drift out of sync, so both sides were
+    // deleted outright rather than left as dead ceremony.
     [SerializeField] private float coopToughnessScalar = 0.5f;
+    // Bosses' own separate co-op health knob (2026-10-17 split — see EnemySpawnerPD.SpawnBosses' own doc
+    // comment for why one shared scalar couldn't serve both: 50%/player made normals feel right but let
+    // bosses melt, and 75%/player made normals too tanky while bosses still melted, meaning bosses simply
+    // need a steeper per-player curve than everything else, not a shared compromise value). Only feeds
+    // health — points still goes through the shared CoopToughnessScalar above for every category, bosses
+    // included, since points-per-player-count was never the part that felt wrong.
+    [SerializeField] private float bossCoopToughnessScalar = 1f;
 
     [Header("Upgrade Points")]
     // General-purpose manual tuning knob for overall points-per-kill balance, independent of Threat Level —
@@ -154,6 +163,7 @@ public class GameManagerPD : PredictedIdentity<GameManagerPD.State>
     // oscillate it there too).
     public bool  VerifiedGameEnded  => verifiedState.HasValue && (verifiedState.Value.hasWon || verifiedState.Value.isGameOver);
     public float CoopToughnessScalar => coopToughnessScalar;
+    public float BossCoopToughnessScalar => bossCoopToughnessScalar;
     public float ElapsedRunTime      => currentState.elapsedRunTime;
     // See State.fixedPlayerCount's own doc comment — the number every co-op-scaling system should read.
     public int   FixedPlayerCount    => currentState.fixedPlayerCount;

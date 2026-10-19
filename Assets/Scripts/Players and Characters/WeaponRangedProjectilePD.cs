@@ -323,8 +323,8 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
 
         _hitTargets.Add(enemy);
 
-        float damage = WeaponDamageMath.RollDamage(state.currentDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, out bool isHighroll);
-        bool  isCrit = GameRandom.instance.NextFloat() < _critChance;
+        float damage = WeaponDamageMath.RollDamage(state.currentDamage, _stats.LuckChance, _stats.LuckFloor, _stats.LuckCeiling, _stats.Highroll, _stats.NextFloat, out bool isHighroll);
+        bool  isCrit = _stats.NextFloat() < _critChance;
         damage = WeaponDamageMath.ApplyCritAndHighroll(damage, isHighroll, isCrit, _stats.HighrollBonus, _critDamage);
         if (isHighroll) _stats.NotifyStrikeHighroll(damage, state.currentOnHitPower);
         // state.currentDamage/currentOnHitPower are this shot's already ricochet-decayed values BEFORE this

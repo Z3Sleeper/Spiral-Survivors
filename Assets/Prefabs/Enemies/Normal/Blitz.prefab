@@ -439,12 +439,15 @@ MonoBehaviour:
   crowdControlResist: 0
   showDamageNumbers: 1
   isStunnable: 1
-  _renderers:
+  _modelRenderers:
   - {fileID: 3448404629509916890}
   _accentRenderers:
   - {fileID: 789221805696345206}
   - {fileID: 3261374095883478783}
   - {fileID: 958617077370952939}
+  _otherRenderers:
+  - {fileID: 4412482370457791877}
+  - {fileID: 5825921391853623037}
   invulnerableShell: {fileID: 320830139079793025}
   windupDuration: 1
   postBlitzPause: 0.5

@@ -341,28 +341,14 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // needs the raw number to gate on (>= 4), not a multiplier.
     private int _currentDifficulty = 1;
 
+    // Flat across every Threat Level (2026-10-17 revert — TL1-3 used to end the run after 1/2/3 boss
+    // cycles instead of the full 4, per the old "earlier levels are meant to be quick" design; reverted,
+    // every difficulty now runs the full 4-tier cycle).
     [SerializeField] private int bossesToDefeatForWin = 4;
-    // Public passthrough (2026-09-17) — EventManagerPD reads this as the real source of truth for "how many
-    // Tier Cycles (and therefore mid-cycle event triggers) a run can ever have," since a win fires the moment
-    // this many bosses are defeated and a Tier Cycle always ends in a boss spawn. Deliberately still the flat
-    // authored value, NOT GetBossesToDefeatForWin() below — this is only ever used as an upper-bound cap on
-    // how many event-sequence entries to pre-shuffle (see GenerateEventSequence's own doc comment); a run that
-    // ends sooner on a low Threat Level just never consumes the extra entries, harmless.
+    // EventManagerPD reads this as the real source of truth for "how many Tier Cycles (and therefore
+    // mid-cycle event triggers) a run can ever have," since a win fires the moment this many bosses are
+    // defeated and a Tier Cycle always ends in a boss spawn.
     public int BossesToDefeatForWin => bossesToDefeatForWin;
-
-    // Threat Level 1/2/3 end the run after 1/2/3 boss cycles respectively (2026-09-26, shorter early-Threat-
-    // Level runs, per explicit design — earlier levels are meant to be quick, not a full 4-cycle run at a
-    // trivial difficulty) — Threat Level 4+ unchanged, still the flat Inspector-tunable bossesToDefeatForWin
-    // (4). Same "no Inspector exposure for per-level tuning" convention as every other Threat-Level modifier
-    // (see feedback_all Level 2+ fields going Inspector-hidden) — this one's tuning IS the 1/2/3 literals
-    // here, not a field.
-    private int GetBossesToDefeatForWin(int difficulty) => difficulty switch
-    {
-        1 => 1,
-        2 => 2,
-        3 => 3,
-        _ => bossesToDefeatForWin
-    };
 
     [Header("Spawn Limits")]
     [SerializeField] private int maxNormalEnemies = 100;
@@ -574,6 +560,11 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
         // enemies (used to) mean more total points" effect, and AwardUpgradePoints was never paired with
         // any offsetting division, so this is genuinely additive there, not a no-op like it was for XP.
         float coopScale = 1f + (playerCount - 1) * (GameManagerPD.instance != null ? GameManagerPD.instance.CoopToughnessScalar : 0f);
+        // Bosses get their own, steeper per-player health curve (2026-10-17 split) — see
+        // GameManagerPD.bossCoopToughnessScalar's own doc comment for why one shared scalar couldn't serve
+        // both normals and bosses. Only used for health below (SpawnBosses still takes the shared coopScale
+        // for its points argument — points-per-player-count was never the part that felt wrong).
+        float bossCoopScale = 1f + (playerCount - 1) * (GameManagerPD.instance != null ? GameManagerPD.instance.BossCoopToughnessScalar : 0f);
 
         // ── Boss tracking ──────────────────────────────────────────────────
         // Pruned every tick so a defeat this tick is caught immediately, regardless of which of possibly
@@ -591,11 +582,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             // rather than leaving them to wander around XP-less after the fact. Fires on every boss defeat,
             // win-triggering or not, so the win screen doesn't have a stray swarm still visible either.
             WipeAllEnemies();
-            // Read off GameManagerPD.Difficulty directly, not the cached _currentDifficulty below — that
-            // field isn't refreshed until later in this same Simulate() call (see its own doc comment), same
-            // "server-authoritative single source of truth" reasoning as that later read.
-            int winCheckDifficulty = GameManagerPD.instance != null ? GameManagerPD.instance.Difficulty : 1;
-            if (state.bossesDefeated >= GetBossesToDefeatForWin(winCheckDifficulty))
+            if (state.bossesDefeated >= bossesToDefeatForWin)
             {
                 if (GameManagerPD.instance != null) GameManagerPD.instance.TriggerWin();
                 return;
@@ -786,7 +773,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             // doc comment. Stacks at every difficulty from 6 up, same cumulative convention every other
             // threat modifier uses.
             int bossSpawnCount = _currentDifficulty >= 6 ? threatLevel6BossCount : 1;
-            SpawnBosses(ref state, tier, coopScale, bossSpawnCount);
+            SpawnBosses(ref state, tier, bossCoopScale, coopScale, bossSpawnCount);
         }
     }
 
@@ -797,7 +784,12 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // "prefer non-duplicates, duplicate only if forced," per explicit design. Not itself threat-level-
     // specific — count is just a plain parameter, so any future N-simultaneous-boss design reuses this
     // unchanged (see state.activeBosses' own doc comment).
-    private void SpawnBosses(ref State state, TierEnemies tier, float coopScale, int count)
+    //
+    // Health and points deliberately take SEPARATE co-op scales now (2026-10-17 split) — bosses need a
+    // steeper per-player health curve than every other category (see GameManagerPD.bossCoopToughnessScalar's
+    // own doc comment), but points-per-player-count was never the part that felt wrong, so points stays on
+    // the same shared coopScale every other category uses.
+    private void SpawnBosses(ref State state, TierEnemies tier, float healthCoopScale, float pointsCoopScale, int count)
     {
         _bossPool.Clear();
         for (int i = 0; i < count; i++)
@@ -810,7 +802,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
             _bossPool[roll] = _bossPool[_bossPool.Count - 1];
             _bossPool.RemoveAt(_bossPool.Count - 1);
 
-            var id = SpawnEnemy(prefab, EnemySpawnCategory.Boss, coopScale, 1f, 1f, coopScale);
+            var id = SpawnEnemy(prefab, EnemySpawnCategory.Boss, healthCoopScale, 1f, 1f, pointsCoopScale);
             if (id.HasValue) state.activeBosses.Add(id.Value);
         }
     }

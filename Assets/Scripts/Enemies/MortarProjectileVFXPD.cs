@@ -20,7 +20,15 @@ public class MortarProjectileVFXPD : PredictedIdentity<MortarProjectileVFXPD.Sta
         public void Dispose() { }
     }
 
-    [SerializeField] private Renderer[] _renderers;
+    // The piece(s) that should take this life's tier accent material — see SetRenderersMaterial. Split from
+    // a single _renderers array (2026-10-16, same shape as EnemyBasePD's own
+    // _modelRenderers/_accentRenderers/_otherRenderers split) — previously every renderer here got
+    // recolored uniformly on Launch(), which was wrong for any shell with more than one visual piece (only
+    // one piece is meant to carry the tier color; the rest should keep their own authored material).
+    [SerializeField] private Renderer[] _accentRenderers;
+    // Never touched by SetRenderersMaterial — still toggled by SetRenderersEnabled alongside
+    // _accentRenderers, just never recolored.
+    [SerializeField] private Renderer[] _otherRenderers;
     // Scales the cosmetic visuals child only, same reasoning as EnemyProjectilePD._visuals — set once in
     // Launch() (a plain float, identical on every machine since it's passed in by the firer's own
     // deterministic config).
@@ -77,18 +85,25 @@ public class MortarProjectileVFXPD : PredictedIdentity<MortarProjectileVFXPD.Sta
 
     private void SetRenderersEnabled(bool value)
     {
-        if (_renderers == null) return;
-        for (int i = 0; i < _renderers.Length; i++)
-            if (_renderers[i] != null) _renderers[i].enabled = value;
+        SetArrayEnabled(_accentRenderers, value);
+        SetArrayEnabled(_otherRenderers, value);
+    }
+
+    private static void SetArrayEnabled(Renderer[] renderers, bool value)
+    {
+        if (renderers == null) return;
+        for (int i = 0; i < renderers.Length; i++)
+            if (renderers[i] != null) renderers[i].enabled = value;
     }
 
     // sharedMaterial, not .material — this is a pooled object launched repeatedly, and .material would
-    // silently instantiate a new material copy on every single Launch() call.
+    // silently instantiate a new material copy on every single Launch() call. _accentRenderers only — see
+    // its own field doc comment; _otherRenderers must never have this applied.
     private void SetRenderersMaterial(Material material)
     {
-        if (_renderers == null) return;
-        for (int i = 0; i < _renderers.Length; i++)
-            if (_renderers[i] != null) _renderers[i].sharedMaterial = material;
+        if (_accentRenderers == null) return;
+        for (int i = 0; i < _accentRenderers.Length; i++)
+            if (_accentRenderers[i] != null) _accentRenderers[i].sharedMaterial = material;
     }
 
     protected override void UpdateView(State viewState, State? verified)

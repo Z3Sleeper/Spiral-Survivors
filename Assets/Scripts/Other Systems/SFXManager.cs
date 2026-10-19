@@ -8,6 +8,13 @@ public class SFXManager : MonoBehaviour
 
     [SerializeField] private AudioMixerGroup sfxGroup;
     [SerializeField] private int poolSize = 64;
+    // Shared default for ButtonClickSFX — set once here so most menu buttons don't need their own clip
+    // assigned individually; ButtonClickSFX.clipOverride is only for a button that should sound different.
+    [SerializeField] private AudioClip defaultButtonClickClip;
+    public AudioClip DefaultButtonClickClip => defaultButtonClickClip;
+    // Same shared-default shape as defaultButtonClickClip above, for ButtonHoverSFX.
+    [SerializeField] private AudioClip defaultButtonHoverClip;
+    public AudioClip DefaultButtonHoverClip => defaultButtonHoverClip;
 
     private AudioSource[] _pool;
     private int _index;

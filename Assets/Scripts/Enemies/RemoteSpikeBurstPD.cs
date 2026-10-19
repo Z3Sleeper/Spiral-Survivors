@@ -3,8 +3,12 @@ using UnityEngine;
 
 // A standalone ground hazard spawned by KingSpikePD's remote spike burst sequence — not IEnemyPD, not a
 // weapon, just a short-lived spawned effect with a charge-then-detonate timer, same category as
-// WeaponRangedProjectilePD ("deliberately not X"). Lives independently of the boss once spawned: it keeps
-// ticking and will still detonate even if the boss that spawned it has since died.
+// WeaponRangedProjectilePD ("deliberately not X"). Used to live fully independently of the boss once spawned
+// (would keep ticking and still detonate even after the boss died) — changed 2026-10-16, per explicit design:
+// KingSpikePD now instantly Cancel()s every burst it's currently tracking the moment its own death is
+// predicted (see KingSpikePD.Die()'s own doc comment), with Uncancel() as the paired revert if that death
+// turns out to be a misprediction (same tick-margin-gated OnHiddenStateChanged signal used everywhere else
+// this session).
 //
 // chargeTimer scales by _chargeAttackSpeed (2026-09-14) — a ONE-TIME snapshot of King Spike's own
 // EffectiveAttackSpeed taken at Launch(), same "firer could die/get pooled-and-reused mid-charge, so snapshot
@@ -27,6 +31,10 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
         // bundle as chargeTimer, which already needs this protection.
         public float radius;
         public float damage;
+        // Set only via Cancel() (KingSpikePD.Die(), instant-predicted)/cleared via Uncancel() (a confirmed
+        // misprediction-revert) — same shape as MortarHazardPD.State.cancelled. Converts to expired on the
+        // very next LateSimulate tick, same "no damage, no further countdown" effect a natural timeout has.
+        public bool  cancelled;
         public void Dispose() { }
     }
 
@@ -53,6 +61,10 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
         _chargeDuration = chargeTime;
         _chargeAttackSpeed = Mathf.Max(0.0001f, chargeAttackSpeed);
         currentState.chargeTimer = chargeTime;
+        // Pooled-reuse safety — a previous life could have ended cancelled (its firer died and this burst
+        // was never actually reclaimed before verified-deletion caught up), same reasoning as every other
+        // field reset here.
+        currentState.cancelled = false;
 
         // A pooled instance's PREVIOUS life ends with the fill fully complete (that's what a finished
         // windup looks like right before detonation) — WindupFillPD's own Awake() (where it resets to
@@ -67,9 +79,30 @@ public class RemoteSpikeBurstPD : PredictedIdentity<RemoteSpikeBurstPD.State>
 
     protected override void Simulate(ref State state, float delta) { }
 
+    // Called by KingSpikePD.Die() — instant-predicted, no damage, no further countdown, same shape as
+    // MortarHazardPD.Cancel(). See class doc comment for why this exists now.
+    public void Cancel() => currentState.cancelled = true;
+
+    // Called by KingSpikePD.OnHiddenStateChanged() once a misprediction-revert is confirmed — resumes the
+    // charge from wherever chargeTimer was frozen at (LateSimulate's own cancelled-check returns before
+    // ever decrementing it further, so nothing was lost). Also clears expired, not just cancelled — by the
+    // tick Cancel() took effect, LateSimulate had already converted cancelled -> expired = true (see its own
+    // body below), so un-cancelling alone wouldn't un-freeze it; both need resetting together.
+    public void Uncancel()
+    {
+        currentState.cancelled = false;
+        currentState.expired = false;
+    }
+
+    // Lets KingSpikePD prune its own tracking list once a burst naturally finishes — see
+    // KingSpikePD.activeRemoteBursts' own doc comment. Reads predicted State directly, same safe
+    // cross-identity pattern as every other IEnemyPD/IsXxx accessor in this codebase.
+    public bool IsExpired => currentState.expired;
+
     protected override void LateSimulate(ref State state, float delta)
     {
         if (state.expired) return;
+        if (state.cancelled) { state.expired = true; return; } // no damage, no timer countdown — just expire
         if (PausePD.instance != null && PausePD.instance.IsPaused) return;
 
         state.chargeTimer -= delta * _chargeAttackSpeed;

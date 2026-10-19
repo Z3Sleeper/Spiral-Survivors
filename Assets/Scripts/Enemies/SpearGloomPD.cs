@@ -100,7 +100,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         // real scaled values into State.scaledAttacksPerAttack/scaledAttackCooldown. Re-set again in
         // OnRespawnReset() once those are actually tier-scaled (runs AFTER OnConfigureSpawn, on this life's
         // first Simulate() tick).
-        currentState.spearAttackCooldownTimer = attackCooldown + GameRandom.instance.NextFloat(0f, attackCooldown);
+        currentState.spearAttackCooldownTimer = attackCooldown;
         currentState.spearAttacksRemaining    = attacksPerAttack;
     }
 
@@ -116,7 +116,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         // the placeholder spearAttackCooldownTimer LateAwake() already assigned above, using the now-scaled
         // value.
         currentState.scaledAttackCooldown = attackCooldown * attackCooldownMultiplier;
-        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown;
     }
 
     // Caches _windupClipRate/_stabClipRate/_postStabClipLength (re-derived live in UpdateView, scaled by
@@ -376,7 +376,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     private void EnterPostStab(ref State state)
     {
         state.spearStateTimer          = postStabPause;
-        state.spearAttackCooldownTimer = state.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, state.scaledAttackCooldown);
+        state.spearAttackCooldownTimer = state.scaledAttackCooldown;
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         SetSpearState(ref state, SpearState.PostStab);
     }
@@ -417,7 +417,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
     protected override void OnInterrupted()
     {
         currentState.spearAttacksRemaining    = 0;
-        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown;
         EnterMoving(ref currentState);
 
         // Predicted-instant hide, not left for UpdateView's own stateId-driven redraw to eventually catch
@@ -444,6 +444,14 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         // so this same transition gets retried once actually active, instead of being silently
         // skipped forever (which left stale animator state from the object's previous pooled life).
         if (!gameObject.activeInHierarchy) return;
+
+        // Added 2026-10-15 — same guard Blitz/Leaper/KingSpike/KingOrbiter already have: death is handled
+        // by base.UpdateView() above (OnDeathStop() + hierarchy.Delete()), but without this, execution
+        // continued into the rest of this method on the same frame a PredictedHierarchy reconciliation
+        // rebuilds this instance after it died mid-Windup — the fresh _lastVisualState default no longer
+        // matches the still-Windup spearStateId, so the gated block below would re-run as if entering
+        // Windup for the first time, immediately re-enabling the very indicator OnDeathStop() just hid.
+        if (viewState.b.isDead) return;
 
         // Re-applied every frame, not just once at spawn — stabRange is the single source of truth for
         // reach, so the visual indicator can never silently drift out of sync with it. * size on both terms,
@@ -509,6 +517,20 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         }
     }
 
+    // Restores the windup indicator on a misprediction-revert — same class of bug as LeaperGloomPD's own
+    // identical fix (see its OnHiddenStateChanged doc comment for the full mechanism). OnDeathStop() below
+    // is a one-way latch; nothing else re-shows the indicator since spearStateId never actually left Windup
+    // (only the separate isDead flag mispredicted), so UpdateView's _lastVisualState edge-detect never
+    // re-fires. No reparenting involved here (unlike Blitz/Leaper/KingSpike's unparent-during-travel cases)
+    // — _windupIndicator is never unparented for this enemy, so a plain SetActive(true) is enough.
+    protected override void OnHiddenStateChanged(bool hidden)
+    {
+        base.OnHiddenStateChanged(hidden);
+        if (hidden || _windupIndicator == null) return;
+        if ((SpearState)currentState.spearStateId == SpearState.Windup)
+            _windupIndicator.SetActive(true);
+    }
+
     protected override void OnDeathStop()
     {
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
@@ -530,7 +552,7 @@ public class SpearGloomPD : EnemyBasePD<SpearGloomPD.State>
         ApplyAnimatorClipSpeeds();
         currentState.spearStateId             = 0;
         currentState.spearAttacksRemaining    = currentState.scaledAttacksPerAttack;
-        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown + GameRandom.instance.NextFloat(0f, currentState.scaledAttackCooldown);
+        currentState.spearAttackCooldownTimer = currentState.scaledAttackCooldown;
         currentState.spearStateTimer          = 0f;
         if (_windupIndicator != null) _windupIndicator.SetActive(false);
         if (_windupFill != null)      _windupFill.Hide();
