@@ -79,6 +79,10 @@ public class OrbiterOrbPD : PredictedIdentity<OrbiterOrbPD.State>
     // this orb has no such justification for a purpose-built damage collider, so it uses the dominant
     // convention instead, not the exception.
     [SerializeField] private float damageRadius = 0.5f;
+    // Exposed so a caller sizing something else to visually match this orb (e.g. KingOrbiterPD's own line
+    // indicators) can read the same single source of truth instead of needing a separately hand-tuned
+    // duplicate value that can drift out of sync whenever this field gets retuned.
+    public float DamageRadius => damageRadius;
     // Deliberately a dedicated "Y-Axis Movers" child, one level BELOW "Visuals" (2026-10-20, live-confirmed
     // fix) — PredictedTransform apparently doesn't play nice with something else directly driving the
     // "Visuals" transform's own local position (root cause not fully diagnosed, just confirmed empirically:

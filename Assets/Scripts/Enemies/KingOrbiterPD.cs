@@ -736,7 +736,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
                 : Vector3.RotateTowards(current, targetDir, state.scaledRotationRateDegPerSecond * Mathf.Deg2Rad * delta * EffectiveAttackSpeed, 0f);
 
             var indicator = ResolveOrSpawnLineIndicator(state.shootTrackedIndicator[idx], orb.transform.position,
-                state.shootTrackedBearing[idx], shootingRange, out var resolvedId);
+                state.shootTrackedBearing[idx], shootingRange, OrbIndicatorWidth, out var resolvedId);
             state.shootTrackedIndicator[idx] = resolvedId;
             indicator?.SetAim(state.shootTrackedBearing[idx]);
         }
@@ -1062,18 +1062,28 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
             if (i < state.persistentIndicatorId.Count)
             {
                 var indicator = ResolveOrSpawnLineIndicator(state.persistentIndicatorId[i], go.position,
-                    state.persistentBearingDir[i], shootingRange, out var resolvedId);
+                    state.persistentBearingDir[i], shootingRange, OrbIndicatorWidth, out var resolvedId);
                 state.persistentIndicatorId[i] = resolvedId;
                 indicator?.SetAim(state.persistentBearingDir[i]);
             }
         }
     }
 
+    // The orb's own actual world-space diameter (DamageRadius is a local-space radius, same convention
+    // OrbiterOrbPD's own damage query uses) scaled by this boss's own size — so the line indicator visually
+    // matches whatever's really going to travel along it instead of WindupFillPD's generic authored default
+    // width. Single source of truth: reads straight off the orb prefab's own tunable, so retuning the orb's
+    // size there keeps this in sync automatically, nothing to separately re-tune here. -1f (WindupFillPD's
+    // own "use the authored default" sentinel) if no orb prefab is assigned.
+    private float OrbIndicatorWidth => orbPrefab != null ? orbPrefab.DamageRadius * 2f * size : -1f;
+
     // Spawns a new LineIndicatorPD via hierarchy.Create() the first time a slot needs one, or resolves the
     // already-spawned instance otherwise — shared by ShootFlight and Persistent Volley tracking.
     // hierarchy.Create() (not Instantiate()) specifically so the prefab's own sibling PredictedTransform
-    // component actually registers/ticks and smooths this object's render pose.
-    private LineIndicatorPD ResolveOrSpawnLineIndicator(PredictedObjectID currentId, Vector3 nearEdge, Vector3 aim, float span, out PredictedObjectID resolvedId)
+    // component actually registers/ticks and smooths this object's render pose. width only matters on the
+    // spawn branch (Launch() is a one-time call) — an already-resolved existing indicator keeps whatever
+    // width it was launched with, same as span.
+    private LineIndicatorPD ResolveOrSpawnLineIndicator(PredictedObjectID currentId, Vector3 nearEdge, Vector3 aim, float span, float width, out PredictedObjectID resolvedId)
     {
         if (!currentId.Equals(default))
         {
@@ -1093,7 +1103,7 @@ public class KingOrbiterPD : EnemyBasePD<KingOrbiterPD.State>
         var go = hierarchy.GetGameObject(newId.Value);
         if (go == null || !go.TryGetComponent(out LineIndicatorPD spawned)) return null;
 
-        spawned.Launch(span);
+        spawned.Launch(span, width);
         resolvedId = newId.Value;
         return spawned;
     }

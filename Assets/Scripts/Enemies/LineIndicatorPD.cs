@@ -57,11 +57,16 @@ public class LineIndicatorPD : PredictedIdentity<LineIndicatorPD.State>
     // span * 0.5f is the exact "WindupIndicator sits at the NEAR EDGE, reaching length forward" case — see
     // ShowRectangle's own doc comment — matching this class's own "root stays at the fixed near edge, only the
     // rendered shape reaches forward from it" design (previously done by hand via the now-removed pivot field).
-    public void Launch(float span)
+    // width <= 0 (the default) falls through to WindupFillPD's own authored default width, same "opt-in
+    // override" convention ShowRectangle's own width param already uses — a caller with nothing specific to
+    // match (e.g. the old pull-phase indicators) doesn't need to pass anything. A caller telegraphing a
+    // specific-sized projectile (e.g. KingOrbiterPD sizing this to match its own orb's diameter) passes the
+    // real value instead, so the indicator visually matches whatever's actually going to travel along it.
+    public void Launch(float span, float width = -1f)
     {
         _span = span;
         if (Fill == null) return;
-        Fill.ShowRectangle(span, centerForwardOffset: span * 0.5f);
+        Fill.ShowRectangle(span, width, centerForwardOffset: span * 0.5f);
     }
 
     // Shrinks the shown shape to only the REMAINING (untraveled) portion of this life's own total span,
