@@ -6,7 +6,7 @@ using PurrNet.Prediction;
 // Every enemy hit by a thrown axe heals the caster for healFlat + BonusHealthRegen * healRegenPercent
 // (0.5 + 50% default) — same "healBase + BonusHealthRegen * percent" formula shape every other
 // Health-Regen-scaled heal in this codebase uses — DOUBLED on a crit. Mini axes (ExeAxeThrowMiniAxesAugment,
-// if also equipped) heal at exactly HALF this amount, a fixed ratio Stuart specified independently of
+// if also equipped) heal at exactly HALF this amount, a fixed ratio specified independently of
 // whatever miniAxeDamagePercent/etc. that other augment happens to be tuned to — see
 // ExeAxeThrowAbilityPD.Activate()'s own mini-axe spawn block, which halves healFlat/healRegenPercent before
 // passing them into each mini axe's own Launch() call. Applied directly inside

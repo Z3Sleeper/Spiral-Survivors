@@ -55,7 +55,7 @@ public class LoadingScreen : MonoBehaviour
         // Unscaled, same reasoning as the dot/spinner timers below — the loading screen can be up during a
         // Time.timeScale == 0 moment (e.g. mid pause-menu transition) and should never visually freeze.
         // Negative Z so it spins clockwise (positive Z rotation is counter-clockwise in Unity's standard
-        // screen-space convention) — Stuart's own explicit "Clockwise!" spec.
+        // screen-space convention) — explicit design: spins clockwise.
         if (spinnerTransform != null)
             spinnerTransform.Rotate(0f, 0f, -spinnerDegreesPerSecond * Time.unscaledDeltaTime);
 

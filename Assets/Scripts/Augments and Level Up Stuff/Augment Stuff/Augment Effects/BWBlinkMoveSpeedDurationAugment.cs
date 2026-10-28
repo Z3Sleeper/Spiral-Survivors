@@ -5,7 +5,7 @@ using PurrNet.Prediction;
 //
 // +100% Move Speed and +100% Duration on Blink's own Move Speed buff — ADDITIVE onto the ability's own
 // live moveSpeedMultiplier/durationMultiplier fields (both 1f neutral default), not a destructive multiply
-// on moveSpeedPercent/duration themselves — Stuart's own standing preference against multiplicative
+// on moveSpeedPercent/duration themselves — standing project convention against multiplicative
 // stacking for this kind of "+X% to Y" augment effect. EffectiveMoveSpeedPercent/EffectiveDuration (what
 // ApplyBuffAndCooldown's own snapshots actually read) automatically reflect both.
 public class BWBlinkMoveSpeedDurationAugment : AugmentEffectPD<BWBlinkMoveSpeedDurationAugment.State>

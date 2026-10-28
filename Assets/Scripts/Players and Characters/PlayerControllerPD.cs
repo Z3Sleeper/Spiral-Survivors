@@ -762,7 +762,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
                 // interrupted: true: this is the player choosing to act, not being interrupted by anything
                 // external, so dash-completion-reward augments (DashExplosionAugment/DashHealAugment) still
                 // fire normally, and the Interrupted status popup must never show for a player's own choice.
-                if (state.isDashing && _ability1.ForcesSpecialAction) EndDash(ref state);
+                if (state.isDashing && _ability1.ForcesSpecialAction) EndDash(ref state, correctPosition: false);
                 _ability1.Activate();
             }
             else _ability1.NotifyActivationBlocked();
@@ -775,7 +775,7 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             bool blocked2 = lockedOut || actionBlocked2;
             if (_ability2.IsReady && !blocked2)
             {
-                if (state.isDashing && _ability2.ForcesSpecialAction) EndDash(ref state);
+                if (state.isDashing && _ability2.ForcesSpecialAction) EndDash(ref state, correctPosition: false);
                 _ability2.Activate();
             }
             else _ability2.NotifyActivationBlocked();
@@ -1084,7 +1084,21 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
             maxDistance: naturalDistance + stepSize,
             isValidPosition: PlayableAreaPD.instance != null ? PlayableAreaPD.instance.IsInsidePlayableArea : (System.Func<Vector3, bool>)null);
 
-        if (!nearEndpoint.HasValue) return Vector3.zero;
+        // Total failure — no clear spot found in either direction within the whole search range. In normal
+        // circumstances this is effectively unreachable: the backward search above always sweeps back as far
+        // as startPosition itself (maxDistance is naturalDistance + stepSize, exactly far enough to reach
+        // it), and startPosition is already guaranteed clear by construction (see this method's own doc
+        // comment on the one caller that doesn't pre-correct it, EndDash's correctPosition: false path) — so
+        // this can only actually trigger when startPosition itself is already embedded in something (2026-10-18,
+        // explicit design: a dash cancelled into another movement action no longer pre-corrects position,
+        // trusting the next movement's own safety search to handle it from wherever the player actually is).
+        // Falls back to the raw, un-safety-checked velocity (same shape as this method's own duration <= 0f
+        // early-return above) rather than Vector3.zero — per explicit design, a leap/dash that can't find
+        // anywhere safe to go should still visibly travel in the direction the player asked for, landing
+        // wherever it lands, and get corrected by the normal end-of-window ResolveTeleportSafeLanding/
+        // EndSpecialMovement pass same as any other cut-short window — rather than silently not moving the
+        // player at all for the whole active duration while the ability's own windup/animation still plays.
+        if (!nearEndpoint.HasValue) return direction * speed;
 
         float nearDistance = Vector3.Distance(startPosition, nearEndpoint.Value);
         return direction * (nearDistance / duration);
@@ -1178,7 +1192,17 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         }
     }
 
-    private void EndDash(ref State state, bool interrupted = false)
+    // correctPosition (2026-10-18, explicit design): a real external Interrupt() (enemy hit/stun) still
+    // always corrects — the player had no say in where the dash left them, so "boop them back to safety" is
+    // the right call. A dash cleanly ended because the PLAYER chose to chain into another movement action
+    // (the ForcesSpecialAction gate above, or RogueVanishAbilityPD/BWBlinkAbilityPD's own EndDashIfActive()
+    // call) deliberately skips it instead — the player is about to start a brand-new movement anyway, whose
+    // own safety search (ResolveSafeTeleportTarget for a teleport, ResolveSafeTravelVelocity for another
+    // dash-style movement) will resolve everything correctly from wherever they actually are, obstacle or
+    // not, with zero need for this method to pre-correct a position that's about to be overwritten moments
+    // later regardless. A plain natural dash-timer expiry keeps correctPosition: true by default too — that
+    // path was never "cancelled" into anything, it's the dash's own normal completion.
+    private void EndDash(ref State state, bool interrupted = false, bool correctPosition = true)
     {
         state.isDashing = false;
         // Position resolved FIRST, before re-enabling the physics collider or firing any event (2026-09-22
@@ -1189,8 +1213,10 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         // Simulate() already documents and follows — e.g. a lethal hit's own Knockback() calls Interrupt()
         // (and therefore this exact method) before applying its own impulse, so the corrected position has to
         // already be in place before that impulse, or before _onDashInterrupted/_onDashEnded's own listeners
-        // can read a still-out-of-bounds transform.
-        ResolveTeleportSafeLanding(state.dashStartPosition, state.dashVelocity);
+        // can read a still-out-of-bounds transform. Skipped entirely when correctPosition is false — see this
+        // method's own doc comment above for exactly which callers opt out and why.
+        if (correctPosition)
+            ResolveTeleportSafeLanding(state.dashStartPosition, state.dashVelocity);
         if (_physicsCollider != null) _physicsCollider.enabled = true;
         // linearDamping restoration handled every tick in the Movement section, not here — see that block's
         // own comment.
@@ -1207,6 +1233,28 @@ public class PlayerControllerPD : PredictedIdentity<PlayerControllerPD.Input, Pl
         }
         // Movement window closes regardless of why — see _onDashMovementEnded's own field comment.
         _onDashMovementEnded.Invoke(interrupted);
+    }
+
+    // Public entry point for an ability whose own Activate() relocates the player but doesn't set
+    // ForcesSpecialAction (2026-10-18 fix — RogueVanishAbilityPD's blinkOnCast teleport specifically).
+    // ForcesSpecialAction abilities (RogueSpin/BWBlink) already get a dash cleanly ended for them by the
+    // ability-activation gate above before Activate() ever runs; Vanish deliberately does NOT set that flag
+    // (it's a multi-second buff, not a movement-locking action, so it shouldn't hold the other ability/dash
+    // hostage for its whole duration) — but its OWN teleport still needs the SAME one-off cleanup Vanish was
+    // silently skipping. Without this, a dash active at blink time left state.isDashing/dashVelocity
+    // completely untouched: NotifyDashStarted/NotifyDashMovementStarted/NotifyDashEnded fire (the separate,
+    // purely cosmetic event-broadcast pair other augments listen to), but the REAL dash machinery kept
+    // running right through the teleport, still applying dashVelocity (validated safe only for the
+    // ORIGINAL pre-teleport start position) from the NEW post-teleport position on every subsequent tick
+    // with zero re-validation — confirmed live as the cause of briefly dashing/leaping out of the map when
+    // chaining Dash into RogueVanish's blink near a boundary wall. Same cross-identity currentState
+    // mutation safety as StartSpecialMovement below — see its own doc comment.
+    public void EndDashIfActive()
+    {
+        if (!currentState.isDashing) return;
+        var state = currentState;
+        EndDash(ref state, correctPosition: false);
+        currentState = state;
     }
 
     // ── Special movement helpers ─────────────────────────────────────────────

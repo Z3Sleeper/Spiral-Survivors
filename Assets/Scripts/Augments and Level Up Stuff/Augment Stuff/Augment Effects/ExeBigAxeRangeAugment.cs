@@ -6,7 +6,7 @@ using PurrNet.Prediction;
 // +100% to BigAxe's own Weapon Range buff amount ONLY — Execute Threshold/Crit Chance/Knockback/Attack
 // Speed are untouched. Adds directly into ExeBigAxeAbilityPD.rangeMultiplierBonus (0f neutral default),
 // which itself adds onto buffStrengthMultiplier at the point weaponRangeTotalPercent is scaled — a
-// deliberately ADDITIVE relationship with ExeBigAxeBuffAugment's own multiplier, per Stuart's own explicit
+// deliberately ADDITIVE relationship with ExeBigAxeBuffAugment's own multiplier, per the explicit
 // "should stack additively with the other buff augment" request (picking both: buffStrengthMultiplier(2x
 // default) + rangeMultiplierBonus(1x default) = 3x Range, not the 4x a separate multiplicative factor
 // would have produced). See ExeBigAxeAbilityPD.rangeMultiplierBonus's own doc comment for the full worked

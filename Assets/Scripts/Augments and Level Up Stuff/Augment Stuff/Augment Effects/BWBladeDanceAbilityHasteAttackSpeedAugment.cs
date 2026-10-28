@@ -4,7 +4,7 @@ using PurrNet.Prediction;
 // requiredAbilities = [BWBladeDance] — scripts-only convention, that part is Editor-side, not here.
 //
 // Restores a mechanic that used to be hardcoded, always-on base-form behavior on BWBladeDanceAbilityPD
-// before Stuart pulled it out into its own augment (Bladeweaver's abilities otherwise "don't do too much"
+// before being pulled out into its own augment (Bladeweaver's abilities otherwise "don't do too much"
 // on their own): while BladeDance's Outbound->Hold->Return window is active, every point of
 // EffectiveAbilityHaste converts directly into attackSpeedPercentPerHaste Attack Speed (ADDED via
 // AddAttackSpeedFlat) — AbilityHaste normally only ever shortens BladeDance's own already-low cooldown, so

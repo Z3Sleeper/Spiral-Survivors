@@ -32,8 +32,8 @@ public class AugmentDatabaseEditor : Editor
         }
 
         // Sorts by each AugmentData ASSET's own name (a.name — the file/object name, e.g.
-        // "KnightBuffStunBuffStrengthAugment"), NOT the player-facing displayName field — Stuart deliberately
-        // authors asset names in an organized scheme (ability name + effect + "Augment") distinct from
+        // "KnightBuffStunBuffStrengthAugment"), NOT the player-facing displayName field — asset names are
+        // deliberately authored in an organized scheme (ability name + effect + "Augment") distinct from
         // whatever the player-facing displayName reads, and it's the asset name this button should sort by.
         // Case-insensitive, nulls last. Direct List<AugmentData>.Sort on the target itself rather than a
         // manual SerializedProperty.MoveArrayElement shuffle (no convenient "sort" API on SerializedProperty)

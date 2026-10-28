@@ -30,8 +30,8 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
         // Growth support (2026-10-05, ArcherArrowRainGrowthAugment) — see growthPercentPerSecond's own
         // doc comment. activeChainId tracks only the MOST RECENTLY cast chain (same "last write wins"
         // limitation as MortarGloomPD.pendingHazardId) — an overlapping second cast before the first one's
-        // duration elapses would silently stop growing the first chain. Accepted limitation (flagged to
-        // Stuart) rather than building true N-chain tracking for what's currently a hypothetical edge case
+        // duration elapses would silently stop growing the first chain. Accepted limitation (flagged for
+        // follow-up) rather than building true N-chain tracking for what's currently a hypothetical edge case
         // — see the 4-player multiplayer scale reminder on why that'd be real added per-tick cost for every
         // player, every frame, for a case that may never come up. Safe to store directly (non-nullable) —
         // PredictedObjectID is a plain IPackedAuto struct, same precedent as MortarGloomPD's own field.
@@ -124,7 +124,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // this, so damageMultiplier is automatically reflected everywhere with no other edit point needed.
     private float TickDamagePercent => strengthPerSecond * damageMultiplier * tickInterval;
     // The LAST tick's own (smaller) percent when duration doesn't evenly divide by tickInterval — e.g.
-    // (Stuart's own spec example) TickDamagePercent=100%, tickInterval=0.25, duration=0.3: instant tick
+    // (worked example) TickDamagePercent=100%, tickInterval=0.25, duration=0.3: instant tick
     // (t=0, 100%), one regular tick (t=0.25, 100%), then a final tick at t=0.3 worth
     // 100% * (0.05/0.25) = 100% * 20% = 20% of a full tick — exactly matching that example. Always
     // TickDamagePercent scaled by the leftover fraction of one tickInterval. Null (no override passed to
@@ -176,7 +176,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // Augment-owned (2026-10-05, ArcherArrowRainGrowthAugment) — same [HideInInspector] convention as every
     // other ability-specific augment hook (e.g. KnightBerserkAbilityPD.moveSpeedPercent): the augment's own
     // Inspector is the one real place to tune this, 0f default is a true no-op. Stacks ADDITIVELY with
-    // Stats.AreaEffectSize (Stuart's own framing) — see SpawnChain/Simulate for the exact formula.
+    // Stats.AreaEffectSize — see SpawnChain/Simulate for the exact formula.
     [HideInInspector] public float growthPercentPerSecond = 0f;
 
     // Augment-owned (2026-10-06, ArcherArrowRainSelfTargetAugment) — Pattern B switch, no-op default false.
@@ -191,7 +191,7 @@ public class ArcherArrowRainAbilityPD : PredictedIdentity<ArcherArrowRainAbility
     // cast-time radius for its whole lifetime if that augment is also equipped. This is the SAME
     // already-accepted "last cast wins" limitation State.activeChainId's own doc comment already flags for
     // overlapping casts in general — this augment just creates that overlap deliberately every single cast,
-    // rather than it being a rare multi-press edge case. Not re-litigated with Stuart — already pre-approved.
+    // rather than it being a rare multi-press edge case. Not re-litigated here — already pre-approved.
     [HideInInspector] public bool castOnSelf = false;
 
     [Header("VFX")]

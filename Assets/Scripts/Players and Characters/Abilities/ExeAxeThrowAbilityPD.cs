@@ -64,7 +64,7 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // Augment-owned (2026-10-08, ExeAxeThrowKnockbackAugment) — reworked from an ADDITIVE accumulator
     // (+= 5f onto a 1f baseline) to a genuine MULTIPLICATIVE total, once the ability's own
     // baseKnockbackBonusPercent above made the old flat +500% redundant with what players already had for
-    // free ("devalues the augment" — Stuart's own words). Multiplying the WHOLE existing total (baseline
+    // free ("devalues the augment"). Multiplying the WHOLE existing total (baseline
     // included) instead of adding another flat chunk means the augment's value always scales proportionally
     // with whatever the ability's own baseline happens to be tuned to, rather than shrinking in relative
     // impact if that baseline ever goes up. 1f neutral default (every throw without the augment); the
@@ -148,7 +148,7 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
     // percent heal formula, same shape every other heal augment in this codebase uses — no multiplicative
     // stacking concern to design around here at all, unlike the Knockback/MiniAxes augments' own
     // multiplier fields. Passed into the main throw's own Launch() call at full value, and HALVED for each
-    // mini axe (Stuart's own explicit "miniaxes only heal half this amount" spec) — see Activate()'s own
+    // mini axe (explicit design: "miniaxes only heal half this amount") — see Activate()'s own
     // mini-axe spawn block.
     [HideInInspector] public float healFlat = 0f;
     [HideInInspector] public float healRegenPercent = 0f;
@@ -333,8 +333,8 @@ public class ExeAxeThrowAbilityPD : PredictedIdentity<ExeAxeThrowAbilityPD.State
 
                     var miniGo = hierarchy.GetGameObject(miniId.Value);
                     if (miniGo != null && miniGo.TryGetComponent(out ExeAxeThrowProjectilePD miniProjectile))
-                        // healFlat/healRegenPercent halved — "miniaxes only heal half this amount" (Stuart's
-                        // own explicit spec), a fixed ratio independent of miniAxeDamagePercent/whatever else
+                        // healFlat/healRegenPercent halved — "miniaxes only heal half this amount" (explicit
+                        // design spec), a fixed ratio independent of miniAxeDamagePercent/whatever else
                         // this augment's own values happen to be tuned to.
                         miniProjectile.Launch(_stats, miniDir, projectileSpeed, maxRange * miniAxeRangePercent,
                             EffectiveStrengthPercent * miniAxeDamagePercent, spawnOffset,

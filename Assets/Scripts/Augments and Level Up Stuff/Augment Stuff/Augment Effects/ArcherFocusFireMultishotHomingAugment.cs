@@ -27,8 +27,8 @@ public class ArcherFocusFireMultishotHomingAugment : AugmentEffectPD<ArcherFocus
     // naming shape ArcherFocusFireRicochetAugment.ricochetAmount/RogueSpinChargeAugment.chargeAmount use.
     public float multishotAmount = 2f;
 
-    // Seconds a fired shot keeps flying straight before homing kicks in — Stuart's own "like 0.1s so they
-    // kinda fan out then home in" framing. Public so it's description-token-resolvable too, though there's
+    // Seconds a fired shot keeps flying straight before homing kicks in — design framing: "like 0.1s so
+    // they kinda fan out then home in." Public so it's description-token-resolvable too, though there's
     // no natural percent/ratio phrasing for it.
     public float homingDelay = 0.1f;
 

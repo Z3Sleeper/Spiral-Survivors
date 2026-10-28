@@ -52,7 +52,7 @@ public class CharacterSelectUI : MonoBehaviour
     [SerializeField] private Image randomButtonImage;
     [SerializeField] private Color selectedButtonColor = Color.green;
 
-    // External, player-facing class names (2026-10-07, Stuart's own renaming pass) — index-aligned with
+    // External, player-facing class names (2026-10-07 renaming pass) — index-aligned with
     // CharacterRegistry's own prefab order (see Awake()'s own comment just below: Knight=0, Rogue=1,
     // Archer=2, Bladeweaver=3, Executioner=4). Internal code identifiers/file/prefab names are
     // DELIBERATELY left unchanged (KnightBerserkAbilityPD, the "Knight" prefab itself, etc.) — only text
@@ -655,7 +655,7 @@ public class CharacterSelectUI : MonoBehaviour
             // variable/line from 2026-08-31 to 2026-10-12 since difficultyMoveSpeedGrowthPerLevel and
             // difficultyAttackSpeedGrowthPerLevel happened to both be 10%/level, coincidentally, not a true
             // pairing (same reasoning EnemySpawnerPD's own two separate fields exist for). They diverged
-            // 2026-10-12 (move speed halved to 5%/level alongside Stuart's own player move speed pass —
+            // 2026-10-12 (move speed halved to 5%/level alongside a player move speed pass —
             // see EnemySpawnerPD.difficultyMoveSpeedGrowthPerLevel's own doc comment), so this now matches
             // EnemySpawnerPD's two fields exactly instead of assuming they stay equal.
             int moveSpeedPercent = levelsAboveBase * 5;

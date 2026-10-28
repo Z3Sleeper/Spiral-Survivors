@@ -2,8 +2,8 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Executioner's class-passive "Unique Behavior" starting augment (renamed 2026-10-07 from
-// CritExecuteAugment, pure rename — see [[project_class_passive_convention]] — Stuart had already been
-// using this as Executioner's own starting augment, just hadn't renamed it to say so; now exclusively
+// CritExecuteAugment, pure rename — see [[project_class_passive_convention]] — already in use as
+// Executioner's own starting augment, just hadn't been renamed to say so; now exclusively
 // Executioner's, matching RogueStartingAugment/ArcherStartingAugment/BladeweaverStartingAugment's own
 // naming).
 //

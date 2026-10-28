@@ -52,7 +52,7 @@ public class AugmentEncyclopediaUI : MonoBehaviour
         // HighestUnlockedDifficulty via AugmentUnlockTagDatabase's own unlockConditions), deliberately NOT
         // the live per-run CharacterStatsPD.UnlockedAugmentTagMask/AugmentManagerPD.IsAugmentTagUnlocked
         // check (that one doesn't exist outside an active match anyway — no live character in this scene —
-        // and per Stuart's own explicit framing isn't the one that should gate Encyclopedia visibility).
+        // and by explicit design isn't the one that should gate Encyclopedia visibility).
         // Empty/null unlockTag (every augment by default) always passes, same "no restriction" convention
         // unlockTag's own doc comment on AugmentData establishes.
         sorted.RemoveAll(a => a == null || (!string.IsNullOrEmpty(a.unlockTag) && !ProgressionManager.IsAugmentTagUnlocked(a.unlockTag)));

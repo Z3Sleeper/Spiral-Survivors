@@ -35,7 +35,7 @@ public class LuckRolledLevelUpStatsAugment : AugmentEffectPD<LuckRolledLevelUpSt
     // as a description token with the auto-*100 formatting (only public fields/properties/methods are
     // checked; the suffix fires on a literal EndsWith("Percent") check).
     // 8% (2026-10-12, up from the old live 5%) — at base LuckCeiling 1.25 this lands a highroll at 1.55x;
-    // starting point, with 4% as the planned fallback if 8% tests too strong (unlikely per Stuart — this only
+    // starting point, with 4% as the planned fallback if 8% tests too strong (unlikely — this only
     // ever triggers on an already-5%-chance highroll in the first place).
     public float highrollBonusScalePercent = 0.08f;
 

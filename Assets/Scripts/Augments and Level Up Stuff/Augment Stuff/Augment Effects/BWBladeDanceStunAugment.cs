@@ -4,7 +4,7 @@ using PurrNet.Prediction;
 // requiredAbilities = [BWBladeDance] — scripts-only convention, that part is Editor-side, not here.
 //
 // While BladeDance is actively TRAVELING (Outbound or Return — explicitly NOT Hold, where the blades are
-// just sitting still at the destination, per Stuart's own "but NOT during the staying still state"
+// just sitting still at the destination, per the explicit "but NOT during the staying still state"
 // framing), every enemy struck (by any weapon — same "struck while the blades are off dancing" reasoning
 // BWBladeDanceSlowAugment's own doc comment gives) is stunned for stunDuration AND, if that same hit also
 // successfully interrupts them, gets the usual bonus CC-resist-immune InterruptTrueStun portion on top —

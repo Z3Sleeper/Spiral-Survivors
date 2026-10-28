@@ -417,7 +417,7 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         // singular weapon, entirely ignoring the player's own weapon-count/Multishot divide (it already read
         // plain, undivided _stats.Strength/_stats.OnHitPower, by design, same as every other "cosplays a
         // weapon strike" effect — see CharacterStatsPD.Strength/OnHitPower's own doc comments), and instead
-        // uses its OWN ratio. Mental model (Stuart's own framing): _strengthPercent isn't "Strength," it's
+        // uses its OWN ratio. Mental model: _strengthPercent isn't "Strength," it's
         // "this throw counts as x% of a regular single-weapon hit" — so it should scale OnHitPower by that
         // same x%, independently of Strength/damage, the same way a real weapon's own per-hit onHitPower and
         // damage both move together. onHitPower was previously left reading the stat totally unscaled by
@@ -469,7 +469,7 @@ public class ExeAxeThrowProjectilePD : PredictedIdentity<ExeAxeThrowProjectilePD
         _stats.NotifyHitFeedback(new HitFeedbackData { target = enemy.ObjectId, damage = damage, isCrit = isCrit, isHighroll = isHighroll, attacker = _stats, isPriority = true });
 
         // ExeAxeThrowHealAugment's own per-hit heal (2026-10-06) — 0f/0f (true no-op) for every throw
-        // without it. Doubled on crit, per Stuart's own spec. Direct one-shot Stats.Heal() call here is
+        // without it. Doubled on crit, by explicit design. Direct one-shot Stats.Heal() call here is
         // safe — this whole method is already a discrete, exactly-once-per-real-hit call (same safety class
         // as the TakeDamage/NotifyHit/AddKnockbackVelocity calls right above it), not a per-tick continuous
         // accumulator, so no deferred-delta/UpdateView dance is needed the way an ongoing heal-over-time

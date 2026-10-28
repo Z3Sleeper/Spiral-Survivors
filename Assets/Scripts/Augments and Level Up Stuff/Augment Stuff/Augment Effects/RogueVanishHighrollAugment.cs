@@ -16,7 +16,7 @@ using PurrNet.Prediction;
 // Pattern B (see KnightBerserkMoveSpeedAugment's own doc comment) — both no-op-by-default switches live
 // directly on the ability (RogueVanishAbilityPD.highrollChanceBonusPercent/durationBonusPercent), applied/
 // reverted by that ability's OWN Activate()/Simulate() pairing so the bonus is only ever active for the
-// actual invisibility window, per Stuart's own framing ("an augment-side bump up to a totalpercent field
+// actual invisibility window, per the design framing ("an augment-side bump up to a totalpercent field
 // when the ability is casted and removed when it ends"). This augment just bumps both fields once in
 // OnApply().
 public class RogueVanishHighrollAugment : AugmentEffectPD<RogueVanishHighrollAugment.State>

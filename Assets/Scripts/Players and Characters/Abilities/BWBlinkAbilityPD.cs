@@ -87,7 +87,7 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
 
     // Live multipliers (2026-10-06, BWBlinkMoveSpeedDurationAugment) — 1f (neutral) default,
     // [HideInInspector] since both are augment-owned, never hand-tuned here. Augments ADD to these rather
-    // than destructively multiplying duration/moveSpeedPercent directly — Stuart's own standing preference
+    // than destructively multiplying duration/moveSpeedPercent directly — standing project convention
     // against multiplicative stacking for this kind of "+X% to Y" augment effect, same shape
     // ArcherArrowRainAbilityPD.durationMultiplier/BWBladeDanceAbilityPD.durationMultiplier established.
     // EffectiveMoveSpeedPercent/EffectiveDuration (not the raw fields) are what ApplyBuffAndCooldown's own
@@ -266,6 +266,17 @@ public class BWBlinkAbilityPD : PredictedIdentity<BWBlinkAbilityPD.State>, IAbil
     public void Activate()
     {
         if (!IsReady) return;
+
+        // Cleanly ends a real dash still in progress at blink time (2026-10-18 fix, same root cause/fix as
+        // RogueVanishAbilityPD's blinkOnCast — see its own doc comment for the full mechanism). This
+        // ability's ForcesSpecialAction is false ("never touches movement itself beyond the instant
+        // teleport, already resolved by the time this would matter") — true for the TARGET position's own
+        // safety, but that reasoning missed that an active dash's state.isDashing/dashVelocity survives
+        // completely untouched through the teleport otherwise, then keeps being applied from the NEW
+        // post-teleport position on every later tick with zero re-validation. Called first, before
+        // fromPosition is read below, so any correction this applies is reflected in the blink's own
+        // starting point too.
+        _controller?.EndDashIfActive();
 
         // Fired at the OLD position, before anything moves — see class doc comment for why Started/Ended
         // straddle the teleport instead of both firing together. Also what DashEffectDoubleTriggerAugment

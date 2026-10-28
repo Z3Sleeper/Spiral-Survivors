@@ -2,7 +2,7 @@ using PurrNet.Prediction;
 using UnityEngine;
 
 // Rogue Spin-specific augment (2026-10-04, revised twice same day — see git history for the original
-// single-timer-refresh draft, then the plain-stacking-no-StackPower draft Stuart replaced with this one).
+// single-timer-refresh draft, then the plain-stacking-no-StackPower draft replaced with this one).
 // This augment's own .asset must set requiredAbilities = [RogueSpin] — scripts-only convention, that part
 // is Editor-side, not here.
 //
@@ -181,7 +181,7 @@ public class RogueSpinAttackSpeedAugment : AugmentEffectPD<RogueSpinAttackSpeedA
         _buffIconInstance.SetCooldownFill(duration > 0f ? 1f - maxRemaining / duration : 0f);
 
         // Stack count printed at the bottom only once 2+ are active — a single stack just shows the bare
-        // icon, per Stuart's own spec.
+        // icon, per design spec.
         int activeStacks = 0;
         if (viewState.stackTimer0 > 0f) activeStacks++;
         if (viewState.stackTimer1 > 0f) activeStacks++;

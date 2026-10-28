@@ -13,7 +13,7 @@ using PurrNet.Prediction;
 // automatically extends ArcherArrowRainGrowthAugment's own growth window if that's also equipped — no
 // interaction code needed between the two augments.
 //
-// No separate damage bonus (2026-10-06, Stuart's own explicit call — "the duration is a big enough buff
+// No separate damage bonus (2026-10-06, explicit design call — "the duration is a big enough buff
 // already") — unlike ArcherArrowRainGrowthAugment/ArcherArrowRainSlowAugment, which each also fold in a
 // flat +25% damage.
 public class ArcherArrowRainDurationAugment : AugmentEffectPD<ArcherArrowRainDurationAugment.State>

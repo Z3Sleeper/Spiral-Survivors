@@ -15,7 +15,7 @@ using PurrNet.Prediction;
 //    Stats.AreaEffectSize rather than being yet another separate multiplier).
 // 2. +25% damage — ADDITIVE onto the ability's own [HideInInspector] damageMultiplier field (1f neutral
 //    default), NOT a destructive one-shot multiply on strengthPerSecond itself (that was this augment's
-//    first draft — Stuart caught that it'd compound rather than add alongside any future second
+//    first draft — caught in review that it'd compound rather than add alongside any future second
 //    ArrowRain-specific damage augment: 1.25*1.25=1.5625x instead of the intended 1.5x for two "+25%"
 //    augments). strengthPerSecond stays the pure authored base value; TickDamagePercent (and everything
 //    derived from it — TotalDamagePercent/LiveDamageRatio/SpawnChain's own damagePercent) reads
@@ -28,7 +28,7 @@ public class ArcherArrowRainGrowthAugment : AugmentEffectPD<ArcherArrowRainGrowt
     // buries it mid-name) — so AugmentDescriptionFormatter's reflection can resolve {growthPerSecondPercent}
     // AND get its auto-*100 percent formatting, which only fires on an EndsWith("Percent") check (same
     // "PerUnit vs Percent" trap OnHitDamageDistanceAugment's own perUnitDistancePercent rename fixed for the
-    // identical reason — Stuart caught this one too). The ability's own mirror field stays named
+    // identical reason — caught in the same pass). The ability's own mirror field stays named
     // growthPercentPerSecond ([HideInInspector], never a description token, so the suffix position there
     // doesn't matter) — only this augment's own copy needs it at the end.
     public float growthPerSecondPercent = 0.2f;

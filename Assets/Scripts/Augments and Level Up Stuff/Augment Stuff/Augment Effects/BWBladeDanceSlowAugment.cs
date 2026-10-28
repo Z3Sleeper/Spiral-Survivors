@@ -7,7 +7,7 @@ using PurrNet.Prediction;
 // character has — BladeDance itself deals no damage, it only relocates where weapons orbit, so this is
 // "struck while the blades are off dancing," not "struck by the blades specifically") is slowed by
 // slowPercent for slowDuration. Listens to the GENERIC, exactly-once-per-real-strike CharacterStatsPD.
-// _onStrike event (AddStrikeListener), deliberately NOT _onHit — Stuart's own explicit call: he wants a
+// _onStrike event (AddStrikeListener), deliberately NOT _onHit — explicit design call: wants a
 // consistent slow amount/duration regardless of how a hit happened to roll, not scaled by data.onHitPower
 // the way most on-hit-triggered effects in this codebase are (see OnStrikeHealAllyAugment for the usual
 // "(base) * data.onHitPower" convention this one is deliberately NOT following).

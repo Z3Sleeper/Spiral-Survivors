@@ -13,7 +13,7 @@ using PurrNet.Prediction;
 // default) rather than destructively multiplying specific fields once at OnApply() time — a one-shot
 // destructive multiply would only ever affect whichever buff fields already existed AT THE MOMENT this
 // augment was picked, silently missing any buff field a LATER-picked ability-specific augment grants
-// (order-dependent, exactly the bug this augment must avoid per Stuart's own explicit requirement that
+// (order-dependent, exactly the bug this augment must avoid per the explicit requirement that
 // KnightBuffStunStrengthKnockbackAugment's grants "should also be affected by [this augment] if the player
 // has it"). Setting a multiplier the ABILITY itself applies live, every cast (see Activate()'s own
 // _appliedXPercent = X * buffStrengthMultiplier snapshot lines), is naturally order-independent instead —

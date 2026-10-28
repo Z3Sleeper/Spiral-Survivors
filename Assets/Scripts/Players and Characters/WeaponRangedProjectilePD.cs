@@ -46,7 +46,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
         // LateSimulate() starts re-aiming toward homingTargetId every tick instead.
         public float   homingDelayRemaining;
         // Latched false permanently the instant this shot lands its first real hit (ProcessHit) — "stop
-        // homing and travel straight (or ricochet) upon hitting the target" (Stuart's own spec). After that,
+        // homing and travel straight (or ricochet) upon hitting the target" (explicit design). After that,
         // the EXISTING ricochet-retarget system (ApplyHitDropoffAndRicochet/FindRicochetTarget) takes over
         // completely untouched, same as it always has for a non-homing shot.
         public bool    homingActive;
@@ -246,7 +246,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
             if (state.homingDelayRemaining > 0f)
             {
                 // Still in the initial fan-out window — keep flying straight on the multishot-spread
-                // heading Launch() gave it (Stuart's own framing: "fan out then home in").
+                // heading Launch() gave it (design framing: "fan out then home in").
                 state.homingDelayRemaining -= delta;
             }
             else if (TryResolveHomingTarget(ref state, out IEnemyPD target))
@@ -261,7 +261,7 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
             else
             {
                 // Original target dead/gone AND no living replacement found anywhere in range — "just
-                // travel straight from their current heading" (Stuart's own accepted fallback). Latched
+                // travel straight from their current heading" (accepted fallback). Latched
                 // false so this doesn't re-run the (non-trivial) OverlapSphereNonAlloc retarget query every
                 // remaining tick of this shot's flight for nothing.
                 state.homingActive = false;
@@ -420,12 +420,12 @@ public class WeaponRangedProjectilePD : PredictedIdentity<WeaponRangedProjectile
     // a still-living IEnemyPD via the shared hierarchy, same "store an ID, resolve it later" pattern
     // MortarGloomPD.pendingHazardId already established. If that specific target died/despawned mid-flight,
     // retargets to whatever's now the closest living enemy in range instead ("if the target dies mid-flight
-    // while still homing, retarget to next target" — Stuart's own spec) — same OverlapSphereNonAlloc query
+    // while still homing, retarget to next target" — explicit design) — same OverlapSphereNonAlloc query
     // shape FindRicochetTarget uses just above, reusing its _retargetResults buffer (safe: never called
     // concurrently with FindRicochetTarget, since homingActive is always false by the time a hit — the only
     // thing that triggers a ricochet retarget — actually lands). Returns false only when NO living enemy at
     // all is found anywhere in range — the caller then stops homing entirely and lets this shot keep flying
-    // straight on its last heading (Stuart's own accepted fallback for that case).
+    // straight on its last heading (accepted fallback for that case).
     private bool TryResolveHomingTarget(ref State state, out IEnemyPD target)
     {
         if (!state.homingTargetId.Equals(default))

@@ -52,7 +52,7 @@ using PurrNet.Prediction;
 //     opped on a single-charge RogueSpin — ReduceCooldownFlat gates on IsCooldownActivelyTicking, which is
 //     false while isActive is still true UNLESS EffectiveMaxCharges > 1 (a multi-charge ability's own
 //     regen timer always ticks concurrently with its active window, see that property's own doc comment) —
-//     explaining exactly why Stuart saw this work "when it has charges" (multiple max charges) but silently
+//     explaining exactly why this worked "when it has charges" (multiple max charges) but silently
 //     do nothing otherwise. Applying it only once the active window has already ended sidesteps this
 //     entirely: cooldownTimer is guaranteed to already be actively ticking by that point regardless of
 //     charge count, since !isActive alone satisfies IsCooldownActivelyTicking's own condition.

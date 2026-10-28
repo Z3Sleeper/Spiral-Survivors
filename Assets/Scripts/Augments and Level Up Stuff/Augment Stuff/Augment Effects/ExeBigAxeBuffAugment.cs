@@ -1,7 +1,7 @@
 using PurrNet.Prediction;
 
 // Executioner BigAxe-specific augment (2026-10-06), built to the exact same shape as
-// KnightBuffStunBuffStrengthAugment (Stuart's own explicit request — mirror that one, not the usual
+// KnightBuffStunBuffStrengthAugment (explicit design request — mirror that one, not the usual
 // additive-multiplier default). This augment's own .asset must set requiredAbilities = [ExeBigAxe] —
 // scripts-only convention, that part is Editor-side, not here.
 //

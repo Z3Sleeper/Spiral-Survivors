@@ -389,13 +389,9 @@ MonoBehaviour:
   - {fileID: 4412482370457791877}
   - {fileID: 8899883503470149065}
   invulnerableShell: {fileID: 6503409208411732999}
-  pullDamageMultiplier: 1.5
   orbitDamageMultiplier: 0.5
   shootingDamageMultiplier: 1.5
-  grabRadius: 50
-  windupDuration: 1
-  pullSpeed: 30
-  pullSequentialDelay: 0.25
+  spawnDuration: 1
   innerCount: 2
   innerOrbitRadius: 2
   innerOrbitAngularSpeed: 120
@@ -417,14 +413,15 @@ MonoBehaviour:
   shootSequentialDelay: 0.25
   rotationRateDegPerSecond: 30
   persistentShotInterval: 3
+  persistentSpawnRadiusMultiplierMin: 1
+  persistentSpawnRadiusMultiplierMax: 2
   attackCooldown: 10
   innerCountTierGrowth: 1
   middleCountTierGrowth: 2
   outerCountTierGrowth: 3
   rotationRateDegPerSecondTierGrowth: 0.05
-  pullSequentialDelayTierDivisor: 1
   shootSequentialDelayTierDivisor: 1
-  pullIndicatorTemplate: {fileID: 2918981062249959320}
+  orbPrefab: {fileID: 731516238058519706, guid: 9c5caf1fac9f49f419a931ece66e23d3, type: 3}
   lineIndicatorPrefab: {fileID: 406232483664354483, guid: 693ec9794847820498ff377b98d29cf8, type: 3}
 --- !u!135 &2131989495178621505
 SphereCollider:

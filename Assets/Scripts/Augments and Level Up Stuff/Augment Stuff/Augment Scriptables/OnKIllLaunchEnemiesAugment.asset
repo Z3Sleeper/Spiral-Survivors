@@ -12,7 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4fb7353a7de6c354ab41ec33640cff15, type: 3}
   m_Name: OnKillLaunchEnemiesAugment
   m_EditorClassIdentifier: Assembly-CSharp::AugmentData
-  displayName: <color=#FFA000>Blast Off</color>
+  displayName: <color=#FF5000>Blast Off</color>
   description: <color=#FFA000>On Kill:</color> Launch the enemy away, causing them
     to deal <color=#FFA000>{LiveStrengthRatio}</color><color=#FFA000>(<color=#FF5000>{damagePercent}%
     Strength</color>) damage</color> to all other enemies they <color=#FFA000>collide</color>
@@ -27,5 +27,6 @@ MonoBehaviour:
   requiredAugments: []
   tags: []
   requiredTags: []
+  requiredAbilities: 
   incompatibleTags: []
   unlockTag: 

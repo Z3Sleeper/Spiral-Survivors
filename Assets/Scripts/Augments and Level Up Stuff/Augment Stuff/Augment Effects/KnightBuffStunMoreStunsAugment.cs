@@ -14,8 +14,8 @@ using PurrNet.Prediction;
 //     already happened this cast (the base ability's own behavior has recast CONSUME the natural-end
 //     trigger, i.e. at most one of #2/#3 ever fires normally — this augment makes them independent).
 // So: 2 guaranteed triggers (#1 and #3) plus 1 optional one (#2) if the player actually uses the recast —
-// "if the player doesn't use the recast one nothing happens, only two stuns go off automatically" (Stuart's
-// own framing).
+// "if the player doesn't use the recast one nothing happens, only two stuns go off automatically" (design
+// framing).
 //
 // Pattern B (see KnightBerserkMoveSpeedAugment) — the actual mechanism lives entirely on the ability itself
 // (KnightBuffStunAbilityPD.extraStunsEnabled, a single no-op-by-default bool), including the TriggerAoE

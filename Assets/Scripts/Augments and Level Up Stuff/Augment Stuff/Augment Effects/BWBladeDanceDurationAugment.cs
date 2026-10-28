@@ -4,7 +4,7 @@ using PurrNet.Prediction;
 // requiredAbilities = [BWBladeDance] — scripts-only convention, that part is Editor-side, not here.
 //
 // +100% Max Duration — ADDITIVE onto BWBladeDanceAbilityPD's own live durationMultiplier field (1f
-// neutral default), not a destructive multiply on holdDuration itself — Stuart's own standing preference
+// neutral default), not a destructive multiply on holdDuration itself — standing project convention
 // against multiplicative stacking for this kind of "+X% to Y" augment effect, same shape
 // ArcherArrowRainDurationAugment's own durationMultiplier uses. EffectiveHoldDuration
 // (holdDuration * durationMultiplier) is what the ability's Outbound->Hold transition and

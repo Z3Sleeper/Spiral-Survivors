@@ -76,7 +76,7 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // Live duration multiplier (2026-10-06, BWBladeDanceDurationAugment) — 1f (neutral) default,
     // [HideInInspector] since it's augment-owned, never hand-tuned here. Augments ADD to this rather than
     // destructively multiplying holdDuration directly — same "live multiplier field, base value never
-    // mutated" shape ArcherArrowRainAbilityPD.durationMultiplier established, per Stuart's own standing
+    // mutated" shape ArcherArrowRainAbilityPD.durationMultiplier established, per the project's own standing
     // preference against multiplicative stacking for this kind of "+X% to Y" augment effect. EffectiveHoldDuration
     // (not the raw holdDuration field) is what Simulate()'s Outbound->Hold transition and
     // ActiveTimeDuration/ActiveTimeRemaining actually read.
@@ -87,8 +87,8 @@ public class BWBladeDanceAbilityPD : PredictedIdentity<BWBladeDanceAbilityPD.Sta
     // no-op) default, same Pattern B shape as every other ability-owned augment hook in this codebase (e.g.
     // KnightBerserkAbilityPD.moveSpeedPercent). Used to be a hardcoded always-on base-form mechanic
     // (AbilityHaste converting directly into bonus Attack Speed, since AbilityHaste normally only ever
-    // shortens THIS ability's own cooldown — barely meaningful against its own low cooldown) — Stuart's own
-    // explicit call to pull it out into an augment instead, since Bladeweaver's abilities otherwise "don't
+    // shortens THIS ability's own cooldown — barely meaningful against its own low cooldown) — explicit
+    // design call to pull it out into an augment instead, since Bladeweaver's abilities otherwise "don't
     // do too much" on their own.
     //
     // 1 point of EffectiveAbilityHaste = attackSpeedPercentPerHaste Attack Speed, ADDED via AddAttackSpeedFlat

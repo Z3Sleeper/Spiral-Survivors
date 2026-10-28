@@ -11,26 +11,6 @@ using UnityEngine;
 // be an EnemyBasePD spawned via SpawnCategory.Boss instead of needing a dedicated BossBasePD subclass.
 public enum EnemySpawnCategory { Normal, Elite, Pleb, Boss }
 
-// Claimed is the gap between "an owner has selected this enemy to grab" (IEnemyPD.ClaimForOrbit — frozen in
-// place, invulnerable/kinematic/movement-disabled all already applied, IsBeingHeld already true so a SECOND
-// owner's own grab-scan correctly excludes it) and "the actual pull motion has started" (IEnemyPD.OrbitTarget
-// — only called once this specific pleb's own windup finishes). LateSimulate() does nothing during Claimed
-// (the freeze is entirely SetKinematic's job); Pulling/WaitingToOrbit/Orbiting share one continuous position
-// formula there (straight-line lerp toward the live slot while Pulling, frozen at the slot — angle held
-// fixed, no rotation — while WaitingToOrbit, angle advances at a fixed rate while Orbiting).
-//
-// WaitingToOrbit (2026-08-17) sits between Pulling and Orbiting specifically because OrbiterGloomPD/
-// KingOrbiterPD now pull multiple plebs in on a STAGGERED schedule (see each one's own BeginPull/
-// DispatchPull doc comment) — if a pleb started actually rotating (Orbiting) the instant ITS OWN pull
-// finished, plebs that landed earlier would have been rotating longer than ones that landed later by the
-// time the owner considers the whole group "in," visibly skewing their intended even angular spacing
-// (confirmed live: "orbit angles look a little off"). A pleb that finishes pulling now just sits frozen at
-// its slot (WaitingToOrbit) until the owner explicitly calls IEnemyPD.BeginOrbiting() on every pleb sharing
-// that same orbit radius/ring at once (once ALL of them have arrived), so the whole group starts rotating
-// together, in sync, preserving the intended spacing — see OrbiterGloomPD/KingOrbiterPD's own Pulling case
-// for exactly where that release fires.
-public enum EnemyOrbitPhase { None, Claimed, Pulling, WaitingToOrbit, Orbiting }
-
 // Shared attack-indicator sizing math — not enemy-specific (RemoteSpikeBurstPD, a standalone hazard, is
 // not an EnemyBasePD<TState> at all), so this lives as a static class rather than a protected method on
 // EnemyBasePD<TState>, same reasoning as WeaponDamageMath sitting outside WeaponBasePD<TState>. Project
@@ -123,12 +103,12 @@ public interface IEnemyPD
     // established for players.
     float Size { get; }
     // Exposed on the interface (2026-08-31) so generic cross-identity code can read one enemy's current
-    // attack speed through another's own reference — added specifically for the shared held-enemy orbit
-    // position code (EnemyBasePD.LateSimulate's own orbitAngleDeg advance), which resolves its owner only as
-    // an IEnemyPD and needs the OWNER's (not the held enemy's own) EffectiveAttackSpeed to make orbit
-    // rotation rate respond to a Slow landing on the holder — see EnemyBasePD.EffectiveAttackSpeed's own doc
-    // comment for the full composition (base attackSpeed, already difficulty-scaled by ConfigureSpawn, times
-    // any active Slow multiplier).
+    // attack speed through another's own reference — e.g. OrbiterOrbPD's own self-driven orbit/spawn/flight
+    // timers, which resolve their owner only as an IEnemyPD and need the OWNER's (not the orb's own)
+    // EffectiveAttackSpeed to stay in lockstep with the owner's phase timers and make orbit rotation rate
+    // respond to a Slow landing on the holder — see EnemyBasePD.EffectiveAttackSpeed's own doc comment for
+    // the full composition (base attackSpeed, already difficulty-scaled by ConfigureSpawn, times any active
+    // Slow multiplier).
     float EffectiveAttackSpeed { get; }
     // Stable, rollback-safe reference to this enemy — safe to store in predicted state (e.g. a
     // PredictedEvent payload), unlike a raw IEnemyPD/Transform reference, since enemies are pooled and
@@ -141,18 +121,6 @@ public interface IEnemyPD
     // I started tracking" (e.g. DamageNumber following an enemy that dies) must compare a captured
     // SpawnGeneration snapshot against this live value, not just null/active-check the Transform.
     int SpawnGeneration { get; }
-    // False until this enemy's own first Simulate() tick for its CURRENT life has actually run (see
-    // EnemyBasePD.Simulate's own !b.initialized block) — that block unconditionally resets
-    // movementDisabled/invulnerable/externalKinematic/physicsColliderDisabled/hurtboxDisabled/
-    // damageOverridden/orbitPhase back to their fresh-spawn defaults (and directly re-enables the hurtbox/
-    // physics collider), since it has to assume nothing external has touched this life's state yet. A caller
-    // that wants to externally freeze/claim/orbit ANOTHER enemy (e.g. OrbiterGloomPD/KingOrbiterPD's own grab
-    // scan) MUST exclude candidates where this reads false — a freshly-spawned-this-tick enemy that gets
-    // grabbed before its own first Simulate() tick runs would have that whole reset silently stomp the grab's
-    // protective state (hurtbox re-enabled, invulnerable cleared, orbitPhase reset to None) the instant that
-    // tick finally does run, leaving it non-invincible and no longer actually orbiting while the grabber
-    // still thinks it's held — confirmed live (2026-08-12), not theoretical.
-    bool HasInitialized { get; }
     // This enemy's own current damage output — a method, not a property, for interface consistency with
     // TakeDamage/AddKnockbackVelocity/etc. below. Returns the override value while SetDamageOverride has one
     // active, otherwise each subclass's own GetOwnDamage() (e.g. KingSpikePD's own Charging multiplier —
@@ -240,44 +208,6 @@ public interface IEnemyPD
     bool IsInvulnerable { get; }
     void SetInvulnerable(bool invulnerable);
 
-    // Whether another entity currently controls this enemy's position (pulled/orbiting) — see OrbitTarget's
-    // own doc comment. Read-only; callers don't set this directly, it's derived from orbit state.
-    bool IsBeingHeld { get; }
-
-    // True exactly while this held enemy has finished its own Pulling-phase MoveTowards (reached the orbit
-    // slot exactly, see OrbitTarget's own doc comment) and is frozen there awaiting BeginOrbiting() — i.e.
-    // it has genuinely ARRIVED, not just "enough time should have passed." Added (2026-08-31, back when
-    // Pulling was still duration-based) so a holder's own per-ring release gate (KingOrbiterPD/
-    // OrbiterGloomPD's Pulling case) can query this directly instead of independently re-deriving an
-    // equivalent time threshold from the same constants and hoping the two stay in sync — that reasoning
-    // held even more once Pulling became speed-based (2026-09-12), since a flat speed means different
-    // pulls now genuinely take different amounts of real time, so there's no shared duration constant left
-    // to derive an estimate from at all. A caller gating a ring's release on this should also treat a dead
-    // member as non-blocking (IsDead) — a pleb that dies mid-Pulling never reaches WaitingToOrbit
-    // (LateSimulate's own isDead/wiped early-return means it simply stops moving toward its slot), so
-    // waiting on IsWaitingToOrbit alone would stall that ring's release forever.
-    bool IsWaitingToOrbit { get; }
-
-    // True only while orbitPhase is EXACTLY Pulling — 2026-09-16, added alongside the fix for a real bug this
-    // gap enabled: KingOrbiterPD.UpdatePullLineIndicators used to exclude a pleb from its active-indicator
-    // list via `enemy.IsWaitingToOrbit` (a strict equality against ONE specific enum value), intending "stop
-    // showing the indicator once this pleb has arrived." But EnemyOrbitPhase has a THIRD value past that —
-    // Orbiting — which a pleb's own ring releases it into (EndPullingRing -> BeginOrbiting) independently of
-    // whether the KING's own overall phase is still "Pulling" for OTHER, still-in-progress rings. Once a
-    // pleb moved from WaitingToOrbit to Orbiting, `IsWaitingToOrbit` read false again, silently re-admitting
-    // it into the active list — using its now-genuinely-orbiting live position — until every other ring also
-    // finished. Use this instead for any "is this pleb's pull movement still actually ongoing" check —
-    // inclusive of the correct state, not exclusive of one specific wrong one.
-    bool IsPulling { get; }
-
-    // True exactly while this enemy is mid-flight from a LaunchAlong() call (EnemyBaseState.launchActive),
-    // false once it's actually finished traveling its full distance. Added (2026-08-31) for the same reason
-    // as IsWaitingToOrbit above — KingOrbiterPD's own ShootFlight release gate used to estimate flight time
-    // via shootingRange/shotSpeed instead of checking whether the shot had actually finished. Same dead-
-    // member caveat applies: LateSimulate's own isDead/wiped early-return means a pleb that dies mid-flight
-    // never clears launchActive on its own, so a caller must also treat IsDead as non-blocking.
-    bool IsLaunching { get; }
-
     // Live read of this enemy's own rigidbody kinematic flag — regardless of WHY it's kinematic (a
     // subclass's own windup/charge/leap phase, SetKinematic() forced ON by a holder, etc.). Read-only;
     // exists so generic cross-enemy code (e.g. EnemyBasePD.RecomputeSeparationPush) can exempt a kinematic
@@ -318,85 +248,6 @@ public interface IEnemyPD
     // re-assertion, OFF is an immediate direct revert. Doesn't touch kinematic/movement-disabled — callers
     // compose those separately.
     void SetHurtboxDisabled(bool disabled);
-
-    // Marks this enemy as claimed by `owner` the MOMENT it's selected to be grabbed — before any pull motion
-    // starts, before the owner's own windup even finishes. Sets orbitPhase to Claimed (so IsBeingHeld reads
-    // true immediately), letting IsBeingHeld actually protect against a second owner grabbing the same enemy
-    // mid-windup — the race this exists to close. Deliberately separate from OrbitTarget (which only starts
-    // the actual pull motion once the owner's windup ends) — this call does nothing to this enemy's position;
-    // the caller is expected to ALSO call SetKinematic(true)/SetMovementDisabled(true)/SetInvulnerable(true)
-    // in the same breath (same "small composable primitives" convention as everything else here) so the
-    // enemy is frozen in place the instant it's claimed, not just marked unavailable to other owners.
-    void ClaimForOrbit(PredictedObjectID owner);
-
-    // Starts this enemy pulling toward, then orbiting, `owner` — used by an enemy that's grabbed this one
-    // (e.g. Orbiter's pull attack). `targetAngleDeg` is the CALLER-assigned final orbit slot (e.g. Orbiter
-    // evenly-spacing its held plebs around itself) — this enemy does NOT compute its own angle from whatever
-    // bearing it happened to be grabbed at; the caller decides where every held enemy ends up and is
-    // expected to use the SAME angle here as it shows in its own windup indicator (see OrbiterGloomPD.UpdateView
-    // for that precedent). `ownerPosition` is read once, at the instant of the call, purely to seed
-    // `targetAngleDeg`'s current-tick target position for the very first pull-position lerp step; every tick
-    // afterward this enemy re-resolves `owner`'s LIVE position itself (see EnemyBasePD.LateSimulate()'s own
-    // doc comment for why that has to happen in ITS OWN LateSimulate(), not be pushed in by the owner). Pull
-    // phase: this enemy's OWN current world position is MoveTowards-stepped, at a flat `pullSpeed`
-    // units/sec (2026-09-12, was a fixed-DURATION Cartesian Lerp — every held enemy took the same seconds
-    // to arrive regardless of how far away it started, which read as inconsistent travel speed across
-    // different grab distances; a flat speed instead means farther pulls just take proportionally longer,
-    // matching KingOrbiterPD's own shotSpeed-driven LaunchAlong convention), toward `owner`'s live position
-    // + the `targetAngleDeg`/`radius` orbit slot — a Cartesian MoveTowards, not a radius-only one, so it
-    // visibly moves toward wherever it's actually going to end up rather than snapping sideways onto the
-    // target angle first. MoveTowards itself never overshoots (clamps exactly to the destination once
-    // within one tick's step), so arrival is just "did this tick's step reach the slot exactly," no
-    // separate tolerance needed. Once the pull completes this enemy does NOT start orbiting automatically
-    // anymore (2026-08-17) — it freezes at its slot (WaitingToOrbit — see EnemyOrbitPhase's own doc
-    // comment) until the caller explicitly calls BeginOrbiting() below, once every pleb sharing that same
-    // radius/ring has similarly arrived (see IsWaitingToOrbit's own doc comment for why release is gated on
-    // real arrival, not an estimated duration). Once actually orbiting: radius fixed at `radius`, angle
-    // advances from `targetAngleDeg` at `angularSpeedDegPerSec`. Does NOT itself set movement-disabled/
-    // kinematic/invulnerable — the caller composes those separately (same "small composable primitives"
-    // convention as Stun/Interrupt).
-    void OrbitTarget(PredictedObjectID owner, Vector3 ownerPosition, float radius, float pullSpeed, float angularSpeedDegPerSec, float targetAngleDeg);
-    // Releases a pleb that finished its own pull-in (WaitingToOrbit) into actually rotating (Orbiting) — see
-    // EnemyOrbitPhase's own doc comment for why this hand-off exists. A no-op while not currently
-    // WaitingToOrbit (e.g. still Pulling, or already Orbiting) — safe to call speculatively without checking
-    // phase first.
-    void BeginOrbiting();
-    // Ends pulling/orbiting immediately — does not itself touch kinematic/movement-disabled/invulnerable
-    // (the caller releasing this enemy is expected to also call SetKinematic(false)/SetMovementDisabled(false)/
-    // SetInvulnerable(false) as separate, explicit steps).
-    void StopOrbiting();
-
-    // Directly overwrites this enemy's own live orbit angular speed (see OrbitTarget's own doc comment for
-    // the pull->orbit mechanism this feeds) without touching orbitPhase, position, or radius at all — e.g. an
-    // owner freezing a held enemy in place mid-orbit (0 speed) without dropping it, matching every other
-    // "small composable primitive" setter in this interface (SetKinematic/SetMovementDisabled/etc.). A no-op
-    // while not currently orbiting (nothing reads orbitAngularSpeedDegPerSec unless orbitPhase == Orbiting).
-    void SetOrbitAngularSpeed(float angularSpeedDegPerSec);
-
-    // Owner-driven, recomputed every tick from the OWNER's own live stun state (see OrbiterGloomPD/
-    // KingOrbiterPD's own RefreshHeldDamageOverrides for the call site — `IsTrueStunned && isStunnable` on
-    // the OWNER, meaning it's genuinely frozen by a true stun right now, not just carrying an unexpired timer
-    // through a committed phase it can't be frozen during). While true: this held enemy's own LateSimulate()
-    // skips the whole orbit-position recompute (sits still at wherever it already was), OnContactTrigger
-    // blocks its contact damage, and UpdateView shows the yellow stun tint — three effects off one flag.
-    // Never a one-shot transition (same reasoning as [[feedback_untracked_rigidbody_property_needs_per_tick_reassertion]]
-    // even though this isn't a Rigidbody property — a predicted State bool still needs to self-correct every
-    // tick rather than rely on a paired start/end call, so it can never desync or get stuck set if the owner's
-    // own stun ends on a resimulated tick that took a different path) — reasserted unconditionally every tick
-    // the pleb is held, true or false, not just toggled on stun-start/stun-end.
-    void SetOrbitFrozen(bool frozen);
-
-    // Independent, fixed-direction/fixed-distance straight-line launch — e.g. a boss "shooting" a held enemy
-    // at a target. Deliberately NOT built on the shared isDashing/HandleDash dash primitives (several pleb
-    // subclasses use that same isDashing/dashJustEnded plumbing for their own attack-chain bookkeeping — an
-    // externally-injected dash risks corrupting it) and NOT coupled to orbitPhase/IsBeingHeld (see
-    // EnemyBaseState.launchActive's own doc comment) — a launching enemy can still be legitimately "held" by
-    // its own owner throughout the flight. speed-based (not duration-based) so retuning distance or speed
-    // independently doesn't require the caller to also recompute the other. No damage/hit-detection of its
-    // own — a launched enemy is still fully alive with its own contact-damage collider active throughout, so
-    // it deals whatever GetDamage() currently returns (e.g. an owner's own SetDamageOverride) to anything it
-    // physically touches via the existing, unmodified contact-damage system; this is pure movement.
-    void LaunchAlong(Vector3 direction, float distance, float speed);
 
     // Which spawn-cap bucket this enemy counts against (see EnemySpawnCategory's own doc comment) — exposed
     // generically so code that doesn't know (or care about) this enemy's concrete TState can still filter by
@@ -570,39 +421,6 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     public bool  damageOverridden;
     public float damageOverride;
 
-    // See IEnemyPD.OrbitTarget's own doc comment for the full pull->orbit mechanism this drives.
-    public int   orbitPhase; // EnemyOrbitPhase
-    public PredictedObjectID orbitOwnerId;
-    // See IEnemyPD.SetOrbitFrozen's own doc comment — recomputed fresh every tick by the OWNER's own
-    // RefreshHeldDamageOverrides (never a one-shot transition), true only while the owner is genuinely
-    // frozen by a true stun mid-Orbit. Read by this enemy's own LateSimulate() (skips the whole position
-    // recompute), OnContactTrigger (blocks contact damage), and UpdateView (drives the yellow stun tint) —
-    // three independent effects off one shared flag, same "recompute fully every tick, no edge-detection
-    // state to track" shape RefreshHeldDamageOverrides itself already uses for damageOverride.
-    public bool orbitFrozen;
-    // Changes every tick while Orbiting — CompressedFloat for the same reason SpikeShieldPD.facingAngle/
-    // CharacterStatsPD.weaponOrbitAngle already use it (a plain float here would pay PurrNet's full
-    // "changed" cost every single tick instead of a quantized/compressed one).
-    public CompressedFloat orbitAngleDeg;
-    public float orbitRadiusTarget;
-    // Flat MoveTowards speed (units/sec) for the Pulling phase (2026-09-12, was orbitPullStartPosition +
-    // orbitPullDuration + orbitPullElapsed driving a fixed-DURATION Lerp instead — removed entirely, no
-    // longer needed: LateSimulate() now MoveTowards-steps straight from this enemy's own live
-    // transform.position every tick, so there's no separate "start position" to snapshot or "elapsed"
-    // counter to track, just this one caller-assigned constant read every tick like
-    // orbitAngularSpeedDegPerSec below). Irrelevant once Orbiting.
-    public float orbitPullSpeed;
-    public float orbitAngularSpeedDegPerSec;
-
-    // See IEnemyPD.LaunchAlong's own doc comment — independent of orbitPhase above (checked first in
-    // LateSimulate(), supersedes orbit positioning for its own duration without touching orbitPhase/
-    // IsBeingHeld at all), so a caller composing this with an existing hold (e.g. a boss "shooting" a held
-    // enemy at a target) doesn't need to separately re-claim/re-orbit it afterward.
-    public bool    launchActive;
-    public Vector3 launchDirection;
-    public float   launchRemainingDistance;
-    public float   launchSpeed;
-
     public DisposableList<ContactCooldown> contactCooldowns;
     public bool isDashing;
     public Vector3 dashDirection;
@@ -770,8 +588,7 @@ public struct EnemyBaseState : IDuplicate<EnemyBaseState>
     // ALL gated on spawnCategory == Boss, so a reconciled boss would silently never enrage at all on that
     // machine — confirmed while investigating a user report that tier coloring wasn't replicating either
     // (ApplyTierMaterials/ApplyTierNamePrefix have the identical gap, see UpdateView's own re-apply fix).
-    // Stored as int, cast at each read site — same convention orbitPhase/stateId-style fields already use
-    // for enums in this struct.
+    // Stored as int, cast at each read site — same convention other enum-backed fields in this struct use.
     public int spawnCategoryRaw;
     public int spawnTier;
 
@@ -815,8 +632,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // see IEnemyPD.SpawnGeneration's own doc comment for why this exists.
     private int _spawnGeneration;
     public int SpawnGeneration => _spawnGeneration;
-    // See IEnemyPD.HasInitialized's own doc comment.
-    public bool HasInitialized => B.initialized;
 
     [Header("Identity")]
     public string enemyName = "Enemy";
@@ -964,7 +779,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     // ContactCooldown struct type used by B.contactCooldowns below.
     private const float ContactCooldownDuration = 0.5f;
     // Discrete bleed damage tick interval (2026-10-08, was continuous/every-simulation-tick — see
-    // State.bleedTickTimer's own doc comment). Reasoned perf fix (Stuart's own call, not yet actually
+    // State.bleedTickTimer's own doc comment). Reasoned perf fix (not yet actually
     // profiled as a real bottleneck): bleed is now triggered off _onHit (any weapon/Phantom Blade/AoE while
     // ExeBigAxe's buff is up, not just genuine weapon swings — see ExeBigAxeBleedAugment's own doc comment),
     // so a lot of enemies could plausibly be bleeding simultaneously in 4-player co-op, each previously
@@ -1202,9 +1017,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         ActiveBossCount = 0;
     }
 
-    // Reworked (2026-08-10) — no longer coupled to the Orbit system directly (see SetDamageOverride's own
-    // doc comment for why: a caller-driven override is more generic/reusable than GetDamage() itself reaching
-    // into B.orbitOwnerId). NOT virtual — this is the single, uniform gate every subclass's own damage
+    // Generic, caller-driven override (see SetDamageOverride's own doc comment) rather than GetDamage()
+    // itself reaching into any subclass-specific state. NOT virtual — this is the single, uniform gate every subclass's own damage
     // computation passes through before ever reaching a caller; subclasses hook GetOwnDamage() below instead,
     // which guarantees ANY current or future subclass's own damage logic automatically composes correctly
     // with an active override, without that subclass needing to remember to re-add its own check.
@@ -1609,9 +1423,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // reach the same disposed contactCooldowns list independently of either.
         if (IsZombied(ref b)) return;
         if (b.isDead) return;
-        // Held-orbit freeze (see IEnemyPD.SetOrbitFrozen's own doc comment) — separate from IsStunned above,
-        // since this enemy's OWN stunTimer is untouched here; it's a derived freeze off the OWNER's stun.
-        if (b.orbitFrozen) return;
 
         // IFriendlyPD (2026-08-30, was CharacterStatsPD + the !stats.owner.HasValue guard) — targets any
         // registered friendly, not just a connected player. The old guard is dropped entirely rather than
@@ -1625,17 +1436,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         var cooldowns = b.contactCooldowns;
         int ticks = Mathf.Max(1, Mathf.RoundToInt(ContactCooldownDuration / _currentDelta));
 
-        // Only a pleb actively IN MOTION toward/at a player — being Pulled in, or LaunchAlong'd during King
-        // Orbiter's Shot/Persistent Pleb Shot — counts as a dodgeable attack (2026-08-24, narrowed from the
-        // broader IsBeingHeld — Orbiting and the stationary Claimed/WaitingToOrbit sub-phases don't warn/
-        // telegraph a specific incoming hit the way Pulling/a launch does, "if it has an indicator, it can be
-        // dodged" per explicit design). Orbiting a claimed pleb around the boss stays ordinary passive
-        // contact — same exclusion a free-roaming pleb's own touch gets. launchActive is deliberately
-        // uncoupled from orbitPhase (see LaunchAlong's own doc comment), so it's checked independently here,
-        // not folded into the Pulling check.
-        bool isDodgeableAttack = b.orbitPhase == (int)EnemyOrbitPhase.Pulling || b.launchActive;
-        bool isPlebForDodge = spawnCategory == EnemySpawnCategory.Pleb && !isDodgeableAttack;
-        bool isPassiveForDodge = ContactDamageIsPassive && !isDodgeableAttack;
+        // The old "being pulled in/launched by an Orbiter" dodgeable-attack carve-out no longer has any case
+        // left to apply to (2026-10-21, Orbiter/King Orbiter rework dropped the whole grab mechanic) — every
+        // pleb's own contact is just ordinary pleb/passive contact now.
+        bool isPlebForDodge = spawnCategory == EnemySpawnCategory.Pleb;
+        bool isPassiveForDodge = ContactDamageIsPassive;
 
         for (int i = 0; i < cooldowns.Count; i++)
         {
@@ -1749,11 +1554,11 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             gameObject.layer  = _originalLayer;
 
             // Same "previous life died mid-something and never got a chance to clean up after itself"
-            // reasoning as killLaunchActive's own reset below — a pooled slot reused before an owning
-            // Orbiter (or any future caller) ever released it would otherwise silently hand a brand new
-            // spawn a stuck movementDisabled/invulnerable/externalKinematic/physicsColliderDisabled/
-            // orbitPhase from its PREVIOUS life, with nothing left around to ever call the matching
-            // SetX(false)/StopOrbiting() again to clear it.
+            // reasoning as killLaunchActive's own reset below — a pooled slot reused before whatever
+            // previously forced these externally-controlled flags on ever released it would otherwise
+            // silently hand a brand new spawn a stuck movementDisabled/invulnerable/externalKinematic/
+            // physicsColliderDisabled, with nothing left around to ever call the matching SetX(false) again
+            // to clear it.
             b.movementDisabled        = false;
             b.invulnerable             = false;
             b.externalKinematic        = false;
@@ -1761,8 +1566,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             b.hurtboxDisabled          = false;
             b.damageOverridden         = false;
             b.damageOverride           = 0f;
-            b.orbitPhase               = (int)EnemyOrbitPhase.None;
-            b.orbitFrozen              = false;
 
             // Defensive — in case a previous life died mid-kill-launch (still kinematic, physics collider
             // still disabled) and got pooled before that ever got a chance to clean itself up.
@@ -2030,134 +1833,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     protected virtual void HandleActiveState(ref TState state, float delta, bool dashJustEnded = false)
     {
         if (_target != null) HandleMovement(ref state, delta);
-    }
-
-    private static float WrapOrbitAngle(float angle) => ((angle % 360f) + 360f) % 360f;
-
-    // Drives a currently-held enemy's own pull->orbit position (see IEnemyPD.OrbitTarget's own doc comment
-    // for the full mechanism and why this lives here rather than being pushed in by the owner). Runs from
-    // THIS identity's own LateSimulate() specifically — by the time any identity's LateSimulate() runs for a
-    // given tick, every identity's Simulate() (including whichever owner just called OrbitTarget() on this
-    // enemy, or moved itself) has already landed for that same tick, per the tick-order guarantee _currentDelta's
-    // own doc comment already establishes. Reading the owner's transform.position from here is therefore
-    // always fresh, with no ordering race — the same reasoning SpikeShieldPD's own orbit-around-owner design
-    // already relies on, just generalized onto the base class since any enemy can now be the one orbiting.
-    protected override void LateSimulate(ref TState state, float delta)
-    {
-        ref var b = ref GetBase(ref state);
-        // See IsZombied's own doc comment (defined near GetBase/B above) for the full mechanism.
-        if (IsZombied(ref b)) return;
-        // wiped added alongside isDead — see Simulate()'s own identical addition/doc comment; a wiped enemy
-        // shouldn't keep orbiting/launching either.
-        if (b.isDead || b.wiped) return;
-        if (PausePD.instance != null && PausePD.instance.IsPaused) return;
-
-        // Checked FIRST, independent of orbitPhase below — see EnemyBaseState.launchActive/IEnemyPD.
-        // LaunchAlong's own doc comments. Supersedes orbit positioning for its own duration; orbitPhase is
-        // left completely untouched (a launching enemy can still be legitimately "held").
-        if (b.launchActive)
-        {
-            float step = Mathf.Min(b.launchSpeed * delta, b.launchRemainingDistance);
-            Vector3 newPos = transform.position + b.launchDirection * step;
-            newPos.y = transform.position.y;
-            if (_rigidbody != null)
-            {
-                _rigidbody.MovePosition(newPos);
-                _rigidbody.MoveRotation(Quaternion.LookRotation(b.launchDirection));
-            }
-            b.launchRemainingDistance -= step;
-            if (b.launchRemainingDistance <= 0f) b.launchActive = false;
-            return;
-        }
-
-        // None: not held at all. Claimed: held, but SetKinematic(true) is what's actually freezing this
-        // enemy in place — there's no position math to run yet, OrbitTarget() hasn't been called (see
-        // IEnemyPD.ClaimForOrbit's own doc comment for why these are deliberately separate calls).
-        if (b.orbitPhase == (int)EnemyOrbitPhase.None || b.orbitPhase == (int)EnemyOrbitPhase.Claimed) return;
-
-        var ownerGo = hierarchy.GetGameObject(b.orbitOwnerId);
-        if (ownerGo == null || !ownerGo.TryGetComponent(out IEnemyPD owner) || owner._isDead)
-        {
-            // Defensive only — the owner's own Die()/OnInterrupted() (or equivalent) are expected to
-            // proactively StopOrbiting() every enemy it's holding the instant it goes away. This just guards
-            // against some future teardown path that skips that call, so a held enemy never gets stuck
-            // orbiting a GameObject that no longer resolves.
-            b.orbitPhase  = (int)EnemyOrbitPhase.None;
-            b.orbitFrozen = false;
-            return;
-        }
-
-        // See IEnemyPD.SetOrbitFrozen's own doc comment — the owner's own RefreshHeldDamageOverrides sets
-        // this fresh every tick, so skipping the whole recompute-and-move below here is enough on its own;
-        // nothing else needs to know this enemy is currently owner-stun-frozen.
-        if (b.orbitFrozen) return;
-
-        // Orbiting at angularSpeedDegPerSec == 0 (2026-08-22 fix) skips this whole recompute-and-move —
-        // nothing legitimately updates once the angle stops advancing (only Orbiting itself ever advances
-        // orbitAngleDeg, right below), so re-deriving the "same" slot position from a fresh owner.transform.
-        // position read every tick was pure downside: any sub-tick noise in the OWNER's own position (or the
-        // angle-to-position trig round-trip) got reintroduced into this enemy's position every single tick,
-        // even though this enemy is supposed to be frozen in place — visible as a small constant vibration on
-        // anything reading this enemy's transform.position for its own purposes (e.g. KingOrbiterPD's own
-        // shot-aim tracking during its KnockbackWindup/ShootFlight hold, the case this was confirmed live
-        // against). Only the exact scenario a caller creates via SetOrbitAngularSpeed(0) while still
-        // Orbiting — WaitingToOrbit's own separate "frozen at the slot until BeginOrbiting() releases it"
-        // wait is untouched here, not confirmed safe to skip the same way.
-        if (b.orbitPhase == (int)EnemyOrbitPhase.Orbiting && b.orbitAngularSpeedDegPerSec == 0f)
-            return;
-
-        Vector3 ownerPos = owner.transform.position;
-
-        // Slot position is always computed the same way regardless of phase — the caller-assigned angle
-        // (fixed during Pulling, advancing during Orbiting) at orbitRadiusTarget from the owner's current
-        // position. Pulling only differs in that the enemy hasn't arrived there yet (see the Lerp below).
-        // owner.EffectiveAttackSpeed (2026-08-31, was plain delta) — a Slow landing on the HOLDER now
-        // correctly slows the orbit rotation itself too, not just its own movement/attack timing. Reads the
-        // OWNER's attack speed, not this held enemy's own (irrelevant — it isn't the one attacking; it's
-        // being spun by whoever grabbed it). orbitAngularSpeedDegPerSec itself stays the caller-assigned BASE
-        // rate (set once via OrbitTarget/SetOrbitAngularSpeed) — this multiply is a live, per-tick factor on
-        // top, so it reacts immediately to the owner's Slow starting/ending without the owner needing to
-        // re-push a new angular speed value itself.
-        if (b.orbitPhase == (int)EnemyOrbitPhase.Orbiting)
-            b.orbitAngleDeg = WrapOrbitAngle(b.orbitAngleDeg + b.orbitAngularSpeedDegPerSec * delta * owner.EffectiveAttackSpeed);
-
-        float rad = b.orbitAngleDeg * Mathf.Deg2Rad;
-        Vector3 dir = new Vector3(Mathf.Cos(rad), 0f, Mathf.Sin(rad));
-        Vector3 slotPos = ownerPos + dir * b.orbitRadiusTarget;
-
-        Vector3 pos;
-        if (b.orbitPhase == (int)EnemyOrbitPhase.Pulling)
-        {
-            // Flat-speed MoveTowards (2026-09-12, was a fixed-DURATION Lerp from a snapshotted start
-            // position) — straight-line (Cartesian) toward the live slot position, NOT a radius-at-fixed-
-            // angle move, so it visibly travels toward where it's really going instead of snapping sideways
-            // onto the target angle the instant the pull begins. See IEnemyPD.OrbitTarget's own doc comment
-            // for why this reads transform.position directly (last tick's own MovePosition result) instead
-            // of a separately-tracked start point. owner.EffectiveAttackSpeed (2026-08-31, kept from the
-            // old duration-based version) — a Slow/haste on the HOLDER still speeds up or slows down the
-            // pull-in motion itself, not just when it started.
-            float step = b.orbitPullSpeed * delta * owner.EffectiveAttackSpeed;
-            pos = Vector3.MoveTowards(transform.position, slotPos, step);
-            // WaitingToOrbit, not Orbiting directly (2026-08-17) — see EnemyOrbitPhase's own doc comment.
-            // Freezes here at the slot until the caller explicitly releases it via BeginOrbiting().
-            // MoveTowards never overshoots (clamps exactly to slotPos once within one step), so reaching it
-            // exactly IS arrival — no separate tolerance needed.
-            if (pos == slotPos) b.orbitPhase = (int)EnemyOrbitPhase.WaitingToOrbit;
-        }
-        else
-        {
-            pos = slotPos;
-        }
-        pos.y = transform.position.y;
-
-        if (_rigidbody != null)
-        {
-            Vector3 facing = pos - ownerPos;
-            facing.y = 0f;
-            if (facing.sqrMagnitude < 0.0001f) facing = -dir;
-            _rigidbody.MovePosition(pos);
-            _rigidbody.MoveRotation(Quaternion.LookRotation(-facing.normalized)); // faces inward, toward the owner
-        }
     }
 
     protected override void UpdateView(TState viewState, TState? verified)
@@ -2461,10 +2136,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // is already claiming the color this frame, checked AFTER the flash-timer block above so a flash
         // that just expired this same tick is already reflected in _isFlashing. Continuously repainted every
         // frame it's active (not edge-triggered), same self-correcting reasoning as the dead-red paint above.
-        // orbitFrozen (2026-09-21) also paints this tint — a held pleb visually reads as "stunned" while its
-        // OWNER's own stun is what's actually freezing it (see IEnemyPD.SetOrbitFrozen's own doc comment);
-        // this enemy's own trueStunTimer is untouched by that, so it needs the explicit OR here.
-        bool wantStunTint = !viewB.isDead && !_isFlashing && (viewB.trueStunTimer > 0f || viewB.orbitFrozen);
+        bool wantStunTint = !viewB.isDead && !_isFlashing && viewB.trueStunTimer > 0f;
         if (wantStunTint)
         {
             if (_modelRenderers != null)
@@ -2849,8 +2521,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         // "pauses wherever it left off, resumes once a target exists again" staleness tolerance as the
         // kinematic case above. Deliberately NOT exempt as a neighbor other enemies push off of — an idle,
         // targetless enemy is still a real physical obstacle for a DIFFERENT enemy that still has a target
-        // and is actively moving through the area; only this enemy's own reaction is suppressed, same
-        // asymmetry precedent as IsBeingHeld/other partial exemptions elsewhere in this file.
+        // and is actively moving through the area; only this enemy's own reaction is suppressed.
         if (_rigidbody == null || _rigidbody.isKinematic || _target == null) return;
         // See HandleMovement's own identical knockback-suppression comment — same reasoning, same signal.
         if (b.knockbackVisualHoldTimer > 0f) return;
@@ -3792,21 +3463,7 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
     public bool IsInvulnerable => B.invulnerable;
     public void SetInvulnerable(bool invulnerable) => B.invulnerable = invulnerable;
 
-    public bool IsBeingHeld => B.orbitPhase != (int)EnemyOrbitPhase.None;
-    public bool IsWaitingToOrbit => B.orbitPhase == (int)EnemyOrbitPhase.WaitingToOrbit;
-    public bool IsPulling => B.orbitPhase == (int)EnemyOrbitPhase.Pulling;
-    public bool IsLaunching => B.launchActive;
-
     public bool IsKinematic => _rigidbody != null && _rigidbody.isKinematic;
-
-    // See IEnemyPD.ClaimForOrbit's own doc comment. Sets orbitOwnerId early so LateSimulate()'s own defensive
-    // owner-resolve (if this somehow starts running before OrbitTarget() ever gets called — e.g. the owner
-    // dying during the claimed-but-not-yet-pulling window) already has a valid reference to release against.
-    public void ClaimForOrbit(PredictedObjectID owner)
-    {
-        B.orbitOwnerId = owner;
-        B.orbitPhase   = (int)EnemyOrbitPhase.Claimed;
-    }
 
     // See IEnemyPD.SetKinematic's own doc comment for why ON/OFF are asymmetric. ON just arms the flag —
     // actually applying it is Simulate()'s own job (see that call site's comment), a defensive per-tick
@@ -3844,53 +3501,6 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
         SetInvulnerable(disabled);
         B.hurtboxDisabled = disabled;
         if (!disabled && _hurtbox != null) _hurtbox.enabled = true;
-    }
-
-    // See IEnemyPD.OrbitTarget's own doc comment for the full mechanism. ownerPosition is unused beyond this
-    // call (LateSimulate() re-resolves owner's LIVE position every tick from here on) — kept as a parameter
-    // for symmetry/because callers already have it on hand, not because this method needs it for anything
-    // beyond the caller's own convenience.
-    public void OrbitTarget(PredictedObjectID owner, Vector3 ownerPosition, float radius, float pullSpeed, float angularSpeedDegPerSec, float targetAngleDeg)
-    {
-        ref var b = ref B;
-
-        b.orbitAngleDeg             = targetAngleDeg;
-        b.orbitOwnerId              = owner;
-        b.orbitRadiusTarget         = radius;
-        b.orbitPullSpeed            = Mathf.Max(0.0001f, pullSpeed);
-        b.orbitAngularSpeedDegPerSec = angularSpeedDegPerSec;
-        b.orbitPhase                = (int)EnemyOrbitPhase.Pulling;
-    }
-
-    // See IEnemyPD.BeginOrbiting's own doc comment.
-    public void BeginOrbiting()
-    {
-        if (B.orbitPhase == (int)EnemyOrbitPhase.WaitingToOrbit)
-            B.orbitPhase = (int)EnemyOrbitPhase.Orbiting;
-    }
-
-    public void StopOrbiting()
-    {
-        B.orbitPhase   = (int)EnemyOrbitPhase.None;
-        B.orbitOwnerId = default;
-        B.orbitFrozen  = false;
-    }
-
-    // See IEnemyPD.SetOrbitAngularSpeed's own doc comment.
-    public void SetOrbitAngularSpeed(float angularSpeedDegPerSec) => B.orbitAngularSpeedDegPerSec = angularSpeedDegPerSec;
-
-    // See IEnemyPD.SetOrbitFrozen's own doc comment.
-    public void SetOrbitFrozen(bool frozen) => B.orbitFrozen = frozen;
-
-    // See IEnemyPD.LaunchAlong's own doc comment for the full contract; LateSimulate() does the actual
-    // per-tick movement (checked ahead of the orbit-phase branch there).
-    public void LaunchAlong(Vector3 direction, float distance, float speed)
-    {
-        ref var b = ref B;
-        b.launchActive            = true;
-        b.launchDirection         = direction.sqrMagnitude > 0.0001f ? direction.normalized : transform.forward;
-        b.launchRemainingDistance = distance;
-        b.launchSpeed             = speed;
     }
 
     public EnemySpawnCategory SpawnCategory => spawnCategory;
@@ -4040,8 +3650,8 @@ public abstract class EnemyBasePD<TState> : PredictedIdentity<TState>, IEnemyPD
             // cap can't keep up with; a second hit landing on an already-moving target lets the normal
             // smoothing system blend the redirect instead.
             //
-            // ALSO gated on !isReplaying (2026-10-16, same day — Stuart correctly flagged the edge check
-            // alone still wasn't enough): this method runs inside Simulate(), so it executes both for a
+            // ALSO gated on !isReplaying (2026-10-16, same day — the edge check alone was flagged as
+            // still not enough): this method runs inside Simulate(), so it executes both for a
             // genuinely new live forward tick AND for every tick PurrDiction replays while catching up after
             // a correction (confirmed from source: PredictionManager.isReplaying is true only for the
             // OnPostTick rollback/resimulate burst, never during ordinary per-tick forward simulation). If

@@ -60,8 +60,8 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     // [HideInInspector] since it's augment-owned. Applied by the ability itself (see Activate()'s own
     // _appliedXPercent = X * buffStrengthMultiplier snapshot lines), same shape
     // KnightBuffStunAbilityPD.buffStrengthMultiplier uses — MULTIPLICATIVE (ExeBigAxeBuffAugment itself
-    // does buffStrengthMultiplier *= buffStrengthMultiplierPercent, not additive), per Stuart's own explicit
-    // request to mirror that augment's exact shape rather than the usual additive-multiplier default. Scales
+    // does buffStrengthMultiplier *= buffStrengthMultiplierPercent, not additive), per explicit design
+    // intent to mirror that augment's exact shape rather than the usual additive-multiplier default. Scales
     // ALL FOUR of this ability's buff amounts uniformly — weaponRangeTotalPercent/executeThresholdPercent/
     // critChancePercent above AND knockbackPercent/attackSpeedPercent below (ExeBigAxeKnockbackAttackSpeedAugment)
     // — so it correctly reaches whichever of these fields any OTHER augment sets, regardless of which was
@@ -73,7 +73,7 @@ public class ExeBigAxeAbilityPD : PredictedIdentity<ExeBigAxeAbilityPD.State>, I
     // ADDS directly onto buffStrengthMultiplier at the point weaponRangeTotalPercent is scaled (see
     // Activate()'s own `weaponRangeTotalPercent * (buffStrengthMultiplier + rangeMultiplierBonus)` line) —
     // deliberately ADDITIVE with buffStrengthMultiplier rather than its own separate multiplicative factor,
-    // per Stuart's own explicit "stacks additively with the other buff augment" request. Only ever affects
+    // per the explicit "stacks additively with the other buff augment" design request. Only ever affects
     // Weapon Range, never Execute Threshold/Crit Chance/Knockback/Attack Speed — those stay scaled by
     // buffStrengthMultiplier alone. Worked example: base buffStrengthMultiplier=1 (no Buff augment) +
     // rangeMultiplierBonus=1 (this augment's own +100%) = 2x Range, same as picking this alone would

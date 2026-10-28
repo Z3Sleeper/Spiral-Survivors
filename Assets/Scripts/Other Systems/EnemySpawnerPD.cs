@@ -225,8 +225,8 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // (roughly arithmetic-step) growth. xpTierGrowth originally launched at 4 (5/25/45/65 for that same
     // tier1-baseline 5xp enemy) but has since been retuned to 3 (5/20/35/50).
     [SerializeField] private float moveSpeedTierGrowth = 0.25f;
-    // Identical "1 + (tier-1)*growth" shape/value as moveSpeedTierGrowth (2026-09-14, added) — Stuart's own
-    // starting point, tuned to match for now purely as a starting reference point; own independent field/
+    // Identical "1 + (tier-1)*growth" shape/value as moveSpeedTierGrowth (2026-09-14, added) — tuned to
+    // match for now purely as a starting reference point; own independent field/
     // scalar/ConfigureSpawn param throughout (same "coincidentally the same rate, not a true pairing" framing
     // difficultyAttackSpeedGrowthPerLevel's own doc comment already established for the difficulty side), so
     // retune freely without touching moveSpeedTierGrowth. Feeds EnemyBasePD.attackSpeed on top of whatever
@@ -245,7 +245,7 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // see EnemyBasePD.pointsValue's own doc comment) — no relationship to xpTierGrowth's own value, tune
     // this purely on its own merits. Default 1 — a clean +1x-of-base-per-tier progression (via
     // "1 + (tierNumber-1) * growth"), e.g. a 1-point-base enemy reads 1/2/3/4 across tiers 1-4, matching
-    // Stuart's own reference example exactly.
+    // the worked reference example exactly.
     [SerializeField] private float pointsTierGrowth = 1f;
 
     // Public formula methods (2026-08-21, was raw-growth-constant passthroughs; reworked 2026-09-16 to
@@ -299,11 +299,11 @@ public class EnemySpawnerPD : PredictedIdentity<EnemySpawnerPD.State>
     // per-difficulty growth so windup completion keeps pace with how fast players are getting.
     [SerializeField] private float difficultyDamageGrowthPerLevel      = 0.2f;
     [SerializeField] private float difficultyHealthGrowthPerLevel      = 1f;
-    // Halved 2026-10-12 (10%->5% per level, 50% at TL6->25% at TL6) alongside Stuart's own preemptive player
+    // Halved 2026-10-12 (10%->5% per level, 50% at TL6->25% at TL6) alongside a preemptive player
     // move speed pass — explicit intent: a fully-upgraded player (base 10 + shop's own +2 cap = 12, +20%)
     // now sits SLIGHTLY below a TL6-scaled enemy's own +25%, rather than comfortably ahead of it as the old
     // 10%/level rate produced (+50% at TL6 vs the player's +20%, an even bigger gap). Deliberate, not a bug
-    // — revisit/revert if live testing says this edge feels bad, per Stuart's own framing.
+    // — revisit/revert if live testing says this edge feels bad.
     [SerializeField] private float difficultyMoveSpeedGrowthPerLevel   = 0.05f;
     [SerializeField] private float difficultyAttackSpeedGrowthPerLevel = 0.1f;
 

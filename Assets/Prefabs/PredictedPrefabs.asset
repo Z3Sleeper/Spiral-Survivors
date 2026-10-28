@@ -135,6 +135,10 @@ MonoBehaviour:
     pooling:
       usePooling: 1
       initialSize: 40
+  - prefab: {fileID: 2942187867930129664, guid: 9c5caf1fac9f49f419a931ece66e23d3, type: 3}
+    pooling:
+      usePooling: 1
+      initialSize: 160
   - prefab: {fileID: 1597157536724350220, guid: 5c3be59d1f441f949a7018d38a911efd, type: 3}
     pooling:
       usePooling: 1
@@ -208,6 +212,14 @@ MonoBehaviour:
       usePooling: 1
       initialSize: 10
   - prefab: {fileID: 4265506210240752093, guid: 1af823720c4f99046ae4ce5f6efc8b10, type: 3}
+    pooling:
+      usePooling: 1
+      initialSize: 10
+  - prefab: {fileID: 1597157536724350220, guid: 430d06e52d9e7c54698fe3f783dac8a8, type: 3}
+    pooling:
+      usePooling: 1
+      initialSize: 10
+  - prefab: {fileID: 3154012130216419278, guid: f6103bcc92ce1cf4bba45581b34ae558, type: 3}
     pooling:
       usePooling: 1
       initialSize: 10
@@ -820,14 +832,6 @@ MonoBehaviour:
       usePooling: 0
       initialSize: 0
   - prefab: {fileID: 1998869225870780632, guid: cb429f1ec9cd2dc45b224393c6d39644, type: 3}
-    pooling:
-      usePooling: 0
-      initialSize: 0
-  - prefab: {fileID: 1597157536724350220, guid: 430d06e52d9e7c54698fe3f783dac8a8, type: 3}
-    pooling:
-      usePooling: 0
-      initialSize: 0
-  - prefab: {fileID: 3154012130216419278, guid: f6103bcc92ce1cf4bba45581b34ae558, type: 3}
     pooling:
       usePooling: 0
       initialSize: 0

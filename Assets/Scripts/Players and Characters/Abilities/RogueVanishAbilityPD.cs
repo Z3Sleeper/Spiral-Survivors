@@ -248,6 +248,18 @@ public class RogueVanishAbilityPD : PredictedIdentity<RogueVanishAbilityPD.State
         // trigger off it.
         if (blinkOnCast && _controller != null && _rigidbody != null)
         {
+            // Cleanly ends a real dash still in progress at blink time (2026-10-18 fix) — this ability
+            // deliberately doesn't set ForcesSpecialAction (see that property's own doc comment), so the
+            // ability-activation gate's own "end the dash first" step never runs for Vanish the way it does
+            // for RogueSpin/BWBlink. Without this, an active dash's state.isDashing/dashVelocity survived
+            // completely untouched through the teleport below and kept being applied from the NEW
+            // post-teleport position on every later tick, never re-validated against it — confirmed live as
+            // the cause of briefly leaping out of the map when chaining a dash into this blink near a
+            // boundary wall. Called FIRST, before fromPosition is read, so any correction EndDashIfActive
+            // itself applies (if the dash's current mid-flight position had already drifted somewhere
+            // invalid) is reflected in the blink's own starting point too.
+            _controller.EndDashIfActive();
+
             // Also what DashEffectDoubleTriggerAugment listens to now (2026-10-10, replaces the removed
             // NotifyRealDashStarted/RealDashEnded pair) — see PlayerControllerPD._onDashMovementEnded's own
             // field comment.

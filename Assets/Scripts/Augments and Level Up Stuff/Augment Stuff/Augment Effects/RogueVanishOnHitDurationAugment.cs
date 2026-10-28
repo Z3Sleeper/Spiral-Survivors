@@ -14,8 +14,8 @@ using PurrNet.Prediction;
 // cast capped at 100% of _appliedDuration, 2026-10-14, this augment was wildly out of balance uncapped).
 // Deliberately does NOT also grant
 // durationBonusPercent like the other three Vanish augments — a flat +50% doesn't fit this one's own "earn
-// more uptime by landing hits" identity. Numbers are explicitly tentative, pending playtesting (Stuart's own
-// framing) — this is the kind of augment that'll need real tuning passes.
+// more uptime by landing hits" identity. Numbers are explicitly tentative, pending playtesting — this is
+// the kind of augment that'll need real tuning passes.
 //
 // Deliberately listens to the GENERIC CharacterStatsPD._onHit event (AddHitListener), NOT the "fires
 // exactly once per real strike" _onStrike — _onHit can fire TWICE for a single real connection if the

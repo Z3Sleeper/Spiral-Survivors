@@ -9,7 +9,7 @@ using PurrNet.Prediction;
 // for their own ability) inflicts a stacking bleed: bleedPerSecondPercent (10% Strength per second default)
 // for bleedDuration (3s), scaled by onHitPower (damage only — duration is never touched by onHitPower).
 //
-// Listens to _onHit, not the exactly-once _onStrike (reworked 2026-10-08, was _onStrike — Stuart's own
+// Listens to _onHit, not the exactly-once _onStrike (reworked 2026-10-08, was _onStrike —
 // original framing was "dealt on-strike," but switching to _onHit lets this synergize with anything else
 // that routes through _onHit specifically: CritTriggerOnHitAugment re-invoking NotifyHit on a crit now also
 // re-triggers this (a crit applies bleed twice while BigAxe is up), and PhantomBladePD/AreaEffectCastHelper
@@ -91,7 +91,7 @@ public class ExeBigAxeBleedAugment : AugmentEffectPD<ExeBigAxeBleedAugment.State
         float preRoll = Stats.Strength * bleedPerSecondPercent * data.onHitPower * _bigAxe.buffStrengthMultiplier;
         float rolledPerSecond = WeaponDamageMath.RollDamageInherited(preRoll, Stats.LuckChance, Stats.LuckFloor, Stats.LuckCeiling, data.isHighroll, Stats.NextFloat);
         rolledPerSecond = WeaponDamageMath.ApplyCritAndHighroll(rolledPerSecond, data.isHighroll, data.isCrit, Stats.HighrollBonus, Stats.CritDamage);
-        // Extra flat doubling on top of the normal crit multiplier above — Stuart's own explicit spec.
+        // Extra flat doubling on top of the normal crit multiplier above — explicit design spec.
         if (data.isCrit) rolledPerSecond *= 2f;
 
         // executeThresholdPercent/critExecuteThresholdPercent (2026-10-08 perf fix) — captured directly off

@@ -36,14 +36,14 @@ public class ArrowRainParticleRadiusPD : MonoBehaviour
     private float? _abilityDuration;
 
     // Called every cast, right after hierarchy.Create() — see _abilityDuration's own doc comment for the
-    // timing reasoning. Stuart's own framing: "tell the VFX its duration and the VFX will account for it."
+    // timing reasoning. Design intent: "tell the VFX its duration and the VFX will account for it."
     // Nullable (2026-10-11 fix) — see SetGrowth's own doc comment for why a pooled reuse needs this to be
     // able to explicitly clear, not just set.
     public void SetAbilityDuration(float? duration) => _abilityDuration = duration;
 
     // Growth support (2026-10-05, ArcherArrowRainGrowthAugment). Deliberately a CONSTANT per-second rate
     // applied every real frame (Update()), not stepped to match the real gameplay radius's own discrete
-    // per-Simulate-tick growth (AreaEffectPD.SetRadius) — Stuart's own explicit framing: "have the outline
+    // per-Simulate-tick growth (AreaEffectPD.SetRadius) — explicit design: "have the outline
     // and particle system grow over time at a constant rate while the actual gameplay tick rate stuff under
     // the hood is actually doing it in incrementally larger radii. Very tiny visual to gameplay mismatch that
     // should be unnoticeable." _startRadius is captured in Init() (radiusSource.Radius, same value the
@@ -93,7 +93,7 @@ public class ArrowRainParticleRadiusPD : MonoBehaviour
         // main.startLifetime itself rather than a hardcoded 0.5, so this stays correct even if that's ever
         // retuned on the asset. Net effect: the system stops EMITTING with exactly enough time left for the
         // very last particle's own lifetime to run out right as the ability's duration ends. Assumes
-        // startLifetime is authored in Constant mode (a single number, per Stuart's own "start lifetime:
+        // startLifetime is authored in Constant mode (a single number, per the authored "start lifetime:
         // 0.5" framing) — .constant reads that value directly; a Curve/Random mode would need a different
         // read, not needed here.
         if (_abilityDuration.HasValue)
